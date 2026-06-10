@@ -64,17 +64,17 @@
 
 ### Tests for User Story 2
 
-- [ ] T013 [P] [US2] Add dry-run STT adapter tests in `tests/synthetic-audio-stt/dry-run-stt.test.ts`
-- [ ] T014 [P] [US2] Add pipeline integration test for STT result events in `tests/synthetic-audio-stt/dry-run-stt.test.ts`
+- [x] T013 [P] [US2] Add dry-run STT adapter tests in `tests/synthetic-audio-stt/dry-run-stt.test.ts`
+- [x] T014 [P] [US2] Add pipeline integration test for STT result events in `tests/synthetic-audio-stt/dry-run-stt.test.ts`
 
 ### Implementation for User Story 2
 
-- [ ] T015 [US2] Implement mock/dry-run gateway adapter in `src/model-gateway/mock.ts`
-- [ ] T016 [US2] Implement direct local STT adapter shell in `src/model-gateway/direct-stt.ts`
-- [ ] T017 [US2] Add local STT harness entrypoint in `scripts/synthetic-audio-stt.ts`
-- [ ] T018 [US2] Connect STT adapter results to `PipelineService` events and summaries in `src/pipeline/service.ts`
-- [ ] T019 [US2] Add redacted setup/provider error handling in `src/model-gateway/direct-stt.ts`
-- [ ] T020 [US2] Verify dry-run STT tests and `npm run test:pipeline` pass
+- [x] T015 [US2] Implement mock/dry-run gateway adapter in `src/model-gateway/mock.ts`
+- [x] T016 [US2] Implement direct local STT adapter shell in `src/model-gateway/direct-stt.ts`
+- [x] T017 [US2] Add local STT harness entrypoint in `scripts/synthetic-audio-stt.ts`
+- [x] T018 [US2] Connect STT adapter results to `PipelineService` events and summaries in `src/pipeline/service.ts`
+- [x] T019 [US2] Add redacted setup/provider error handling in `src/model-gateway/direct-stt.ts`
+- [x] T020 [US2] Verify dry-run STT tests and `npm run test:pipeline` pass
 
 **Checkpoint**: The dry-run path is green and the optional real-provider command is documented but not required for CI-safe verification.
 

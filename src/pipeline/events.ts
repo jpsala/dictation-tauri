@@ -21,6 +21,7 @@ export function deriveRunSummaryFromEvents(
     .filter(isStateLedgerEvent)
     .map((event) => event.state);
   const terminalState = deriveTerminalState(finalEvent, states);
+  const transcript = deriveTranscript(events);
   const delivery = deriveDelivery(events);
   const output = deriveOutput(events, delivery);
   const error = deriveError(finalEvent);
@@ -31,6 +32,7 @@ export function deriveRunSummaryFromEvents(
     events: [...events],
     states,
     terminalState,
+    transcript,
     output,
     delivery,
     error,
@@ -74,6 +76,18 @@ function deriveTerminalState(
   }
 
   throw new Error(`Pipeline ledger has no terminal event: ${finalEvent.type}`);
+}
+
+function deriveTranscript(events: readonly PipelineEvent[]): string | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+
+    if (event.type === "transcription_completed") {
+      return event.data.transcript;
+    }
+  }
+
+  return undefined;
 }
 
 function deriveDelivery(

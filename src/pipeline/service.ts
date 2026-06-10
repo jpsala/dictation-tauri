@@ -236,7 +236,9 @@ export class PipelineService {
       return deriveRunSummaryFromEvents(events);
     }
 
-    const transcription = await this.transcriptionAdapter.transcribe(fixture);
+    const transcription = await this.transcriptionAdapter.transcribe(fixture, {
+      runId: activeRun.runId,
+    });
 
     if (activeRun.cancelled) {
       return finishCancelled();
@@ -254,6 +256,7 @@ export class PipelineService {
       data: {
         transcript: transcription.text,
         latencyMs: transcription.latencyMs,
+        stt: transcription.stt,
       },
     });
 

@@ -60,6 +60,13 @@ export type MockTranscriptionResult =
   | {
       text: string;
       latencyMs: number;
+      stt?: {
+        provider: string;
+        model: string;
+        mode: "mock" | "dry-run" | "real";
+        audioPath?: string;
+        requestId?: string;
+      };
       error?: never;
     }
   | {
@@ -96,6 +103,13 @@ export type TranscriptionCompletedEvent = {
   data: {
     transcript: string;
     latencyMs: number;
+    stt?: {
+      provider: string;
+      model: string;
+      mode: "mock" | "dry-run" | "real";
+      audioPath?: string;
+      requestId?: string;
+    };
   };
 };
 
@@ -171,6 +185,7 @@ export type SimulatedRunSummary = {
   events: PipelineEvent[];
   states: PipelineState[];
   terminalState: TerminalPipelineState;
+  transcript?: string;
   output?: string;
   delivery?: DeliveryResult;
   error?: RedactedPipelineError;

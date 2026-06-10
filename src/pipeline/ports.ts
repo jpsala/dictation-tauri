@@ -5,7 +5,12 @@ import type {
 } from "./types";
 
 export type MockTranscriptionAdapter = {
-  transcribe(fixture: SimulatedFixture): Promise<MockTranscriptionResult>;
+  transcribe(
+    fixture: SimulatedFixture,
+    context?: {
+      runId: string;
+    },
+  ): Promise<MockTranscriptionResult>;
 };
 
 export type MockDeliveryAdapter = {
