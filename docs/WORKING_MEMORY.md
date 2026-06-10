@@ -19,7 +19,8 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Backend/model routing | decided | `docs/topics/backend-and-model-routing.md` | Mock port primero; directo local en MVP 2; proxy como spike posterior. |
 | UI/design | seeded | `PRODUCT.md`, `DESIGN.md` | Usar antes de cualquier UI durable. |
 | Pipeline simulado | mvp1-complete | `specs/002-simulated-pipeline/tasks.md` | Mantener como baseline para MVP 2. |
-| Audio sintetico/STT | mvp2-dry-run-complete | `specs/003-synthetic-audio-stt/tasks.md` | Elegir entre T031 real-provider opcional o pasar a MVP 3 microfono real. |
+| Audio sintetico/STT | mvp2-dry-run-complete | `specs/003-synthetic-audio-stt/tasks.md` | T031 queda opcional/local si se decide correr provider real. |
+| Microfono real | specified | `specs/004-real-microphone-capture/spec.md` | Planificar MVP 3 antes de permisos/captura real. |
 | Datos de dictado | decided | `docs/topics/privacy-and-dictation-data.md` | Modo personal/dev permisivo; no imprimir ni commitear secretos. |
 | OS Lite/docs | active | `docs/topics/agentic-project-os-lite.md` | Mantener ruta caliente liviana y audit verde. |
 
@@ -30,6 +31,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `001-port-foundation` | complete | `specs/001-port-foundation/tasks.md` |
 | `002-simulated-pipeline` | complete | `specs/002-simulated-pipeline/tasks.md` |
 | `003-synthetic-audio-stt` | dry-run complete | `specs/003-synthetic-audio-stt/tasks.md` |
+| `004-real-microphone-capture` | specified | `specs/004-real-microphone-capture/spec.md` |
 
 ## Tasks Activas
 
@@ -82,9 +84,9 @@ bun scripts/agent-context-audit.ts
 
 Decidir el siguiente salto:
 
-1. Ejecutar T031 solo si ya hay audio sintetico/restaurado, comando real-provider y credenciales locales disponibles.
-2. Planificar MVP 3 de microfono real si se prioriza captura end-to-end.
-3. Hacer revision arquitectonica antes de sumar side effects reales.
+1. Planificar MVP 3 desde `specs/004-real-microphone-capture/spec.md`.
+2. Ejecutar T031 de MVP 2 solo si ya hay audio sintetico/restaurado, comando real-provider y credenciales locales disponibles.
+3. Hacer revision arquitectonica antes de sumar side effects reales si se quiere un gate adicional.
 
 ## Promocion De Memoria
 
