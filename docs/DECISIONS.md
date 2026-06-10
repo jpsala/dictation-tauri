@@ -4,6 +4,40 @@ Registro corto de decisiones durables.
 
 ## Aprobadas
 
+### 2026-06-10 - Guiar runtime por puertos, eventos y fronteras Tauri
+
+Estado: accepted
+
+Decision: la arquitectura de Dictation Tauri debe evolucionar desde el pipeline simulado hacia un runtime por puertos/adapters, eventos tipados y fronteras Tauri explicitas antes de agregar audio real, STT real, hotkeys, tray, delivery real o persistencia de producto.
+
+Alcance:
+
+- El core del pipeline sigue siendo TypeScript puro y testeable mientras no requiera permisos desktop.
+- La UI no es dueña del flujo; solo observa estado/eventos y dispara comandos.
+- El runtime debe exponer un `PipelineService` o equivalente que controle ejecucion activa, cancelacion, ids, concurrencia y emision de eventos.
+- Cada corrida debe producir un ledger de eventos tipados; el summary se deriva de esos eventos.
+- Transcripcion, postprocess/materializacion y delivery deben entrar por puertos/adapters mockeables antes del primer STT real.
+- `ModelGateway` es la frontera para STT/postprocess; empieza con adapter mock, luego directo local y despues proxied si el contrato alcanza.
+- Rust/Tauri debe poseer side effects del host: microfono, hotkeys, tray, foco, clipboard, ventanas, secretos y permisos. TypeScript puede orquestar y testear, pero no debe esconder side effects desktop.
+- Tauri capabilities se agregan por feature y ventana; `core:default` sigue siendo baseline hasta que una spec justifique nuevos permisos.
+- `csp: null` es aceptable solo como scaffold temprano; antes de runtime real o contenido/proveedores dinamicos debe existir CSP explicito.
+- Delivery se modela por evidencia y certeza, no como booleano: `pasteSent`, `pasteObserved` cuando exista, target inicial/final, confianza y fallback disponible.
+- No se crea historial, settings store ni persistencia de producto sin spec propia.
+
+Motivo: el proyecto todavia esta temprano, por lo que conviene fijar las fronteras antes de que el codigo crezca alrededor de mocks, fixtures o side effects accidentales. Esta decision mantiene el pipeline testeable, evita acoplamiento a Fixvox/CopyQ, y prepara el camino a audio/STT/delivery reales sin reescritura grande.
+
+Proximo paso: ajustar `002-simulated-pipeline` para cerrar cancelacion/evidencia con event ledger y service guard; luego implementar `ModelGateway` mock/directo en MVP 2.
+
+### 2026-06-10 - Prevenir contaminacion de contexto
+
+Estado: accepted
+
+Decision: La ruta inicial de Dictation Tauri debe permanecer liviana. `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` y tasks activas no deben convertirse en lectura obligatoria amplia, mini-historiales ni transcripts.
+
+Motivo: el sistema agentico estaba instalado, pero `AGENTS.md` forzaba una lectura inicial amplia y `WORKING_MEMORY.md` acumulaba historia. Eso contradice el objetivo de OS Lite: leer poco, elegir el topic correcto y abrir referencias profundas solo bajo demanda.
+
+Proximo paso: mantener la ruta caliente corta, mover historia a archivo o referencias profundas, y usar el audit para detectar crecimiento excesivo.
+
 ### 2026-06-10 - Adoptar Small Batches para trabajo agentico
 
 Estado: accepted
@@ -156,9 +190,9 @@ Alcance: no entran en MVP 0-3 Quick Chat, Assistant Mode persistente, `Alt+Q`, w
 
 Proximo paso: scaffold tecnico de `001-port-foundation` y luego una spec separada para pipeline/fixtures si el cambio excede la fundacion.
 
-### 2026-06-05 - Usar ModelGateway hibrido con adapter directo primero
+### 2026-06-05 - Usar ModelGateway hibrido con adapter real directo primero
 
-Estado: accepted
+Estado: accepted, refinada por "Guiar runtime por puertos, eventos y fronteras Tauri" del 2026-06-10
 
 Decision: crear una frontera propia `ModelGateway` para STT/postprocess. El primer adapter real sera directo local, usando variables de entorno o `.env` propio ignorado. El adapter proxied queda para spike posterior si el contrato del proxy existente alcanza.
 
@@ -167,6 +201,8 @@ Motivo: permite medir audio sintetico y proveedores sin acoplar Dictation Tauri 
 Alcance: Dictation Tauri puede leer `.env`/variables locales cuando una tarea lo requiera. Aun asi, para producto propio conviene tener `.env` propio o variables configuradas explicitamente y no acoplarse por accidente a rutas de Fixvox.
 
 Proximo paso: definir contrato minimo del gateway en la spec de pipeline/fixtures antes de implementar STT real.
+
+Nota 2026-06-10: antes del primer adapter real directo, MVP 1 debe usar adapter mock/fixture-backed conectado por puerto. La secuencia vigente es mock -> directo local -> proxied.
 
 ### 2026-06-05 - Postergar seleccion real a post-MVP
 

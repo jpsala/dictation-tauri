@@ -57,7 +57,7 @@ En este mapa, `mvp` cubre el tramo MVP 0-3 definido en `docs/topics/product-dire
 
 | Capacidad Fixvox | Que hace hoy | Valor para Dictation Tauri | Opciones de implementacion | Decision inicial |
 | --- | --- | --- | --- | --- |
-| Dictado sin seleccion | Audio -> STT -> postprocess opcional -> insert/copy. | Es el core del producto. | `ModelGateway` hibrido, adapter directo local primero. | `mvp` |
+| Dictado sin seleccion | Audio -> STT -> postprocess opcional -> insert/copy. | Es el core del producto. | Pipeline por puertos/adapters; mock primero, directo local en MVP 2. | `mvp` |
 | Postprocess de dictado | Limpia puntuacion, fillers, listas, terminos tecnicos y errores ASR. | Muy alto; mejora calidad percibida. | Medido en benchmark primero; runtime despues con niveles light/medium/strong. | `mvp` |
 | Dictado con texto seleccionado | Voz como instruccion sobre seleccion. | Diferencia producto de simple STT. | Simular `selectedText` en tests; captura real despues. | `early` |
 | Selection transform | Aplica instruccion hablada al texto seleccionado. | Alto para workflows de edicion. | Fixture/preset simple primero; prompt general despues. | `early` |
@@ -78,7 +78,7 @@ En este mapa, `mvp` cubre el tramo MVP 0-3 definido en `docs/topics/product-dire
 | Audio sintetico/TTS | Genera WAV/MP3 desde frases para pruebas. | Clave para no depender de JP. | Script propio inspirado en Fixvox. | `mvp` |
 | STT benchmark matrix | Corre escenarios STT/postprocess, mide calidad/costo/latencia. | Clave para elegir modelo. | Copia minima conceptual, no port literal. | `mvp` |
 | Muestras humanas | WAVs reales con expected text. | Valiosas para regresion, pero sensibles. | Referenciar localmente, no copiar al repo. | `research` |
-| Model routing | Elige proveedor/modelo por policy/contexto. | Util si no sobredisena el pipeline. | Interfaz propia `ModelGateway`; adapter directo local primero, proxied despues. | `mvp` |
+| Model routing | Elige proveedor/modelo por policy/contexto. | Util si no sobredisena el pipeline. | Interfaz propia `ModelGateway`; mock primero, directo local en MVP 2, proxied despues. | `mvp` |
 | Proxy/backend-managed | Centraliza claves, costos, quotas y policy. | Muy valioso si el producto escala. | Adapter proxied compatible con endpoint existente. | `research` |
 | Control plane/policy | Administra usuarios, quotas, defaults, capabilities. | No bloquea producto local. | No implementar al inicio. | `parked` |
 | Wake words | Activacion por palabra tipo Lulu. | Atractivo, pero permiso microfono y ruido. | No activar por defecto. | `parked` |
@@ -93,9 +93,9 @@ En este mapa, `mvp` cubre el tramo MVP 0-3 definido en `docs/topics/product-dire
 MVP 0-3:
 
 1. App Tauri base verificable.
-2. Pipeline simulado con estados y delivery verificable.
+2. Pipeline simulado con estados, cancelacion, no-overlap, event ledger y delivery verificable.
 3. Harness propio de audio sintetico y STT/postprocess benchmark.
-4. `ModelGateway` hibrido con adapter directo local primero.
+4. `ModelGateway` hibrido: mock primero, adapter directo local en MVP 2.
 5. Delivery basico `copy` e `insert` best-effort con fallback.
 6. Push-to-talk/toggle y stop-submit para microfono real en MVP 3.
 7. Logs redacted con latencia/costo/calidad.
@@ -129,7 +129,7 @@ Primeras expansiones candidatas despues de MVP 3:
 - Texto seleccionado real entra despues de MVP 3, aunque se simula desde tests antes.
 - `Alt+Q` queda para despues de validar dictado y seleccion real.
 - El minimo aceptable de delivery es copy/insert best-effort con evidencia automatizada.
-- `ModelGateway` sera hibrido con adapter directo local primero.
+- `ModelGateway` sera hibrido: mock primero, adapter directo local en MVP 2, proxied despues si el contrato alcanza.
 
 ## Regla De Mantenimiento
 

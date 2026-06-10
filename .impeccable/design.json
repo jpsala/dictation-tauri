@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-10T14:20:00-03:00",
+  "title": "Design System: Dictation Tauri",
+  "extensions": {
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "Clear Canvas",
+        "canonical": "oklch(1.000 0.000 0)",
+        "tonalRamp": [
+          "oklch(0.150 0.000 0)",
+          "oklch(0.260 0.000 0)",
+          "oklch(0.380 0.000 0)",
+          "oklch(0.520 0.000 0)",
+          "oklch(0.680 0.000 0)",
+          "oklch(0.820 0.000 0)",
+          "oklch(0.940 0.000 0)",
+          "oklch(1.000 0.000 0)"
+        ]
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Burnt Signal",
+        "canonical": "oklch(0.560 0.150 35)",
+        "tonalRamp": [
+          "oklch(0.170 0.060 35)",
+          "oklch(0.260 0.085 35)",
+          "oklch(0.350 0.110 35)",
+          "oklch(0.440 0.130 35)",
+          "oklch(0.560 0.150 35)",
+          "oklch(0.690 0.110 35)",
+          "oklch(0.830 0.060 35)",
+          "oklch(0.950 0.025 35)"
+        ]
+      },
+      "accent": {
+        "role": "secondary",
+        "displayName": "Assurance Blue",
+        "canonical": "oklch(0.390 0.110 205)",
+        "tonalRamp": [
+          "oklch(0.160 0.045 205)",
+          "oklch(0.240 0.070 205)",
+          "oklch(0.320 0.095 205)",
+          "oklch(0.390 0.110 205)",
+          "oklch(0.520 0.095 205)",
+          "oklch(0.680 0.070 205)",
+          "oklch(0.830 0.040 205)",
+          "oklch(0.950 0.018 205)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "App name, major empty states, and first-run setup headings only."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Explanations, recovery copy, and state detail."
+      }
+    },
+    "shadows": [
+      {
+        "name": "panel-lift",
+        "value": "0 8px 18px rgb(35 45 55 / 8%)",
+        "purpose": "A floating voice dock or active recovery panel."
+      },
+      {
+        "name": "focus-ring",
+        "value": "0 0 0 3px oklch(0.560 0.150 35 / 28%)",
+        "purpose": "Keyboard focus around interactive controls."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-fast",
+        "value": "150ms ease-out",
+        "purpose": "Hover, active, and selected state changes."
+      },
+      {
+        "name": "state-standard",
+        "value": "220ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Panel reveal, recovery state, and non-blocking transitions."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow-window",
+        "value": "560px"
+      },
+      {
+        "name": "desktop-window",
+        "value": "900px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "One primary command per surface.",
+      "html": "<button class=\"ds-btn-primary\">Start dictation</button>",
+      "css": ".ds-btn-primary { background: oklch(0.560 0.150 35); color: oklch(1.000 0.000 0); border: 0; border-radius: 6px; padding: 10px 14px; font: 650 0.95rem/1.2 Inter, ui-sans-serif, system-ui, sans-serif; transition: background 150ms ease-out, transform 150ms ease-out; } .ds-btn-primary:hover { background: oklch(0.500 0.140 35); } .ds-btn-primary:active { transform: translateY(1px); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px oklch(0.560 0.150 35 / 28%); }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Secondary command for cancel, retry, or copy fallback.",
+      "html": "<button class=\"ds-btn-secondary\">Copy fallback</button>",
+      "css": ".ds-btn-secondary { background: oklch(0.995 0.000 0); color: oklch(0.210 0.018 235); border: 1px solid oklch(0.860 0.012 235); border-radius: 6px; padding: 10px 14px; font: 650 0.95rem/1.2 Inter, ui-sans-serif, system-ui, sans-serif; transition: border-color 150ms ease-out, background 150ms ease-out; } .ds-btn-secondary:hover { background: oklch(0.970 0.004 230); } .ds-btn-secondary:focus-visible { outline: none; box-shadow: 0 0 0 3px oklch(0.560 0.150 35 / 28%); }"
+    },
+    {
+      "name": "Status Chip",
+      "kind": "chip",
+      "refersTo": "status-chip",
+      "description": "Compact phase label for the voice state machine.",
+      "html": "<span class=\"ds-status-chip\"><span class=\"ds-status-dot\"></span>Listening</span>",
+      "css": ".ds-status-chip { display: inline-flex; align-items: center; gap: 6px; background: oklch(0.970 0.004 230); color: oklch(0.210 0.018 235); border: 1px solid oklch(0.860 0.012 235); border-radius: 4px; padding: 6px 8px; font: 700 0.78rem/1.25 Inter, ui-sans-serif, system-ui, sans-serif; } .ds-status-dot { width: 7px; height: 7px; border-radius: 999px; background: oklch(0.560 0.150 35); }"
+    },
+    {
+      "name": "Foreground Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Neutral container for app shell, voice dock, or recovery content.",
+      "html": "<section class=\"ds-panel\"><h2>Dictation status</h2><p>Ready to listen.</p></section>",
+      "css": ".ds-panel { background: oklch(0.995 0.000 0); color: oklch(0.210 0.018 235); border: 1px solid oklch(0.860 0.012 235); border-radius: 8px; padding: 24px; box-shadow: 0 8px 18px rgb(35 45 55 / 8%); } .ds-panel h2 { margin: 0; font: 680 1.375rem/1.2 Inter, ui-sans-serif, system-ui, sans-serif; } .ds-panel p { margin: 10px 0 0; color: oklch(0.450 0.020 235); font: 400 1rem/1.55 Inter, ui-sans-serif, system-ui, sans-serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Control Room",
+    "overview": "Dictation Tauri should feel like a compact desktop control surface: restrained, legible, and exact about what is happening. The interface serves an active workflow, so the design must stay calm while another application is the user's main context.",
+    "keyCharacteristics": [
+      "Compact desktop density with clear hierarchy.",
+      "State-first surfaces for listening, transcribing, delivering, completion, failure, and cancellation.",
+      "Restrained color, with primary color used for current action and active state only.",
+      "Familiar product controls: buttons, chips, panels, tabs, menus, and settings patterns.",
+      "Accessible by default: visible focus, high contrast, reduced motion support, and text that fits narrow windows."
+    ],
+    "rules": [
+      {
+        "name": "The Ten Percent Signal Rule",
+        "body": "Burnt Signal may occupy no more than a small fraction of a screen. If every panel is warm, nothing is active.",
+        "section": "colors"
+      },
+      {
+        "name": "The No Purple AI Chrome Rule",
+        "body": "Purple, blue-purple gradients, and decorative AI glows are prohibited for core product chrome.",
+        "section": "colors"
+      },
+      {
+        "name": "The Product Scale Rule",
+        "body": "Do not use fluid viewport-scaled type in app surfaces. Product UI uses fixed rem steps so controls remain predictable.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Surfaces are flat at rest. Elevation appears only when a panel must visually detach from surrounding content.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do make the current dictation state visible in text, not just color.",
+      "Do keep the main surface compact enough for desktop overlay use.",
+      "Do reserve Burnt Signal for primary action, active listening, and one selected state.",
+      "Do use standard product controls before inventing custom affordances.",
+      "Do include focus-visible treatment and reduced-motion behavior in every durable UI surface.",
+      "Do distinguish paste sent, copy fallback, and delivery observed when those states exist."
+    ],
+    "donts": [
+      "Don't use generic AI SaaS landing-page aesthetics.",
+      "Don't use dark purple or blue gradient AI tool chrome.",
+      "Don't make the app look like an audio engineering dashboard.",
+      "Don't make chat-first assistant UI the main surface for MVP 0-3.",
+      "Don't copy Clipboard-manager UI patterns from CopyQ Tauri unless a Dictation Tauri spec explicitly needs them.",
+      "Don't imply delivery was observed when the app only sent paste or copied text.",
+      "Don't use colored side stripes, gradient text, glassmorphism, decorative blobs, oversized hero sections, or repeated marketing card grids."
+    ]
+  }
+}

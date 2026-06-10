@@ -13,7 +13,7 @@ description: "Task list template for feature implementation"
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
-**Small Batches**: Generate tasks small enough that one task or checkpoint can be implemented, reviewed, verified, and committed atomically. If a task would mix unrelated files, product decisions, refactors, and implementation, split it.
+**Small Batch Rule**: Generated tasks MUST support incremental execution. Each batch should be independently reviewable, testable, and usually completable in hours to a couple of days. Do not rely on a single agent pass to complete the full file unless explicitly requested. If a task would mix unrelated files, product decisions, refactors, and implementation, split it.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -163,6 +163,15 @@ Examples of foundational tasks (adjust based on your project):
 ---
 
 ## Dependencies & Execution Order
+
+### Small Batch Gate
+
+Before implementation, identify the next batch to execute:
+
+- Prefer one user story, one dependency-free task group, or one narrow infrastructure change.
+- The batch must have a clear independent test or verification command.
+- The batch must avoid same-file conflicts with other open batches.
+- Stop after each batch to run verification, mark completed tasks, and update docs/specs if behavior or decisions changed.
 
 ### Phase Dependencies
 

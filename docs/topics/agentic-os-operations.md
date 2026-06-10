@@ -34,6 +34,7 @@ Usar este topic cuando el usuario quiera crear, migrar, actualizar o auditar un 
 | "Este repo ya tiene sistema, migrarlo" | Fusionar sistema actual con OS Lite sin perder reglas locales. |
 | "Actualizalo a la ultima version" | Comparar contra este repo y traer mejoras sin pisar contexto local. |
 | "Auditalo" | Correr audit y revisar docs/topics/tasks. |
+| "Se contamino / crecio demasiado" | Auditar context bloat, compactar ruta caliente y mover historia a referencias profundas o archivo. |
 
 ## Adaptacion A Otro Proyecto
 
@@ -77,3 +78,5 @@ Usar este topic cuando el usuario quiera crear, migrar, actualizar o auditar un 
 ## Regla
 
 No copiar contexto de otro proyecto, no borrar memoria local util sin integrarla y no dejar archivos preexistentes desindexados. El objetivo es mejorar el acceso al conocimiento, no resetearlo.
+
+Si un sistema ya existe pero se volvio pesado, la prioridad no es agregar mas estructura: primero compactar la ruta caliente (`AGENTS.md`, indice, `WORKING_MEMORY.md`, `TOPICS.md`, tasks activas), archivar historia y dejar referencias profundas bajo demanda.

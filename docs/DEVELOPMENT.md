@@ -60,18 +60,32 @@ Baseline cerrado:
 - Skill local `impeccable` y skills SpecKit disponibles en `.agents/skills/`.
 - Auditor de contexto disponible y pasando.
 
-Pendiente para considerar cerrada la fundacion tecnica:
+Cerrado para MVP 0:
 
-- Crear manifiestos reales de Tauri/Rust.
-- Definir comandos oficiales de dev, build, lint y test.
-- Documentar permisos/capabilities minimos.
-- Documentar politica de persistencia antes de convertir datos en comportamiento estable de producto.
-- Verificar una app base ejecutable.
+- App React/Vite base verificable.
+- Smoke test Playwright.
+- Crate Tauri/Rust minimo con ventana `main`.
+- Capability minima `core:default`.
+- Checks de quickstart e indice/auditor de contexto verdes.
 
 Completado para Checkpoint A de MVP 0:
 
 - `package.json`, `package-lock.json`, `tsconfig.json`, `vite.config.ts` e app React base existen.
 - `npm run build` pasa.
+
+Completado para Checkpoint B de MVP 0:
+
+- `playwright.config.ts` y `tests/visual/app-smoke.spec.ts` existen.
+- `src-tauri/Cargo.toml`, `src-tauri/build.rs`, `src-tauri/tauri.conf.json`, `src-tauri/src/main.rs` y `src-tauri/src/lib.rs` existen.
+- Capability minima en `src-tauri/capabilities/default.json`: `core:default` para la ventana `main`.
+- `src-tauri/icons/icon.ico` existe como icono neutro minimo requerido por `tauri-build` en Windows.
+- `npm run build`, `npm run visual:check` y `cargo check` pasan.
+
+Proximo trabajo recomendado:
+
+- Abrir spec de MVP 2: audio sintetico + STT real sobre fixtures, usando `ModelGateway` directo local como primer adapter real.
+- Mantener MVP 2 sin microfono real, hotkeys, tray, settings, persistencia de producto ni UI durable salvo decision explicita.
+- Mantener el pipeline por puertos/adapters y la UI como observadora antes de agregar side effects desktop.
 
 ## UI / Frontend Design
 
@@ -115,15 +129,17 @@ Comandos frontend reales:
 ```powershell
 npm run dev
 npm run build
+npm run test:pipeline
 npm run preview
 ```
 
-Comandos reservados por el scaffold y pendientes de cerrar cuando existan `Cargo.toml`, `tauri.conf.json` y Playwright:
+Comandos Tauri y verificacion reales:
 
 ```powershell
+npm run visual:check
 npm run tauri:dev
 npm run tauri:build
-npm run visual:check
+$env:CARGO_TARGET_DIR="target-codex-check"; cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Persistencia
@@ -135,6 +151,19 @@ Pendiente de decision de producto. Hasta entonces, en modo personal/dev:
 - Antes de volverlo contrato de producto, documentar ruta, formato, ciclo de vida y politica de borrado.
 - `.env`/tokens no se commitean salvo pedido explicito y acotado de JP.
 - No usar `localStorage`, caches temporales o logs como fuente de verdad durable.
+
+## Arquitectura Runtime
+
+Guia vigente antes de audio/STT/delivery reales:
+
+- Core de pipeline TypeScript puro mientras no requiera permisos desktop.
+- `PipelineService` o runner equivalente controla run activo, no-overlap, cancelacion, ids y eventos.
+- Transcripcion, postprocess/materializacion y delivery entran por puertos/adapters mockeables.
+- Event ledger es la evidencia primaria; summaries, UI y logs se derivan de sus eventos.
+- UI React dispara comandos y observa estado/eventos; no muta transiciones.
+- Rust/Tauri posee side effects desktop cuando entren: microfono, hotkeys, tray, foco, clipboard, ventanas, permisos y secretos.
+- Tauri capabilities se agregan por feature/ventana; `core:default` sigue siendo baseline.
+- `csp: null` no debe quedar como configuracion de runtime real con providers/contenido dinamico sin decision explicita.
 
 ## SpecKit
 
@@ -152,7 +181,7 @@ specs/<feature>/
 └── tasks.md
 ```
 
-Spec draft actual: `specs/001-port-foundation/`.
+Spec activa actual: `specs/002-simulated-pipeline/`.
 
 ## Verificacion
 

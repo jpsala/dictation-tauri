@@ -9,6 +9,8 @@ triggers:
   - indice
   - contexto liviano
   - tasks
+  - context bloat
+  - contaminacion de contexto
 primary_refs:
   - docs/README.md
   - docs/TOPICS.md
@@ -37,6 +39,9 @@ La documentacion debe permitir que un agente lea poco y encuentre rapido la fuen
 
 - No duplicar specs enteras en working memory.
 - No guardar transcripts largos.
+- No convertir `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` ni tasks activas en lectura obligatoria amplia.
+- Si un documento crece porque acumula historia, separar: estado vivo corto, decision durable, topic reusable, task retomable o archivo historico.
+- La ruta caliente debe seguir siendo pequena: indice generado, working memory corta, router y solo el topic/task/spec necesario.
 - Si una task descubre algo durable, promoverlo a docs raiz, topic, decision o spec.
 - Si aparece un documento suelto, integrarlo, indexarlo, archivarlo con estado claro o preguntar antes de borrarlo.
 - Mantener cambios documentales en Small Batches: una decision, topic o sincronizacion de contexto por commit cuando sea separable.

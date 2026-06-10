@@ -1,21 +1,16 @@
 <!--
 Sync Impact Report
-Version change: template -> 1.0.0
+Version change: 1.0.0 -> 1.1.0
 Modified principles:
-- Template -> I. Human-Centered Outcomes
-- Template -> II. Privacy And Data Boundaries
-- Template -> III. Durable Operational State
-- Template -> IV. Spec-Led Incremental Delivery
-- Template -> V. Surface-Appropriate Design
+- IV. Spec-Led Incremental Delivery: tightened small-batch execution and per-batch verification.
 Added sections:
-- Project Constraints
-- Development Workflow
-Removed sections:
-- Project-specific placeholders
-Templates requiring updates:
 - none
+Removed sections:
+- none
+Templates requiring updates:
+- .specify/templates/tasks-template.md
 Follow-up TODOs:
-- Fill project-specific stack commands after Tauri/frontend manifests exist.
+- Keep context-bloat audit thresholds aligned with docs route.
 -->
 # Dictation Tauri Constitution
 
@@ -36,6 +31,8 @@ Any operational state that matters across sessions, browsers, machines, or workf
 ### IV. Spec-Led Incremental Delivery
 
 Significant features MUST pass through SpecKit before implementation: `spec.md`, `plan.md`, research and data-model updates when relevant, `tasks.md`, implementation, verification, and documentation sync. If implementation changes an architectural or product decision, the relevant spec, plan, data model, or project documentation MUST be updated before closing the work.
+
+SpecKit work MUST be executed in small batches. A batch is a coherent, independently reviewable and verifiable slice, normally one user story, one dependency-free task group, one observable behavior, or one narrowly scoped infrastructure change. Agents MUST NOT auto-complete a large `tasks.md` in bulk unless JP explicitly asks for that mode. After each batch, run the relevant verification, mark completed tasks, record any durable decision, and only then continue.
 
 ### V. Surface-Appropriate Design
 
@@ -58,12 +55,14 @@ Interfaces MUST fit their surface and audience. Internal tools SHOULD be dense, 
 For each significant change:
 
 1. Update or create the relevant feature spec under `specs/`.
-2. Run the planning workflow and update `plan.md`, `research.md`, `data-model.md`, `quickstart.md`, and contracts when relevant.
-3. Generate or refresh `tasks.md` with independently executable tasks.
-4. Implement in small batches by completing one task, behavior, or checkpoint at a time.
-5. Verify each batch with the commands documented in `docs/DEVELOPMENT.md` or the active quickstart.
-6. Mark completed tasks with `[x]` and update stable project docs when decisions become durable.
-7. Commit each verified batch as an atomic, reversible snapshot.
+2. Resolve material ambiguity before planning.
+3. Run the planning workflow and update `plan.md`, `research.md`, `data-model.md`, `quickstart.md`, and contracts when relevant.
+4. Generate or refresh `tasks.md` with independently executable tasks.
+5. Analyze spec, plan, and tasks for consistency before implementation.
+6. Implement in small batches by completing one task, behavior, or checkpoint at a time.
+7. Verify each batch with the commands documented in `docs/DEVELOPMENT.md` or the active quickstart.
+8. Mark completed tasks with `[x]` and update stable project docs when decisions become durable.
+9. Commit each verified batch as an atomic, reversible snapshot.
 
 Small copy edits, emergency fixes, or investigative reads may skip new spec creation, but MUST still respect the constitution and update current specs/docs if they alter behavior or architecture.
 
@@ -73,6 +72,6 @@ This constitution is the highest-level rule set for SpecKit work in this reposit
 
 Amendments require owner approval, a short rationale, and updates to dependent specs, plans, templates, or project docs when affected. Versioning follows semantic versioning: MAJOR for incompatible governance changes, MINOR for new or materially expanded principles, and PATCH for clarifications that do not change obligations.
 
-Every SpecKit plan and implementation review MUST check privacy, persistence, surface fit, verification, and whether docs/specs/tasks remain synchronized.
+Every SpecKit plan and implementation review MUST check privacy, persistence, surface fit, small-batch boundaries, verification, and whether docs/specs/tasks remain synchronized.
 
-**Version**: 1.0.0 | **Ratified**: 2026-06-05 | **Last Amended**: 2026-06-05
+**Version**: 1.1.0 | **Ratified**: 2026-06-05 | **Last Amended**: 2026-06-10

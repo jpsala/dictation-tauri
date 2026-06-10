@@ -38,17 +38,29 @@ La UI no debe ser la unica dueña del flujo. Las acciones deben poder dispararse
 
 El primer flujo de producto es dictado rapido universal. La seleccion real y los modos asistidos son extensiones posteriores.
 
+El runtime debe tener una frontera propia:
+
+- `PipelineService` o equivalente controla run activo, no-overlap, cancelacion, ids y emision de eventos.
+- El core del pipeline no accede directo a UI, Tauri, clipboard, microfono ni provider real.
+- Transcripcion, postprocess/materializacion y delivery entran por puertos/adapters.
+- Cada run genera un ledger de eventos tipados; la UI, logs y summaries observan ese ledger.
+- La UI dispara comandos y observa estado, pero no decide transiciones ni recovery.
+
 ## Estados
 
 - `idle`: no hay ejecucion activa.
-- `armed`: listo para escuchar o recibir fixture.
 - `listening`: capturando audio.
 - `transcribing`: STT en curso.
-- `processing`: postprocess o transformacion.
 - `delivering`: clipboard/paste/output.
-- `completed`: salida entregada o disponible.
-- `failed`: error con recovery claro.
+- `done`: salida entregada o disponible en el contrato tecnico.
+- `error`: error con recovery claro en el contrato tecnico.
 - `cancelled`: usuario o sistema cancelo.
+
+Nombres de UI:
+
+- `done` se muestra como completed/completado.
+- `error` se muestra como failed/fallido.
+- `processing` se agrega como estado tecnico separado solo cuando postprocess/materializacion deje de ser trivial.
 
 ## Decision Inicial
 
@@ -58,6 +70,8 @@ El primer flujo de producto es dictado rapido universal. La seleccion real y los
 - Delivery inicial: directo best-effort con copy fallback.
 - Preview y recovery UI son mejoras tempranas, no bloqueo del MVP 0-3.
 - Texto seleccionado real no entra en MVP 0-3.
+- Side effects desktop viven en Rust/Tauri o una frontera host explicita cuando entren: microfono, hotkeys, tray, foco, clipboard y permisos.
+- Delivery debe distinguir evidencia: texto disponible, copy fallback, paste enviado, paste observado cuando exista y delivery incierto.
 
 ## Preguntas Abiertas Reducidas
 

@@ -32,12 +32,14 @@ No usarla para decidir arquitectura nativa, captura de audio, hotkeys globales, 
 
 La skill esta instalada en `.agents/skills/impeccable`.
 
-Antes de usarla para construir o pulir UI, crear:
+Contexto inicial creado:
 
 - `PRODUCT.md`: register, usuarios, proposito, personalidad, anti-referencias y principios.
 - `DESIGN.md`: direccion visual, tokens, layout, componentes, motion y accesibilidad.
+- `.impeccable/design.json`: sidecar del sistema visual para herramientas live/design.
+- `.impeccable/live/config.json`: live mode configurado para `index.html` en Vite.
 
-`impeccable` exige `PRODUCT.md`; si no existe, su flujo manda correr init antes de seguir.
+`impeccable` exige `PRODUCT.md`; ya existe y define register `product`.
 
 ## Superficies Probables
 
@@ -70,15 +72,15 @@ Antes de usarla para construir o pulir UI, crear:
 
 ## Primer Uso Sugerido
 
-Despues de cerrar alcance de producto:
+Despues de cerrar `PRODUCT.md` y `DESIGN.md`:
 
-1. Crear `PRODUCT.md` con register `product`.
-2. Crear `DESIGN.md` inicial.
-3. Usar `impeccable shape app shell` o `impeccable shape voice dock` antes de implementar la primera superficie.
+1. Abrir spec MVP 1 para pipeline simulado automatizable.
+2. Usar `impeccable shape app shell` o `impeccable shape voice dock` antes de implementar la primera superficie durable.
+3. Antes de cerrar UI, usar `impeccable critique`, `audit` o `polish` segun riesgo.
 
 ## Decision De Timing
 
-`PRODUCT.md` y `DESIGN.md` deben inicializarse despues del pase de alcance MVP y antes de la primera UI durable.
+`PRODUCT.md` y `DESIGN.md` ya fueron inicializados despues del pase de alcance MVP y antes de la primera UI durable.
 
 Permitido antes de eso:
 

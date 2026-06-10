@@ -1,6 +1,6 @@
 ---
 id: source-project-map
-status: active
+status: reference
 kind: decision-map
 triggers:
   - proyectos fuente
@@ -54,9 +54,9 @@ Este mapa no convierte ningun proyecto fuente en dependencia. Todo lo adoptado d
 | Settings standalone | CopyQ Tauri | `adapt` | Settings como ventana propia, no overlay; contenido de dictado y hotkeys propios. |
 | Shortcut/tray/background | CopyQ Tauri | `adapt` | Registrar shortcut y tray desde Rust; cerrar ventana debe ocultar salvo quit explicito. |
 | Focus/delivery Win32 | Fixvox + CopyQ Tauri | `adapt` | Delivery best-effort con niveles de certeza; evitar prometer paste observado en Chromium/WebView. |
-| Voice runtime pipeline | Fixvox | `adapt` | Contrato propio por fases: trigger, target, route, recording, STT, materialization, delivery, completion/failure. |
+| Voice runtime pipeline | Fixvox | `adapt` | Contrato propio por fases, `PipelineService`, event ledger y puertos/adapters. |
 | STT/TTS/benchmarks | Fixvox | `adapt` | Harness propio con frases/prompts/matrices como referencia; no copiar arquitectura Electrobun/Bun. |
-| Model routing | Fixvox | `adapt` | `ModelGateway` hibrido: adapter directo local primero, proxy como spike posterior. |
+| Model routing | Fixvox | `adapt` | `ModelGateway` hibrido: mock primero, directo local en MVP 2, proxy como spike posterior. |
 | Policy/control plane | Fixvox | `reference` | Tomar lecciones de ownership/policy; no implementar control plane en MVP 0-3. |
 | Wake words/assistant/Quick Chat | Fixvox | `parked` | No entran en MVP; usar solo para diseno futuro de rutas. |
 | UIA/Koffi/Python/PowerShell helper | Fixvox | `reject` | No reintroducir en hot path sin nueva decision explicita. |
@@ -139,11 +139,18 @@ Crear spec separada si excede el scaffold. Contrato recomendado:
 1. Trigger.
 2. Target capture.
 3. Route classification inicial.
-4. Audio recording.
-5. Transcription.
-6. Output materialization.
-7. Delivery.
+4. Audio recording o fixture input.
+5. Transcription por adapter.
+6. Output materialization/postprocess por adapter.
+7. Delivery por adapter.
 8. Completion/failure/cancellation.
+
+Reglas propias:
+
+- Un `PipelineService` controla ejecucion activa, cancelacion y no-overlap.
+- Un ledger de eventos tipados es la evidencia primaria; summaries/UI/logs se derivan de ahi.
+- El core del pipeline no debe depender de UI, Tauri, clipboard, microfono ni provider real.
+- Los side effects desktop viven en Rust/Tauri o frontera host explicita cuando una spec los habilite.
 
 Para Dictation Tauri, el primer corte debe soportar pipeline simulado antes de microfono real. Las rutas pueden empezar chicas:
 
@@ -195,8 +202,9 @@ type ModelGateway = {
 
 Primer adapter:
 
-- directo local;
-- configurado por `.env`/variables locales;
+- mock/fixture-backed para MVP 1;
+- directo local para MVP 2;
+- configurado por `.env`/variables locales desde script/host, no desde UI React;
 - sin acoplarse al control plane de Fixvox.
 
 Adapter posterior:
@@ -215,6 +223,7 @@ Principios a traer:
 - si el usuario cambia de app durante dictado, el target final plausible puede ganar sobre el target inicial;
 - recovery/copy fallback importa mas que prometer insercion perfecta;
 - logs deben mostrar target inicial, target final y certeza de delivery.
+- el resultado de delivery debe guardar evidencia: texto disponible, fallback, paste enviado, paste observado cuando exista, target inicial/final y razon de incertidumbre.
 
 No reimplementar ahora:
 

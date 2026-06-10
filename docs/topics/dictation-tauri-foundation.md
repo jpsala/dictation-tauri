@@ -21,7 +21,7 @@ primary_refs:
 
 El baseline documental/agentico esta cerrado y auditado.
 
-La fundacion tecnica del port esta lista para scaffold: el stack esta decidido, pero todavia no tiene manifiestos detectados (`package.json`, `Cargo.toml`, `tauri.conf.json`) ni comandos oficiales verificados.
+La fundacion tecnica MVP 0 esta cerrada: el frontend, Playwright smoke test y crate Tauri minimo existen y pasan checks. Phase 3 de `001-port-foundation` quedo sincronizada con docs, context index y audit.
 
 Stack decidido:
 
@@ -46,9 +46,13 @@ specs/001-port-foundation/
 ## Decisiones Pendientes
 
 - Motor de dictado/transcripcion.
-- Modelo de permisos/capabilities.
+- Permisos/capabilities para audio, hotkeys, tray, delivery y UI durable posteriores.
 - Persistencia local.
-- Comandos de verificacion.
+- Comandos de producto posteriores al scaffold.
+
+## Proximo Paso
+
+Crear `PRODUCT.md` y `DESIGN.md` antes de app shell/voice dock durable; despues abrir una spec de MVP 1 para pipeline simulado automatizable.
 
 ## Regla
 

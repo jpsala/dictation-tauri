@@ -4,15 +4,15 @@ Este repo usa Agentic Project OS Lite: una capa liviana de reglas, memoria viva,
 
 ## Lectura Inicial
 
-Antes de trabajar en este proyecto, leer:
+Antes de trabajar en este proyecto, usar una ruta liviana:
 
-1. `docs/README.md`
-2. `docs/WORKING_MEMORY.md`
-3. `docs/PROJECT.md`
-4. `docs/ASSISTANT_RULES.md`
-5. `docs/DEVELOPMENT.md`
+1. `docs/.generated/context-index.md` si existe.
+2. `docs/WORKING_MEMORY.md`.
+3. `docs/README.md` solo si hace falta mapa documental.
+4. `docs/TOPICS.md` o busqueda por triggers para elegir topic.
+5. Topic, task, spec o codigo puntual segun el pedido.
 
-Para temas puntuales, usar `docs/TOPICS.md` como router y abrir solo los topics necesarios.
+No abrir por defecto docs largos como `docs/PROJECT.md`, `docs/ASSISTANT_RULES.md`, `docs/DEVELOPMENT.md`, specs completas ni referencias profundas. Abrirlos solo cuando el pedido o el topic lo requiera.
 
 Si existe `docs/.generated/context-index.md`, usarlo como indice rapido. Si no existe o el audit avisa que esta viejo, regenerarlo con `bun scripts/context-index.ts`.
 
@@ -28,12 +28,13 @@ La discusion inicial y las decisiones durables del sistema deben quedar integrad
 - No revertir cambios de usuario sin pedido explicito.
 - Trabajar en Small Batches: una task SpecKit, un comportamiento o un checkpoint verificable por tanda. Cada tanda debe ser chica, revisable, testeada con checks relevantes y reversible con un commit atomico. No mezclar plan/spec/docs con implementacion si pueden separarse limpiamente.
 - Mantener la documentacion liviana: promover decisiones durables a docs estables y evitar transcribir sesiones.
-- Para features grandes, usar SpecKit o actualizar la spec activa antes de implementar cambios durables.
+- Para features grandes, usar SpecKit o actualizar la spec activa antes de implementar cambios durables; ejecutar `tasks.md` por lotes chicos verificables, no todo en bloque salvo pedido explicito.
 - Para trabajos vivos o retomables, usar `docs/tasks/`. Para listar trabajos activos, buscar `status: active` en esa carpeta.
 - Cada task debe tener frontmatter con `status`, `started`, `updated` y `priority`; usar `docs/tasks/TEMPLATE.md` como base.
 - Las tasks archivadas deben tener `status: archived` y vivir en `docs/tasks/archive/`.
 - Antes de leer docs completos, buscar candidatos por nombre, frontmatter y triggers con herramientas rapidas. Abrir solo los archivos relevantes.
 - No dejar archivos de contexto, notas o drafts preexistentes sin indexar ni sin destino claro.
+- No dejar que la capa agentica se convierta en transcript, backlog historico o lectura obligatoria amplia. Si crece, compactar, archivar o mover a referencia profunda.
 
 ## Persistencia
 
@@ -59,8 +60,7 @@ Para trabajos de UI/frontend, leer `PRODUCT.md` y `DESIGN.md` si existen. Si no 
 Este repo incluye la skill local `impeccable` en `.agents/skills/impeccable` para trabajos de interfaz. Adaptar el criterio de diseno a una app de escritorio de dictado: operativa, clara, rapida y confiable.
 
 <!-- SPECKIT START -->
-Current SpecKit feature: `001-port-foundation`.
-
-For technologies, source structure, shell commands, and verification gates,
-read `specs/001-port-foundation/plan.md` before implementation.
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+at specs/002-simulated-pipeline/plan.md
 <!-- SPECKIT END -->

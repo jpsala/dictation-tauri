@@ -6,99 +6,67 @@ Ultima actualizacion manual: 2026-06-10.
 
 ## Regla
 
-Este archivo no reemplaza a `docs/TOPICS.md`, `docs/DECISIONS.md` ni a las specs.
-
-Sirve para responder rapido:
-
-- que esta activo ahora;
-- que topic/spec/task abrir;
-- que riesgos no olvidar;
-- cual es el siguiente paso probable;
-- que contexto vivo o historico ya fue promovido.
+Este archivo es router operativo, no historia. Si un detalle crece, moverlo a topic, decision, spec o task.
 
 ## Lectura Rapida
 
 | Area | Estado | Abrir primero | Siguiente accion |
 | --- | --- | --- | --- |
-| Baseline documental/agentico | closed | `docs/PROJECT.md` | Mantener sincronizado con auditor. |
-| Fundacion tecnica del port Tauri | checkpoint-a-complete | `specs/001-port-foundation/tasks.md` | Esperar OK de JP para Tauri/Rust minimo. |
-| Producto/MVP de dictado | decided | `docs/topics/product-direction.md` | Usar MVP 0-3 como alcance vigente. |
-| Mapa Fixvox -> Dictation Tauri | decided | `docs/topics/fixvox-capability-map.md` | Mantener estados de capacidades sincronizados. |
-| Fixtures y referencia Fixvox | active | `docs/topics/automation-and-reference-fixtures.md` | Diseñar harness propio de audio sintetico/STT. |
-| Seleccion/asistente | draft | `docs/topics/selection-and-assistant-actions.md` | Captura real queda post-MVP; simular seleccion en fixtures. |
-| Backend/model routing | decided | `docs/topics/backend-and-model-routing.md` | Implementar `ModelGateway` hibrido con adapter directo local primero. |
-| UI/design | active | `docs/topics/ui-design-and-impeccable.md` | Inicializar `PRODUCT.md`/`DESIGN.md` antes de UI durable. |
-| Estudio de proyectos fuente | active | `docs/topics/source-project-map.md` | Usar el mapa adopt/adapt/reference para decidir implementacion; mantener la task como plan vivo. |
-| Sistema agentico / OS Lite | active | `docs/topics/agentic-project-os-lite.md` | Mantener memoria, topics y audit. |
-| Documentacion | active | `docs/topics/docs-knowledge-system.md` | Mantener topics recuperables y tasks livianas. |
-| Datos de dictado | decided | `docs/topics/privacy-and-dictation-data.md` | Modo personal/dev permisivo: privacidad no bloquea lectura/uso local. |
+| Fundacion tecnica Tauri | mvp0-complete | `specs/001-port-foundation/tasks.md` | Mantener como baseline tecnico. |
+| Producto/MVP dictado | decided | `docs/topics/product-direction.md` | Respetar MVP 0-3. |
+| Fuentes de referencia | active | `docs/topics/source-project-map.md` | Usar como mapa adopt/adapt/reference bajo demanda. |
+| Fixtures/STT | active | `docs/topics/automation-and-reference-fixtures.md` | Diseñar harness propio antes de pruebas manuales. |
+| Backend/model routing | decided | `docs/topics/backend-and-model-routing.md` | Mock port primero; directo local en MVP 2; proxy como spike posterior. |
+| UI/design | seeded | `PRODUCT.md`, `DESIGN.md` | Usar antes de cualquier UI durable. |
+| Pipeline simulado | mvp1-complete | `specs/002-simulated-pipeline/tasks.md` | Preparar MVP 2: harness de audio sintetico/STT real. |
+| Datos de dictado | decided | `docs/topics/privacy-and-dictation-data.md` | Modo personal/dev permisivo; no imprimir ni commitear secretos. |
+| OS Lite/docs | active | `docs/topics/agentic-project-os-lite.md` | Mantener ruta caliente liviana y audit verde. |
 
-## Specs Activas
+## Spec Activa
 
-| Spec | Estado | Rol | Abrir |
-| --- | --- | --- | --- |
-| `001-port-foundation` | ready-to-scaffold | Base del port Tauri y decisiones iniciales. | `specs/001-port-foundation/spec.md` |
-
-## Topics Activos
-
-| Topic | Estado | Uso |
+| Spec | Estado | Abrir |
 | --- | --- | --- |
-| `agentic-project-os-lite` | active | Como trabajan agentes, memoria viva, audits, subagentes y portabilidad. |
-| `docs-knowledge-system` | active | Como leer, crear y dividir docs. |
-| `dictation-tauri-foundation` | draft | Stack, estructura y plan inicial del port. |
-| `product-direction` | active | MVP por fases y no-goals. |
-| `fixvox-capability-map` | active | Capacidades Fixvox filtradas por valor, opciones y decision inicial. |
-| `automation-and-reference-fixtures` | active | Recursos Fixvox, TTS/STT, benchmarks y reglas de secretos. |
-| `selection-and-assistant-actions` | draft | Texto seleccionado, Assistant Mode, Quick Chat, presets y `Alt+Q`. |
-| `backend-and-model-routing` | draft | Opciones de llamadas directas, proxy existente o adapter hibrido. |
-| `ui-design-and-impeccable` | active | Uso de impeccable para UI React/Tauri y limites de aplicacion. |
-| `privacy-and-dictation-data` | active | Modo personal/dev permisivo para datos locales de dictado. |
-| `source-project-map` | active | Que adoptar, adaptar, referenciar, postergar o rechazar desde CopyQ Tauri y Fixvox. |
+| `001-port-foundation` | complete | `specs/001-port-foundation/tasks.md` |
+| `002-simulated-pipeline` | complete | `specs/002-simulated-pipeline/tasks.md` |
 
-## Tasks
+## Tasks Activas
 
-| Trabajo | Estado | Abrir | Uso |
-| --- | --- | --- | --- |
-| MVP y recursos de referencia | active | `docs/tasks/mvp-and-reference-resources.md` | Contexto vivo sobre recursos Fixvox y fases propuestas. |
-| Estudio de proyectos fuente | active | `docs/tasks/source-project-study-plan.md` | Plan para estudiar nuestro proyecto, proyecto Tauri y proyecto canonico. |
-| Prompt proxima sesion | active | `docs/tasks/next-session-prompt.md` | Prompt listo para retomar la discusion. |
+| Trabajo | Abrir | Uso |
+| --- | --- | --- |
+| MVP y recursos | `docs/tasks/mvp-and-reference-resources.md` | Continuidad de recursos Fixvox y fases. |
+| Estudio de fuentes | `docs/tasks/source-project-study-plan.md` | Plan vivo para CopyQ Tauri/Fixvox. |
+| Prompt proxima sesion | `docs/tasks/next-session-prompt.md` | Handoff compacto; no reemplaza working memory. |
 
-Para listar trabajos vivos:
+Listar activos:
 
 ```powershell
-rg -l "status:\s*active" docs/tasks -g "*.md"
+rg -l "status:\s*active" docs/tasks -g "*.md" -g "!archive/**"
 ```
 
-## Decisiones Recientes
+## Decisiones Vigentes
 
-- Se instalo Agentic Project OS Lite en el repo.
-- Se cerro el baseline documental/agentico: docs raiz, topics, SpecKit, skills locales y auditor quedan sincronizados.
-- Se decidio usar el stack base de `C:\dev\chat\copyq-tauri`: React, Vite, TypeScript strict, npm, Tauri v2, Rust 2021 y Playwright.
-- Se decidio usar Fixvox (`C:\dev\electro-bun-1`) como referencia de recursos de voz/benchmarks, no como arquitectura.
-- Se agrego el principio de evitar interaccion humana temprana mediante fixtures, audio sintetico y tests automatizados.
-- Se creo `docs/topics/fixvox-capability-map.md` como filtro de alcance antes de implementar features inspiradas en Fixvox.
-- Se aprobo usar `.agents/skills/impeccable` para diseño de superficies UI React/Tauri, con `PRODUCT.md` y `DESIGN.md` como contexto requerido.
-- `specs/001-port-foundation/` existe y queda registrada como spec draft inicial.
-- Audio, transcripciones, logs, `.env` y artifacts locales se pueden leer y usar en modo personal/dev; privacidad no bloquea el trabajo.
-- Se cerro el alcance MVP 0-3: app base, pipeline simulado, audio sintetico/STT real, microfono real.
-- Se decidio `ModelGateway` hibrido con adapter directo local primero y proxied como spike posterior.
-- Texto seleccionado real queda fuera de MVP 0-3; se permite solo simulacion en fixtures antes.
-- UI durable requiere inicializar `PRODUCT.md` y `DESIGN.md`; scaffold tecnico minimo puede avanzar antes.
-- Se fijo el diccionario: "nuestro proyecto" = `C:\dev\dictation-tauri`, "proyecto Tauri" = `C:\dev\chat\copyq-tauri`, "proyecto canonico" = `C:\dev\electro-bun-1` / Fixvox.
-- El proyecto Tauri es canon tecnico para stack, ventanas, UI, settings, themes y Windows desktop mechanics; el proyecto canonico es canon funcional para dictado, runtime de voz, backend/proxy, policies/env y benchmarks.
-- Se creo `docs/topics/source-project-map.md`: scaffold/scripts son `adopt` desde CopyQ Tauri; ventanas/UI/settings/shortcut/tray son `adapt`; runtime/STT/benchmarks/ModelGateway/delivery son `adapt` desde Fixvox; control plane queda `reference`; wake/assistant/Quick Chat quedan `parked`; UIA/Koffi/Python/PowerShell hot path queda `reject`.
-- Se migro la continuidad viva desde `docs/active-work/` a `docs/tasks/`; las tasks activas tienen YAML validado y el trabajo cerrado vive en `docs/tasks/archive/`.
-- Se adopto Small Batches como principio agentico: una task/comportamiento/checkpoint por tanda, checks verdes, `tasks.md` sincronizado y commit atomico.
-- Checkpoint A de `001-port-foundation` quedo completo: frontend React/Vite base, `package-lock.json`, build verde.
+- Stack base: React, Vite, TypeScript strict, npm, Tauri v2, Rust 2021 y Playwright.
+- `C:\dev\chat\copyq-tauri` es canon tecnico para Tauri/UI/settings/Windows desktop mechanics.
+- `C:\dev\electro-bun-1` / Fixvox es canon funcional para dictado, runtime, backend/proxy, policies/env y benchmarks; no se porta literal.
+- MVP 0-3: app base, pipeline simulado, audio sintetico/STT real, microfono real.
+- Runtime: pipeline por puertos/adapters, `PipelineService`, event ledger y summary derivado antes de side effects reales.
+- `ModelGateway` hibrido: mock port primero, adapter directo local en MVP 2; proxied como spike posterior.
+- Texto seleccionado real queda fuera de MVP 0-3; se permite simulacion en fixtures.
+- Tauri/Rust posee side effects desktop cuando entren: microfono, hotkeys, tray, foco, clipboard, ventanas, permisos y secretos.
+- Delivery se modela por evidencia/certeza; no prometer paste observado sin verificacion real.
+- UI durable requiere `PRODUCT.md` y `DESIGN.md`.
+- Small Batches: una task/comportamiento/checkpoint por tanda, checks verdes y commit atomico.
+- La ruta inicial debe seguir liviana; no convertir `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` ni tasks activas en historial.
 
-## Riesgos Que No Hay Que Olvidar
+## Riesgos
 
-- No imprimir secretos completos en respuestas ni commitear `.env`/tokens salvo pedido explicito y acotado de JP.
-- No copiar dependencias de clipboard/storage/Win32 de `copyq-tauri` sin necesidad documentada.
-- En modo personal/dev, se pueden usar servicios externos de STT/LLM/storage con variables locales cuando la tarea lo requiera; para producto estable, documentar la decision.
-- Docs pueden quedar stale; si codigo contradice docs, actualizar fuente estable.
+- No imprimir secretos completos ni commitear `.env`/tokens salvo pedido explicito y acotado.
+- No copiar dependencias de clipboard/storage/Win32 de `copyq-tauri` sin decision documentada.
+- En modo personal/dev se pueden usar servicios externos con variables locales; antes de producto estable, documentar frontera.
+- `csp: null` no debe sobrevivir a runtime real con providers/contenido dinamico sin decision explicita.
+- Si codigo contradice docs/specs, actualizar la fuente estable.
 
-## Comandos De Contexto
+## Comandos
 
 ```powershell
 bun scripts/context-index.ts
@@ -107,14 +75,12 @@ bun scripts/agent-context-audit.ts
 
 ## Proximo Paso Probable
 
-Crear repo Git/GitHub publico y subir commits atomicos del estado actual. Luego, con OK de JP, seguir con Checkpoint B de `001-port-foundation`: Playwright smoke test, `src-tauri/Cargo.toml`, `tauri.conf.json`, `core:default` y `cargo check`.
+Definir y abrir la spec de MVP 2: audio sintetico + STT real sobre fixtures, usando `ModelGateway` directo local y manteniendo artifacts fuera del repo salvo manifest/fixtures sinteticos.
 
 ## Promocion De Memoria
 
-Cuando aparece conocimiento durable:
-
-1. Si es regla de proyecto, va a docs raiz o `AGENTS.md` si es critica.
-2. Si es tema reusable, va a `docs/topics/<topic>.md`.
-3. Si cambia el estado vivo, actualizar este archivo.
-4. Si es decision, registrar o actualizar `docs/DECISIONS.md`.
-5. Si viene de una task, resumir la senial durable y no copiar transcript.
+1. Regla critica -> `AGENTS.md`.
+2. Estado vivo -> `WORKING_MEMORY.md`.
+3. Conocimiento reusable -> `docs/topics/<topic>.md`.
+4. Decision durable -> `docs/DECISIONS.md`.
+5. Trabajo retomable -> `docs/tasks/`, sin transcript.

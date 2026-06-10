@@ -1,7 +1,7 @@
 ---
 status: active
 started: 2026-06-05
-updated: 2026-06-07
+updated: 2026-06-10
 priority: high
 topic: docs/topics/product-direction.md
 related:
@@ -24,6 +24,10 @@ Como implementar el alcance MVP 0-3 decidido usando recursos existentes de Fixvo
 - `C:\dev\electro-bun-1` / Fixvox es referencia de recursos de voz, benchmarks, prompts y aprendizajes.
 - Se busca que no haga falta interaccion humana hasta mas adelante.
 - Primeras validaciones deben poder correr con fixtures, audio sintetico y texto esperado.
+- MVP 0 ya esta cerrado: app base React/Vite/Tauri minima, Playwright smoke test, capability `core:default`, build/visual/cargo/audit verdes.
+- `PRODUCT.md` y `DESIGN.md` ya existen para guiar UI durable.
+- `specs/002-simulated-pipeline/plan.md` y `tasks.md` ya existen; MVP 1 esta completo con cancelacion, no-overlap, event ledger y summary derivado.
+- Arquitectura guia decidida: pipeline por puertos/adapters, `PipelineService`, event ledger, Tauri/Rust para side effects desktop y delivery por evidencia.
 
 ## Recursos Fixvox Observados
 
@@ -55,20 +59,22 @@ Como implementar el alcance MVP 0-3 decidido usando recursos existentes de Fixvo
 
 ## Division Propuesta
 
-1. Cerrar app base verificable.
-2. Crear harness propio de fixture textual/audio sintetico.
-3. Conectar STT real contra audio sintetico.
-4. Agregar postprocess medido.
-5. Probar delivery automatizado con texto sintetico.
-6. Recien despues sumar captura real de microfono.
+1. Abrir spec de MVP 2 para audio sintetico + STT real.
+2. Crear harness propio de fixture textual/audio sintetico sobre los mismos puertos mockeables.
+3. Conectar STT real contra audio sintetico con adapter directo local de `ModelGateway`.
+4. Agregar postprocess medido como adapter separado.
+5. Probar delivery automatizado con texto sintetico y evidencia de certeza.
+6. Recien despues sumar captura real de microfono y side effects Tauri/Rust.
 
 ## Decisiones Promovidas
 
 - MVP 0-3 cerrado en `docs/topics/product-direction.md`.
-- `ModelGateway` hibrido con adapter directo local primero.
+- `ModelGateway` hibrido: mock primero, adapter directo local en MVP 2.
 - Proxy existente queda como referencia/spike, no dependencia inicial.
 - En modo personal/dev, Dictation Tauri puede leer `.env`/variables locales de referencia cuando ayude. Para producto propio, evitar acoplamiento accidental a Fixvox.
 - Delivery inicial: copy/insert best-effort con fallback.
+- Delivery se reporta por evidencia: texto disponible, fallback, paste enviado, paste observado solo si existe verificacion real.
+- UI observa eventos/estado y dispara comandos; no es dueña del pipeline.
 - Preview no bloquea MVP 0-3.
 - Texto seleccionado real queda post-MVP; antes solo fixtures simulados.
 - Artifacts locales generados pueden usarse libremente en desarrollo; decidir despues que se versiona, ignora o limpia.

@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-10T11:44:10.109Z
+Generated: 2026-06-10T21:25:44.785Z
 
 ## Topics
 
@@ -12,25 +12,26 @@ Generated: 2026-06-10T11:44:10.109Z
 - draft: [backend-and-model-routing](../topics/backend-and-model-routing.md) - backend, proxy, model routing, proveedores, API keys, Groq, OpenAI, OpenRouter, xAI
 - active: [dictation-tauri-foundation](../topics/dictation-tauri-foundation.md) - tauri, port, fundacion, stack, comandos, src-tauri
 - draft: [dictation-workflow](../topics/dictation-workflow.md) - dictado, workflow, flujo, estados, pipeline, listening, transcribing
-- active: [docs-knowledge-system](../topics/docs-knowledge-system.md) - documentacion, docs, topics, indice, contexto liviano, tasks
+- active: [docs-knowledge-system](../topics/docs-knowledge-system.md) - documentacion, docs, topics, indice, contexto liviano, tasks, context bloat, contaminacion de contexto
 - active: [fixvox-capability-map](../topics/fixvox-capability-map.md) - Fixvox, Fixbox, electro-bun, capacidades Fixvox, alcance producto, mapa de producto, que copiamos, que implementamos
 - active: [privacy-and-dictation-data](../topics/privacy-and-dictation-data.md) - privacidad, audio, transcripciones, dictado, logs, storage, modelos
 - active: [product-direction](../topics/product-direction.md) - producto, MVP, alcance, direccion, no human interaction, automatizacion
 - draft: [selection-and-assistant-actions](../topics/selection-and-assistant-actions.md) - texto seleccionado, seleccion, assistant mode, asistente, quick chat, alt-q, presets, hotkeys
-- active: [source-project-map](../topics/source-project-map.md) - proyectos fuente, proyecto Tauri, CopyQ Tauri, copyq-tauri, proyecto canonico, Fixvox, electro-bun, que implementar, que portar
-- draft: [speckit-workflow](../topics/speckit-workflow.md) - speckit, spec, plan, tasks.md, feature grande, Small Batches, checkpoint
+- reference: [source-project-map](../topics/source-project-map.md) - proyectos fuente, proyecto Tauri, CopyQ Tauri, copyq-tauri, proyecto canonico, Fixvox, electro-bun, que implementar, que portar
+- active: [speckit-workflow](../topics/speckit-workflow.md) - speckit, spec kit, spec, plan, tasks.md, feature grande, Small Batches, small batches, lotes chicos, checkpoint
 - active: [ui-design-and-impeccable](../topics/ui-design-and-impeccable.md) - UI, diseño, design, frontend, React, app shell, voice dock, settings, impeccable
 
 ## Tasks
 
 - archived/medium: [Product Scope Decision Pass](../tasks/archive/product-scope-decision-pass.md) - updated 2026-06-07
-- active/high: [MVP Y Recursos De Referencia](../tasks/mvp-and-reference-resources.md) - updated 2026-06-07
-- active/medium: [Prompt Para Proxima Sesion](../tasks/next-session-prompt.md) - updated 2026-06-07
-- active/high: [Plan De Estudio De Proyectos Fuente](../tasks/source-project-study-plan.md) - updated 2026-06-07
+- active/high: [MVP Y Recursos De Referencia](../tasks/mvp-and-reference-resources.md) - updated 2026-06-10
+- active/medium: [Prompt Para Proxima Sesion](../tasks/next-session-prompt.md) - updated 2026-06-10
+- active/high: [Plan De Estudio De Proyectos Fuente](../tasks/source-project-study-plan.md) - updated 2026-06-10
 
 ## Specs
 
 - [001-port-foundation](../../specs/001-port-foundation/)
+- [002-simulated-pipeline](../../specs/002-simulated-pipeline/)
 
 ## Aliases
 
@@ -51,3 +52,4 @@ Generated: 2026-06-10T11:44:10.109Z
 | Port foundation | Spec draft `specs/001-port-foundation/`, base inicial del port Tauri. |
 | Datos de dictado | Audio, transcripciones, prompts, logs, correcciones y metadata de captura de voz. |
 | Small Batch | Unidad de trabajo agentico chica, revisable y reversible: una task SpecKit, un comportamiento observable o una sincronizacion documental acotada, cerrada con checks y commit atomico. |
+| Context Bloat / Contaminacion De Contexto | Cuando reglas, memoria viva, topics o tasks crecen hasta volverse lectura obligatoria amplia y degradan la capacidad de una sesion nueva. |

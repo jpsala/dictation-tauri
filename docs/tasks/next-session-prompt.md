@@ -1,62 +1,38 @@
 ---
 status: active
 started: 2026-06-05
-updated: 2026-06-07
+updated: 2026-06-10
 priority: medium
 topic: docs/topics/dictation-tauri-foundation.md
 related:
   - docs/WORKING_MEMORY.md
-  - specs/001-port-foundation/spec.md
+  - specs/001-port-foundation/tasks.md
 ---
 
 # Prompt Para Proxima Sesion
 
-Usar este prompt para retomar despues del cierre de alcance MVP.
+Prompt compacto para retomar sin reabrir decisiones resueltas:
 
 ```text
-Estamos en C:\dev\dictation-tauri. El pase de alcance de producto ya esta cerrado. Quiero avanzar con el siguiente paso sin reabrir decisiones resueltas.
+Estamos en C:\dev\dictation-tauri. Usa la ruta liviana de AGENTS.md: context-index si existe, WORKING_MEMORY y luego el topic/spec/task puntual.
 
-Primero lee:
+Objetivo probable: abrir la spec de MVP 2 para audio sintetico + STT real sobre fixtures. `specs/001-port-foundation/tasks.md` quedo completo para MVP 0, `specs/002-simulated-pipeline/tasks.md` quedo completo para MVP 1, y `PRODUCT.md`/`DESIGN.md` ya existen como contexto para UI durable.
 
-1. AGENTS.md
-2. docs/WORKING_MEMORY.md
-3. docs/topics/product-direction.md
-4. docs/topics/fixvox-capability-map.md
-5. specs/001-port-foundation/spec.md
+Estado verificado:
 
-Despues, si hace falta, lee:
+- `npm run build` pasa.
+- `npm run visual:check` pasa.
+- `npm run test:pipeline` pasa para success/failure/cancelacion/no-overlap/event ledger.
+- `$env:CARGO_TARGET_DIR='target-codex-check'; cargo check --manifest-path src-tauri/Cargo.toml` pasa.
+- `bun scripts/context-index.ts` y `bun scripts/agent-context-audit.ts` pasan.
+- MVP 0-1 no incluye audio real, hotkeys, tray, settings, provider routing real, persistencia de producto ni UI durable.
+- Arquitectura guia: pipeline por puertos/adapters, `PipelineService`, event ledger, UI como observadora, Tauri/Rust para side effects desktop, delivery por evidencia.
+- `PRODUCT.md` define register `product`, usuarios, proposito, personalidad, anti-referencias, principios y accesibilidad.
+- `DESIGN.md` define el sistema visual inicial: "The Quiet Control Room", paleta restringida, tipografia Inter/system, componentes base y prohibiciones.
 
-- docs/topics/dictation-workflow.md
-- docs/topics/automation-and-reference-fixtures.md
-- docs/topics/selection-and-assistant-actions.md
-- docs/topics/backend-and-model-routing.md
-- docs/topics/privacy-and-dictation-data.md
-- docs/topics/ui-design-and-impeccable.md
-
-Contexto importante:
-
-- El baseline documental/agentico ya esta cerrado y auditado.
-- El stack tecnico ya esta decidido: React, Vite, TypeScript strict, npm, Tauri v2, Rust 2021 y Playwright.
-- C:\dev\chat\copyq-tauri es referencia de stack Tauri.
-- C:\dev\electro-bun-1 / Fixvox es referencia de producto, fixtures, TTS/STT, benchmarks y aprendizajes, pero no se porta literalmente.
-- Queremos evitar interaccion humana temprana: primero fixtures, audio sintetico, STT/postprocess medido y tests automatizados.
-- Modo personal/dev permisivo: podes leer `.env`, audio humano, transcripciones, logs y artifacts locales si ayuda; no imprimas secretos completos ni commitees `.env`/tokens salvo pedido explicito.
-- MVP 0-3 ya esta decidido: app base, pipeline simulado, audio sintetico/STT real, microfono real.
-- ModelGateway sera hibrido con adapter directo local primero; proxy existente solo como spike posterior.
-- Texto seleccionado real queda fuera de MVP 0-3, aunque se puede simular en fixtures.
-- Para UI React/Tauri usaremos `.agents/skills/impeccable`. Antes de UI durable hay que crear PRODUCT.md y DESIGN.md.
-
-Objetivo de la sesion:
-
-1. Scaffold de la fundacion tecnica 001-port-foundation.
-2. Crear package.json, package-lock.json, vite.config.ts, tsconfig.json, src-tauri/Cargo.toml, src-tauri/tauri.conf.json y capabilities minimas.
-3. Crear una app React/Tauri base verificable, sin UI durable de producto.
-4. Documentar comandos reales de dev/build/test/check.
-5. Correr checks relevantes, `bun scripts/context-index.ts` y `bun scripts/agent-context-audit.ts`.
-
-No reabras alcance MVP salvo que aparezca una contradiccion tecnica fuerte. No implementes features de dictado todavia.
+No reabras alcance MVP salvo contradiccion tecnica fuerte. Para MVP 2, mantener microfono real, Tauri commands de producto, clipboard real, hotkeys, tray y persistencia fuera de alcance salvo decision explicita. Mantener modo personal/dev permisivo para lectura local, pero no imprimir secretos completos ni commitear `.env`/tokens.
 ```
 
 ## Nota
 
-Si la sesion arranca directamente con "go" o "seguimos", abrir `specs/001-port-foundation/spec.md` como ruta principal.
+Este prompt no reemplaza a `docs/WORKING_MEMORY.md`. Si queda viejo, compactarlo o archivarlo.

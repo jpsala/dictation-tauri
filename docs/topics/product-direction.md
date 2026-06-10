@@ -50,7 +50,9 @@ Cierre:
 
 - Estados `idle`, `listening`, `transcribing`, `delivering`, `done`, `error`.
 - Entrada simulada o fixture de audio.
-- `ModelGateway` testeable con adapter mock.
+- Puertos mockeables para transcripcion, materializacion/postprocess y delivery, aunque sean fixture-backed.
+- `PipelineService` o equivalente como dueño de ejecucion activa, cancelacion y no-overlap.
+- Ledger de eventos tipados; el run summary se deriva de esos eventos.
 - Entrega de texto sintetico por copy/insert simulado o controlado.
 - Tests sin requerir que JP hable.
 - Texto seleccionado solo como fixture simulado, no captura real.
@@ -60,6 +62,8 @@ Cierre:
 - El pipeline completo corre desde un test o runner sin microfono.
 - Los estados quedan observables desde UI o logs de desarrollo.
 - Hay prueba automatizada de al menos un caso exitoso y un caso de error/recovery.
+- Hay prueba automatizada de cancelacion terminal y prevencion de corridas superpuestas.
+- Los eventos de run permiten reconstruir state order, output, delivery, error redacted y duracion.
 - Delivery queda cubierto con copy fallback o mock verificable.
 
 ### MVP 2 - Audio Sintetico + STT Real
@@ -71,12 +75,14 @@ Cierre:
 - Usar artifacts locales libremente en desarrollo; decidir despues que se versiona, ignora o limpia.
 - `ModelGateway` hibrido definido, con adapter directo local como primer adapter real.
 - Proxy existente solo como referencia o spike posterior, no dependencia de cierre.
+- Mantener secretos y llamadas reales fuera del frontend; usar script/harness local o frontera Tauri segun la fase.
 
 Cierre:
 
 - Existe manifest propio de fixtures controlados.
 - Una corrida STT real reporta proveedor/modelo, latencia, costo estimado y comparacion expected/transcript/output.
 - Los artifacts generados tienen destino claro: versionado, gitignored, app data o temporal.
+- El adapter directo real cumple el mismo contrato que el adapter mock de MVP 1.
 - Se pueden leer `.env`/variables locales cuando una tarea lo requiera; no imprimir secretos completos en respuestas.
 
 ### MVP 3 - Captura De Microfono
@@ -87,12 +93,15 @@ Cierre:
 - Persistencia de producto aun no definida; persistencia experimental local permitida en dev.
 - Push-to-talk/toggle y stop-submit funcionan sobre una sesion real.
 - Delivery directo best-effort con copy fallback. Preview no bloquea el MVP.
+- Side effects desktop viven en Rust/Tauri o frontera host explicita: permisos, microfono, hotkeys, tray, foco y clipboard.
+- Capabilities de Tauri se agregan solo por necesidad de feature y ventana.
 - Captura real de texto seleccionado queda fuera de este MVP.
 
 Cierre:
 
 - JP puede dictar una frase real y obtener texto insertado o copiado sin perdida silenciosa.
 - La app muestra estado claro para listening/transcribing/processing/delivering/completed/failed/cancelled.
+- La app no expone secretos al frontend ni reclama paste observado sin evidencia.
 - Audio real, transcript real y logs pueden existir localmente en dev; antes de producto estable, documentar ruta/formato/ciclo de vida.
 
 ## No-Goals Iniciales
@@ -118,7 +127,8 @@ El stack de implementacion sigue siendo propio de Dictation Tauri.
 
 ## Decisiones De Alcance Cerradas
 
-- `ModelGateway`: interfaz propia hibrida, adapter directo local primero, adapter proxied despues si el contrato existente alcanza.
+- `ModelGateway`: interfaz propia hibrida; mock primero, adapter directo local en MVP 2, adapter proxied despues si el contrato existente alcanza.
 - Seleccion real: no entra en MVP 0-3; si entra temprano, primero como fixtures y luego como feature post-MVP.
 - Delivery inicial: copy/insert best-effort con fallback; preview/recovery UI son mejoras tempranas, no bloqueo de MVP.
+- Runtime: pipeline por puertos/adapters, event ledger y `PipelineService` antes de side effects reales.
 - UI durable: crear `PRODUCT.md` y seedear `DESIGN.md` despues de cerrar este alcance y antes de construir la primera superficie React/Tauri durable.

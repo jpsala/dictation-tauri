@@ -21,6 +21,25 @@ function add(level: Finding["level"], message: string) {
   findings.push({ level, message });
 }
 
+function approxTokens(content: string) {
+  return approxTokensFromChars(content.length);
+}
+
+function approxTokensFromChars(chars: number) {
+  return Math.ceil(chars / 4);
+}
+
+function warnIfTooLarge(path: string, maxChars: number, label: string) {
+  if (!exists(path)) return;
+  const content = read(path);
+  if (content.length > maxChars) {
+    add(
+      "warn",
+      `${label} is large (${content.length} chars, ~${approxTokens(content)} tokens); compact or move detail to deeper references`,
+    );
+  }
+}
+
 function topicFrontmatter(content: string) {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) return null;
@@ -61,6 +80,28 @@ if (!exists("docs/TOPICS.md")) {
   add("error", "Missing docs/TOPICS.md");
 }
 
+warnIfTooLarge("AGENTS.md", 6000, "AGENTS.md");
+warnIfTooLarge("docs/README.md", 5000, "docs/README.md");
+warnIfTooLarge("docs/WORKING_MEMORY.md", 6000, "docs/WORKING_MEMORY.md");
+warnIfTooLarge("docs/TOPICS.md", 6000, "docs/TOPICS.md");
+warnIfTooLarge("docs/DEVELOPMENT.md", 9000, "docs/DEVELOPMENT.md");
+
+if (exists("AGENTS.md") && exists("docs/WORKING_MEMORY.md")) {
+  const hotPathFiles = [
+    "AGENTS.md",
+    "docs/.generated/context-index.md",
+    "docs/WORKING_MEMORY.md",
+  ].filter(exists);
+  const hotPathChars = hotPathFiles.reduce((total, path) => total + read(path).length, 0);
+
+  if (hotPathChars > 18000) {
+    add(
+      "warn",
+      `Hot context path is large (${hotPathChars} chars, ~${approxTokensFromChars(hotPathChars)} tokens across ${hotPathFiles.join(", ")}); reduce initial reading load`,
+    );
+  }
+}
+
 const topicsDir = join(root, "docs", "topics");
 const topicFiles = existsSync(topicsDir)
   ? readdirSync(topicsDir).filter((name) => name.endsWith(".md")).sort()
@@ -84,6 +125,16 @@ for (const file of topicFiles) {
       if (!hasFrontmatterKey(frontmatter, key)) {
         add("warn", `${topicPath} frontmatter missing ${key}`);
       }
+    }
+
+    const status = frontmatterValue(frontmatter, "status");
+    const maxChars = status === "reference" || status === "historical" ? 12000 : 9000;
+
+    if (content.length > maxChars) {
+      add(
+        "warn",
+        `${topicPath} is large (${content.length} chars, ~${approxTokens(content)} tokens); keep active topics as routers and move detail deeper`,
+      );
     }
   }
 
@@ -176,6 +227,16 @@ if (!exists("docs/tasks")) {
 
     if (isArchivedPath && status !== "archived") {
       add("warn", `${taskPath} is in docs/tasks/archive/ without archived status`);
+    }
+
+    const maxChars =
+      status === "archived" || status === "reference" || status === "done" ? 12000 : 8000;
+
+    if (content.length > maxChars) {
+      add(
+        "warn",
+        `${taskPath} is large (${content.length} chars, ~${approxTokens(content)} tokens); tasks should be resumable work state, not transcripts`,
+      );
     }
 
     if (topic && !exists(topic)) {

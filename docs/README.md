@@ -7,23 +7,22 @@ Este directorio separa documentacion estable, trabajos vivos y conocimiento recu
 Leer en capas:
 
 ```text
-README -> WORKING_MEMORY -> TOPICS -> topic especifico -> referencia profunda -> codigo puntual
+context-index -> WORKING_MEMORY -> TOPICS -> topic/task/spec especifico -> referencia profunda -> codigo puntual
 ```
 
 No cargar documentos largos si el topic de entrada alcanza para decidir. Antes de abrir docs completos, buscar candidatos por nombre, frontmatter y triggers.
 
 ## Lectura Principal
 
-Leer en este orden para entender el estado actual:
+Para entender el estado actual sin inflar contexto:
 
-1. `PROJECT.md`: proposito, personas y alcance general.
-2. `ASSISTANT_RULES.md`: reglas de interaccion, permisos y tono.
-3. `DEVELOPMENT.md`: arquitectura tecnica vigente.
-4. `DECISIONS.md`: decisiones tomadas o pendientes.
-5. `OPEN_QUESTIONS.md`: preguntas abiertas.
-6. `WORKING_MEMORY.md`: estado vivo de topics, specs, tasks, riesgos y proximos pasos.
-7. `GLOSSARY.md`: aliases, nombres cortos y definiciones recurrentes.
-8. `TOPICS.md`: indice de temas activos.
+1. `docs/.generated/context-index.md`: indice rapido generado.
+2. `WORKING_MEMORY.md`: estado vivo, spec activa, riesgos y proximo paso.
+3. `TOPICS.md`: router para elegir topic.
+4. Topic/task/spec especifico.
+5. Documentos raiz o referencias profundas solo bajo demanda.
+
+`PROJECT.md`, `ASSISTANT_RULES.md`, `DEVELOPMENT.md`, specs completas y referencias largas son fuentes estables, no lectura obligatoria inicial.
 
 ## Fuente De Verdad
 
