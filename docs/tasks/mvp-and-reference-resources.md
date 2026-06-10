@@ -27,6 +27,7 @@ Como implementar el alcance MVP 0-3 decidido usando recursos existentes de Fixvo
 - MVP 0 ya esta cerrado: app base React/Vite/Tauri minima, Playwright smoke test, capability `core:default`, build/visual/cargo/audit verdes.
 - `PRODUCT.md` y `DESIGN.md` ya existen para guiar UI durable.
 - `specs/002-simulated-pipeline/plan.md` y `tasks.md` ya existen; MVP 1 esta completo con cancelacion, no-overlap, event ledger y summary derivado.
+- `specs/003-synthetic-audio-stt/` define MVP 2: audio sintetico + STT real sobre fixtures. Las tasks estan pendientes y deben ejecutarse por Small Batches.
 - Arquitectura guia decidida: pipeline por puertos/adapters, `PipelineService`, event ledger, Tauri/Rust para side effects desktop y delivery por evidencia.
 
 ## Recursos Fixvox Observados
@@ -59,11 +60,11 @@ Como implementar el alcance MVP 0-3 decidido usando recursos existentes de Fixvo
 
 ## Division Propuesta
 
-1. Abrir spec de MVP 2 para audio sintetico + STT real.
-2. Crear harness propio de fixture textual/audio sintetico sobre los mismos puertos mockeables.
+1. Ejecutar Phase 1 de `specs/003-synthetic-audio-stt/tasks.md`: artifact policy/gitignore y placeholders de comandos sin llamadas reales.
+2. Crear manifest propio de fixture textual/audio sintetico sobre los mismos puertos mockeables.
 3. Conectar STT real contra audio sintetico con adapter directo local de `ModelGateway`.
-4. Agregar postprocess medido como adapter separado.
-5. Probar delivery automatizado con texto sintetico y evidencia de certeza.
+4. Agregar postprocess medido como adapter separado si aporta evidencia, sin hacerlo obligatorio.
+5. Generar reportes locales gitignored con expected/transcript/output, latencia y costo estimado.
 6. Recien despues sumar captura real de microfono y side effects Tauri/Rust.
 
 ## Decisiones Promovidas
@@ -83,6 +84,6 @@ Como implementar el alcance MVP 0-3 decidido usando recursos existentes de Fixvo
 
 - Si el primer STT real sera Groq `whisper-large-v3-turbo`, OpenAI, xAI u OpenRouter.
 - Si usamos una copia minima del benchmark runner o una version nueva mas chica.
-- Donde guardar artifacts locales generados para que no entren al repo.
+- Implementar la politica de artifacts de MVP 2: versionar manifest/expected text sintetico; gitignore para audio, transcripts, provider payloads y reports bajo `artifacts/synthetic-audio-stt/`.
 - Si la primera captura de microfono usa Rust/cpal, plugin, WebView MediaRecorder o sidecar.
 - Si el adapter directo vive en Rust/Tauri, Node script de benchmark o ambos por fases.

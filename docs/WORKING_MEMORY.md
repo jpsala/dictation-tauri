@@ -18,7 +18,8 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Fixtures/STT | active | `docs/topics/automation-and-reference-fixtures.md` | Diseñar harness propio antes de pruebas manuales. |
 | Backend/model routing | decided | `docs/topics/backend-and-model-routing.md` | Mock port primero; directo local en MVP 2; proxy como spike posterior. |
 | UI/design | seeded | `PRODUCT.md`, `DESIGN.md` | Usar antes de cualquier UI durable. |
-| Pipeline simulado | mvp1-complete | `specs/002-simulated-pipeline/tasks.md` | Preparar MVP 2: harness de audio sintetico/STT real. |
+| Pipeline simulado | mvp1-complete | `specs/002-simulated-pipeline/tasks.md` | Mantener como baseline para MVP 2. |
+| Audio sintetico/STT | planned | `specs/003-synthetic-audio-stt/tasks.md` | Ejecutar tasks pendientes por Small Batches; empezar por artifact policy y manifest. |
 | Datos de dictado | decided | `docs/topics/privacy-and-dictation-data.md` | Modo personal/dev permisivo; no imprimir ni commitear secretos. |
 | OS Lite/docs | active | `docs/topics/agentic-project-os-lite.md` | Mantener ruta caliente liviana y audit verde. |
 
@@ -28,6 +29,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | --- | --- | --- |
 | `001-port-foundation` | complete | `specs/001-port-foundation/tasks.md` |
 | `002-simulated-pipeline` | complete | `specs/002-simulated-pipeline/tasks.md` |
+| `003-synthetic-audio-stt` | planned | `specs/003-synthetic-audio-stt/tasks.md` |
 
 ## Tasks Activas
 
@@ -75,7 +77,7 @@ bun scripts/agent-context-audit.ts
 
 ## Proximo Paso Probable
 
-Definir y abrir la spec de MVP 2: audio sintetico + STT real sobre fixtures, usando `ModelGateway` directo local y manteniendo artifacts fuera del repo salvo manifest/fixtures sinteticos.
+Ejecutar MVP 2 por Small Batches desde `specs/003-synthetic-audio-stt/tasks.md`: primero artifact policy/gitignore y manifest de fixtures sinteticos; no implementar microfono, hotkeys, tray, clipboard real, seleccion real, settings UI ni persistencia de producto.
 
 ## Promocion De Memoria
 

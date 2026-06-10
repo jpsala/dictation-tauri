@@ -83,6 +83,7 @@ Formato esperado:
 - Frases tecnicas bilingues permitidas si no contienen datos privados.
 - Artifacts generados fuera del repo o en rutas gitignored.
 - Texto esperado versionado solo si es sintetico/no sensible.
+- MVP 2 queda planificado en `specs/003-synthetic-audio-stt/`: versionar manifest/expected text sintetico; dejar audio, transcripts, provider payloads y reports como artifacts locales/gitignored.
 
 Primer runner:
 

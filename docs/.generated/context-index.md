@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-10T21:25:44.785Z
+Generated: 2026-06-10T21:33:38.494Z
 
 ## Topics
 
@@ -32,6 +32,7 @@ Generated: 2026-06-10T21:25:44.785Z
 
 - [001-port-foundation](../../specs/001-port-foundation/)
 - [002-simulated-pipeline](../../specs/002-simulated-pipeline/)
+- [003-synthetic-audio-stt](../../specs/003-synthetic-audio-stt/)
 
 ## Aliases
 

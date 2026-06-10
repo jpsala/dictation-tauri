@@ -95,7 +95,7 @@ Dictation Tauri usara un `ModelGateway` propio e hibrido.
 Orden inicial:
 
 1. Adapter mock para MVP 1 y tests de pipeline, conectado por puerto y no por acceso directo a fixtures desde todo el runtime.
-2. Adapter directo local para MVP 2, leyendo variables de entorno locales o `.env` propio ignorado desde una frontera host/script, no desde UI React.
+2. Adapter directo local para MVP 2, leyendo variables de entorno locales o `.env` propio ignorado desde una frontera host/script, no desde UI React. Plan vigente: `specs/003-synthetic-audio-stt/`.
 3. Adapter proxied como research/early despues de validar el contrato compatible.
 
 Contrato minimo:
