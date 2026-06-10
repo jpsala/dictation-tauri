@@ -1,0 +1,30 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Frontend build outputs
+dist/
+build/
+coverage/
+playwright-report/
+test-results/
+
+# Rust/Tauri build outputs
+target/
+src-tauri/target/
+target-codex-check/
+
+# Logs and local artifacts
+*.log
+*.tmp
+*.temp
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
