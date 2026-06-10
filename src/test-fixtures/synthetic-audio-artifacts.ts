@@ -1,0 +1,105 @@
+import type {
+  SyntheticAudioFixture,
+  SyntheticAudioVersionPolicy,
+} from "./synthetic-audio-manifest";
+
+export const syntheticAudioArtifactRoot = "artifacts/synthetic-audio-stt";
+
+export const syntheticAudioArtifactDirectories = {
+  audio: `${syntheticAudioArtifactRoot}/audio`,
+  transcripts: `${syntheticAudioArtifactRoot}/transcripts`,
+  providerPayloads: `${syntheticAudioArtifactRoot}/provider-payloads`,
+  reports: `${syntheticAudioArtifactRoot}/reports`,
+} as const;
+
+export type AudioArtifactGitPolicy = "ignored" | "versioned" | "temporary";
+
+export type AudioArtifactPolicy = {
+  artifactRoot: string;
+  allowedDirectories: readonly string[];
+  gitPolicy: AudioArtifactGitPolicy;
+};
+
+export type AudioArtifactPathResult =
+  | {
+      ok: true;
+      normalizedPath: string;
+      policy: AudioArtifactPolicy;
+    }
+  | {
+      ok: false;
+      reason: string;
+      policy: AudioArtifactPolicy;
+    };
+
+const allowedDirectories = Object.values(syntheticAudioArtifactDirectories);
+
+export function createSyntheticAudioArtifactPolicy(
+  versionPolicy: SyntheticAudioVersionPolicy = "gitignored-artifact",
+): AudioArtifactPolicy {
+  return {
+    artifactRoot: syntheticAudioArtifactRoot,
+    allowedDirectories,
+    gitPolicy: mapVersionPolicyToGitPolicy(versionPolicy),
+  };
+}
+
+export function validateSyntheticAudioArtifactPath(
+  fixture: Pick<SyntheticAudioFixture, "audioArtifactPath" | "versionPolicy">,
+): AudioArtifactPathResult {
+  const policy = createSyntheticAudioArtifactPolicy(fixture.versionPolicy);
+  const normalizedPath = normalizeArtifactPath(fixture.audioArtifactPath);
+
+  if (isAbsoluteArtifactPath(fixture.audioArtifactPath)) {
+    return {
+      ok: false,
+      reason: "Audio artifact paths must be workspace-relative.",
+      policy,
+    };
+  }
+
+  if (!isUnderAllowedDirectory(normalizedPath)) {
+    return {
+      ok: false,
+      reason:
+        "Audio artifact path must stay under artifacts/synthetic-audio-stt/.",
+      policy,
+    };
+  }
+
+  return {
+    ok: true,
+    normalizedPath,
+    policy,
+  };
+}
+
+function normalizeArtifactPath(artifactPath: string): string {
+  return artifactPath.replace(/\\/g, "/").replace(/^\.\/+/, "");
+}
+
+function isUnderAllowedDirectory(artifactPath: string): boolean {
+  return allowedDirectories.some((directory) =>
+    artifactPath.startsWith(`${directory}/`),
+  );
+}
+
+function isAbsoluteArtifactPath(artifactPath: string): boolean {
+  return (
+    artifactPath.startsWith("/") ||
+    artifactPath.startsWith("\\") ||
+    /^[A-Za-z]:[\\/]/.test(artifactPath)
+  );
+}
+
+function mapVersionPolicyToGitPolicy(
+  versionPolicy: SyntheticAudioVersionPolicy,
+): AudioArtifactGitPolicy {
+  switch (versionPolicy) {
+    case "versioned-metadata":
+    case "gitignored-artifact":
+      return "ignored";
+    case "temporary":
+      return "temporary";
+  }
+}

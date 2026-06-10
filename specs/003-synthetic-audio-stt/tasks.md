@@ -26,10 +26,10 @@
 
 **CRITICAL**: No user story work begins until this phase is complete.
 
-- [ ] T004 Create synthetic audio fixture types in `src/test-fixtures/synthetic-audio-manifest.ts`
-- [ ] T005 [P] Create `ModelGateway` STT contract types in `src/model-gateway/types.ts`
-- [ ] T006 [P] Create synthetic audio artifact policy helper in `src/test-fixtures/synthetic-audio-artifacts.ts`
-- [ ] T007 Add dry-run fixture validation test scaffold in `tests/synthetic-audio-stt/manifest-validation.test.ts`
+- [X] T004 Create synthetic audio fixture types in `src/test-fixtures/synthetic-audio-manifest.ts`
+- [X] T005 [P] Create `ModelGateway` STT contract types in `src/model-gateway/types.ts`
+- [X] T006 [P] Create synthetic audio artifact policy helper in `src/test-fixtures/synthetic-audio-artifacts.ts`
+- [X] T007 Add dry-run fixture validation test scaffold in `tests/synthetic-audio-stt/manifest-validation.test.ts`
 
 **Checkpoint**: Contracts compile and the manifest validation test can run without audio files, microphone access, provider credentials, or secrets.
 
