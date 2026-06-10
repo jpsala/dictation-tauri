@@ -23,6 +23,7 @@ target-codex-check/
 *.log
 *.tmp
 *.temp
+artifacts/synthetic-audio-stt/
 
 # OS/editor noise
 .DS_Store

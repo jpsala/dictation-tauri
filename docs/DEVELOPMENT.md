@@ -133,6 +133,25 @@ npm run test:pipeline
 npm run preview
 ```
 
+Comandos MVP 2 de audio sintetico/STT, por ahora placeholders dry-run sin `.env`, audio ni provider calls:
+
+```powershell
+npm run synthetic-audio:fixtures
+npm run synthetic-audio:stt:dry-run
+```
+
+Artifacts locales MVP 2:
+
+```text
+artifacts/synthetic-audio-stt/
+├── audio/
+├── transcripts/
+├── provider-payloads/
+└── reports/
+```
+
+Estos paths son evidencia local gitignored. No son persistencia de producto y no deben commitearse.
+
 Comandos Tauri y verificacion reales:
 
 ```powershell
@@ -181,7 +200,7 @@ specs/<feature>/
 └── tasks.md
 ```
 
-Spec activa actual: `specs/002-simulated-pipeline/`.
+Spec activa actual: `specs/003-synthetic-audio-stt/`.
 
 ## Verificacion
 

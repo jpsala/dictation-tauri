@@ -12,9 +12,9 @@
 
 **Purpose**: Establish artifact policy and command scaffolding without provider calls.
 
-- [ ] T001 Add `artifacts/synthetic-audio-stt/` local artifact patterns to `.gitignore`
-- [ ] T002 Add fixture/STT command placeholders to `package.json` without enabling real provider calls
-- [ ] T003 Document MVP 2 artifact paths and commands in `docs/DEVELOPMENT.md`
+- [X] T001 Add `artifacts/synthetic-audio-stt/` local artifact patterns to `.gitignore`
+- [X] T002 Add fixture/STT command placeholders to `package.json` without enabling real provider calls
+- [X] T003 Document MVP 2 artifact paths and commands in `docs/DEVELOPMENT.md`
 
 **Checkpoint**: `git status --short --ignored` proves generated artifact paths are ignored; no provider call is possible yet.
 

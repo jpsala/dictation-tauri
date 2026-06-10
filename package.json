@@ -8,6 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 1420",
     "test:pipeline": "vitest run --config vitest.config.ts",
+    "synthetic-audio:fixtures": "bun scripts/synthetic-audio-stt.ts --mode fixture-check --dry-run",
+    "synthetic-audio:stt:dry-run": "bun scripts/synthetic-audio-stt.ts --mode stt-dry-run --dry-run",
     "visual:check": "playwright test",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
