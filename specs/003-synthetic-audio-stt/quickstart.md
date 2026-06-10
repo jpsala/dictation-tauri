@@ -2,12 +2,25 @@
 
 ## Purpose
 
-Use this guide when implementing MVP 2 tasks. This planning batch does not call
-providers or generate audio.
+Use this guide for MVP 2 synthetic fixture/STT checks. The implemented commands
+are dry-run/local only: they do not call providers, require microphone access, or
+generate audio.
 
 ## Routine Checks
 
-Run the MVP 1 regression suite:
+Validate the source-controlled fixture manifest and artifact policy:
+
+```powershell
+npm run synthetic-audio:fixtures
+```
+
+Run the dry-run STT harness and write a local evidence report:
+
+```powershell
+npm run synthetic-audio:stt:dry-run
+```
+
+Run the MVP 1 and MVP 2 regression suite:
 
 ```powershell
 npm run test:pipeline
@@ -23,11 +36,14 @@ bun scripts/agent-context-audit.ts
 ## Expected MVP 2 Flow
 
 1. Validate the source-controlled synthetic fixture manifest.
-2. Generate or restore local audio artifacts under `artifacts/synthetic-audio-stt/`.
+2. Generate or restore local audio artifacts under `artifacts/synthetic-audio-stt/audio/` when a future real-provider/local-audio run needs them.
 3. Run the dry-run/mock STT path without provider credentials.
-4. Run a real local STT fixture only when local provider variables are present.
-5. Write local reports under `artifacts/synthetic-audio-stt/reports/`.
+4. Write local dry-run reports under `artifacts/synthetic-audio-stt/reports/`.
+5. Keep transcripts and provider payload outputs, when introduced, under `artifacts/synthetic-audio-stt/transcripts/` and `artifacts/synthetic-audio-stt/provider-payloads/`.
 6. Confirm generated audio, transcripts, payloads, and reports stay gitignored.
+
+The current direct local STT adapter is a redacted setup/provider-error shell.
+No real-provider fixture command is enabled in this MVP 2 closeout.
 
 ## Artifact Rules
 
@@ -64,15 +80,28 @@ Implementation may look for provider configuration by variable name only, such
 as local OpenAI/Groq/OpenRouter/xAI keys or provider/model overrides. Do not
 print values in logs, reports, commits, or assistant responses.
 
+## Implemented Command Outputs
+
+- `npm run synthetic-audio:fixtures`: prints fixture count, expected text lengths,
+  artifact setup status, `providerCallsEnabled: false`, and `audioRequired: false`.
+- `npm run synthetic-audio:stt:dry-run`: runs the first synthetic fixture through
+  the mock STT adapter and writes a JSON report under
+  `artifacts/synthetic-audio-stt/reports/`.
+- `npm run test:pipeline`: runs pipeline, synthetic fixture, dry-run STT, and
+  report-generation tests.
+
 ## Closeout Checks For Implementation Batches
 
 At minimum:
 
 ```powershell
+npm run synthetic-audio:fixtures
+npm run synthetic-audio:stt:dry-run
 npm run test:pipeline
 bun scripts/context-index.ts
 bun scripts/agent-context-audit.ts
 ```
 
-When implementation adds fixture/STT commands, add the specific dry-run command
-and optional real-provider command to this file before closing that batch.
+Optional real-provider STT remains a local future check and must only be added
+when a command exists, generated/restored audio is present, and credentials are
+available without printing secrets.

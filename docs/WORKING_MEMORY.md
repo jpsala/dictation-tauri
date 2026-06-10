@@ -19,7 +19,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Backend/model routing | decided | `docs/topics/backend-and-model-routing.md` | Mock port primero; directo local en MVP 2; proxy como spike posterior. |
 | UI/design | seeded | `PRODUCT.md`, `DESIGN.md` | Usar antes de cualquier UI durable. |
 | Pipeline simulado | mvp1-complete | `specs/002-simulated-pipeline/tasks.md` | Mantener como baseline para MVP 2. |
-| Audio sintetico/STT | planned | `specs/003-synthetic-audio-stt/tasks.md` | Ejecutar tasks pendientes por Small Batches; empezar por artifact policy y manifest. |
+| Audio sintetico/STT | mvp2-closeout | `specs/003-synthetic-audio-stt/tasks.md` | Phase 6 docs/checks en curso; T031 queda opcional/local si existe provider real y audio. |
 | Datos de dictado | decided | `docs/topics/privacy-and-dictation-data.md` | Modo personal/dev permisivo; no imprimir ni commitear secretos. |
 | OS Lite/docs | active | `docs/topics/agentic-project-os-lite.md` | Mantener ruta caliente liviana y audit verde. |
 
@@ -29,7 +29,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | --- | --- | --- |
 | `001-port-foundation` | complete | `specs/001-port-foundation/tasks.md` |
 | `002-simulated-pipeline` | complete | `specs/002-simulated-pipeline/tasks.md` |
-| `003-synthetic-audio-stt` | planned | `specs/003-synthetic-audio-stt/tasks.md` |
+| `003-synthetic-audio-stt` | closeout | `specs/003-synthetic-audio-stt/tasks.md` |
 
 ## Tasks Activas
 
@@ -50,7 +50,7 @@ rg -l "status:\s*active" docs/tasks -g "*.md" -g "!archive/**"
 - Stack base: React, Vite, TypeScript strict, npm, Tauri v2, Rust 2021 y Playwright.
 - `C:\dev\chat\copyq-tauri` es canon tecnico para Tauri/UI/settings/Windows desktop mechanics.
 - `C:\dev\electro-bun-1` / Fixvox es canon funcional para dictado, runtime, backend/proxy, policies/env y benchmarks; no se porta literal.
-- MVP 0-3: app base, pipeline simulado, audio sintetico/STT real, microfono real.
+- MVP 0-3: app base, pipeline simulado, audio sintetico/STT dry-run con shell de provider real, microfono real.
 - Runtime: pipeline por puertos/adapters, `PipelineService`, event ledger y summary derivado antes de side effects reales.
 - `ModelGateway` hibrido: mock port primero, adapter directo local en MVP 2; proxied como spike posterior.
 - Texto seleccionado real queda fuera de MVP 0-3; se permite simulacion en fixtures.
@@ -71,13 +71,16 @@ rg -l "status:\s*active" docs/tasks -g "*.md" -g "!archive/**"
 ## Comandos
 
 ```powershell
+npm run synthetic-audio:fixtures
+npm run synthetic-audio:stt:dry-run
+npm run test:pipeline
 bun scripts/context-index.ts
 bun scripts/agent-context-audit.ts
 ```
 
 ## Proximo Paso Probable
 
-Ejecutar MVP 2 por Small Batches desde `specs/003-synthetic-audio-stt/tasks.md`: primero artifact policy/gitignore y manifest de fixtures sinteticos; no implementar microfono, hotkeys, tray, clipboard real, seleccion real, settings UI ni persistencia de producto.
+Cerrar Phase 6 de MVP 2 en `specs/003-synthetic-audio-stt/tasks.md` con docs/checks. No ejecutar T031 salvo que ya existan comando real-provider, credenciales locales y audio restaurado/generado.
 
 ## Promocion De Memoria
 

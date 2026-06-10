@@ -105,11 +105,11 @@
 
 **Purpose**: Close MVP 2 implementation without expanding scope.
 
-- [ ] T026 Update `specs/003-synthetic-audio-stt/quickstart.md` with final implemented commands
-- [ ] T027 Update `docs/WORKING_MEMORY.md` and relevant topics with MVP 2 implementation status
-- [ ] T028 Run `npm run test:pipeline`
-- [ ] T029 Run `bun scripts/context-index.ts`
-- [ ] T030 Run `bun scripts/agent-context-audit.ts`
+- [X] T026 Update `specs/003-synthetic-audio-stt/quickstart.md` with final implemented commands
+- [X] T027 Update `docs/WORKING_MEMORY.md` and relevant topics with MVP 2 implementation status
+- [X] T028 Run `npm run test:pipeline`
+- [X] T029 Run `bun scripts/context-index.ts`
+- [X] T030 Run `bun scripts/agent-context-audit.ts`
 - [ ] T031 Run optional local real-provider STT fixture command if credentials and generated audio are present
 
 **Checkpoint**: MVP 2 is verified by fixture validation, dry-run tests, artifact policy, MVP 1 regression, docs sync, and optional real-provider evidence.

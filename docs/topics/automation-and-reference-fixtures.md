@@ -91,3 +91,11 @@ Primer runner:
 - Debe correr sin microfono.
 - Debe poder usar adapter mock en MVP 1 y adapter directo local en MVP 2.
 - Debe medir STT y postprocess como etapas separadas.
+
+## Estado MVP 2
+
+- Manifest sintetico y expected text versionados en `src/test-fixtures/synthetic-audio-manifest.ts`.
+- Artifact root local/gitignored: `artifacts/synthetic-audio-stt/`.
+- Comandos implementados sin provider calls: `npm run synthetic-audio:fixtures` y `npm run synthetic-audio:stt:dry-run`.
+- Reports dry-run locales: `artifacts/synthetic-audio-stt/reports/`.
+- El adapter directo local existe como shell redacted setup/provider-error; no hay comando real-provider habilitado para cierre automatico.
