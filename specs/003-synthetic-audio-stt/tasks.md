@@ -43,14 +43,14 @@
 
 ### Tests for User Story 1
 
-- [ ] T008 [P] [US1] Add manifest validation assertions in `tests/synthetic-audio-stt/manifest-validation.test.ts`
+- [X] T008 [P] [US1] Add manifest validation assertions in `tests/synthetic-audio-stt/manifest-validation.test.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] Add initial synthetic fixture manifest entries in `src/test-fixtures/synthetic-audio-manifest.ts`
-- [ ] T010 [US1] Implement fixture artifact existence/setup status in `src/test-fixtures/synthetic-audio-artifacts.ts`
-- [ ] T011 [US1] Wire fixture lookup into existing pipeline fixture helpers in `src/pipeline/fixtures.ts`
-- [ ] T012 [US1] Verify manifest validation passes without real audio or provider credentials
+- [X] T009 [US1] Add initial synthetic fixture manifest entries in `src/test-fixtures/synthetic-audio-manifest.ts`
+- [X] T010 [US1] Implement fixture artifact existence/setup status in `src/test-fixtures/synthetic-audio-artifacts.ts`
+- [X] T011 [US1] Wire fixture lookup into existing pipeline fixture helpers in `src/pipeline/fixtures.ts`
+- [X] T012 [US1] Verify manifest validation passes without real audio or provider credentials
 
 **Checkpoint**: User Story 1 is functional and testable independently.
 

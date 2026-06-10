@@ -32,6 +32,18 @@ export type AudioArtifactPathResult =
       policy: AudioArtifactPolicy;
     };
 
+export type AudioArtifactSetupStatus = "ready" | "setup-required";
+
+export type AudioArtifactSetupResult = {
+  fixtureId: string;
+  artifactPath: string;
+  exists: boolean;
+  format: SyntheticAudioFixture["format"];
+  status: AudioArtifactSetupStatus;
+  policy: AudioArtifactPolicy;
+  reason?: string;
+};
+
 const allowedDirectories = Object.values(syntheticAudioArtifactDirectories);
 
 export function createSyntheticAudioArtifactPolicy(
@@ -70,6 +82,47 @@ export function validateSyntheticAudioArtifactPath(
   return {
     ok: true,
     normalizedPath,
+    policy,
+  };
+}
+
+export function evaluateSyntheticAudioArtifactSetup(
+  fixture: SyntheticAudioFixture,
+  artifactExists = false,
+): AudioArtifactSetupResult {
+  const pathResult = validateSyntheticAudioArtifactPath(fixture);
+  const policy = createSyntheticAudioArtifactPolicy(fixture.versionPolicy);
+
+  if (!pathResult.ok) {
+    return {
+      fixtureId: fixture.id,
+      artifactPath: normalizeArtifactPath(fixture.audioArtifactPath),
+      exists: false,
+      format: fixture.format,
+      status: "setup-required",
+      policy,
+      reason: pathResult.reason,
+    };
+  }
+
+  if (!artifactExists) {
+    return {
+      fixtureId: fixture.id,
+      artifactPath: pathResult.normalizedPath,
+      exists: false,
+      format: fixture.format,
+      status: "setup-required",
+      policy,
+      reason: "Audio artifact is missing; generate or restore local fixture audio.",
+    };
+  }
+
+  return {
+    fixtureId: fixture.id,
+    artifactPath: pathResult.normalizedPath,
+    exists: true,
+    format: fixture.format,
+    status: "ready",
     policy,
   };
 }

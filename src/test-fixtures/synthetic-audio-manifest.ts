@@ -42,7 +42,33 @@ export type SyntheticAudioFixture = {
   notes?: string;
 };
 
-export const syntheticAudioFixtures = [] as const satisfies readonly SyntheticAudioFixture[];
+export const syntheticAudioFixtures = [
+  {
+    id: "en-clean-note",
+    language: "en",
+    expectedText:
+      "Create a short project note about testing the dictation pipeline.",
+    audioArtifactPath:
+      "artifacts/synthetic-audio-stt/audio/en-clean-note.wav",
+    sourceType: "generated-tts",
+    format: "wav",
+    sensitivity: "synthetic",
+    versionPolicy: "versioned-metadata",
+    notes: "Initial non-sensitive synthetic fixture for manifest validation.",
+  },
+  {
+    id: "es-short-reminder",
+    language: "es",
+    expectedText: "Recordame revisar los fixtures del pipeline.",
+    audioArtifactPath:
+      "artifacts/synthetic-audio-stt/audio/es-short-reminder.wav",
+    sourceType: "generated-tts",
+    format: "wav",
+    sensitivity: "synthetic",
+    versionPolicy: "versioned-metadata",
+    notes: "Initial Spanish synthetic fixture; audio may be generated locally.",
+  },
+] as const satisfies readonly SyntheticAudioFixture[];
 
 export type SyntheticAudioFixtureId =
   (typeof syntheticAudioFixtures)[number]["id"];
