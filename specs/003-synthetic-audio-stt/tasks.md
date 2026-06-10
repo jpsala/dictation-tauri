@@ -88,14 +88,14 @@
 
 ### Tests for User Story 3
 
-- [ ] T021 [P] [US3] Add report-generation tests in `tests/synthetic-audio-stt/report-generation.test.ts`
+- [X] T021 [P] [US3] Add report-generation tests in `tests/synthetic-audio-stt/report-generation.test.ts`
 
 ### Implementation for User Story 3
 
-- [ ] T022 [US3] Implement transcript normalization/comparison helper in `src/model-gateway/types.ts` or `src/model-gateway/comparison.ts`
-- [ ] T023 [US3] Implement local report writer in `scripts/synthetic-audio-stt.ts`
-- [ ] T024 [US3] Include provider/model/latency/cost/artifact metadata in report output
-- [ ] T025 [US3] Verify generated reports remain under gitignored `artifacts/synthetic-audio-stt/`
+- [X] T022 [US3] Implement transcript normalization/comparison helper in `src/model-gateway/types.ts` or `src/model-gateway/comparison.ts`
+- [X] T023 [US3] Implement local report writer in `scripts/synthetic-audio-stt.ts`
+- [X] T024 [US3] Include provider/model/latency/cost/artifact metadata in report output
+- [X] T025 [US3] Verify generated reports remain under gitignored `artifacts/synthetic-audio-stt/`
 
 **Checkpoint**: Evidence reports are generated locally from dry-run data and do not become product persistence.
 
