@@ -29,12 +29,12 @@
 
 ### Tests for User Story 1
 
-- [ ] T005 [P] [US1] Configure Playwright visual smoke test in playwright.config.ts and tests/visual/app-smoke.spec.ts
+- [x] T005 [P] [US1] Configure Playwright visual smoke test in playwright.config.ts and tests/visual/app-smoke.spec.ts
 
 ### Implementation for User Story 1
 
-- [ ] T006 [US1] Create minimal Tauri Rust crate in src-tauri/Cargo.toml, src-tauri/build.rs, src-tauri/src/main.rs, and src-tauri/src/lib.rs
-- [ ] T007 [US1] Configure Tauri app, main window, and minimal capability in src-tauri/tauri.conf.json and src-tauri/capabilities/default.json
+- [x] T006 [US1] Create minimal Tauri Rust crate in src-tauri/Cargo.toml, src-tauri/build.rs, src-tauri/src/main.rs, and src-tauri/src/lib.rs
+- [x] T007 [US1] Configure Tauri app, main window, and minimal capability in src-tauri/tauri.conf.json and src-tauri/capabilities/default.json
 
 **Checkpoint B**: Frontend and Tauri app base are independently buildable.
 
@@ -44,10 +44,10 @@
 
 **Purpose**: Promote real commands and verification evidence into stable docs.
 
-- [ ] T008 Update official MVP 0 commands and structure in docs/DEVELOPMENT.md
-- [ ] T009 Update active working memory to point at specs/001-port-foundation/plan.md and current MVP 0 checkpoint in docs/WORKING_MEMORY.md
-- [ ] T010 Run MVP 0 verification commands from specs/001-port-foundation/quickstart.md
-- [ ] T011 Refresh context index and audit with bun scripts/context-index.ts and bun scripts/agent-context-audit.ts
+- [x] T008 Update official MVP 0 commands and structure in docs/DEVELOPMENT.md
+- [x] T009 Update active working memory to point at specs/001-port-foundation/plan.md and current MVP 0 checkpoint in docs/WORKING_MEMORY.md
+- [x] T010 Run MVP 0 verification commands from specs/001-port-foundation/quickstart.md
+- [x] T011 Refresh context index and audit with bun scripts/context-index.ts and bun scripts/agent-context-audit.ts
 
 **Checkpoint C**: MVP 0 foundation is verified and docs are synchronized.
 

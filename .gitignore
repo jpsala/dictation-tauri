@@ -16,6 +16,7 @@ test-results/
 # Rust/Tauri build outputs
 target/
 src-tauri/target/
+src-tauri/gen/
 target-codex-check/
 
 # Logs and local artifacts
