@@ -51,6 +51,7 @@ Interfaces MUST fit their surface and audience. Internal tools SHOULD be dense, 
 - External transcription, LLM, sync, or storage services MUST NOT receive dictation data unless a spec and decision explicitly approve the boundary.
 - Tauri permissions/capabilities MUST stay minimal and documented in the active spec or `docs/DEVELOPMENT.md`.
 - Project-specific build, test, package manager, and persistence rules MUST be added here after the Tauri/frontend stack is confirmed.
+- Agent work MUST proceed in small batches: one SpecKit task, one observable behavior, or one bounded documentation sync at a time. Each batch MUST have a clear verification gate and produce a reversible atomic commit when complete.
 
 ## Development Workflow
 
@@ -59,10 +60,10 @@ For each significant change:
 1. Update or create the relevant feature spec under `specs/`.
 2. Run the planning workflow and update `plan.md`, `research.md`, `data-model.md`, `quickstart.md`, and contracts when relevant.
 3. Generate or refresh `tasks.md` with independently executable tasks.
-4. Implement by completing tasks in order and marking completed tasks with `[x]`.
-5. Verify with the commands documented in `docs/DEVELOPMENT.md`.
-6. Update stable project docs when decisions become durable.
-7. Commit in coherent snapshots when requested or when the local workflow calls for it.
+4. Implement in small batches by completing one task, behavior, or checkpoint at a time.
+5. Verify each batch with the commands documented in `docs/DEVELOPMENT.md` or the active quickstart.
+6. Mark completed tasks with `[x]` and update stable project docs when decisions become durable.
+7. Commit each verified batch as an atomic, reversible snapshot.
 
 Small copy edits, emergency fixes, or investigative reads may skip new spec creation, but MUST still respect the constitution and update current specs/docs if they alter behavior or architecture.
 

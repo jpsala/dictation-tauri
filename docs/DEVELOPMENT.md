@@ -3,8 +3,8 @@
 ## Repositorio
 
 - Ruta local: `C:\dev\dictation-tauri`
-- Remoto: no detectado.
-- Git: no detectado al cierre del baseline documental del 2026-06-05.
+- Remoto: `https://github.com/jpsala/dictation-tauri`
+- Git: inicializado en `main`, repo publico en GitHub.
 
 Reglas:
 
@@ -13,20 +13,22 @@ Reglas:
 - No imprimir secretos completos en respuestas ni commitear `.env`/tokens salvo pedido explicito y acotado de JP.
 - Respetar worktree sucio: no revertir cambios de usuario.
 
-## Git / SDD
+## Git / SDD / Small Batches
 
 El repo trabaja con Spec-Driven Development. La unidad normal de trabajo es:
 
 1. actualizar o leer `spec.md`, `plan.md` y `tasks.md`;
-2. implementar una task o checkpoint verificable;
+2. implementar una task, comportamiento o checkpoint verificable;
 3. correr los checks relevantes;
 4. marcar la task completada;
 5. commitear atomico.
 
 Reglas:
 
-- Commit despues de cada task SpecKit completada o checkpoint validado.
+- Trabajar en Small Batches: una task SpecKit, un comportamiento observable o una sincronizacion documental acotada por tanda.
+- Commit despues de cada tanda verificada.
 - Cada commit debe ser reversible y tener un motivo unico.
+- Si una tanda toca demasiadas responsabilidades, dividirla antes de implementar.
 - No mezclar scaffolding, decisiones de spec, UI durable y cambios de runtime si pueden separarse.
 - No commitear `.env`, tokens, bases locales, audio/transcripciones sensibles, `node_modules/`, `dist/`, `target/`, reports ni caches.
 - Usar Conventional Commits (`docs:`, `chore:`, `feat:`, `test:`, `fix:`) con subject corto.
@@ -34,7 +36,7 @@ Reglas:
 
 ## Stack
 
-Stack decidido para la fundacion tecnica, pendiente de crear manifiestos:
+Stack decidido para la fundacion tecnica:
 
 - Shell principal: PowerShell en Windows.
 - App desktop: Tauri v2.
@@ -60,11 +62,16 @@ Baseline cerrado:
 
 Pendiente para considerar cerrada la fundacion tecnica:
 
-- Crear manifiestos reales de frontend/Tauri/Rust.
+- Crear manifiestos reales de Tauri/Rust.
 - Definir comandos oficiales de dev, build, lint y test.
 - Documentar permisos/capabilities minimos.
 - Documentar politica de persistencia antes de convertir datos en comportamiento estable de producto.
 - Verificar una app base ejecutable.
+
+Completado para Checkpoint A de MVP 0:
+
+- `package.json`, `package-lock.json`, `tsconfig.json`, `vite.config.ts` e app React base existen.
+- `npm run build` pasa.
 
 ## UI / Frontend Design
 
@@ -103,11 +110,17 @@ bun scripts/agent-context-audit.ts
 bun scripts/context-refresh.ts --task docs/tasks/<task>.md
 ```
 
-Comandos de build, dev, lint y test: pendientes de confirmar cuando existan `package.json`, `Cargo.toml`, `tauri.conf.json` u otros manifiestos. El patron esperado viene de `copyq-tauri`:
+Comandos frontend reales:
 
 ```powershell
 npm run dev
 npm run build
+npm run preview
+```
+
+Comandos reservados por el scaffold y pendientes de cerrar cuando existan `Cargo.toml`, `tauri.conf.json` y Playwright:
+
+```powershell
 npm run tauri:dev
 npm run tauri:build
 npm run visual:check

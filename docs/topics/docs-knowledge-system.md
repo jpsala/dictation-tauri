@@ -39,3 +39,4 @@ La documentacion debe permitir que un agente lea poco y encuentre rapido la fuen
 - No guardar transcripts largos.
 - Si una task descubre algo durable, promoverlo a docs raiz, topic, decision o spec.
 - Si aparece un documento suelto, integrarlo, indexarlo, archivarlo con estado claro o preguntar antes de borrarlo.
+- Mantener cambios documentales en Small Batches: una decision, topic o sincronizacion de contexto por commit cuando sea separable.

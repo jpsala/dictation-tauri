@@ -4,22 +4,30 @@ Registro corto de decisiones durables.
 
 ## Aprobadas
 
-### 2026-06-10 - Usar commits atomicos por checkpoint SDD
+### 2026-06-10 - Adoptar Small Batches para trabajo agentico
 
 Estado: accepted
 
-Decision: el repo debe usar commits atomicos constantes. Cada task SpecKit completada o checkpoint verificable debe cerrarse con un commit coherente, despues de correr los checks relevantes y sincronizar `tasks.md`/docs si aplica.
+Decision: el repo debe usar Small Batches como principio operativo agentico. Una tanda de trabajo debe ser una task SpecKit, un comportamiento observable o una sincronizacion documental acotada. Cada tanda completada debe cerrarse con checks relevantes, `tasks.md` sincronizado si aplica y un commit atomico reversible.
 
-Motivo: SpecKit divide el trabajo en tareas ejecutables, dependencias y checkpoints; los commits deben reflejar esa granularidad para poder volver a estados buenos sin perder contexto.
+Motivo: SpecKit divide el trabajo en tareas ejecutables, dependencias y checkpoints. Small Batches reduce drift del agente, baja el costo de review, mantiene contexto manejable y permite volver a estados buenos sin perder avance.
 
 Alcance:
 
 - Usar Conventional Commits cortos.
 - No mezclar plan/spec/docs e implementacion cuando puedan separarse limpiamente.
+- No esconder refactors dentro de features.
+- Dividir cualquier task que toque demasiadas responsabilidades.
 - No commitear `.env`, secretos, artifacts locales, `node_modules/`, `dist/`, `target/`, audio/transcripciones sensibles ni reports.
-- Publicar el repo como publico solo despues de tener `.gitignore` y revisar que no entren secretos.
+- Publicar o pushear solo despues de tener `.gitignore`, checks relevantes y revision de secretos/artifacts.
 
-Proximo paso: inicializar Git, crear el repo publico en GitHub y subir commits atomicos del baseline, SpecKit MVP 0 y primer scaffold frontend.
+Referencias:
+
+- WHOOP GUSTO coding: small tasks, test everything y commit checkpoints.
+- MinimumCD Small-Batch Agent Sessions: una conducta, una sesion, un commit.
+- GitLab CI: commits frecuentes y testing en pequenos lotes para aislar bugs.
+
+Proximo paso: aplicar Small Batches al Checkpoint B de `001-port-foundation`.
 
 ### 2026-06-05 - Instalar Agentic Project OS Lite
 

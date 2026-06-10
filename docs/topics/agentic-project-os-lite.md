@@ -13,6 +13,9 @@ triggers:
   - cerrar sesion
   - continuar sesion
   - context index
+  - Small Batches
+  - small batches
+  - commits atomicos
 primary_refs:
   - docs/GLOSSARY.md
   - docs/WORKING_MEMORY.md
@@ -88,6 +91,25 @@ Para listar trabajos activos:
 ```powershell
 rg -l "status:\s*active" docs/tasks -g "*.md" -g "!archive/**"
 ```
+
+## Small Batches
+
+Los agentes deben trabajar en tandas chicas. Una tanda valida es:
+
+- una task SpecKit;
+- un comportamiento observable;
+- un checkpoint declarado en `tasks.md`;
+- una sincronizacion documental acotada.
+
+Cada tanda debe tener:
+
+1. fuente de verdad previa: spec, plan, task, decision o topic;
+2. alcance chico y revisable;
+3. check de cierre explicito;
+4. `tasks.md` marcado si aplica;
+5. commit atomico reversible.
+
+Si una tanda empieza a mezclar responsabilidades, se divide antes de seguir.
 
 ## Auditoria
 

@@ -26,7 +26,7 @@ La discusion inicial y las decisiones durables del sistema deben quedar integrad
 - El proyecto esta en modo personal/dev permisivo: se pueden leer `.env`, variables locales, logs, audio, transcripciones, bases locales y artifacts de referencia cuando ayuden al trabajo.
 - No imprimir secretos en respuestas ni commitear `.env`/tokens salvo pedido explicito y acotado de JP.
 - No revertir cambios de usuario sin pedido explicito.
-- Trabajar con commits atomicos constantes: despues de cada task SpecKit o checkpoint verificable, correr los checks relevantes, marcar `tasks.md`, actualizar docs si aplica y commitear solo el cambio coherente. No mezclar plan/spec/docs con implementacion si pueden separarse limpiamente.
+- Trabajar en Small Batches: una task SpecKit, un comportamiento o un checkpoint verificable por tanda. Cada tanda debe ser chica, revisable, testeada con checks relevantes y reversible con un commit atomico. No mezclar plan/spec/docs con implementacion si pueden separarse limpiamente.
 - Mantener la documentacion liviana: promover decisiones durables a docs estables y evitar transcribir sesiones.
 - Para features grandes, usar SpecKit o actualizar la spec activa antes de implementar cambios durables.
 - Para trabajos vivos o retomables, usar `docs/tasks/`. Para listar trabajos activos, buscar `status: active` en esa carpeta.
@@ -44,10 +44,13 @@ Para este proyecto, `docs/DEVELOPMENT.md` define un modo personal/dev permisivo:
 ## Git Y SDD
 
 - La spec, plan y tasks son la fuente de verdad antes del codigo.
-- Un commit debe representar una unidad reversible: una task, un checkpoint, o una sincronizacion documental.
+- Small Batch es la unidad normal: una task SpecKit, un comportamiento observable, o una sincronizacion documental acotada.
+- Un commit debe representar exactamente una unidad reversible.
+- Antes de empezar una tanda, identificar el archivo de task/spec que la autoriza y el check que la cierra.
 - Antes de cada commit, revisar que no entren `.env`, secretos, artifacts de build, `node_modules/`, audio/transcripciones locales sensibles ni caches.
 - Usar mensajes Conventional Commits cortos (`docs:`, `chore:`, `feat:`, `test:`, `fix:`).
 - Si un cambio implementa una task, marcarla en `specs/<feature>/tasks.md` en el mismo commit o en un commit documental inmediatamente asociado.
+- Si una tanda empieza a tocar demasiados archivos o responsabilidades, parar, dividir la task y commitear solo el subresultado verde.
 
 ## Design Context
 

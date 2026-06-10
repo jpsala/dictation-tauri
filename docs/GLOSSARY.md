@@ -20,3 +20,4 @@ Aliases y terminos recurrentes del proyecto.
 | SpecKit | Flujo de specs, planes y tasks para features grandes. |
 | Port foundation | Spec draft `specs/001-port-foundation/`, base inicial del port Tauri. |
 | Datos de dictado | Audio, transcripciones, prompts, logs, correcciones y metadata de captura de voz. |
+| Small Batch | Unidad de trabajo agentico chica, revisable y reversible: una task SpecKit, un comportamiento observable o una sincronizacion documental acotada, cerrada con checks y commit atomico. |

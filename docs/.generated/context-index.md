@@ -2,12 +2,12 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-10T11:28:30.608Z
+Generated: 2026-06-10T11:44:10.109Z
 
 ## Topics
 
 - active: [agentic-os-operations](../topics/agentic-os-operations.md) - crear sistema agentico, migrar sistema agentico, actualizar norte, os lite, adaptar proyecto, repo nuevo
-- active: [agentic-project-os-lite](../topics/agentic-project-os-lite.md) - norte, working memory, os lite, agentic project os, memoria viva, audit docs, tasks, cerrar sesion, continuar sesion, context index
+- active: [agentic-project-os-lite](../topics/agentic-project-os-lite.md) - norte, working memory, os lite, agentic project os, memoria viva, audit docs, tasks, cerrar sesion, continuar sesion, context index, Small Batches, small batches, commits atomicos
 - active: [automation-and-reference-fixtures](../topics/automation-and-reference-fixtures.md) - fixtures, audio sintetico, TTS, STT, benchmarks, Fixvox, electro-bun, sin interaccion humana
 - draft: [backend-and-model-routing](../topics/backend-and-model-routing.md) - backend, proxy, model routing, proveedores, API keys, Groq, OpenAI, OpenRouter, xAI
 - active: [dictation-tauri-foundation](../topics/dictation-tauri-foundation.md) - tauri, port, fundacion, stack, comandos, src-tauri
@@ -18,7 +18,7 @@ Generated: 2026-06-10T11:28:30.608Z
 - active: [product-direction](../topics/product-direction.md) - producto, MVP, alcance, direccion, no human interaction, automatizacion
 - draft: [selection-and-assistant-actions](../topics/selection-and-assistant-actions.md) - texto seleccionado, seleccion, assistant mode, asistente, quick chat, alt-q, presets, hotkeys
 - active: [source-project-map](../topics/source-project-map.md) - proyectos fuente, proyecto Tauri, CopyQ Tauri, copyq-tauri, proyecto canonico, Fixvox, electro-bun, que implementar, que portar
-- draft: [speckit-workflow](../topics/speckit-workflow.md) - speckit, spec, plan, tasks.md, feature grande
+- draft: [speckit-workflow](../topics/speckit-workflow.md) - speckit, spec, plan, tasks.md, feature grande, Small Batches, checkpoint
 - active: [ui-design-and-impeccable](../topics/ui-design-and-impeccable.md) - UI, diseño, design, frontend, React, app shell, voice dock, settings, impeccable
 
 ## Tasks
@@ -50,3 +50,4 @@ Generated: 2026-06-10T11:28:30.608Z
 | SpecKit | Flujo de specs, planes y tasks para features grandes. |
 | Port foundation | Spec draft `specs/001-port-foundation/`, base inicial del port Tauri. |
 | Datos de dictado | Audio, transcripciones, prompts, logs, correcciones y metadata de captura de voz. |
+| Small Batch | Unidad de trabajo agentico chica, revisable y reversible: una task SpecKit, un comportamiento observable o una sincronizacion documental acotada, cerrada con checks y commit atomico. |

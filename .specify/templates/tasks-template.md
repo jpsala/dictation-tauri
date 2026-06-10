@@ -13,6 +13,8 @@ description: "Task list template for feature implementation"
 
 **Organization**: Tasks are grouped by user story to enable independent implementation and testing of each story.
 
+**Small Batches**: Generate tasks small enough that one task or checkpoint can be implemented, reviewed, verified, and committed atomically. If a task would mix unrelated files, product decisions, refactors, and implementation, split it.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
@@ -247,6 +249,6 @@ With multiple developers:
 - [Story] label maps task to specific user story for traceability
 - Each user story should be independently completable and testable
 - Verify tests fail before implementing
-- Commit after each task or logical group
+- Commit after each task or checkpoint that passes its verification gate
 - Stop at any checkpoint to validate story independently
 - Avoid: vague tasks, same file conflicts, cross-story dependencies that break independence

@@ -88,7 +88,7 @@ rg -l "status:\s*active" docs/tasks -g "*.md"
 - El proyecto Tauri es canon tecnico para stack, ventanas, UI, settings, themes y Windows desktop mechanics; el proyecto canonico es canon funcional para dictado, runtime de voz, backend/proxy, policies/env y benchmarks.
 - Se creo `docs/topics/source-project-map.md`: scaffold/scripts son `adopt` desde CopyQ Tauri; ventanas/UI/settings/shortcut/tray son `adapt`; runtime/STT/benchmarks/ModelGateway/delivery son `adapt` desde Fixvox; control plane queda `reference`; wake/assistant/Quick Chat quedan `parked`; UIA/Koffi/Python/PowerShell hot path queda `reject`.
 - Se migro la continuidad viva desde `docs/active-work/` a `docs/tasks/`; las tasks activas tienen YAML validado y el trabajo cerrado vive en `docs/tasks/archive/`.
-- Se adopto regla SDD de commits atomicos constantes: commitear despues de cada task/checkpoint verificable con `tasks.md` y docs sincronizados.
+- Se adopto Small Batches como principio agentico: una task/comportamiento/checkpoint por tanda, checks verdes, `tasks.md` sincronizado y commit atomico.
 - Checkpoint A de `001-port-foundation` quedo completo: frontend React/Vite base, `package-lock.json`, build verde.
 
 ## Riesgos Que No Hay Que Olvidar
