@@ -1,6 +1,6 @@
 :root {
-  color: #192126;
-  background: #eef1f3;
+  color: oklch(0.21 0.018 235);
+  background: oklch(1 0 0);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -30,20 +30,27 @@ select {
   min-height: 100vh;
   place-items: center;
   padding: 32px;
+  background: oklch(0.97 0.004 230);
 }
 
-.foundation-panel {
-  width: min(100%, 720px);
-  border: 1px solid #c8d0d6;
+.voice-panel {
+  width: min(100%, 680px);
+  border: 1px solid oklch(0.86 0.012 235);
   border-radius: 8px;
-  background: #f9fafb;
-  padding: 32px;
-  box-shadow: 0 18px 48px rgb(35 45 55 / 10%);
+  background: oklch(0.995 0 0);
+  padding: 24px;
+}
+
+.voice-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
 }
 
 .eyebrow {
   margin: 0 0 10px;
-  color: #5a6872;
+  color: oklch(0.45 0.02 235);
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0;
@@ -52,46 +59,211 @@ select {
 
 h1 {
   margin: 0;
-  color: #151b1f;
+  color: oklch(0.21 0.018 235);
   font-size: 2rem;
   font-weight: 720;
+  line-height: 1.15;
   letter-spacing: 0;
 }
 
-.summary {
-  max-width: 58ch;
-  margin: 14px 0 0;
-  color: #3d4a52;
+.status-chip {
+  flex: 0 0 auto;
+  border: 1px solid oklch(0.86 0.012 235);
+  border-radius: 4px;
+  background: oklch(0.97 0.004 230);
+  color: oklch(0.21 0.018 235);
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.status-chip--recording {
+  border-color: oklch(0.56 0.15 35 / 45%);
+  background: oklch(0.56 0.15 35 / 10%);
+  color: oklch(0.41 0.12 35);
+}
+
+.status-chip--captured {
+  border-color: oklch(0.52 0.115 150 / 45%);
+  background: oklch(0.52 0.115 150 / 10%);
+  color: oklch(0.35 0.09 150);
+}
+
+.status-chip--permission_needed,
+.status-chip--failed {
+  border-color: oklch(0.54 0.165 25 / 45%);
+  background: oklch(0.54 0.165 25 / 10%);
+  color: oklch(0.4 0.13 25);
+}
+
+.status-chip--cancelled,
+.status-chip--stopping,
+.status-chip--requesting_permission {
+  border-color: oklch(0.66 0.14 70 / 45%);
+  background: oklch(0.66 0.14 70 / 12%);
+  color: oklch(0.4 0.09 70);
+}
+
+.capture-readout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  margin: 24px 0 0;
+  border: 1px solid oklch(0.86 0.012 235);
+  border-radius: 8px;
+  background: oklch(0.97 0.004 230);
+  padding: 14px;
+}
+
+.capture-readout p {
+  margin: 0;
+  color: oklch(0.21 0.018 235);
   font-size: 1rem;
   line-height: 1.55;
+}
+
+.state-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: oklch(0.45 0.02 235);
+}
+
+.state-dot--recording {
+  background: oklch(0.56 0.15 35);
+  box-shadow: 0 0 0 5px oklch(0.56 0.15 35 / 14%);
+}
+
+.state-dot--captured {
+  background: oklch(0.52 0.115 150);
+}
+
+.state-dot--permission_needed,
+.state-dot--failed {
+  background: oklch(0.54 0.165 25);
+}
+
+.state-dot--cancelled,
+.state-dot--stopping,
+.state-dot--requesting_permission {
+  background: oklch(0.66 0.14 70);
+}
+
+.control-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 18px 0 0;
+}
+
+.button {
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: oklch(0.21 0.018 235);
+  font-size: 0.95rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px oklch(0.56 0.15 35 / 28%);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.button-primary {
+  background: oklch(0.56 0.15 35);
+  color: oklch(1 0 0);
+}
+
+.button-primary:not(:disabled):hover {
+  background: oklch(0.48 0.14 35);
+}
+
+.button-secondary {
+  border-color: oklch(0.86 0.012 235);
+  background: oklch(0.995 0 0);
+}
+
+.button-secondary:not(:disabled):hover,
+.button-ghost:not(:disabled):hover {
+  background: oklch(0.97 0.004 230);
+}
+
+.button-ghost {
+  border-color: transparent;
+  background: transparent;
 }
 
 .status-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  margin: 28px 0 0;
+  margin: 20px 0 0;
 }
 
 .status-grid div {
   min-width: 0;
-  border: 1px solid #d8dee2;
+  border: 1px solid oklch(0.86 0.012 235);
   border-radius: 6px;
-  background: #ffffff;
+  background: oklch(1 0 0);
   padding: 14px;
 }
 
 .status-grid dt {
-  color: #60707a;
+  color: oklch(0.45 0.02 235);
   font-size: 0.78rem;
   font-weight: 700;
 }
 
 .status-grid dd {
   margin: 6px 0 0;
-  color: #172027;
+  color: oklch(0.21 0.018 235);
   font-size: 0.95rem;
   font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.evidence-line,
+.error-line {
+  margin: 16px 0 0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.evidence-line {
+  border: 1px solid oklch(0.52 0.115 150 / 36%);
+  background: oklch(0.52 0.115 150 / 8%);
+  color: oklch(0.28 0.07 150);
+}
+
+.error-line {
+  border: 1px solid oklch(0.54 0.165 25 / 36%);
+  background: oklch(0.54 0.165 25 / 8%);
+  color: oklch(0.38 0.12 25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
 }
 
 @media (max-width: 560px) {
@@ -99,8 +271,12 @@ h1 {
     padding: 18px;
   }
 
-  .foundation-panel {
+  .voice-panel {
     padding: 22px;
+  }
+
+  .voice-header {
+    flex-direction: column;
   }
 
   .status-grid {
