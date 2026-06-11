@@ -2,12 +2,12 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-11T17:01:40.951Z
+Generated: 2026-06-11T17:09:39.116Z
 
 ## Topics
 
 - active: [agentic-os-operations](../topics/agentic-os-operations.md) - crear sistema agentico, migrar sistema agentico, actualizar norte, os lite, adaptar proyecto, repo nuevo
-- active: [agentic-project-os-lite](../topics/agentic-project-os-lite.md) - norte, working memory, os lite, agentic project os, memoria viva, audit docs, tasks, cerrar sesion, continuar sesion, context index, Small Batches, small batches, commits atomicos
+- active: [agentic-project-os-lite](../topics/agentic-project-os-lite.md) - norte, working memory, os lite, agentic project os, memoria viva, audit docs, tasks, cerrar sesion, continuar sesion, siguiente, handoff thread, nuevo thread, context index, Small Batches, small batches, commits atomicos
 - active: [automation-and-reference-fixtures](../topics/automation-and-reference-fixtures.md) - fixtures, audio sintetico, TTS, STT, benchmarks, Fixvox, electro-bun, sin interaccion humana
 - draft: [backend-and-model-routing](../topics/backend-and-model-routing.md) - backend, proxy, model routing, proveedores, API keys, Groq, OpenAI, OpenRouter, xAI
 - active: [dictation-tauri-foundation](../topics/dictation-tauri-foundation.md) - tauri, port, fundacion, stack, comandos, src-tauri

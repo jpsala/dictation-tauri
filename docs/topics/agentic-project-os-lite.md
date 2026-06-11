@@ -12,6 +12,9 @@ triggers:
   - tasks
   - cerrar sesion
   - continuar sesion
+  - siguiente
+  - handoff thread
+  - nuevo thread
   - context index
   - Small Batches
   - small batches
@@ -110,6 +113,18 @@ Cada tanda debe tener:
 5. commit atomico reversible.
 
 Si una tanda empieza a mezclar responsabilidades, se divide antes de seguir.
+
+## Handoff Con `siguiente`
+
+`siguiente` es un comando conversacional de JP para cerrar la continuidad en un thread nuevo. El agente debe:
+
+1. verificar estado real con git y la spec/task activa;
+2. redactar el prompt compacto de "seguimos en la siguiente sesion" para el proximo Small Batch;
+3. crear o forkear un nuevo thread Codex en el mismo proyecto/directorio;
+4. enviar ese prompt al thread nuevo;
+5. devolver el thread creado a JP.
+
+El comando no significa continuar trabajando en el thread actual. El prompt debe incluir ruta inicial, ultimo commit esperado, worktree esperado, objetivo del batch, guardrails, checks de cierre, commit atomico y no push. Archivar el thread actual solo con pedido explicito o despues de confirmar que el nuevo thread quedo creado correctamente.
 
 ## Auditoria
 

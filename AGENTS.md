@@ -53,6 +53,17 @@ Para este proyecto, `docs/DEVELOPMENT.md` define un modo personal/dev permisivo:
 - Si un cambio implementa una task, marcarla en `specs/<feature>/tasks.md` en el mismo commit o en un commit documental inmediatamente asociado.
 - Si una tanda empieza a tocar demasiados archivos o responsabilidades, parar, dividir la task y commitear solo el subresultado verde.
 
+## Comando `siguiente`
+
+Cuando JP diga exactamente `siguiente`, tratarlo como pedido de handoff operativo a un thread nuevo, equivalente a "seguimos en la siguiente sesion", pero ejecutado por Codex:
+
+1. Verificar estado real del repo con `git status --short --branch`, ultimo commit y proxima task/spec pendiente.
+2. Armar un prompt compacto para el proximo Small Batch con ruta inicial, estado esperado, objetivo exacto, guardrails, checks de cierre, commit atomico y no push.
+3. Crear o forkear un thread Codex nuevo en el mismo proyecto/directorio y enviarle ese prompt.
+4. Devolver a JP el thread creado. Archivar el thread actual solo si JP lo pidio explicitamente o si el flujo lo requiere despues de confirmar el nuevo thread.
+
+No usar `siguiente` para avanzar en el mismo thread. No inventar estado: el prompt debe basarse en git, `docs/WORKING_MEMORY.md` y la spec/task vigente.
+
 ## Design Context
 
 Para trabajos de UI/frontend, leer `PRODUCT.md` y `DESIGN.md` si existen. Si no existen, usar `docs/PROJECT.md`, `docs/DEVELOPMENT.md` y el topic de UI correspondiente.
