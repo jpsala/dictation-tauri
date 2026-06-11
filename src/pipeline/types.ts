@@ -1,3 +1,9 @@
+import type {
+  CapturedAudioArtifact,
+  CaptureError,
+  CaptureMetadata,
+} from "../capture/types";
+
 export const pipelineStates = [
   "idle",
   "listening",
@@ -75,8 +81,16 @@ export type MockTranscriptionResult =
       text?: never;
     };
 
+export type PipelineInputKind =
+  | "simulated"
+  | "synthetic-fixture"
+  | "local-audio-fixture"
+  | "microphone";
+
 export type SimulatedRunRequest = {
   fixtureId: string;
+  inputKind?: PipelineInputKind;
+  capture?: CaptureMetadata;
   cancelAtState?: FailurePhase;
 };
 
@@ -156,8 +170,44 @@ export type RunCancelledEvent = {
   };
 };
 
+export type CaptureStartedEvent = {
+  type: "capture_started";
+  runId: string;
+  captureId: string;
+  at: number;
+  data: CaptureMetadata;
+};
+
+export type CaptureCompletedEvent = {
+  type: "capture_completed";
+  runId: string;
+  captureId: string;
+  at: number;
+  data: {
+    metadata: CaptureMetadata;
+    artifact: CapturedAudioArtifact;
+  };
+};
+
+export type CaptureFailedEvent = {
+  type: "capture_failed";
+  runId: string;
+  captureId: string;
+  at: number;
+  data: {
+    metadata: CaptureMetadata;
+    error: CaptureError;
+  };
+};
+
+export type CapturePipelineEvent =
+  | CaptureStartedEvent
+  | CaptureCompletedEvent
+  | CaptureFailedEvent;
+
 export type PipelineEvent =
   | PipelineStateLedgerEvent
+  | CapturePipelineEvent
   | TranscriptionCompletedEvent
   | DeliveryCompletedEvent
   | RunCompletedEvent
@@ -169,10 +219,12 @@ export type PipelineEventHandler = (event: PipelineEvent) => void;
 export type PipelineRun = {
   id: string;
   fixtureId: string;
+  inputKind: PipelineInputKind;
   state: PipelineState;
   states: PipelineState[];
   startedAt: number;
   endedAt?: number;
+  capture?: CaptureMetadata;
   transcript?: string;
   output?: string;
   delivery?: DeliveryResult;
@@ -182,9 +234,11 @@ export type PipelineRun = {
 export type SimulatedRunSummary = {
   runId: string;
   fixtureId: string;
+  inputKind: PipelineInputKind;
   events: PipelineEvent[];
   states: PipelineState[];
   terminalState: TerminalPipelineState;
+  capture?: CaptureMetadata;
   transcript?: string;
   output?: string;
   delivery?: DeliveryResult;

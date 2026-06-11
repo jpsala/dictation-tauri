@@ -1,11 +1,13 @@
 import type {
   DeliveryResult,
   PipelineEvent,
+  PipelineInputKind,
   PipelineState,
   RedactedPipelineError,
   SimulatedRunSummary,
   TerminalPipelineState,
 } from "./types";
+import type { CaptureMetadata } from "../capture/types";
 import { isTerminalPipelineState } from "./types";
 
 export function deriveRunSummaryFromEvents(
@@ -21,6 +23,8 @@ export function deriveRunSummaryFromEvents(
     .filter(isStateLedgerEvent)
     .map((event) => event.state);
   const terminalState = deriveTerminalState(finalEvent, states);
+  const inputKind = deriveInputKind(events);
+  const capture = deriveCaptureMetadata(events);
   const transcript = deriveTranscript(events);
   const delivery = deriveDelivery(events);
   const output = deriveOutput(events, delivery);
@@ -28,10 +32,12 @@ export function deriveRunSummaryFromEvents(
 
   return {
     runId: firstEvent.runId,
-    fixtureId: firstEvent.fixtureId,
+    fixtureId: deriveFixtureId(events),
+    inputKind,
     events: [...events],
     states,
     terminalState,
+    capture,
     transcript,
     output,
     delivery,
@@ -84,6 +90,42 @@ function deriveTranscript(events: readonly PipelineEvent[]): string | undefined 
 
     if (event.type === "transcription_completed") {
       return event.data.transcript;
+    }
+  }
+
+  return undefined;
+}
+
+function deriveFixtureId(events: readonly PipelineEvent[]): string {
+  for (const event of events) {
+    if ("fixtureId" in event) {
+      return event.fixtureId;
+    }
+  }
+
+  return "microphone";
+}
+
+function deriveInputKind(events: readonly PipelineEvent[]): PipelineInputKind {
+  if (events.some((event) => event.type.startsWith("capture_"))) {
+    return "microphone";
+  }
+
+  return "simulated";
+}
+
+function deriveCaptureMetadata(
+  events: readonly PipelineEvent[],
+): CaptureMetadata | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+
+    if (event.type === "capture_completed" || event.type === "capture_failed") {
+      return event.data.metadata;
+    }
+
+    if (event.type === "capture_started") {
+      return event.data;
     }
   }
 

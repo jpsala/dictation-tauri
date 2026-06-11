@@ -27,13 +27,13 @@
 
 **CRITICAL**: No user story work begins until this phase is complete.
 
-- [ ] T005 Create capture contract types in `src/capture/types.ts`
-- [ ] T006 [P] Create microphone capture artifact policy helper in `src/capture/artifact-policy.ts`
-- [ ] T007 [P] Create capture gateway port scaffold in `src/capture/gateway.ts`
-- [ ] T008 [P] Add capture contract tests with fake streams/artifacts in `tests/capture/capture-contract.test.ts`
-- [ ] T009 Add capture metadata/event extension tests in `tests/capture/capture-events.test.ts`
-- [ ] T010 Extend pipeline event/input types for microphone capture evidence in `src/pipeline/events.ts` and `src/pipeline/types.ts`
-- [ ] T011 Verify capture contract tests run without microphone access, real audio files, provider credentials, or provider calls
+- [X] T005 Create capture contract types in `src/capture/types.ts`
+- [X] T006 [P] Create microphone capture artifact policy helper in `src/capture/artifact-policy.ts`
+- [X] T007 [P] Create capture gateway port scaffold in `src/capture/gateway.ts`
+- [X] T008 [P] Add capture contract tests with fake streams/artifacts in `tests/capture/capture-contract.test.ts`
+- [X] T009 Add capture metadata/event extension tests in `tests/capture/capture-events.test.ts`
+- [X] T010 Extend pipeline event/input types for microphone capture evidence in `src/pipeline/events.ts` and `src/pipeline/types.ts`
+- [X] T011 Verify capture contract tests run without microphone access, real audio files, provider credentials, or provider calls
 
 **Checkpoint**: Capture contracts compile and tests exercise fake metadata only.
 
