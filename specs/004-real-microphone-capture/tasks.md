@@ -47,9 +47,9 @@
 
 ### Tests for User Story 1
 
-- [ ] T012 [P] [US1] Add WebView recorder adapter tests with mocked `MediaDevices` and `MediaRecorder` in `tests/capture/webview-recorder.test.ts`
-- [ ] T013 [P] [US1] Add permission/setup state tests in `tests/capture/webview-recorder.test.ts`
-- [ ] T014 [P] [US1] Add no-overlap and stop/cancel tests in `tests/capture/capture-contract.test.ts`
+- [X] T012 [P] [US1] Add WebView recorder adapter tests with mocked `MediaDevices` and `MediaRecorder` in `tests/capture/webview-recorder.test.ts`
+- [X] T013 [P] [US1] Add permission/setup state tests in `tests/capture/webview-recorder.test.ts`
+- [X] T014 [P] [US1] Add no-overlap and stop/cancel tests in `tests/capture/capture-contract.test.ts`
 
 ### Implementation for User Story 1
 

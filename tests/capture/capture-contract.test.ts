@@ -6,13 +6,12 @@ import {
   validateCapturedAudioArtifact,
   validateMicrophoneCaptureArtifactPath,
 } from "../../src/capture/artifact-policy";
+import {
+  createFakeCaptureArtifact,
+  createFakeCaptureStream,
+  FakeCaptureGateway,
+} from "../../src/capture/fake-gateway";
 import { ActiveCaptureSessionError } from "../../src/capture/gateway";
-import type { CaptureGateway } from "../../src/capture/gateway";
-import type {
-  CapturedAudioArtifact,
-  CaptureMetadata,
-  CaptureResult,
-} from "../../src/capture/types";
 import { isTerminalCaptureState } from "../../src/capture/types";
 
 describe("microphone capture contracts", () => {
@@ -63,7 +62,7 @@ describe("microphone capture contracts", () => {
   });
 
   it("validates captured audio metadata without reading files", () => {
-    const artifact = createFakeArtifact();
+    const artifact = createFakeCaptureArtifact();
 
     expect(validateCapturedAudioArtifact(artifact)).toMatchObject({
       ok: true,
@@ -72,8 +71,8 @@ describe("microphone capture contracts", () => {
   });
 
   it("models a fake capture lifecycle without microphone access", async () => {
-    const fakeStream = createFakeStream();
-    const gateway = new FakeCaptureGateway(fakeStream);
+    const fakeStream = createFakeCaptureStream();
+    const gateway = new FakeCaptureGateway({ stream: fakeStream });
 
     expect(await gateway.getPermissionState()).toBe("granted");
     const started = await gateway.startCapture();
@@ -113,6 +112,36 @@ describe("microphone capture contracts", () => {
     );
   });
 
+  it("stops fake stream tracks after cancellation", async () => {
+    const fakeStream = createFakeCaptureStream();
+    const gateway = new FakeCaptureGateway({ stream: fakeStream });
+
+    await gateway.startCapture();
+    const result = await gateway.cancelCapture();
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        phase: "cancelled",
+        code: "cancelled",
+      },
+    });
+    expect(fakeStream.tracks.every((track) => track.stopped)).toBe(true);
+  });
+
+  it("reports safe failures when stop is requested without an active capture", async () => {
+    const gateway = new FakeCaptureGateway();
+
+    await expect(gateway.stopCapture()).resolves.toMatchObject({
+      ok: false,
+      error: {
+        phase: "cancelled",
+        code: "cancelled",
+        message: "No active fake capture.",
+      },
+    });
+  });
+
   it("keeps capture terminal states explicit", () => {
     expect(isTerminalCaptureState("captured")).toBe(true);
     expect(isTerminalCaptureState("failed")).toBe(true);
@@ -120,124 +149,3 @@ describe("microphone capture contracts", () => {
     expect(isTerminalCaptureState("recording")).toBe(false);
   });
 });
-
-type FakeStreamTrack = {
-  kind: "audio";
-  stopped: boolean;
-};
-
-type FakeMediaStream = {
-  id: string;
-  tracks: FakeStreamTrack[];
-};
-
-class FakeCaptureGateway implements CaptureGateway {
-  private activeMetadata?: CaptureMetadata;
-
-  constructor(private readonly stream = createFakeStream()) {}
-
-  async getPermissionState() {
-    return "granted" as const;
-  }
-
-  async startCapture(): Promise<CaptureMetadata> {
-    if (this.activeMetadata) {
-      throw new ActiveCaptureSessionError(this.activeMetadata.captureId);
-    }
-
-    this.activeMetadata = {
-      captureId: "capture-001",
-      source: "microphone",
-      permissionStatus: "granted",
-      artifactPolicy: "gitignored-local",
-      deviceKind: "audioinput",
-      deviceLabel: "redacted-test-device",
-    };
-
-    return this.activeMetadata;
-  }
-
-  async stopCapture(): Promise<CaptureResult> {
-    const metadata = this.activeMetadata;
-
-    if (!metadata) {
-      return createFakeFailure("capture-001", "No active fake capture.");
-    }
-
-    const artifact = createFakeArtifact();
-    stopFakeStream(this.stream);
-    this.activeMetadata = undefined;
-
-    return {
-      ok: true,
-      metadata: {
-        ...metadata,
-        durationMs: artifact.durationMs,
-        mimeType: artifact.mimeType,
-        sizeBytes: artifact.sizeBytes,
-        artifact,
-      },
-      artifact,
-    };
-  }
-
-  async cancelCapture(): Promise<CaptureResult> {
-    const captureId = this.activeMetadata?.captureId ?? "capture-001";
-    stopFakeStream(this.stream);
-    this.activeMetadata = undefined;
-    return createFakeFailure(captureId, "Fake capture was cancelled.");
-  }
-}
-
-function createFakeStream(): FakeMediaStream {
-  return {
-    id: "fake-stream-001",
-    tracks: [
-      {
-        kind: "audio",
-        stopped: false,
-      },
-    ],
-  };
-}
-
-function stopFakeStream(stream: FakeMediaStream): void {
-  for (const track of stream.tracks) {
-    track.stopped = true;
-  }
-}
-
-function createFakeArtifact(): CapturedAudioArtifact {
-  return {
-    artifactId: "artifact-001",
-    captureId: "capture-001",
-    relativePath: "artifacts/microphone-capture/audio/capture-001.webm",
-    mimeType: "audio/webm",
-    extension: "webm",
-    sizeBytes: 2048,
-    durationMs: 1200,
-    sensitivity: "real-user-audio",
-    policy: "gitignored-local",
-  };
-}
-
-function createFakeFailure(
-  captureId: string,
-  message: string,
-): CaptureResult {
-  return {
-    ok: false,
-    metadata: {
-      captureId,
-      source: "microphone",
-      permissionStatus: "granted",
-      artifactPolicy: "gitignored-local",
-      deviceKind: "audioinput",
-    },
-    error: {
-      phase: "cancelled",
-      code: "cancelled",
-      message,
-    },
-  };
-}
