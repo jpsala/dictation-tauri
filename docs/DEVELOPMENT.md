@@ -152,6 +152,34 @@ artifacts/synthetic-audio-stt/
 
 Estos paths son evidencia local gitignored. No son persistencia de producto y no deben commitearse.
 
+Comandos MVP 3 de microfono real, por ahora placeholders dry-run sin `.env`, microfono, audio ni provider calls:
+
+```powershell
+npm run microphone-capture:check
+npm run microphone-capture:dry-run
+```
+
+Artifacts locales MVP 3 planeados:
+
+```text
+artifacts/microphone-capture/
+├── audio/
+├── transcripts/
+├── provider-payloads/
+└── reports/
+```
+
+Estos paths son evidencia local gitignored. No son persistencia de producto y no deben commitearse. No imprimir ni commitear audio real, transcripciones reales, provider payloads, logs de captura con contenido sensible, `.env` ni tokens.
+
+Checks manuales opcionales para MVP 3, solo cuando JP apruebe grabar audio local:
+
+```powershell
+npm run tauri:dev
+git status --short --ignored
+```
+
+El check manual debe confirmar que los artifacts bajo `artifacts/microphone-capture/` siguen ignored y que cualquier estado de provider faltante queda redactado.
+
 Comandos Tauri y verificacion reales:
 
 ```powershell

@@ -12,10 +12,10 @@
 
 **Purpose**: Establish local artifact policy, command scaffolding, and docs notes without recording audio or calling providers.
 
-- [ ] T001 Add `artifacts/microphone-capture/` local artifact patterns to `.gitignore`
-- [ ] T002 Add capture command/check placeholders to `package.json` without enabling real microphone or provider calls
-- [ ] T003 Document MVP 3 artifact paths, no-secret rules, and optional manual checks in `docs/DEVELOPMENT.md`
-- [ ] T004 [P] Update `specs/004-real-microphone-capture/quickstart.md` with exact planned local paths and CI-safe command names
+- [X] T001 Add `artifacts/microphone-capture/` local artifact patterns to `.gitignore`
+- [X] T002 Add capture command/check placeholders to `package.json` without enabling real microphone or provider calls
+- [X] T003 Document MVP 3 artifact paths, no-secret rules, and optional manual checks in `docs/DEVELOPMENT.md`
+- [X] T004 [P] Update `specs/004-real-microphone-capture/quickstart.md` with exact planned local paths and CI-safe command names
 
 **Checkpoint**: `git status --short --ignored` proves microphone artifacts are ignored; no command records real audio or calls a provider by default.
 

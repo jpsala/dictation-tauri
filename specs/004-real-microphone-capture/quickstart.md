@@ -10,11 +10,17 @@ These should remain green before and after microphone work:
 ```powershell
 npm run synthetic-audio:fixtures
 npm run synthetic-audio:stt:dry-run
+npm run microphone-capture:check
+npm run microphone-capture:dry-run
 npm run test:pipeline
 npm run build
 bun scripts/context-index.ts
 bun scripts/agent-context-audit.ts
 ```
+
+`npm run microphone-capture:check` and `npm run microphone-capture:dry-run`
+are Phase 1 placeholders. They must not request microphone permission, record
+audio, read `.env`, require provider credentials, or call a provider.
 
 ## Planned Artifact Paths
 
@@ -24,15 +30,27 @@ Captured microphone artifacts are local development data:
 artifacts/microphone-capture/
 ├── audio/
 ├── transcripts/
+├── provider-payloads/
 └── reports/
 ```
 
 Rules:
 
 - Do not commit real audio, real transcripts, provider payloads, or capture logs.
+- Keep provider payloads local under `artifacts/microphone-capture/provider-payloads/`
+  if optional real-provider checks are approved later.
 - Keep repo status clean for tracked files after manual capture checks.
 - Document any move from repo-local `artifacts/` to app-data storage before
   closing an implementation batch.
+
+The exact planned repo-local paths are:
+
+```text
+artifacts/microphone-capture/audio/
+artifacts/microphone-capture/transcripts/
+artifacts/microphone-capture/provider-payloads/
+artifacts/microphone-capture/reports/
+```
 
 ## Planned Manual Capture Check
 
@@ -66,6 +84,8 @@ Expected result:
 Future tasks should add:
 
 ```powershell
+npm run microphone-capture:check
+npm run microphone-capture:dry-run
 npm run test:pipeline -- tests/capture/capture-contract.test.ts
 ```
 
