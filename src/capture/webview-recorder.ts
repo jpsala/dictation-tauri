@@ -39,6 +39,7 @@ type ActiveRecording = {
   chunks: Blob[];
   mimeType: string;
   extension: string;
+  terminalError?: CaptureError;
 };
 
 const preferredMimeTypes = [
@@ -95,7 +96,14 @@ export class WebViewRecorderGateway implements CaptureGateway {
       return createMetadata(captureId, mapPermissionStatus(error));
     }
 
-    const recorder = new this.Recorder(stream, { mimeType: mime.mimeType });
+    let recorder: RecorderLike;
+    try {
+      recorder = new this.Recorder(stream, { mimeType: mime.mimeType });
+    } catch {
+      stopMediaStream(stream);
+      return createMetadata(captureId, "error");
+    }
+
     const metadata = createMetadata(captureId, "granted");
     const active: ActiveRecording = {
       captureId,
@@ -113,11 +121,18 @@ export class WebViewRecorderGateway implements CaptureGateway {
         active.chunks.push(event.data);
       }
     };
-    recorder.onerror = () => {
+    recorder.onerror = (event) => {
+      active.terminalError = createRecorderError(event.error);
       stopMediaStream(stream);
-      this.active = undefined;
     };
-    recorder.start();
+
+    try {
+      recorder.start();
+    } catch {
+      stopMediaStream(stream);
+      return createMetadata(captureId, "error");
+    }
+
     this.active = active;
 
     return metadata;
@@ -132,6 +147,17 @@ export class WebViewRecorderGateway implements CaptureGateway {
         "recording",
         "unknown",
         "No active microphone capture.",
+      );
+    }
+
+    if (active.terminalError) {
+      stopMediaStream(active.stream);
+      this.active = undefined;
+      return createFailure(
+        active.metadata,
+        active.terminalError.phase,
+        active.terminalError.code,
+        active.terminalError.message,
       );
     }
 
@@ -251,6 +277,40 @@ function createFailure(
       code,
       message,
     },
+  };
+}
+
+function createRecorderError(error: unknown): CaptureError {
+  const name = error instanceof DOMException ? error.name : "";
+
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return {
+      phase: "permission",
+      code: "permission-denied",
+      message: "Microphone permission was denied.",
+    };
+  }
+
+  if (name === "NotFoundError") {
+    return {
+      phase: "recording",
+      code: "device-not-found",
+      message: "No microphone input device was found.",
+    };
+  }
+
+  if (name === "NotReadableError") {
+    return {
+      phase: "recording",
+      code: "device-not-readable",
+      message: "Microphone input could not be read.",
+    };
+  }
+
+  return {
+    phase: "recording",
+    code: "unknown",
+    message: "Microphone recorder failed.",
   };
 }
 

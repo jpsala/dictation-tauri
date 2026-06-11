@@ -134,6 +134,38 @@ describe("WebView microphone recorder gateway", () => {
       },
     });
   });
+
+  it("maps recorder terminal errors to redacted capture failures", async () => {
+    const track = new FakeMediaStreamTrack();
+    const gateway = new WebViewRecorderGateway({
+      mediaDevices: {
+        getUserMedia: async () => createMediaStream([track]),
+      },
+      MediaRecorder: FakeMediaRecorder,
+      createCaptureId: () => "capture-recorder-error",
+    });
+
+    await gateway.startCapture();
+    FakeMediaRecorder.latest.emitError(
+      new DOMException("raw device detail with token", "NotReadableError"),
+    );
+    const result = await gateway.stopCapture();
+
+    expect(result).toMatchObject({
+      ok: false,
+      metadata: {
+        captureId: "capture-recorder-error",
+      },
+      error: {
+        phase: "recording",
+        code: "device-not-readable",
+        message: "Microphone input could not be read.",
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("raw device detail");
+    expect(JSON.stringify(result)).not.toContain("token");
+    expect(track.stopped).toBe(true);
+  });
 });
 
 describe("WebView recorder MIME policy", () => {
@@ -181,6 +213,10 @@ class FakeMediaRecorder {
 
   emitData(data: Blob): void {
     this.ondataavailable?.({ data });
+  }
+
+  emitError(error: unknown): void {
+    this.onerror?.({ error });
   }
 }
 

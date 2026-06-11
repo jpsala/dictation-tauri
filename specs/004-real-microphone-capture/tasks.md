@@ -53,10 +53,10 @@
 
 ### Implementation for User Story 1
 
-- [ ] T015 [US1] Implement fake capture gateway for automated tests in `src/capture/fake-gateway.ts`
-- [ ] T016 [US1] Implement WebView `MediaRecorder` adapter behind `CaptureGateway` in `src/capture/webview-recorder.ts`
-- [ ] T017 [US1] Implement recorder MIME selection and safe extension mapping in `src/capture/webview-recorder.ts`
-- [ ] T018 [US1] Implement capture terminal/error state mapping with redacted messages in `src/capture/webview-recorder.ts`
+- [X] T015 [US1] Implement fake capture gateway for automated tests in `src/capture/fake-gateway.ts`
+- [X] T016 [US1] Implement WebView `MediaRecorder` adapter behind `CaptureGateway` in `src/capture/webview-recorder.ts`
+- [X] T017 [US1] Implement recorder MIME selection and safe extension mapping in `src/capture/webview-recorder.ts`
+- [X] T018 [US1] Implement capture terminal/error state mapping with redacted messages in `src/capture/webview-recorder.ts`
 - [ ] T019 [US1] Add minimal app command/state wiring for explicit start/stop capture in `src/App.tsx`
 - [ ] T020 [US1] Add permission/setup/listening/stopping/captured/failed/cancelled UI states in `src/App.tsx` and `src/styles.css`
 - [ ] T021 [US1] Verify automated capture tests pass without real microphone access
