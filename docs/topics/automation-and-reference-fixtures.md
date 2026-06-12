@@ -99,3 +99,11 @@ Primer runner:
 - Comandos implementados sin provider calls: `npm run synthetic-audio:fixtures` y `npm run synthetic-audio:stt:dry-run`.
 - Reports dry-run locales: `artifacts/synthetic-audio-stt/reports/`.
 - El adapter directo local existe como shell redacted setup/provider-error; no hay comando real-provider habilitado para cierre automatico.
+
+## Estado MVP 3 CI-safe
+
+- Capture fake y WebView adapter estan cubiertos por tests sin pedir microfono real.
+- Captured audio entra al `PipelineService` y al shell `ModelGateway` sin provider calls por default.
+- Delivery evidence de captured runs distingue transcript disponible, copy fallback, fallo e incertidumbre sin emitir `paste_observed`.
+- Comandos dry-run implementados: `npm run microphone-capture:check` y `npm run microphone-capture:dry-run`.
+- Audio real y provider real siguen siendo verificaciones opcionales locales con aprobacion explicita de JP.

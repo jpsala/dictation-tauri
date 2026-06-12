@@ -130,16 +130,16 @@
 
 **Purpose**: Close MVP 3 without expanding desktop side effects or persistence.
 
-- [ ] T045 Update `specs/004-real-microphone-capture/quickstart.md` with final implemented commands and manual gates
-- [ ] T046 Update `docs/WORKING_MEMORY.md` and relevant topics with MVP 3 implementation status
-- [ ] T047 Run `npm run test:pipeline`
-- [ ] T048 Run `npm run synthetic-audio:stt:dry-run`
-- [ ] T049 Run `npm run build`
-- [ ] T050 Run `npm run visual:check`
-- [ ] T051 Run `$env:CARGO_TARGET_DIR="target-codex-check"; cargo check --manifest-path src-tauri/Cargo.toml` if `src-tauri/` changed
-- [ ] T052 Run `bun scripts/context-index.ts`
-- [ ] T053 Run `bun scripts/agent-context-audit.ts`
-- [ ] T054 Inspect `git status --short --ignored` and confirm no real audio, real transcripts, provider payloads, or secrets are tracked
+- [X] T045 Update `specs/004-real-microphone-capture/quickstart.md` with final implemented commands and manual gates
+- [X] T046 Update `docs/WORKING_MEMORY.md` and relevant topics with MVP 3 implementation status
+- [X] T047 Run `npm run test:pipeline`
+- [X] T048 Run `npm run synthetic-audio:stt:dry-run`
+- [X] T049 Run `npm run build`
+- [X] T050 Run `npm run visual:check`
+- [X] T051 Run `$env:CARGO_TARGET_DIR="target-codex-check"; cargo check --manifest-path src-tauri/Cargo.toml` if `src-tauri/` changed (not required; `src-tauri/` unchanged)
+- [X] T052 Run `bun scripts/context-index.ts`
+- [X] T053 Run `bun scripts/agent-context-audit.ts`
+- [X] T054 Inspect `git status --short --ignored` and confirm no real audio, real transcripts, provider payloads, or secrets are tracked
 
 **Checkpoint**: MVP 3 is verified by fake capture tests, dry-run pipeline tests, regression checks, ignored artifact paths, docs sync, and optional/manual evidence only when explicitly gated.
 

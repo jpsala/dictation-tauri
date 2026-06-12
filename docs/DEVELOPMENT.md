@@ -152,14 +152,14 @@ artifacts/synthetic-audio-stt/
 
 Estos paths son evidencia local gitignored. No son persistencia de producto y no deben commitearse.
 
-Comandos MVP 3 de microfono real, por ahora placeholders dry-run sin `.env`, microfono, audio ni provider calls:
+Comandos MVP 3 de microfono, por ahora dry-run sin `.env`, microfono, audio ni provider calls:
 
 ```powershell
 npm run microphone-capture:check
 npm run microphone-capture:dry-run
 ```
 
-Artifacts locales MVP 3 planeados:
+Artifacts locales MVP 3:
 
 ```text
 artifacts/microphone-capture/

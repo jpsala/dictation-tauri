@@ -20,7 +20,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | UI/design | seeded | `PRODUCT.md`, `DESIGN.md` | Usar antes de cualquier UI durable. |
 | Pipeline simulado | mvp1-complete | `specs/002-simulated-pipeline/tasks.md` | Mantener como baseline para MVP 2. |
 | Audio sintetico/STT | mvp2-dry-run-complete | `specs/003-synthetic-audio-stt/tasks.md` | T031 queda opcional/local si se decide correr provider real. |
-| Microfono real | mvp3-ci-safe-us3-complete | `specs/004-real-microphone-capture/tasks.md` | Cerrar Phase 6 docs/checks o pedir aprobacion explicita para T035-T036/T022-T024. |
+| Microfono real | mvp3-ci-safe-complete | `specs/004-real-microphone-capture/tasks.md` | Pedir aprobacion explicita para T035-T036/T022-T024 o definir proxima spec post-MVP3. |
 | Datos de dictado | decided | `docs/topics/privacy-and-dictation-data.md` | Modo personal/dev permisivo; no imprimir ni commitear secretos. |
 | OS Lite/docs | active | `docs/topics/agentic-project-os-lite.md` | Mantener `docs/tracks/`, `docs/skills/`, junction y audit verde. |
 
@@ -31,7 +31,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `001-port-foundation` | complete | `specs/001-port-foundation/tasks.md` |
 | `002-simulated-pipeline` | complete | `specs/002-simulated-pipeline/tasks.md` |
 | `003-synthetic-audio-stt` | dry-run complete | `specs/003-synthetic-audio-stt/tasks.md` |
-| `004-real-microphone-capture` | us1-us3 ci-safe complete | `specs/004-real-microphone-capture/tasks.md` |
+| `004-real-microphone-capture` | ci-safe complete | `specs/004-real-microphone-capture/tasks.md` |
 
 ## Tracks Activas
 
@@ -87,8 +87,8 @@ bun scripts/check-skills-junction.ts
 
 Decidir el siguiente salto:
 
-1. Ejecutar Phase 6 de `specs/004-real-microphone-capture/tasks.md` para sincronizar quickstart/docs y checks finales de MVP 3.
-2. Ejecutar T035-T036 o T022-T024 solo con aprobacion explicita de JP para audio/provider real local.
+1. Ejecutar T035-T036 o T022-T024 solo con aprobacion explicita de JP para audio/provider real local.
+2. Definir la proxima spec post-MVP3 si no se aprueba audio/provider real.
 3. Hacer revision arquitectonica antes de sumar side effects reales si se quiere un gate adicional.
 
 ## Promocion De Memoria

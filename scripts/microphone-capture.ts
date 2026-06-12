@@ -45,13 +45,13 @@ function createPlaceholderResult(mode: PlaceholderMode) {
       gitIgnoredStatus: "git status --short --ignored",
     },
     nextImplementationGate:
-      "Phase 2 must define capture contracts before real microphone capture.",
+      "Real microphone/provider checks require explicit JP approval before running.",
   };
 }
 
 async function main() {
   if (!hasFlag("--dry-run")) {
-    console.error("Only --dry-run placeholder commands are available in Phase 1.");
+    console.error("Only --dry-run microphone capture commands are available by default.");
     process.exit(2);
   }
 

@@ -1,11 +1,16 @@
 # Quickstart: Real Microphone Capture
 
-MVP3 is planned but not implemented yet. This quickstart defines the intended
-verification flow for the first implementation batches.
+MVP3 is implemented through the CI-safe path: fake capture, WebView recorder
+adapter boundaries, captured-audio pipeline submission, STT shell routing, and
+honest delivery evidence are test-covered without recording real audio or
+calling a real provider.
+
+Real microphone recording and real-provider transcription remain optional manual
+checks. They require explicit JP approval before running.
 
 ## Current Safe Checks
 
-These should remain green before and after microphone work:
+These are the implemented routine checks for MVP3 closure:
 
 ```powershell
 npm run synthetic-audio:fixtures
@@ -14,15 +19,17 @@ npm run microphone-capture:check
 npm run microphone-capture:dry-run
 npm run test:pipeline
 npm run build
+npm run visual:check
 bun scripts/context-index.ts
 bun scripts/agent-context-audit.ts
 ```
 
 `npm run microphone-capture:check` and `npm run microphone-capture:dry-run`
-are Phase 1 placeholders. They must not request microphone permission, record
-audio, read `.env`, require provider credentials, or call a provider.
+are dry-run artifact/capture helpers. They must not request microphone
+permission, record audio, read `.env`, require provider credentials, or call a
+provider.
 
-## Planned Artifact Paths
+## Artifact Paths
 
 Captured microphone artifacts are local development data:
 
@@ -43,7 +50,7 @@ Rules:
 - Document any move from repo-local `artifacts/` to app-data storage before
   closing an implementation batch.
 
-The exact planned repo-local paths are:
+The repo-local paths are:
 
 ```text
 artifacts/microphone-capture/audio/
@@ -52,9 +59,9 @@ artifacts/microphone-capture/provider-payloads/
 artifacts/microphone-capture/reports/
 ```
 
-## Planned Manual Capture Check
+## Optional Manual Capture Check
 
-After capture UI and adapter tasks exist:
+Run this only when JP explicitly approves recording local microphone audio:
 
 1. Start the Tauri app:
 
@@ -79,14 +86,17 @@ Expected result:
 - No real audio/transcript files are tracked by git.
 - If provider setup is missing, the app reports a redacted setup state.
 
-## Planned Automated Checks
+## Automated Coverage
 
-Future tasks should add:
+The capture and delivery evidence coverage lives in:
 
 ```powershell
 npm run microphone-capture:check
 npm run microphone-capture:dry-run
 npm run test:pipeline -- tests/capture/capture-contract.test.ts
+npm run test:pipeline -- tests/capture/webview-recorder.test.ts
+npm run test:pipeline -- tests/capture/captured-audio-pipeline.test.ts
+npm run test:pipeline -- tests/capture/delivery-evidence.test.ts
 ```
 
 Expected coverage:
@@ -96,6 +106,8 @@ Expected coverage:
 - Fake capture artifact metadata.
 - Pipeline event ledger with capture metadata.
 - Delivery evidence that does not claim paste observation.
+- Redacted provider setup failures without provider calls.
+- UI smoke flow for fake capture, cancellation, and captured-run submission.
 
 ## Out Of Scope For MVP3 First Cut
 

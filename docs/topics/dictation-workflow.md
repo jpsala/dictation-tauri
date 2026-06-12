@@ -66,7 +66,7 @@ Nombres de UI:
 
 - MVP 1 debe correr con pipeline simulado y adapter mock.
 - MVP 2 debe correr con audio sintetico y STT real sobre fixtures controlados; tambien puede usar audio local real si acelera desarrollo.
-- MVP 3 agrega microfono real con push-to-talk/toggle y stop-submit.
+- MVP 3 agrega la frontera de microfono y stop-submit sobre captura fake/WebView testable; la grabacion real queda como check manual aprobado.
 - Delivery inicial: directo best-effort con copy fallback.
 - Preview y recovery UI son mejoras tempranas, no bloqueo del MVP 0-3.
 - Texto seleccionado real no entra en MVP 0-3.

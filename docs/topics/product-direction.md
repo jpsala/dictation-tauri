@@ -87,19 +87,20 @@ Cierre:
 
 ### MVP 3 - Captura De Microfono
 
-- Captura local real.
-- Permisos de microfono.
-- Start/stop robusto.
+- Captura local real queda como verificacion manual/opcional aprobada por JP.
+- Permisos de microfono quedan modelados por adapter WebView y estados de setup; no se pidio permiso real en cierre CI-safe.
+- Start/stop robusto cubierto por fake gateway y tests de adapter.
 - Persistencia de producto aun no definida; persistencia experimental local permitida en dev.
-- Push-to-talk/toggle y stop-submit funcionan sobre una sesion real.
-- Delivery directo best-effort con copy fallback. Preview no bloquea el MVP.
+- Stop-submit funciona sobre captured-audio fake/testable y pipeline real de la app.
+- Delivery directo best-effort se modela como evidencia honesta con transcript available/copy fallback; preview no bloquea el MVP.
 - Side effects desktop viven en Rust/Tauri o frontera host explicita: permisos, microfono, hotkeys, tray, foco y clipboard.
 - Capabilities de Tauri se agregan solo por necesidad de feature y ventana.
 - Captura real de texto seleccionado queda fuera de este MVP.
 
 Cierre:
 
-- JP puede dictar una frase real y obtener texto insertado o copiado sin perdida silenciosa.
+- Cierre CI-safe: US1-US3 de `specs/004-real-microphone-capture/tasks.md` pasan sin audio real ni provider real.
+- Cierre manual opcional: JP puede dictar una frase real y obtener texto insertado o copiado sin perdida silenciosa, solo si aprueba grabar audio local.
 - La app muestra estado claro para listening/transcribing/processing/delivering/completed/failed/cancelled.
 - La app no expone secretos al frontend ni reclama paste observado sin evidencia.
 - Audio real, transcript real y logs pueden existir localmente en dev; antes de producto estable, documentar ruta/formato/ciclo de vida.

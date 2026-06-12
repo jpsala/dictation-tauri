@@ -16,7 +16,7 @@
     "context:audit": "bun scripts/agent-context-audit.ts",
     "context:refresh": "bun scripts/context-refresh.ts",
     "skills:check": "bun scripts/check-skills-junction.ts",
-    "visual:check": "playwright test",
+    "visual:check": "playwright test --workers=1",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
