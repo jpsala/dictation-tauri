@@ -106,7 +106,8 @@ export class PipelineService {
     activeRun: ActiveRun,
   ): Promise<SimulatedRunSummary> {
     const events: PipelineEvent[] = [];
-    const fixture = this.getFixture(request.fixtureId);
+    const fixture =
+      this.getFixture(request.fixtureId) ?? createMicrophoneFixture(request);
     let currentState: PipelineState = "idle";
     let output: string | undefined;
 
@@ -219,6 +220,56 @@ export class PipelineService {
       return fail(createMissingFixtureError(request.fixtureId));
     }
 
+    if (request.inputKind === "microphone" && request.capture) {
+      append({
+        type: "capture_started",
+        runId: activeRun.runId,
+        captureId: request.capture.captureId,
+        at: this.now(),
+        data: request.capture,
+      });
+
+      if (request.captureError) {
+        append({
+          type: "capture_failed",
+          runId: activeRun.runId,
+          captureId: request.capture.captureId,
+          at: this.now(),
+          data: {
+            metadata: request.capture,
+            error: request.captureError,
+          },
+        });
+
+        return fail(
+          createRedactedPipelineError(
+            "listening",
+            "Capture failed before transcription.",
+          ),
+        );
+      }
+
+      if (!request.captureArtifact) {
+        return fail(
+          createRedactedPipelineError(
+            "listening",
+            "Captured audio artifact is unavailable.",
+          ),
+        );
+      }
+
+      append({
+        type: "capture_completed",
+        runId: activeRun.runId,
+        captureId: request.capture.captureId,
+        at: this.now(),
+        data: {
+          metadata: request.capture,
+          artifact: request.captureArtifact,
+        },
+      });
+    }
+
     if (await transition("listening")) {
       return deriveRunSummaryFromEvents(events);
     }
@@ -238,6 +289,7 @@ export class PipelineService {
 
     const transcription = await this.transcriptionAdapter.transcribe(fixture, {
       runId: activeRun.runId,
+      capture: request.capture,
     });
 
     if (activeRun.cancelled) {
@@ -260,13 +312,13 @@ export class PipelineService {
       },
     });
 
-    if (!fixture.expectedOutput) {
+    if (!fixture.expectedOutput && request.inputKind !== "microphone") {
       return fail(
         createRedactedPipelineError("delivering", "Fixture has no output."),
       );
     }
 
-    output = fixture.expectedOutput;
+    output = fixture.expectedOutput ?? transcription.text;
 
     if (await transition("delivering")) {
       return deriveRunSummaryFromEvents(events);
@@ -328,4 +380,18 @@ function performanceNow(): number {
 
 async function defaultYieldControl(): Promise<void> {
   await Promise.resolve();
+}
+
+function createMicrophoneFixture(
+  request: SimulatedRunRequest,
+): SimulatedFixture | undefined {
+  if (request.inputKind !== "microphone" || !request.capture) {
+    return undefined;
+  }
+
+  return {
+    id: request.fixtureId,
+    label: "Microphone capture",
+    deliveryMode: "skipped",
+  };
 }

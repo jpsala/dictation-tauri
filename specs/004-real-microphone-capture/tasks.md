@@ -79,15 +79,15 @@
 
 ### Tests for User Story 2
 
-- [ ] T025 [P] [US2] Add captured-audio pipeline integration tests in `tests/capture/captured-audio-pipeline.test.ts`
-- [ ] T026 [P] [US2] Add missing-provider setup tests for captured audio in `tests/capture/captured-audio-pipeline.test.ts`
-- [ ] T027 [P] [US2] Add no-overlap capture/run guard tests in `tests/capture/captured-audio-pipeline.test.ts`
+- [X] T025 [P] [US2] Add captured-audio pipeline integration tests in `tests/capture/captured-audio-pipeline.test.ts`
+- [X] T026 [P] [US2] Add missing-provider setup tests for captured audio in `tests/capture/captured-audio-pipeline.test.ts`
+- [X] T027 [P] [US2] Add no-overlap capture/run guard tests in `tests/capture/captured-audio-pipeline.test.ts`
 
 ### Implementation for User Story 2
 
-- [ ] T028 [US2] Add captured-audio input adapter from `CaptureResult` to pipeline input in `src/pipeline/ports.ts`
-- [ ] T029 [US2] Connect capture metadata events to `PipelineService` in `src/pipeline/service.ts`
-- [ ] T030 [US2] Extend run summary derivation with `inputKind: "microphone"` and safe capture metadata in `src/pipeline/events.ts`
+- [X] T028 [US2] Add captured-audio input adapter from `CaptureResult` to pipeline input in `src/pipeline/ports.ts`
+- [X] T029 [US2] Connect capture metadata events to `PipelineService` in `src/pipeline/service.ts`
+- [X] T030 [US2] Extend run summary derivation with `inputKind: "microphone"` and safe capture metadata in `src/pipeline/events.ts`
 - [ ] T031 [US2] Route captured audio artifacts through existing `ModelGateway` dry-run/direct shell in `src/model-gateway/direct-stt.ts`
 - [ ] T032 [US2] Preserve credential-free dry-run behavior and redacted provider setup states in `src/model-gateway/direct-stt.ts`
 - [ ] T033 [US2] Wire captured-run submission from app command state to `PipelineService` in `src/App.tsx`

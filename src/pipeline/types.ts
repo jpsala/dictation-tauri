@@ -2,6 +2,7 @@ import type {
   CapturedAudioArtifact,
   CaptureError,
   CaptureMetadata,
+  CaptureResult,
 } from "../capture/types";
 
 export const pipelineStates = [
@@ -91,8 +92,18 @@ export type SimulatedRunRequest = {
   fixtureId: string;
   inputKind?: PipelineInputKind;
   capture?: CaptureMetadata;
+  captureArtifact?: CapturedAudioArtifact;
+  captureError?: CaptureError;
   cancelAtState?: FailurePhase;
 };
+
+export type CapturedAudioRunRequest = SimulatedRunRequest & {
+  fixtureId: "microphone";
+  inputKind: "microphone";
+  capture: CaptureMetadata;
+};
+
+export type CapturedAudioInput = CaptureResult;
 
 export type PipelineStateEvent = {
   runId: string;

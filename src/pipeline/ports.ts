@@ -1,4 +1,6 @@
 import type {
+  CapturedAudioInput,
+  CapturedAudioRunRequest,
   DeliveryResult,
   MockTranscriptionResult,
   SimulatedFixture,
@@ -9,6 +11,7 @@ export type MockTranscriptionAdapter = {
     fixture: SimulatedFixture,
     context?: {
       runId: string;
+      capture?: CapturedAudioRunRequest["capture"];
     },
   ): Promise<MockTranscriptionResult>;
 };
@@ -90,3 +93,29 @@ export const fixtureDeliveryAdapter: MockDeliveryAdapter = {
     }
   },
 };
+
+export function createCapturedAudioPipelineRequest(
+  capture: CapturedAudioInput,
+): CapturedAudioRunRequest {
+  if (capture.ok) {
+    return {
+      fixtureId: "microphone",
+      inputKind: "microphone",
+      capture: {
+        ...capture.metadata,
+        artifact: capture.artifact,
+        durationMs: capture.artifact.durationMs,
+        mimeType: capture.artifact.mimeType,
+        sizeBytes: capture.artifact.sizeBytes,
+      },
+      captureArtifact: capture.artifact,
+    };
+  }
+
+  return {
+    fixtureId: "microphone",
+    inputKind: "microphone",
+    capture: capture.metadata,
+    captureError: capture.error,
+  };
+}
