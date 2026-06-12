@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createFakeCaptureArtifact } from "../../src/capture/fake-gateway";
 import type { CaptureResult } from "../../src/capture/types";
-import { createDirectLocalSttGateway } from "../../src/model-gateway/direct-stt";
+import { createCapturedAudioTranscriptionAdapter } from "../../src/model-gateway/direct-stt";
+import type { ModelGateway } from "../../src/model-gateway/types";
 import { createCapturedAudioPipelineRequest } from "../../src/pipeline/ports";
 import {
   ActivePipelineRunError,
@@ -18,29 +19,34 @@ describe("captured audio pipeline integration", () => {
     const request = createCapturedAudioPipelineRequest(capture);
     const events: PipelineEvent[] = [];
     let tick = 1_000;
+    const gateway: ModelGateway = {
+      async transcribe(input) {
+        expect(input).toMatchObject({
+          runId: "captured-run-001",
+          fixtureId: "microphone",
+          audioPath: "artifacts/microphone-capture/audio/capture-001.webm",
+          mode: "dry-run",
+        });
+
+        return {
+          status: "ok",
+          text: "captured fake transcript",
+          provider: "captured-dry-run",
+          model: "fake-artifact",
+          latencyMs: 9,
+          requestId: `captured:${input.runId}`,
+        };
+      },
+    };
 
     const service = new PipelineService({
       createRunId: () => "captured-run-001",
       now: () => tick++,
       onEvent: (event) => events.push(event),
-      transcriptionAdapter: {
-        async transcribe(_fixture, context) {
-          expect(context?.capture?.artifact?.relativePath).toBe(
-            "artifacts/microphone-capture/audio/capture-001.webm",
-          );
-          return {
-            text: "captured fake transcript",
-            latencyMs: 9,
-            stt: {
-              provider: "captured-dry-run",
-              model: "fake-artifact",
-              mode: "dry-run",
-              audioPath: context?.capture?.artifact?.relativePath,
-              requestId: `captured:${context?.runId}`,
-            },
-          };
-        },
-      },
+      transcriptionAdapter: createCapturedAudioTranscriptionAdapter({
+        gateway,
+        mode: "dry-run",
+      }),
     });
 
     const summary = await service.run(request);
@@ -83,37 +89,12 @@ describe("captured audio pipeline integration", () => {
   it("surfaces missing-provider setup as a redacted captured-audio failure", async () => {
     const capture = createCapturedAudioResult();
     const request = createCapturedAudioPipelineRequest(capture);
-    const gateway = createDirectLocalSttGateway({
-      provider: "local-provider",
-      model: "local-stt-model",
-    });
     const service = new PipelineService({
       createRunId: () => "captured-run-missing-provider",
-      transcriptionAdapter: {
-        async transcribe(_fixture, context) {
-          const result = await gateway.transcribe({
-            runId: context?.runId ?? "missing-run",
-            fixtureId: "microphone",
-            audioPath: context?.capture?.artifact?.relativePath ?? "",
-            mode: "real",
-          });
-
-          if (result.status === "ok") {
-            return {
-              text: result.text,
-              latencyMs: result.latencyMs,
-            };
-          }
-
-          return {
-            error: {
-              phase: "transcribing",
-              message: result.error.message,
-            },
-            latencyMs: result.latencyMs ?? 0,
-          };
-        },
-      },
+      transcriptionAdapter: createCapturedAudioTranscriptionAdapter({
+        provider: "local-provider",
+        model: "local-stt-model",
+      }),
     });
 
     const summary = await service.run(request);

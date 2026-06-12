@@ -26,6 +26,22 @@ test("runs a fake start and stop capture flow", async ({ page }) => {
   await expect(page.getByTestId("capture-artifact")).toHaveText(
     "artifacts/microphone-capture/audio/capture-001.webm",
   );
+  await expect(page.getByTestId("pipeline-state")).toHaveText("Not submitted");
+});
+
+test("submits a captured run to the credential-free STT shell", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Start capture" }).click();
+  await page.getByRole("button", { name: "Stop capture" }).click();
+  await page.getByRole("button", { name: "Submit captured run" }).click();
+
+  await expect(page.getByTestId("pipeline-state")).toHaveText("Setup needed");
+  await expect(page.getByTestId("pipeline-message")).toHaveText(
+    "Direct local STT provider is not configured.",
+  );
 });
 
 test("runs a fake cancellation flow", async ({ page }) => {

@@ -211,7 +211,7 @@ h1 {
 
 .status-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(146px, 1fr));
   gap: 12px;
   margin: 20px 0 0;
 }
@@ -239,7 +239,8 @@ h1 {
 }
 
 .evidence-line,
-.error-line {
+.error-line,
+.pipeline-line {
   margin: 16px 0 0;
   border-radius: 6px;
   padding: 10px 12px;
@@ -258,6 +259,31 @@ h1 {
   border: 1px solid oklch(0.54 0.165 25 / 36%);
   background: oklch(0.54 0.165 25 / 8%);
   color: oklch(0.38 0.12 25);
+}
+
+.pipeline-line {
+  border: 1px solid oklch(0.86 0.012 235);
+  background: oklch(0.97 0.004 230);
+  color: oklch(0.21 0.018 235);
+}
+
+.pipeline-line--captured {
+  border-color: oklch(0.52 0.115 150 / 36%);
+  background: oklch(0.52 0.115 150 / 8%);
+  color: oklch(0.28 0.07 150);
+}
+
+.pipeline-line--failed {
+  border-color: oklch(0.54 0.165 25 / 36%);
+  background: oklch(0.54 0.165 25 / 8%);
+  color: oklch(0.38 0.12 25);
+}
+
+.pipeline-line--requesting_permission,
+.pipeline-line--cancelled {
+  border-color: oklch(0.66 0.14 70 / 36%);
+  background: oklch(0.66 0.14 70 / 10%);
+  color: oklch(0.4 0.09 70);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -88,10 +88,10 @@
 - [X] T028 [US2] Add captured-audio input adapter from `CaptureResult` to pipeline input in `src/pipeline/ports.ts`
 - [X] T029 [US2] Connect capture metadata events to `PipelineService` in `src/pipeline/service.ts`
 - [X] T030 [US2] Extend run summary derivation with `inputKind: "microphone"` and safe capture metadata in `src/pipeline/events.ts`
-- [ ] T031 [US2] Route captured audio artifacts through existing `ModelGateway` dry-run/direct shell in `src/model-gateway/direct-stt.ts`
-- [ ] T032 [US2] Preserve credential-free dry-run behavior and redacted provider setup states in `src/model-gateway/direct-stt.ts`
-- [ ] T033 [US2] Wire captured-run submission from app command state to `PipelineService` in `src/App.tsx`
-- [ ] T034 [US2] Verify `npm run test:pipeline` passes without provider credentials or provider calls
+- [X] T031 [US2] Route captured audio artifacts through existing `ModelGateway` dry-run/direct shell in `src/model-gateway/direct-stt.ts`
+- [X] T032 [US2] Preserve credential-free dry-run behavior and redacted provider setup states in `src/model-gateway/direct-stt.ts`
+- [X] T033 [US2] Wire captured-run submission from app command state to `PipelineService` in `src/App.tsx`
+- [X] T034 [US2] Verify `npm run test:pipeline` passes without provider credentials or provider calls
 
 ### Manual / Optional Verification for User Story 2
 
