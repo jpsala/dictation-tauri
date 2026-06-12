@@ -20,8 +20,8 @@ Objetivo probable: definir el proximo Small Batch post-MVP3 o, solo con aprobaci
 
 Estado verificado:
 
-- Branch `main` ahead 23 sobre `origin/main`.
-- Ultimo commit previo: `8331f97 docs: close mvp3 ci-safe`.
+- Branch `main` ahead 24 sobre `origin/main`.
+- Ultimo commit previo: `21b8722 docs: refresh continuation handoff`.
 - `npm run build` pasa.
 - `npm run visual:check` pasa.
 - `npm run test:pipeline` pasa para success/failure/cancelacion/no-overlap/event ledger.
