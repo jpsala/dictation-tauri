@@ -13,7 +13,7 @@ primary_refs:
   - docs/PROJECT.md
   - docs/DECISIONS.md
   - specs/001-port-foundation/spec.md
-  - docs/tasks/mvp-and-reference-resources.md
+  - docs/tracks/mvp-and-reference-resources.md
 ---
 
 # Direccion De Producto

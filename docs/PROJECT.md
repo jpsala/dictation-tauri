@@ -29,8 +29,8 @@ El proyecto ya tiene una fuente de verdad liviana para continuidad entre sesione
 - `docs/TOPICS.md` enruta topics recuperables.
 - `docs/DECISIONS.md` registra decisiones durables iniciales.
 - `.specify/memory/constitution.md` define principios SpecKit del proyecto.
-- `scripts/context-index.ts` genera un indice rapido de topics, tasks, specs y aliases.
-- `scripts/agent-context-audit.ts` valida que topics, tasks e indice esten sincronizados.
+- `scripts/context-index.ts` genera un indice rapido de topics, tracks, specs, skills y aliases.
+- `scripts/agent-context-audit.ts` valida que topics, tracks, skills e indice esten sincronizados.
 
 Este baseline no incluye una app Tauri funcional todavia.
 
@@ -44,7 +44,7 @@ Este baseline no incluye una app Tauri funcional todavia.
 
 ## Infraestructura Relacionada
 
-- `.agents/skills/`: skills locales incluidas como parte del sistema.
+- `docs/skills/`: skills locales incluidas como parte del sistema.
 - `.specify/`: infraestructura SpecKit portable.
 - `scripts/context-index.ts`: generador de `docs/.generated/context-index.md`.
-- `scripts/agent-context-audit.ts`: auditor de docs, topics, tasks e indice generado.
+- `scripts/agent-context-audit.ts`: auditor de docs, topics, tracks, skills e indice generado.

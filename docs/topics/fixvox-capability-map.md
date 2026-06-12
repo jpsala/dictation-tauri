@@ -17,7 +17,7 @@ primary_refs:
   - docs/topics/selection-and-assistant-actions.md
   - docs/topics/backend-and-model-routing.md
   - docs/topics/automation-and-reference-fixtures.md
-  - docs/tasks/mvp-and-reference-resources.md
+  - docs/tracks/mvp-and-reference-resources.md
 ---
 
 # Mapa De Capacidades Fixvox

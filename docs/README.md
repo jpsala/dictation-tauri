@@ -7,7 +7,7 @@ Este directorio separa documentacion estable, trabajos vivos y conocimiento recu
 Leer en capas:
 
 ```text
-context-index -> WORKING_MEMORY -> TOPICS -> topic/task/spec especifico -> referencia profunda -> codigo puntual
+context-index -> WORKING_MEMORY -> TOPICS -> topic/track/spec especifico -> referencia profunda -> codigo puntual
 ```
 
 No cargar documentos largos si el topic de entrada alcanza para decidir. Antes de abrir docs completos, buscar candidatos por nombre, frontmatter y triggers.
@@ -19,7 +19,7 @@ Para entender el estado actual sin inflar contexto:
 1. `docs/.generated/context-index.md`: indice rapido generado.
 2. `WORKING_MEMORY.md`: estado vivo, spec activa, riesgos y proximo paso.
 3. `TOPICS.md`: router para elegir topic.
-4. Topic/task/spec especifico.
+4. Topic/track/spec especifico.
 5. Documentos raiz o referencias profundas solo bajo demanda.
 
 `PROJECT.md`, `ASSISTANT_RULES.md`, `DEVELOPMENT.md`, specs completas y referencias largas son fuentes estables, no lectura obligatoria inicial.
@@ -28,8 +28,9 @@ Para entender el estado actual sin inflar contexto:
 
 - La verdad vigente debe vivir en documentos raiz o en `docs/topics/`.
 - `WORKING_MEMORY.md` es estado vivo y debe apuntar a la verdad estable, no duplicarla.
-- `docs/tasks/` guarda trabajos vivos retomables. Se edita, comprime, limpia o archiva.
-- Si una task descubre algo durable, copiarlo o resumirlo en el documento estable correspondiente.
+- `docs/tracks/` guarda trabajos vivos retomables. Se edita, comprime, limpia o archiva.
+- `docs/skills/` guarda skills locales portables y versionadas; `.agents/skills` es compatibilidad local por junction.
+- Si una track descubre algo durable, copiarlo o resumirlo en el documento estable correspondiente.
 
 ## Organizacion
 
@@ -41,7 +42,7 @@ Para entender el estado actual sin inflar contexto:
 - `GLOSSARY.md`: aliases, nombres cortos y definiciones recurrentes.
 - `TOPICS.md` y `docs/topics/`: conocimiento recuperable por area, situacion, restriccion o patron.
 - `WORKING_MEMORY.md`: memoria operativa actual.
-- `docs/tasks/`: trabajos vivos retomables.
+- `docs/tracks/`: trabajos vivos retomables.
 
 ## Audit De Contexto
 

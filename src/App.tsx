@@ -4,7 +4,10 @@ import type { CaptureResult, CaptureState } from "./capture/types";
 import { createCapturedAudioTranscriptionAdapter } from "./model-gateway/direct-stt";
 import { createCapturedAudioPipelineRequest } from "./pipeline/ports";
 import { PipelineService } from "./pipeline/service";
-import type { SimulatedRunSummary } from "./pipeline/types";
+import type {
+  DeliveryEvidence,
+  SimulatedRunSummary,
+} from "./pipeline/types";
 
 type CaptureUiState = {
   state: CaptureState;
@@ -36,6 +39,84 @@ const pipelineStatusLabels: Record<PipelineUiState["status"], string> = {
   error: "Setup needed",
   cancelled: "Cancelled",
 };
+
+export function applyCopiedFallback(
+  summary: SimulatedRunSummary,
+): SimulatedRunSummary {
+  if (summary.deliveryEvidence?.status === "copied") {
+    return summary;
+  }
+
+  if (!summary.deliveryEvidence?.output) {
+    return summary;
+  }
+
+  return {
+    ...summary,
+    deliveryEvidence: {
+      status: "copied",
+      output: summary.deliveryEvidence.output,
+      reason: "Transcript copied as fallback.",
+    },
+  };
+}
+
+export function getRecoveryAction(
+  summary?: SimulatedRunSummary,
+): string | undefined {
+  if (!summary) {
+    return undefined;
+  }
+
+  if (summary.terminalState === "cancelled") {
+    return "Start a new capture when you are ready.";
+  }
+
+  if (summary.terminalState === "error") {
+    switch (summary.error?.phase) {
+      case "listening":
+        return "Check microphone permission or device setup, then capture again.";
+      case "transcribing":
+        return "Check STT provider setup or retry the captured artifact.";
+      case "delivering":
+        return "Copy the transcript fallback or retry delivery.";
+      default:
+        return "Retry the captured run after resolving the reported setup issue.";
+    }
+  }
+
+  switch (summary.deliveryEvidence?.status) {
+    case "available":
+      return "Copy the transcript when you are ready to recover the result.";
+    case "uncertain":
+      return "Copy the transcript or retry delivery without claiming paste success.";
+    case "copied":
+      return "Paste the copied transcript into the target app.";
+    case "failed":
+      return "Retry the captured run after resolving the reported delivery issue.";
+    default:
+      return undefined;
+  }
+}
+
+function describeDeliveryEvidence(
+  evidence: DeliveryEvidence | undefined,
+): string | undefined {
+  switch (evidence?.status) {
+    case "available":
+      return "Transcript is available locally. Delivery has not been observed.";
+    case "copied":
+      return evidence.reason ?? "Transcript copied as fallback.";
+    case "uncertain":
+      return evidence.reason ?? "Delivery remains uncertain; transcript is still available.";
+    case "paste_sent":
+      return "Paste was sent, but observation is not implemented in this batch.";
+    case "failed":
+      return evidence.reason ?? "Delivery failed before a confirmed handoff.";
+    default:
+      return undefined;
+  }
+}
 
 export function App() {
   const gateway = useMemo(() => new FakeCaptureGateway(), []);
@@ -143,11 +224,15 @@ export function App() {
       );
 
       if (summary.terminalState === "done") {
+        const deliveryMessage =
+          describeDeliveryEvidence(summary.deliveryEvidence) ??
+          (summary.transcript
+            ? "Transcript is available from the captured run."
+            : "Captured run completed without transcript text.");
+
         setPipelineUi({
           status: "done",
-          message: summary.transcript
-            ? "Transcript is available from the captured run."
-            : "Captured run completed without transcript text.",
+          message: deliveryMessage,
           summary,
         });
         return;
@@ -175,6 +260,47 @@ export function App() {
     }
   }
 
+  async function copyTranscriptFallback() {
+    const summary = pipelineUi.summary;
+    const text =
+      summary?.deliveryEvidence?.output ?? summary?.output ?? summary?.transcript;
+
+    if (!summary || !text) {
+      setPipelineUi({
+        status: "error",
+        message: "No transcript is available to copy.",
+        summary,
+      });
+      return;
+    }
+
+    if (!navigator.clipboard?.writeText) {
+      setPipelineUi({
+        status: "error",
+        message: "Clipboard fallback is unavailable in this environment.",
+        summary,
+      });
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+      const copiedSummary = applyCopiedFallback(summary);
+      setPipelineUi({
+        status: "done",
+        message: describeDeliveryEvidence(copiedSummary.deliveryEvidence) ??
+          "Transcript copied as fallback.",
+        summary: copiedSummary,
+      });
+    } catch {
+      setPipelineUi({
+        status: "error",
+        message: "Clipboard copy failed. Transcript remains available in the app.",
+        summary,
+      });
+    }
+  }
+
   const canStart =
     capture.state === "idle" ||
     capture.state === "captured" ||
@@ -185,13 +311,24 @@ export function App() {
   const canCancel =
     capture.state === "recording" || capture.state === "requesting_permission";
   const canSubmit = Boolean(capture.result?.ok) && pipelineUi.status !== "running";
+  const canCopyTranscript = Boolean(
+    pipelineUi.summary?.deliveryEvidence?.output ??
+      pipelineUi.summary?.output ??
+      pipelineUi.summary?.transcript,
+  );
   const artifact = capture.result?.ok ? capture.result.artifact : undefined;
   const error = capture.result && !capture.result.ok ? capture.result.error : undefined;
+  const deliveryEvidence = pipelineUi.summary?.deliveryEvidence;
+  const recoveryAction = getRecoveryAction(pipelineUi.summary);
   const pipelineTone =
-    pipelineUi.status === "done"
+    pipelineUi.status === "done" &&
+    deliveryEvidence?.status !== "uncertain" &&
+    deliveryEvidence?.status !== "failed"
       ? "captured"
-      : pipelineUi.status === "error"
+      : pipelineUi.status === "error" || deliveryEvidence?.status === "failed"
         ? "failed"
+        : deliveryEvidence?.status === "uncertain"
+          ? "cancelled"
         : pipelineUi.status === "running"
           ? "requesting_permission"
           : pipelineUi.status === "cancelled"
@@ -252,6 +389,14 @@ export function App() {
           >
             Submit captured run
           </button>
+          <button
+            type="button"
+            className="button button-secondary"
+            disabled={!canCopyTranscript}
+            onClick={copyTranscriptFallback}
+          >
+            Copy transcript
+          </button>
         </div>
 
         <dl className="status-grid" aria-label="Capture evidence">
@@ -273,6 +418,10 @@ export function App() {
               {pipelineStatusLabels[pipelineUi.status]}
             </dd>
           </div>
+          <div>
+            <dt>Delivery</dt>
+            <dd>{deliveryEvidence?.status ?? "Not available"}</dd>
+          </div>
         </dl>
 
         {artifact ? (
@@ -293,6 +442,12 @@ export function App() {
         >
           {pipelineUi.message}
         </p>
+
+        {recoveryAction ? (
+          <p className="evidence-line" data-testid="recovery-action">
+            {recoveryAction}
+          </p>
+        ) : null}
       </section>
     </main>
   );

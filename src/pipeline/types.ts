@@ -43,6 +43,24 @@ export type DeliveryResult = {
   reason?: string;
 };
 
+export const deliveryEvidenceStatuses = [
+  "available",
+  "copied",
+  "paste_sent",
+  "paste_observed",
+  "failed",
+  "uncertain",
+] as const;
+
+export type DeliveryEvidenceStatus = (typeof deliveryEvidenceStatuses)[number];
+
+export type DeliveryEvidence = {
+  status: DeliveryEvidenceStatus;
+  output?: string;
+  reason?: string;
+  observedAt?: number;
+};
+
 export type PipelineErrorPhase = FailurePhase | "fixture";
 
 export type RedactedPipelineError = {
@@ -239,6 +257,7 @@ export type PipelineRun = {
   transcript?: string;
   output?: string;
   delivery?: DeliveryResult;
+  deliveryEvidence?: DeliveryEvidence;
   error?: RedactedPipelineError;
 };
 
@@ -253,6 +272,7 @@ export type SimulatedRunSummary = {
   transcript?: string;
   output?: string;
   delivery?: DeliveryResult;
+  deliveryEvidence?: DeliveryEvidence;
   error?: RedactedPipelineError;
   durationMs: number;
 };

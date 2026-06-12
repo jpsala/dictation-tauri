@@ -2,8 +2,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
+const trackArgIndex = process.argv.indexOf("--track");
 const taskArgIndex = process.argv.indexOf("--task");
-const taskPath = taskArgIndex >= 0 ? process.argv[taskArgIndex + 1] : "";
+const trackPath =
+  trackArgIndex >= 0
+    ? process.argv[trackArgIndex + 1]
+    : taskArgIndex >= 0
+      ? process.argv[taskArgIndex + 1]
+      : "";
 
 function fail(message: string): never {
   console.error(message);
@@ -35,24 +41,25 @@ function listValues(meta: string, key: string) {
     .filter(Boolean);
 }
 
-if (!taskPath) {
-  fail("Usage: bun scripts/context-refresh.ts --task docs/tasks/<task>.md");
+if (!trackPath) {
+  fail("Usage: bun scripts/context-refresh.ts --track docs/tracks/<track>.md");
 }
 
-if (!exists(taskPath)) {
-  fail(`Task not found: ${taskPath}`);
+if (!exists(trackPath)) {
+  fail(`Track not found: ${trackPath}`);
 }
 
-const task = read(taskPath);
-const meta = frontmatter(task);
+const track = read(trackPath);
+const meta = frontmatter(track);
 const topic = value(meta, "topic");
 const sourceRefs = listValues(meta, "source_refs");
 const related = listValues(meta, "related");
 
 console.log("# Context Refresh");
 console.log("");
-console.log(`Task: ${taskPath}`);
+console.log(`Track: ${trackPath}`);
 console.log(`Status: ${value(meta, "status") || "unknown"}`);
+console.log(`Started: ${value(meta, "started") || "unknown"}`);
 console.log(`Priority: ${value(meta, "priority") || "unknown"}`);
 console.log(`Updated: ${value(meta, "updated") || "unknown"}`);
 console.log("");
@@ -80,4 +87,4 @@ if (sourceRefs.length) {
 }
 
 console.log("");
-console.log("Review missing refs, then update the task/topic manually or ask the agent to patch them.");
+console.log("Review missing refs, then update the track/topic manually or ask the agent to patch them.");

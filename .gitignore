@@ -31,3 +31,6 @@ artifacts/microphone-capture/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local agent compatibility links
+.agents/skills/

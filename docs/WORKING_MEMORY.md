@@ -2,11 +2,11 @@
 
 Estado vivo del proyecto. Mantener corto.
 
-Ultima actualizacion manual: 2026-06-10.
+Ultima actualizacion manual: 2026-06-12.
 
 ## Regla
 
-Este archivo es router operativo, no historia. Si un detalle crece, moverlo a topic, decision, spec o task.
+Este archivo es router operativo, no historia. Si un detalle crece, moverlo a topic, decision, spec o track.
 
 ## Lectura Rapida
 
@@ -20,9 +20,9 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | UI/design | seeded | `PRODUCT.md`, `DESIGN.md` | Usar antes de cualquier UI durable. |
 | Pipeline simulado | mvp1-complete | `specs/002-simulated-pipeline/tasks.md` | Mantener como baseline para MVP 2. |
 | Audio sintetico/STT | mvp2-dry-run-complete | `specs/003-synthetic-audio-stt/tasks.md` | T031 queda opcional/local si se decide correr provider real. |
-| Microfono real | tasks-generated | `specs/004-real-microphone-capture/tasks.md` | Ejecutar Phase 1 antes de permisos/captura real. |
+| Microfono real | mvp3-ci-safe-us3-complete | `specs/004-real-microphone-capture/tasks.md` | Cerrar Phase 6 docs/checks o pedir aprobacion explicita para T035-T036/T022-T024. |
 | Datos de dictado | decided | `docs/topics/privacy-and-dictation-data.md` | Modo personal/dev permisivo; no imprimir ni commitear secretos. |
-| OS Lite/docs | active | `docs/topics/agentic-project-os-lite.md` | Mantener ruta caliente liviana y audit verde. |
+| OS Lite/docs | active | `docs/topics/agentic-project-os-lite.md` | Mantener `docs/tracks/`, `docs/skills/`, junction y audit verde. |
 
 ## Spec Activa
 
@@ -31,20 +31,20 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `001-port-foundation` | complete | `specs/001-port-foundation/tasks.md` |
 | `002-simulated-pipeline` | complete | `specs/002-simulated-pipeline/tasks.md` |
 | `003-synthetic-audio-stt` | dry-run complete | `specs/003-synthetic-audio-stt/tasks.md` |
-| `004-real-microphone-capture` | tasks generated | `specs/004-real-microphone-capture/tasks.md` |
+| `004-real-microphone-capture` | us1-us3 ci-safe complete | `specs/004-real-microphone-capture/tasks.md` |
 
-## Tasks Activas
+## Tracks Activas
 
 | Trabajo | Abrir | Uso |
 | --- | --- | --- |
-| MVP y recursos | `docs/tasks/mvp-and-reference-resources.md` | Continuidad de recursos Fixvox y fases. |
-| Estudio de fuentes | `docs/tasks/source-project-study-plan.md` | Plan vivo para CopyQ Tauri/Fixvox. |
-| Prompt proxima sesion | `docs/tasks/next-session-prompt.md` | Handoff compacto; no reemplaza working memory. |
+| MVP y recursos | `docs/tracks/mvp-and-reference-resources.md` | Continuidad de recursos Fixvox y fases. |
+| Estudio de fuentes | `docs/tracks/source-project-study-plan.md` | Plan vivo para CopyQ Tauri/Fixvox. |
+| Prompt proxima sesion | `docs/tracks/next-session-prompt.md` | Handoff compacto; no reemplaza working memory. |
 
 Listar activos:
 
 ```powershell
-rg -l "status:\s*active" docs/tasks -g "*.md" -g "!archive/**"
+rg -l "status:\s*active" docs/tracks -g "*.md" -g "!archive/**"
 ```
 
 ## Decisiones Vigentes
@@ -53,14 +53,15 @@ rg -l "status:\s*active" docs/tasks -g "*.md" -g "!archive/**"
 - `C:\dev\chat\copyq-tauri` es canon tecnico para Tauri/UI/settings/Windows desktop mechanics.
 - `C:\dev\electro-bun-1` / Fixvox es canon funcional para dictado, runtime, backend/proxy, policies/env y benchmarks; no se porta literal.
 - MVP 0-3: app base, pipeline simulado, audio sintetico/STT dry-run con shell de provider real, microfono real.
+- MVP 3 CI-safe ya cubre captura fake/WebView adapter, pipeline de captured audio, STT shell sin provider real por default, y evidencia honesta de delivery/recovery sin `paste_observed`.
 - Runtime: pipeline por puertos/adapters, `PipelineService`, event ledger y summary derivado antes de side effects reales.
 - `ModelGateway` hibrido: mock port primero, adapter directo local en MVP 2; proxied como spike posterior.
 - Texto seleccionado real queda fuera de MVP 0-3; se permite simulacion en fixtures.
 - Tauri/Rust posee side effects desktop cuando entren: microfono, hotkeys, tray, foco, clipboard, ventanas, permisos y secretos.
 - Delivery se modela por evidencia/certeza; no prometer paste observado sin verificacion real.
 - UI durable requiere `PRODUCT.md` y `DESIGN.md`.
-- Small Batches: una task/comportamiento/checkpoint por tanda, checks verdes y commit atomico.
-- La ruta inicial debe seguir liviana; no convertir `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` ni tasks activas en historial.
+- Small Batches: una task SpecKit, comportamiento o checkpoint por tanda, checks verdes y commit atomico.
+- La ruta inicial debe seguir liviana; no convertir `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` ni tracks activas en historial.
 
 ## Riesgos
 
@@ -78,14 +79,16 @@ npm run synthetic-audio:stt:dry-run
 npm run test:pipeline
 bun scripts/context-index.ts
 bun scripts/agent-context-audit.ts
+bun scripts/context-refresh.ts --track docs/tracks/<track>.md
+bun scripts/check-skills-junction.ts
 ```
 
 ## Proximo Paso Probable
 
 Decidir el siguiente salto:
 
-1. Ejecutar Phase 1 de `specs/004-real-microphone-capture/tasks.md` para preparar artifact policy y docs sin captura real.
-2. Ejecutar T031 de MVP 2 solo si ya hay audio sintetico/restaurado, comando real-provider y credenciales locales disponibles.
+1. Ejecutar Phase 6 de `specs/004-real-microphone-capture/tasks.md` para sincronizar quickstart/docs y checks finales de MVP 3.
+2. Ejecutar T035-T036 o T022-T024 solo con aprobacion explicita de JP para audio/provider real local.
 3. Hacer revision arquitectonica antes de sumar side effects reales si se quiere un gate adicional.
 
 ## Promocion De Memoria
@@ -94,4 +97,4 @@ Decidir el siguiente salto:
 2. Estado vivo -> `WORKING_MEMORY.md`.
 3. Conocimiento reusable -> `docs/topics/<topic>.md`.
 4. Decision durable -> `docs/DECISIONS.md`.
-5. Trabajo retomable -> `docs/tasks/`, sin transcript.
+5. Trabajo retomable -> `docs/tracks/`, sin transcript.

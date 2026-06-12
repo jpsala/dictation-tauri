@@ -13,7 +13,7 @@ triggers:
   - que implementar
   - que portar
 primary_refs:
-  - docs/tasks/source-project-study-plan.md
+  - docs/tracks/source-project-study-plan.md
   - docs/topics/dictation-tauri-foundation.md
   - docs/topics/fixvox-capability-map.md
   - docs/topics/product-direction.md

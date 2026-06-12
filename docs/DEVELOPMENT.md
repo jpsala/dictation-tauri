@@ -57,7 +57,7 @@ Baseline cerrado:
 - Documentacion raiz creada y sincronizada.
 - Topics principales indexados.
 - SpecKit instalado con constitucion del proyecto.
-- Skill local `impeccable` y skills SpecKit disponibles en `.agents/skills/`.
+- Skill local `impeccable` y skills SpecKit disponibles en `docs/skills/`.
 - Auditor de contexto disponible y pasando.
 
 Cerrado para MVP 0:
@@ -91,7 +91,7 @@ Proximo trabajo recomendado:
 
 Para cualquier superficie UI en React/Tauri, usar `docs/topics/ui-design-and-impeccable.md` como entrada.
 
-La skill local `.agents/skills/impeccable` queda aprobada para trabajos de interfaz: app shell, voice dock, settings, onboarding, preview, recovery, estados, responsive, accesibilidad, critique, audit y polish.
+La skill local `docs/skills/impeccable` queda aprobada para trabajos de interfaz: app shell, voice dock, settings, onboarding, preview, recovery, estados, responsive, accesibilidad, critique, audit y polish.
 
 Limites:
 
@@ -108,7 +108,7 @@ src-tauri/capabilities/
 src-tauri/icons/
 src-tauri/src/
 docs/
-docs/tasks/
+docs/tracks/
 docs/topics/
 specs/
 specs/001-port-foundation/
@@ -121,7 +121,7 @@ Contexto agentico:
 ```powershell
 bun scripts/context-index.ts
 bun scripts/agent-context-audit.ts
-bun scripts/context-refresh.ts --task docs/tasks/<task>.md
+bun scripts/context-refresh.ts --track docs/tracks/<track>.md
 ```
 
 Comandos frontend reales:
@@ -238,4 +238,4 @@ Antes de cerrar cambios:
 2. Ejecutar tests/build si existen.
 3. Verificar manualmente flujos afectados.
 4. Actualizar docs/specs si cambia comportamiento durable.
-5. Correr `bun scripts/context-index.ts` y `bun scripts/agent-context-audit.ts` si se tocaron docs, topics o tasks.
+5. Correr `bun scripts/context-index.ts` y `bun scripts/agent-context-audit.ts` si se tocaron docs, topics o tracks.

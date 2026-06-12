@@ -27,7 +27,7 @@ primary_refs:
 
 Usar SpecKit para features grandes, arquitectura, cambios de persistencia, integraciones de dictado/transcripcion o decisiones que deban quedar trazadas.
 
-No usar SpecKit como memoria general, diario, knowledge base ni backlog universal. Para trabajo vivo no formalizado, usar `docs/tasks/`. Para conocimiento recuperable, usar `docs/topics/`.
+No usar SpecKit como memoria general, diario, knowledge base ni backlog universal. Para trabajo vivo no formalizado, usar `docs/tracks/`. Para conocimiento recuperable, usar `docs/topics/`.
 
 ## Flujo
 

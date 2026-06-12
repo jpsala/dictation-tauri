@@ -14,7 +14,7 @@ triggers:
 primary_refs:
   - docs/topics/dictation-workflow.md
   - docs/topics/automation-and-reference-fixtures.md
-  - docs/tasks/mvp-and-reference-resources.md
+  - docs/tracks/mvp-and-reference-resources.md
 ---
 
 # Seleccion Y Acciones Asistidas

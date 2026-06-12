@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 type Finding = {
@@ -15,6 +15,11 @@ function read(path: string) {
 
 function exists(path: string) {
   return existsSync(join(root, path));
+}
+
+function sameRealPath(left: string, right: string) {
+  if (!exists(left) || !exists(right)) return false;
+  return realpathSync.native(join(root, left)) === realpathSync.native(join(root, right));
 }
 
 function add(level: Finding["level"], message: string) {
@@ -78,6 +83,16 @@ if (!exists("docs/GLOSSARY.md")) {
 
 if (!exists("docs/TOPICS.md")) {
   add("error", "Missing docs/TOPICS.md");
+}
+
+if (!exists("docs/skills")) {
+  add("error", "Missing canonical skills directory docs/skills");
+}
+
+if (!exists(".agents/skills")) {
+  add("error", "Missing local compatibility path .agents/skills");
+} else if (!sameRealPath(".agents/skills", "docs/skills")) {
+  add("error", ".agents/skills must resolve to canonical docs/skills");
 }
 
 warnIfTooLarge("AGENTS.md", 6000, "AGENTS.md");
@@ -173,34 +188,34 @@ const taskStatuses = new Set([
 ]);
 const taskPriorities = new Set(["low", "medium", "high", "critical"]);
 
-if (!exists("docs/tasks")) {
-  add("warn", "Missing docs/tasks/");
+if (!exists("docs/tracks")) {
+  add("warn", "Missing docs/tracks/");
 } else {
-  if (!exists("docs/tasks/README.md")) {
-    add("warn", "Missing docs/tasks/README.md");
+  if (!exists("docs/tracks/README.md")) {
+    add("warn", "Missing docs/tracks/README.md");
   }
 
-  if (!exists("docs/tasks/TEMPLATE.md")) {
-    add("warn", "Missing docs/tasks/TEMPLATE.md");
+  if (!exists("docs/tracks/TEMPLATE.md")) {
+    add("warn", "Missing docs/tracks/TEMPLATE.md");
   }
 
-  if (!exists("docs/tasks/archive")) {
-    add("warn", "Missing docs/tasks/archive/");
+  if (!exists("docs/tracks/archive")) {
+    add("warn", "Missing docs/tracks/archive/");
   }
 
-  for (const file of walkMarkdownFiles(join(root, "docs", "tasks"))) {
-    const taskPath = relative(root, file).replaceAll("\\", "/");
-    const content = read(taskPath);
+  for (const file of walkMarkdownFiles(join(root, "docs", "tracks"))) {
+    const trackPath = relative(root, file).replaceAll("\\", "/");
+    const content = read(trackPath);
     const frontmatter = topicFrontmatter(content);
 
     if (!frontmatter) {
-      add("warn", `${taskPath} has no frontmatter`);
+      add("warn", `${trackPath} has no frontmatter`);
       continue;
     }
 
     for (const key of ["status", "started", "updated", "priority"]) {
       if (!hasFrontmatterKey(frontmatter, key)) {
-        add("warn", `${taskPath} frontmatter missing ${key}`);
+        add("warn", `${trackPath} frontmatter missing ${key}`);
       }
     }
 
@@ -211,22 +226,22 @@ if (!exists("docs/tasks")) {
       ...frontmatterList(frontmatter, "related"),
       ...frontmatterList(frontmatter, "source_refs"),
     ];
-    const isArchivedPath = taskPath.startsWith("docs/tasks/archive/");
+    const isArchivedPath = trackPath.startsWith("docs/tracks/archive/");
 
     if (status && !taskStatuses.has(status)) {
-      add("warn", `${taskPath} has unknown task status ${status}`);
+      add("warn", `${trackPath} has unknown track status ${status}`);
     }
 
     if (priority && !taskPriorities.has(priority)) {
-      add("warn", `${taskPath} has unknown task priority ${priority}`);
+      add("warn", `${trackPath} has unknown track priority ${priority}`);
     }
 
     if (status === "archived" && !isArchivedPath) {
-      add("warn", `${taskPath} has archived status outside docs/tasks/archive/`);
+      add("warn", `${trackPath} has archived status outside docs/tracks/archive/`);
     }
 
     if (isArchivedPath && status !== "archived") {
-      add("warn", `${taskPath} is in docs/tasks/archive/ without archived status`);
+      add("warn", `${trackPath} is in docs/tracks/archive/ without archived status`);
     }
 
     const maxChars =
@@ -235,17 +250,17 @@ if (!exists("docs/tasks")) {
     if (content.length > maxChars) {
       add(
         "warn",
-        `${taskPath} is large (${content.length} chars, ~${approxTokens(content)} tokens); tasks should be resumable work state, not transcripts`,
+        `${trackPath} is large (${content.length} chars, ~${approxTokens(content)} tokens); tracks should be resumable work state, not transcripts`,
       );
     }
 
     if (topic && !exists(topic)) {
-      add("warn", `${taskPath} topic points to missing file ${topic}`);
+      add("warn", `${trackPath} topic points to missing file ${topic}`);
     }
 
     for (const ref of refs) {
       if (!exists(ref)) {
-        add("warn", `${taskPath} points to missing ref ${ref}`);
+        add("warn", `${trackPath} points to missing ref ${ref}`);
       }
     }
   }
@@ -259,7 +274,7 @@ if (!exists("docs/.generated/context-index.md")) {
     "docs/WORKING_MEMORY.md",
     "docs/GLOSSARY.md",
     "docs/TOPICS.md",
-    "docs/tasks/README.md",
+    "docs/tracks/README.md",
   ]) {
     if (exists(path) && modifiedMs(path) > indexTime) {
       add("warn", `docs/.generated/context-index.md is older than ${path}`);

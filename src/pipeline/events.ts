@@ -1,4 +1,5 @@
 import type {
+  DeliveryEvidence,
   DeliveryResult,
   PipelineEvent,
   PipelineInputKind,
@@ -29,6 +30,14 @@ export function deriveRunSummaryFromEvents(
   const delivery = deriveDelivery(events);
   const output = deriveOutput(events, delivery);
   const error = deriveError(finalEvent);
+  const deliveryEvidence = deriveDeliveryEvidence({
+    inputKind,
+    transcript,
+    output,
+    delivery,
+    terminalState,
+    error,
+  });
 
   return {
     runId: firstEvent.runId,
@@ -41,6 +50,7 @@ export function deriveRunSummaryFromEvents(
     transcript,
     output,
     delivery,
+    deliveryEvidence,
     error,
     durationMs: finalEvent.at - firstEvent.at,
   };
@@ -179,4 +189,61 @@ function deriveError(
   }
 
   return finalEvent.data.error;
+}
+
+function deriveDeliveryEvidence(input: {
+  inputKind: PipelineInputKind;
+  transcript: string | undefined;
+  output: string | undefined;
+  delivery: DeliveryResult | undefined;
+  terminalState: TerminalPipelineState;
+  error: RedactedPipelineError | undefined;
+}): DeliveryEvidence | undefined {
+  if (input.inputKind !== "microphone") {
+    return undefined;
+  }
+
+  const text = input.output ?? input.transcript;
+
+  if (input.delivery?.status === "copiedFallback") {
+    return {
+      status: "copied",
+      output: text,
+      reason: input.delivery.reason,
+    };
+  }
+
+  if (input.delivery?.status === "delivered") {
+    return {
+      status: "paste_sent",
+      output: text,
+      reason: input.delivery.reason,
+    };
+  }
+
+  if (input.delivery?.status === "uncertain") {
+    return {
+      status: "uncertain",
+      output: text,
+      reason: input.delivery.reason,
+    };
+  }
+
+  if (input.delivery?.status === "failed" || input.terminalState === "error") {
+    return {
+      status: "failed",
+      output: text,
+      reason: input.delivery?.reason ?? input.error?.message,
+    };
+  }
+
+  if (text) {
+    return {
+      status: "available",
+      output: text,
+      reason: input.delivery?.reason,
+    };
+  }
+
+  return undefined;
 }

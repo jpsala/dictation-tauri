@@ -1,0 +1,4 @@
+interface:
+  display_name: Sigamos
+  short_description: Seguir en la sesion actual
+  default_prompt: Usa Sigamos para continuar el trabajo activo en esta misma sesion.

@@ -1,0 +1,4 @@
+interface:
+  display_name: Continuar Sesion Con Gol
+  short_description: Cerrar y relanzar con gol
+  default_prompt: Usa Continuar Sesion Con Gol para cerrar con valor y pedir que la proxima sesion arranque con gol.

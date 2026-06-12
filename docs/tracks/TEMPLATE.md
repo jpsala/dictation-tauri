@@ -9,7 +9,7 @@ topic:
 source_refs: []
 ---
 
-# Task Title
+# Track Title
 
 ## Objetivo
 
@@ -25,4 +25,4 @@ Indicar la siguiente accion concreta.
 
 ## Evidencia / Source Refs
 
-Listar archivos, comandos o fuentes que conectan la task con el codigo o docs.
+Listar archivos, comandos o fuentes que conectan la track con el codigo o docs.

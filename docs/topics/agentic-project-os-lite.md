@@ -9,7 +9,7 @@ triggers:
   - agentic project os
   - memoria viva
   - audit docs
-  - tasks
+  - tracks
   - cerrar sesion
   - continuar sesion
   - siguiente
@@ -23,7 +23,8 @@ primary_refs:
   - docs/GLOSSARY.md
   - docs/WORKING_MEMORY.md
   - docs/TOPICS.md
-  - docs/tasks/
+  - docs/tracks/
+  - docs/skills/
   - docs/.generated/context-index.md
   - scripts/agent-context-audit.ts
   - scripts/context-index.ts
@@ -38,33 +39,33 @@ Sistema agentico liviano del proyecto.
 
 ```text
 hot context      -> AGENTS.md
-project map      -> docs/README.md
+index cache      -> docs/.generated/context-index.md
+glossary         -> docs/GLOSSARY.md
 working memory   -> docs/WORKING_MEMORY.md
 topic router     -> docs/TOPICS.md
 cold memory      -> docs/topics/*.md, docs/DECISIONS.md, specs/*
-tasks            -> docs/tasks/*
-workflow layer   -> SpecKit + skills
+tracks           -> docs/tracks/*
+project map      -> docs/README.md cuando hace falta
+workflow layer   -> SpecKit + skills en docs/skills
 audit layer      -> scripts/agent-context-audit.ts
-index cache      -> docs/.generated/context-index.md
 ```
 
 ## Lectura Recomendada
 
 Para tareas no triviales:
 
-1. `AGENTS.md`
-2. `docs/README.md`
-3. `docs/GLOSSARY.md` si el pedido usa un alias
-4. `docs/WORKING_MEMORY.md`
-5. `docs/TOPICS.md`
-6. topic especifico
-7. referencia profunda o codigo puntual
+1. `docs/.generated/context-index.md` si existe.
+2. `docs/WORKING_MEMORY.md`.
+3. `docs/TOPICS.md` o busqueda por triggers para elegir topic.
+4. `docs/GLOSSARY.md` si el pedido usa un alias.
+5. `docs/README.md` solo si hace falta mapa documental.
+6. Topic, track, spec o codigo puntual segun el pedido.
 
 ## Working Memory
 
 `docs/WORKING_MEMORY.md` guarda estado vivo, no historia.
 
-Debe incluir areas activas, specs abiertas, topics activos, tasks relevantes, riesgos transversales, comandos de contexto y reglas de promocion de memoria.
+Debe incluir areas activas, specs abiertas, topics activos, tracks relevantes, riesgos transversales, comandos de contexto y reglas de promocion de memoria.
 
 ## Topics
 
@@ -72,9 +73,9 @@ Un topic es un nodo de conocimiento recuperable: area, sistema, situacion, restr
 
 Cada topic debe tener frontmatter con `id`, `status`, `kind`, `triggers` y `primary_refs`.
 
-## Tasks
+## Tracks
 
-`docs/tasks/` guarda trabajos vivos retomables.
+`docs/tracks/` guarda trabajos vivos retomables.
 
 Cada archivo debe tener frontmatter minimo:
 
@@ -87,12 +88,12 @@ priority: low | medium | high | critical
 ---
 ```
 
-Las tasks archivadas deben vivir en `docs/tasks/archive/` y tener `status: archived`.
+Las tracks archivadas deben vivir en `docs/tracks/archive/` y tener `status: archived`.
 
 Para listar trabajos activos:
 
 ```powershell
-rg -l "status:\s*active" docs/tasks -g "*.md" -g "!archive/**"
+rg -l "status:\s*active" docs/tracks -g "*.md" -g "!archive/**"
 ```
 
 ## Small Batches
@@ -118,13 +119,13 @@ Si una tanda empieza a mezclar responsabilidades, se divide antes de seguir.
 
 `siguiente` es un comando conversacional de JP para cerrar la continuidad en un thread nuevo. El agente debe:
 
-1. verificar estado real con git y la spec/task activa;
+1. verificar estado real con git y la spec/track activa;
 2. redactar el prompt compacto de "seguimos en la siguiente sesion" para el proximo Small Batch;
 3. crear o forkear un nuevo thread Codex en el mismo proyecto/directorio;
 4. enviar ese prompt al thread nuevo;
 5. devolver el thread creado a JP.
 
-El comando no significa continuar trabajando en el thread actual. El prompt debe incluir ruta inicial, ultimo commit esperado, worktree esperado, objetivo del batch, guardrails, checks de cierre, commit atomico y no push. Archivar el thread actual solo con pedido explicito o despues de confirmar que el nuevo thread quedo creado correctamente.
+El comando no significa continuar trabajando en el thread actual. El prompt debe incluir ruta inicial, ultimo commit esperado, worktree esperado, objetivo del batch, guardrails, checks de cierre, commit atomico, no push y pedido explicito de arrancar con `gol`. Archivar el thread actual solo con pedido explicito o despues de confirmar que el nuevo thread quedo creado correctamente.
 
 ## Auditoria
 
@@ -133,8 +134,8 @@ bun scripts/context-index.ts
 bun scripts/agent-context-audit.ts
 ```
 
-Para revisar una task contra sus referencias declaradas:
+Para revisar una track contra sus referencias declaradas:
 
 ```powershell
-bun scripts/context-refresh.ts --task docs/tasks/<task>.md
+bun scripts/context-refresh.ts --track docs/tracks/<track>.md
 ```

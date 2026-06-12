@@ -2,18 +2,19 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-11T17:09:39.116Z
+Generated: 2026-06-12T20:49:33.192Z
 
 ## Topics
 
 - active: [agentic-os-operations](../topics/agentic-os-operations.md) - crear sistema agentico, migrar sistema agentico, actualizar norte, os lite, adaptar proyecto, repo nuevo
-- active: [agentic-project-os-lite](../topics/agentic-project-os-lite.md) - norte, working memory, os lite, agentic project os, memoria viva, audit docs, tasks, cerrar sesion, continuar sesion, siguiente, handoff thread, nuevo thread, context index, Small Batches, small batches, commits atomicos
+- active: [agentic-project-os-lite](../topics/agentic-project-os-lite.md) - norte, working memory, os lite, agentic project os, memoria viva, audit docs, tracks, cerrar sesion, continuar sesion, siguiente, handoff thread, nuevo thread, context index, Small Batches, small batches, commits atomicos
 - active: [automation-and-reference-fixtures](../topics/automation-and-reference-fixtures.md) - fixtures, audio sintetico, TTS, STT, benchmarks, Fixvox, electro-bun, sin interaccion humana
 - draft: [backend-and-model-routing](../topics/backend-and-model-routing.md) - backend, proxy, model routing, proveedores, API keys, Groq, OpenAI, OpenRouter, xAI
 - active: [dictation-tauri-foundation](../topics/dictation-tauri-foundation.md) - tauri, port, fundacion, stack, comandos, src-tauri
 - draft: [dictation-workflow](../topics/dictation-workflow.md) - dictado, workflow, flujo, estados, pipeline, listening, transcribing
-- active: [docs-knowledge-system](../topics/docs-knowledge-system.md) - documentacion, docs, topics, indice, contexto liviano, tasks, context bloat, contaminacion de contexto
+- active: [docs-knowledge-system](../topics/docs-knowledge-system.md) - documentacion, docs, topics, indice, contexto liviano, tracks, context bloat, contaminacion de contexto
 - active: [fixvox-capability-map](../topics/fixvox-capability-map.md) - Fixvox, Fixbox, electro-bun, capacidades Fixvox, alcance producto, mapa de producto, que copiamos, que implementamos
+- reference: [local-codex-skills](../topics/local-codex-skills.md) - skills locales, local skills, slash commands, docs/skills, .agents/skills, sigamos, cerrar sesion, continuar sesion, continuar sesion con gol, continuar con gol, siguiente, realinear os, evaluar skills, pasar a skills, promover a skill, que se puede pasar a skills, skill o topic, metadata mínima, metadata minima, modelo hibrido
 - active: [privacy-and-dictation-data](../topics/privacy-and-dictation-data.md) - privacidad, audio, transcripciones, dictado, logs, storage, modelos
 - active: [product-direction](../topics/product-direction.md) - producto, MVP, alcance, direccion, no human interaction, automatizacion
 - draft: [selection-and-assistant-actions](../topics/selection-and-assistant-actions.md) - texto seleccionado, seleccion, assistant mode, asistente, quick chat, alt-q, presets, hotkeys
@@ -21,12 +22,12 @@ Generated: 2026-06-11T17:09:39.116Z
 - active: [speckit-workflow](../topics/speckit-workflow.md) - speckit, spec kit, spec, plan, tasks.md, feature grande, Small Batches, small batches, lotes chicos, checkpoint
 - active: [ui-design-and-impeccable](../topics/ui-design-and-impeccable.md) - UI, diseño, design, frontend, React, app shell, voice dock, settings, impeccable
 
-## Tasks
+## Tracks
 
-- archived/medium: [Product Scope Decision Pass](../tasks/archive/product-scope-decision-pass.md) - updated 2026-06-07
-- active/high: [MVP Y Recursos De Referencia](../tasks/mvp-and-reference-resources.md) - updated 2026-06-10
-- active/medium: [Prompt Para Proxima Sesion](../tasks/next-session-prompt.md) - updated 2026-06-10
-- active/high: [Plan De Estudio De Proyectos Fuente](../tasks/source-project-study-plan.md) - updated 2026-06-10
+- archived/medium: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md) - updated 2026-06-07
+- active/high: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md) - updated 2026-06-10
+- active/medium: [Prompt Para Proxima Sesion](../tracks/next-session-prompt.md) - updated 2026-06-12
+- active/high: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md) - updated 2026-06-10
 
 ## Specs
 
@@ -34,6 +35,12 @@ Generated: 2026-06-11T17:09:39.116Z
 - [002-simulated-pipeline](../../specs/002-simulated-pipeline/)
 - [003-synthetic-audio-stt](../../specs/003-synthetic-audio-stt/)
 - [004-real-microphone-capture](../../specs/004-real-microphone-capture/)
+
+## Skills
+
+- Canon: [docs/skills/](../skills/)
+- Operational commands: sigamos, cerrar-sesion, continuar-sesion, continuar-sesion-con-gol, realinear-os, evaluar-skills
+- Guidance: [local-codex-skills](../topics/local-codex-skills.md)
 
 ## Aliases
 
@@ -46,12 +53,16 @@ Generated: 2026-06-11T17:09:39.116Z
 | OS Lite | Agentic Project OS Lite, sistema liviano de memoria, docs, topics, specs y skills. |
 | Working Memory | `docs/WORKING_MEMORY.md`, estado vivo y corto del proyecto. |
 | Topic | Documento recuperable en `docs/topics/` con frontmatter y triggers. |
-| Task | Trabajo vivo retomable en `docs/tasks/`, con YAML validado. |
-| Active Work | Alias historico de Task; usar `docs/tasks/` en docs nuevas. |
-| Archive | `docs/tasks/archive/`, carpeta de tasks cerradas con `status: archived`. |
-| Context Index | `docs/.generated/context-index.md`, cache generado de topics, tasks, specs y aliases. |
+| Track | Trabajo vivo retomable en `docs/tracks/`, con YAML validado. |
+| Task | Unidad de trabajo dentro de SpecKit o `tasks.md`; no usar como carpeta de continuidad viva. |
+| Active Work | Alias historico de Track; usar `docs/tracks/` en docs nuevas. |
+| Archive | `docs/tracks/archive/`, carpeta de tracks cerradas con `status: archived`. |
+| Context Index | `docs/.generated/context-index.md`, cache generado de topics, tracks, specs, skills y aliases. |
 | SpecKit | Flujo de specs, planes y tasks para features grandes. |
 | Port foundation | Spec draft `specs/001-port-foundation/`, base inicial del port Tauri. |
 | Datos de dictado | Audio, transcripciones, prompts, logs, correcciones y metadata de captura de voz. |
+| Local Skill | Skill local portable versionada dentro del repo. |
+| Skills Canonicas | Carpeta `docs/skills/`, fuente de verdad de las skills locales. |
+| Skills Compat | Carpeta `.agents/skills`, junction de compatibilidad hacia `docs/skills/`. |
 | Small Batch | Unidad de trabajo agentico chica, revisable y reversible: una task SpecKit, un comportamiento observable o una sincronizacion documental acotada, cerrada con checks y commit atomico. |
-| Context Bloat / Contaminacion De Contexto | Cuando reglas, memoria viva, topics o tasks crecen hasta volverse lectura obligatoria amplia y degradan la capacidad de una sesion nueva. |
+| Context Bloat / Contaminacion De Contexto | Cuando reglas, memoria viva, topics o tracks crecen hasta volverse lectura obligatoria amplia y degradan la capacidad de una sesion nueva. |

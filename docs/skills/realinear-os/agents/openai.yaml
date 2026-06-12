@@ -1,0 +1,4 @@
+interface:
+  display_name: Realinear OS
+  short_description: Auditar y reparar OS Lite
+  default_prompt: Usa Realinear OS para auditar y reparar drift del sistema agentico.

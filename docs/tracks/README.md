@@ -5,7 +5,7 @@ updated: 2026-06-07
 priority: medium
 ---
 
-# Tasks
+# Tracks
 
 Trabajos retomables. Usar cuando una conversacion, investigacion o implementacion todavia no merece una decision estable, pero debe poder retomarse.
 
@@ -25,37 +25,37 @@ priority: medium
 Campos:
 
 - `status`: `pending`, `active`, `paused`, `blocked`, `done` o `archived`.
-- `started`: fecha en que se creo la task.
+- `started`: fecha en que se creo la track.
 - `updated`: ultima fecha en que se actualizo.
 - `priority`: `low`, `medium`, `high` o `critical`.
 - `owner`: opcional; humano, agente o equipo responsable.
 - `related`: opcional; docs, topics, specs o archivos relacionados.
 - `topic`: opcional; topic principal que explica el contexto estable.
-- `source_refs`: opcional; archivos de codigo o docs que deben revisarse para refrescar la task.
+- `source_refs`: opcional; archivos de codigo o docs que deben revisarse para refrescar la track.
 
-Usar `docs/tasks/TEMPLATE.md` como base para crear una task nueva.
+Usar `docs/tracks/TEMPLATE.md` como base para crear una track nueva.
 
 ## Listar Activos
 
 ```powershell
-rg -l "status:\s*active" docs/tasks -g "*.md" -g "!archive/**"
+rg -l "status:\s*active" docs/tracks -g "*.md" -g "!archive/**"
 ```
 
 ## Archivo
 
-Una task con `status: archived` debe vivir en `docs/tasks/archive/`.
+Una track con `status: archived` debe vivir en `docs/tracks/archive/`.
 
-Una task que vive en `docs/tasks/archive/` debe tener `status: archived`.
+Una track que vive en `docs/tracks/archive/` debe tener `status: archived`.
 
 ## Regla
 
-Cuando una task produzca conocimiento durable, promoverlo a `docs/topics/`, `docs/DECISIONS.md`, `docs/PROJECT.md`, `docs/DEVELOPMENT.md`, una spec o el documento estable que corresponda.
+Cuando una track produzca conocimiento durable, promoverlo a `docs/topics/`, `docs/DECISIONS.md`, `docs/PROJECT.md`, `docs/DEVELOPMENT.md`, una spec o el documento estable que corresponda.
 
 No usar esta carpeta como transcript.
 
 ## Cierre De Sesion
 
-Al cerrar una sesion, usar `tasks` como fuente principal de continuidad:
+Al cerrar una sesion, usar `tracks` como fuente principal de continuidad:
 
 - actualizar estado, checklist y proximo corte;
 - promover decisiones durables a `docs/DECISIONS.md`;
@@ -72,14 +72,14 @@ Al continuar una sesion:
 1. Ejecutar el mismo cierre liviano.
 2. Regenerar `docs/.generated/context-index.md`.
 3. Correr `bun scripts/agent-context-audit.ts`.
-4. Devolver un prompt compacto con ruta del repo, task, topic, estado actual y proximo paso.
+4. Devolver un prompt compacto con ruta del repo, track, topic, estado actual y proximo paso.
 
 ## Refrescar Contra Codigo / Docs
 
-Para revisar si una task sigue conectada con sus referencias declaradas:
+Para revisar si una track sigue conectada con sus referencias declaradas:
 
 ```powershell
-bun scripts/context-refresh.ts --task docs/tasks/<task>.md
+bun scripts/context-refresh.ts --track docs/tracks/<track>.md
 ```
 
 El script no edita archivos. Reporta `topic`, `related` y `source_refs` faltantes para que JP o el agente decidan que actualizar.

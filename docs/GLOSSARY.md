@@ -13,12 +13,16 @@ Aliases y terminos recurrentes del proyecto.
 | OS Lite | Agentic Project OS Lite, sistema liviano de memoria, docs, topics, specs y skills. |
 | Working Memory | `docs/WORKING_MEMORY.md`, estado vivo y corto del proyecto. |
 | Topic | Documento recuperable en `docs/topics/` con frontmatter y triggers. |
-| Task | Trabajo vivo retomable en `docs/tasks/`, con YAML validado. |
-| Active Work | Alias historico de Task; usar `docs/tasks/` en docs nuevas. |
-| Archive | `docs/tasks/archive/`, carpeta de tasks cerradas con `status: archived`. |
-| Context Index | `docs/.generated/context-index.md`, cache generado de topics, tasks, specs y aliases. |
+| Track | Trabajo vivo retomable en `docs/tracks/`, con YAML validado. |
+| Task | Unidad de trabajo dentro de SpecKit o `tasks.md`; no usar como carpeta de continuidad viva. |
+| Active Work | Alias historico de Track; usar `docs/tracks/` en docs nuevas. |
+| Archive | `docs/tracks/archive/`, carpeta de tracks cerradas con `status: archived`. |
+| Context Index | `docs/.generated/context-index.md`, cache generado de topics, tracks, specs, skills y aliases. |
 | SpecKit | Flujo de specs, planes y tasks para features grandes. |
 | Port foundation | Spec draft `specs/001-port-foundation/`, base inicial del port Tauri. |
 | Datos de dictado | Audio, transcripciones, prompts, logs, correcciones y metadata de captura de voz. |
+| Local Skill | Skill local portable versionada dentro del repo. |
+| Skills Canonicas | Carpeta `docs/skills/`, fuente de verdad de las skills locales. |
+| Skills Compat | Carpeta `.agents/skills`, junction de compatibilidad hacia `docs/skills/`. |
 | Small Batch | Unidad de trabajo agentico chica, revisable y reversible: una task SpecKit, un comportamiento observable o una sincronizacion documental acotada, cerrada con checks y commit atomico. |
-| Context Bloat / Contaminacion De Contexto | Cuando reglas, memoria viva, topics o tasks crecen hasta volverse lectura obligatoria amplia y degradan la capacidad de una sesion nueva. |
+| Context Bloat / Contaminacion De Contexto | Cuando reglas, memoria viva, topics o tracks crecen hasta volverse lectura obligatoria amplia y degradan la capacidad de una sesion nueva. |

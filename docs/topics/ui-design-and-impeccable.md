@@ -15,7 +15,7 @@ triggers:
 primary_refs:
   - PRODUCT.md
   - DESIGN.md
-  - .agents/skills/impeccable/SKILL.md
+  - docs/skills/impeccable/SKILL.md
   - docs/topics/product-direction.md
   - docs/topics/dictation-workflow.md
 ---
@@ -24,13 +24,13 @@ primary_refs:
 
 ## Regla
 
-Usar la skill local `.agents/skills/impeccable` para trabajos de interfaz: app shell, voice dock, settings, onboarding, estados, recovery, preview, empty states, error states, responsive layout, accesibilidad, polish y auditoria visual.
+Usar la skill local `docs/skills/impeccable` para trabajos de interfaz: app shell, voice dock, settings, onboarding, estados, recovery, preview, empty states, error states, responsive layout, accesibilidad, polish y auditoria visual.
 
 No usarla para decidir arquitectura nativa, captura de audio, hotkeys globales, permisos/capabilities, model routing, proxy, storage o Rust backend.
 
 ## Estado Actual
 
-La skill esta instalada en `.agents/skills/impeccable`.
+La skill esta instalada en `docs/skills/impeccable`.
 
 Contexto inicial creado:
 

@@ -110,17 +110,17 @@
 
 ### Tests for User Story 3
 
-- [ ] T037 [P] [US3] Add delivery evidence tests for captured runs in `tests/capture/delivery-evidence.test.ts`
-- [ ] T038 [P] [US3] Add copy fallback honesty tests in `tests/capture/delivery-evidence.test.ts`
-- [ ] T039 [P] [US3] Add failed capture/transcription recovery message tests in `tests/capture/delivery-evidence.test.ts`
+- [X] T037 [P] [US3] Add delivery evidence tests for captured runs in `tests/capture/delivery-evidence.test.ts`
+- [X] T038 [P] [US3] Add copy fallback honesty tests in `tests/capture/delivery-evidence.test.ts`
+- [X] T039 [P] [US3] Add failed capture/transcription recovery message tests in `tests/capture/delivery-evidence.test.ts`
 
 ### Implementation for User Story 3
 
-- [ ] T040 [US3] Extend delivery evidence types to include captured-run statuses in `src/pipeline/types.ts`
-- [ ] T041 [US3] Implement transcript availability summary for captured runs in `src/pipeline/events.ts`
-- [ ] T042 [US3] Add copy fallback command/state without paste observation claims in `src/App.tsx`
-- [ ] T043 [US3] Render recoverable next actions for capture/transcription/delivery failures in `src/App.tsx`
-- [ ] T044 [US3] Verify delivery evidence tests pass and no summary can emit `paste_observed` without verified observation
+- [X] T040 [US3] Extend delivery evidence types to include captured-run statuses in `src/pipeline/types.ts`
+- [X] T041 [US3] Implement transcript availability summary for captured runs in `src/pipeline/events.ts`
+- [X] T042 [US3] Add copy fallback command/state without paste observation claims in `src/App.tsx`
+- [X] T043 [US3] Render recoverable next actions for capture/transcription/delivery failures in `src/App.tsx`
+- [X] T044 [US3] Verify delivery evidence tests pass and no summary can emit `paste_observed` without verified observation
 
 **Checkpoint**: US3 closes when transcript availability and copy fallback evidence are honest and test-covered.
 

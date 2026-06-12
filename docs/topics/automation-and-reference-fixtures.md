@@ -15,7 +15,7 @@ primary_refs:
   - docs/DECISIONS.md
   - docs/topics/product-direction.md
   - docs/topics/privacy-and-dictation-data.md
-  - docs/tasks/mvp-and-reference-resources.md
+  - docs/tracks/mvp-and-reference-resources.md
 ---
 
 # Automatizacion Y Fixtures De Referencia

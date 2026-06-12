@@ -32,7 +32,7 @@ Proximo paso: ajustar `002-simulated-pipeline` para cerrar cancelacion/evidencia
 
 Estado: accepted
 
-Decision: La ruta inicial de Dictation Tauri debe permanecer liviana. `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` y tasks activas no deben convertirse en lectura obligatoria amplia, mini-historiales ni transcripts.
+Decision: La ruta inicial de Dictation Tauri debe permanecer liviana. `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` y tracks activas no deben convertirse en lectura obligatoria amplia, mini-historiales ni transcripts.
 
 Motivo: el sistema agentico estaba instalado, pero `AGENTS.md` forzaba una lectura inicial amplia y `WORKING_MEMORY.md` acumulaba historia. Eso contradice el objetivo de OS Lite: leer poco, elegir el topic correcto y abrir referencias profundas solo bajo demanda.
 
@@ -67,21 +67,21 @@ Proximo paso: aplicar Small Batches al Checkpoint B de `001-port-foundation`.
 
 Estado: accepted
 
-Decision: el repo usa `AGENTS.md`, `docs/`, `docs/topics/`, `docs/tasks/`, `docs/.generated/context-index.md`, `specs/`, `.agents/skills/`, `.specify/` y scripts de contexto como sistema agentico liviano.
+Decision: el repo usa `AGENTS.md`, `docs/`, `docs/topics/`, `docs/tracks/`, `docs/.generated/context-index.md`, `specs/`, `docs/skills/`, `.specify/` y scripts de contexto como sistema agentico liviano.
 
 Motivo: permitir continuidad entre sesiones y agentes sin cargar contexto innecesario.
 
 Proximo paso: scaffold de `001-port-foundation` con el stack real y comandos verificables.
 
-### 2026-06-07 - Migrar continuidad a `docs/tasks/`
+### 2026-06-07 - Migrar continuidad a `docs/tracks/`
 
 Estado: accepted
 
-Decision: la continuidad viva del proyecto vive en `docs/tasks/`; `active work` queda solo como alias historico. Las tasks activas tienen `status`, `started`, `updated` y `priority`; las cerradas viven en `docs/tasks/archive/` con `status: archived`.
+Decision: la continuidad viva del proyecto vive en `docs/tracks/`; `active work` queda solo como alias historico. Las tracks activas tienen `status`, `started`, `updated` y `priority`; las cerradas viven en `docs/tracks/archive/` con `status: archived`.
 
 Motivo: alinear Dictation Tauri con la version actual de OS Lite y permitir validacion mas estricta con indice generado y audit.
 
-Proximo paso: usar `docs/tasks/TEMPLATE.md` para nuevas tasks y correr `bun scripts/context-index.ts` antes del audit cuando cambie contexto.
+Proximo paso: usar `docs/tracks/TEMPLATE.md` para nuevas tracks y correr `bun scripts/context-index.ts` antes del audit cuando cambie contexto.
 
 ### 2026-06-05 - Cerrar baseline documental y agentico
 
@@ -165,7 +165,7 @@ Proximo paso: usar ese mapa para decidir MVP, early features, research spikes, l
 
 Estado: accepted
 
-Decision: usar la skill local `.agents/skills/impeccable` para diseño, critique, audit, polish y construccion de superficies UI React/Tauri cuando la tarea toque interfaz.
+Decision: usar la skill local `docs/skills/impeccable` para diseño, critique, audit, polish y construccion de superficies UI React/Tauri cuando la tarea toque interfaz.
 
 Motivo: la app necesita una UI operativa, clara y confiable para estados de dictado, delivery y recovery. `impeccable` ya dio buenos resultados en otro proyecto y aporta proceso de producto, diseño, validacion visual y anti-patrones.
 

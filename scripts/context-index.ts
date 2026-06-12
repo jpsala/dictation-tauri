@@ -72,12 +72,12 @@ if (exists("docs/topics")) {
   lines.push("- Missing docs/topics/");
 }
 
-lines.push("", "## Tasks", "");
+lines.push("", "## Tracks", "");
 
-if (exists("docs/tasks")) {
-  for (const file of walkMarkdownFiles(join(root, "docs", "tasks")).sort()) {
+if (exists("docs/tracks")) {
+  for (const file of walkMarkdownFiles(join(root, "docs", "tracks")).sort()) {
     const path = rel(file);
-    if (path === "docs/tasks/README.md" || path === "docs/tasks/TEMPLATE.md") continue;
+    if (path === "docs/tracks/README.md" || path === "docs/tracks/TEMPLATE.md") continue;
     const content = read(path);
     const meta = frontmatter(content);
     const status = value(meta, "status") || "unknown";
@@ -86,7 +86,7 @@ if (exists("docs/tasks")) {
     lines.push(`- ${status}/${priority}: [${title(content)}](../${path.replace(/^docs\//, "")}) - updated ${updated}`);
   }
 } else {
-  lines.push("- Missing docs/tasks/");
+  lines.push("- Missing docs/tracks/");
 }
 
 lines.push("", "## Specs", "");
@@ -103,6 +103,16 @@ if (exists("specs")) {
   }
 } else {
   lines.push("- Missing specs/");
+}
+
+lines.push("", "## Skills", "");
+
+if (exists("docs/skills")) {
+  lines.push("- Canon: [docs/skills/](../skills/)");
+  lines.push("- Operational commands: sigamos, cerrar-sesion, continuar-sesion, continuar-sesion-con-gol, realinear-os, evaluar-skills");
+  lines.push("- Guidance: [local-codex-skills](../topics/local-codex-skills.md)");
+} else {
+  lines.push("- Missing docs/skills/");
 }
 
 lines.push("", "## Aliases", "");
