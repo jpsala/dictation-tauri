@@ -20,8 +20,8 @@ Objetivo probable: definir el proximo Small Batch post-MVP3 o, solo con aprobaci
 
 Estado verificado:
 
-- Branch `main` ahead 24 sobre `origin/main`.
-- Ultimo commit previo: `21b8722 docs: refresh continuation handoff`.
+- Verificar estado real inicial con `git status --short --branch` y `git log -1 --oneline`; el repo debe venir tracked limpio y ahead sobre `origin/main`.
+- Ultimo cierre funcional de MVP3: `8331f97 docs: close mvp3 ci-safe`; commits posteriores pueden ser solo refresh de handoff/contexto.
 - `npm run build` pasa.
 - `npm run visual:check` pasa.
 - `npm run test:pipeline` pasa para success/failure/cancelacion/no-overlap/event ledger.
