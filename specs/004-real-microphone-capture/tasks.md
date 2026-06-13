@@ -63,9 +63,9 @@
 
 ### Manual / Optional Verification for User Story 1
 
-- [ ] T022 [US1] Manually run `npm run tauri:dev` and perform one short real microphone start/stop check, only when JP approves recording local audio
-- [ ] T023 [US1] Confirm generated real microphone files remain ignored with `git status --short --ignored`
-- [ ] T024 [US1] Document whether WebView2 microphone permission works or requires a future Rust fallback in `specs/004-real-microphone-capture/research.md`
+- [X] T022 [US1] Manually run `npm run tauri:dev` and perform one short real microphone start/stop check, only when JP approves recording local audio
+- [X] T023 [US1] Confirm generated real microphone files remain ignored with `git status --short --ignored`
+- [X] T024 [US1] Document whether WebView2 microphone permission works or requires a future Rust fallback in `specs/004-real-microphone-capture/research.md`
 
 **Checkpoint**: US1 closes for CI-safe implementation when fake/adapter tests pass; manual microphone evidence is optional and gated.
 

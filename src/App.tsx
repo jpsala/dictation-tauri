@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { FakeCaptureGateway } from "./capture/fake-gateway";
+import type { CaptureGateway } from "./capture/gateway";
+import { NativeTauriCaptureGateway } from "./capture/native-tauri-gateway";
 import type { CaptureResult, CaptureState } from "./capture/types";
 import { createCapturedAudioTranscriptionAdapter } from "./model-gateway/direct-stt";
 import { createCapturedAudioPipelineRequest } from "./pipeline/ports";
@@ -20,6 +23,40 @@ type PipelineUiState = {
   message: string;
   summary?: SimulatedRunSummary;
 };
+
+type CaptureGatewayRuntime = {
+  gateway: CaptureGateway;
+  label: string;
+  readyMessage: string;
+  permissionMessage: string;
+  listeningMessage: string;
+  stoppingMessage: string;
+  capturedMessage: string;
+};
+
+function createCaptureGatewayRuntime(): CaptureGatewayRuntime {
+  if (isTauri()) {
+    return {
+      gateway: new NativeTauriCaptureGateway(),
+      label: "Native microphone",
+      readyMessage: "Ready for a real microphone capture check.",
+      permissionMessage: "Checking native microphone setup through Tauri.",
+      listeningMessage: "Listening through the native microphone recorder.",
+      stoppingMessage: "Writing the captured WAV artifact.",
+      capturedMessage: "Captured WAV artifact is ready.",
+    };
+  }
+
+  return {
+    gateway: new FakeCaptureGateway(),
+    label: "Fake capture",
+    readyMessage: "Ready for a fake microphone capture check.",
+    permissionMessage: "Checking capture permission without opening a real microphone.",
+    listeningMessage: "Listening through the fake capture gateway.",
+    stoppingMessage: "Finalizing the fake captured audio artifact.",
+    capturedMessage: "Fake captured audio artifact is ready.",
+  };
+}
 
 const captureStateLabels: Record<CaptureState, string> = {
   idle: "Idle",
@@ -119,7 +156,8 @@ function describeDeliveryEvidence(
 }
 
 export function App() {
-  const gateway = useMemo(() => new FakeCaptureGateway(), []);
+  const captureRuntime = useMemo(() => createCaptureGatewayRuntime(), []);
+  const gateway = captureRuntime.gateway;
   const pipeline = useMemo(
     () =>
       new PipelineService({
@@ -129,7 +167,7 @@ export function App() {
   );
   const [capture, setCapture] = useState<CaptureUiState>({
     state: "idle",
-    message: "Ready for a fake microphone capture check.",
+    message: captureRuntime.readyMessage,
   });
   const [pipelineUi, setPipelineUi] = useState<PipelineUiState>({
     status: "idle",
@@ -143,11 +181,15 @@ export function App() {
     });
     setCapture({
       state: "requesting_permission",
-      message: "Checking capture permission without opening a real microphone.",
+      message: captureRuntime.permissionMessage,
     });
 
     const permissionStatus = await gateway.getPermissionState();
-    if (permissionStatus !== "granted") {
+    if (
+      permissionStatus === "denied" ||
+      permissionStatus === "unavailable" ||
+      permissionStatus === "error"
+    ) {
       setCapture({
         state: "permission_needed",
         message: "Microphone capture is not available in this test adapter.",
@@ -159,7 +201,7 @@ export function App() {
       await gateway.startCapture();
       setCapture({
         state: "recording",
-        message: "Listening through the fake capture gateway.",
+        message: captureRuntime.listeningMessage,
       });
     } catch {
       setCapture({
@@ -172,7 +214,7 @@ export function App() {
   async function stopCapture() {
     setCapture({
       state: "stopping",
-      message: "Finalizing the fake captured audio artifact.",
+      message: captureRuntime.stoppingMessage,
     });
 
     const result = await gateway.stopCapture();
@@ -184,9 +226,7 @@ export function App() {
     });
     setCapture({
       state: result.ok ? "captured" : "failed",
-      message: result.ok
-        ? "Fake captured audio artifact is ready."
-        : result.error.message,
+      message: result.ok ? captureRuntime.capturedMessage : result.error.message,
       result,
     });
   }
@@ -402,7 +442,7 @@ export function App() {
         <dl className="status-grid" aria-label="Capture evidence">
           <div>
             <dt>Gateway</dt>
-            <dd>Fake capture</dd>
+            <dd>{captureRuntime.label}</dd>
           </div>
           <div>
             <dt>Permission</dt>

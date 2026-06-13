@@ -88,9 +88,60 @@ not block first capture.
 ## Open Risks To Verify During Implementation
 
 - Windows WebView2 may handle microphone permission differently from normal
-browser contexts. First implementation should include a small manual/spike
-check and keep the Rust capture fallback in reserve.
+  browser contexts. First implementation should include a small manual/spike
+  check and keep the Rust capture fallback in reserve.
 - `MediaRecorder` MIME output can vary by user agent. Implementation should use
-`MediaRecorder.isTypeSupported()` and record actual MIME/extension metadata.
+  `MediaRecorder.isTypeSupported()` and record actual MIME/extension metadata.
 - `getUserMedia()` can remain pending if the user ignores the prompt. UI needs a
-setup/waiting state and cancel path.
+  setup/waiting state and cancel path.
+
+## Manual Check: Windows WebView2 Permission Pending
+
+Date: 2026-06-12.
+
+JP explicitly approved the local microphone check for T022-T024. The Tauri dev
+app was run with the real `WebViewRecorderGateway` selected only in Tauri, while
+browser/CI smoke checks kept the fake gateway. Starting capture called
+`navigator.mediaDevices.getUserMedia({ audio: true })` from the Tauri WebView2
+runtime.
+
+Observed result:
+
+- The UI entered the `requesting_permission` state.
+- No operable WebView2 or Windows microphone permission prompt appeared.
+- The request remained pending for more than one inspection interval.
+- The in-app cancel control recovered the UI to a cancelled terminal state.
+- No captured audio file, transcript, or provider payload was produced.
+
+Conclusion: the WebView2 route is not ready to close the real microphone
+start/stop check on this machine as-is. Keep the WebView adapter test-covered,
+but plan a follow-up Rust/Tauri capture fallback or an explicit WebView2 media
+permission investigation before marking T022 complete.
+
+## Manual Check: Native Rust/Tauri Fallback Works
+
+Date: 2026-06-12.
+
+After the WebView2 permission spike stayed pending, a minimal native fallback was
+added behind the existing capture gateway boundary:
+
+- `src-tauri` uses `cpal` for default input capture and `hound` to write WAV.
+- Tauri commands are registered for start, stop, and cancel.
+- The React app selects the native gateway only when `isTauri()` is true.
+- Browser smoke tests and CI-safe flows continue to use the fake gateway.
+
+Observed result:
+
+- The Tauri app entered `Listening` through the native microphone recorder.
+- Stopping capture wrote a WAV artifact under
+  `artifacts/microphone-capture/audio/`.
+- The UI reported `Captured` and displayed the generated `.wav` artifact
+  metadata.
+- `git status --short --ignored` showed the artifact only through the ignored
+  `artifacts/` path; no audio, transcript, or provider payload was tracked.
+- No provider was called and no transcript was generated.
+
+Conclusion: MVP3 real microphone start/stop can close through the native
+Rust/Tauri fallback. WebView capture remains useful as a tested adapter boundary,
+but should not be treated as the active Windows capture route until its
+permission behavior is resolved.

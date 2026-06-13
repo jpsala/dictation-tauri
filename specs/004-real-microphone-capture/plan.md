@@ -25,7 +25,7 @@ TypeScript; desktop side effects remain behind explicit host boundaries.
 
 **Language/Version**: TypeScript 6.0.x, React 19.x, Vite 8.x, Tauri 2.11.x, Rust 1.89.x.
 
-**Primary Dependencies**: Existing React/Vite/Tauri stack, browser `MediaDevices.getUserMedia`, browser `MediaRecorder`, existing `PipelineService`, existing `ModelGateway` dry-run/direct shell, Vitest, Playwright. Add no capture library until a spike proves WebView APIs are insufficient.
+**Primary Dependencies**: Existing React/Vite/Tauri stack, browser `MediaDevices.getUserMedia`, browser `MediaRecorder`, native Rust `cpal` fallback for Windows microphone capture, `hound` for local WAV artifacts, existing `PipelineService`, existing `ModelGateway` dry-run/direct shell, Vitest, Playwright. WebView APIs remain test-covered, but native capture is the active Windows route after the WebView2 permission spike stayed pending.
 
 **Storage**: No product persistence. Captured microphone audio, transcripts, provider payloads, and capture reports are local/gitignored artifacts under `artifacts/microphone-capture/` during development. If app-data storage is introduced later, it must be documented before implementation closes.
 

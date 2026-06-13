@@ -5,6 +5,11 @@ adapter boundaries, captured-audio pipeline submission, STT shell routing, and
 honest delivery evidence are test-covered without recording real audio or
 calling a real provider.
 
+On Windows Tauri runtime, real microphone capture currently uses the native
+Rust/Tauri fallback. The WebView `getUserMedia` route stayed pending without an
+operable permission prompt during the manual check, so it remains a tested
+adapter boundary rather than the active Windows runtime route.
+
 Real microphone recording and real-provider transcription remain optional manual
 checks. They require explicit JP approval before running.
 
@@ -82,7 +87,7 @@ Run this only when JP explicitly approves recording local microphone audio:
 Expected result:
 
 - One local captured-audio artifact is created under
-  `artifacts/microphone-capture/` or a documented app-data path.
+  `artifacts/microphone-capture/audio/`.
 - No real audio/transcript files are tracked by git.
 - If provider setup is missing, the app reports a redacted setup state.
 
