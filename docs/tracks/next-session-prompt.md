@@ -16,11 +16,12 @@ Prompt compacto para retomar sin reabrir decisiones resueltas:
 ```text
 Estamos en C:\dev\dictation-tauri. Usa la ruta liviana de AGENTS.md: context-index si existe, WORKING_MEMORY y luego el topic/spec/track puntual.
 
-Objetivo probable: definir el proximo Small Batch post-MVP3 o, solo con aprobacion explicita de JP, correr las verificaciones manuales/opcionales de provider real. `specs/001-port-foundation/tasks.md` quedo completo para MVP 0, `specs/002-simulated-pipeline/tasks.md` para MVP 1, `specs/003-synthetic-audio-stt/tasks.md` para MVP 2 dry-run y `specs/004-real-microphone-capture/tasks.md` quedo completo con captura nativa real.
+Objetivo probable: definir spec post-MVP3 de transcripcion/delivery runtime o, solo con aprobacion explicita de JP, correr las verificaciones manuales/opcionales de provider real. `specs/001-port-foundation/tasks.md` quedo completo para MVP 0, `specs/002-simulated-pipeline/tasks.md` para MVP 1, `specs/003-synthetic-audio-stt/tasks.md` para MVP 2 dry-run y `specs/004-real-microphone-capture/tasks.md` quedo completo con captura nativa real.
 
 Estado verificado:
 
 - Verificar estado real inicial con `git status --short --branch` y `git log -1 --oneline`; el repo debe venir tracked limpio y ahead sobre `origin/main`.
+- Ultimo cierre de secuencia post-MVP3: `9ee59e1 docs: decide post-mvp3 sequence`.
 - Ultimo cierre funcional de MVP3 real/native capture: `8ba5bc9 feat: add native microphone fallback`; commits posteriores pueden ser refresh de handoff/contexto.
 - `npm run build` pasa.
 - `npm run visual:check` pasa.
@@ -36,10 +37,10 @@ Estado verificado:
 
 Siguiente batch sugerido:
 
-- Si no hay aprobacion de provider real: definir la proxima spec post-MVP3 o hacer una revision arquitectonica antes de sumar mas side effects.
+- Si no hay aprobacion de provider real: definir spec post-MVP3 de transcripcion/delivery runtime.
 - Si JP aprueba explicitamente provider real: evaluar `T035-T036`, manteniendo artifacts locales ignorados y sin imprimir secretos ni payloads.
 
-No reabras alcance MVP salvo contradiccion tecnica fuerte. Mantener provider real, hotkeys, tray, settings amplias, selected-text real y persistencia durable fuera de alcance salvo decision explicita. Mantener modo personal/dev permisivo para lectura local, pero no imprimir secretos completos ni commitear `.env`/tokens.
+No reabras alcance MVP salvo contradiccion tecnica fuerte. Priorizar evidencia end-to-end de dictado antes de ergonomia desktop amplia. Mantener provider real, hotkeys, tray, settings amplias, selected-text real y persistencia durable fuera de alcance salvo decision explicita. Mantener modo personal/dev permisivo para lectura local, pero no imprimir secretos completos ni commitear `.env`/tokens.
 ```
 
 ## Nota
