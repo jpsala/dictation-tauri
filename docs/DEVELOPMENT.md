@@ -83,9 +83,9 @@ Completado para Checkpoint B de MVP 0:
 
 Proximo trabajo recomendado:
 
-- Abrir spec de MVP 2: audio sintetico + STT real sobre fixtures, usando `ModelGateway` directo local como primer adapter real.
-- Mantener MVP 2 sin microfono real, hotkeys, tray, settings, persistencia de producto ni UI durable salvo decision explicita.
-- Mantener el pipeline por puertos/adapters y la UI como observadora antes de agregar side effects desktop.
+- Definir la proxima spec post-MVP3 o hacer una revision arquitectonica antes de sumar mas side effects desktop.
+- Correr provider real sobre artifact capturado solo con aprobacion explicita de JP para `T035-T036`.
+- Mantener hotkeys, tray, settings amplias, selected-text real y persistencia durable fuera de alcance salvo decision explicita.
 
 ## UI / Frontend Design
 
@@ -228,7 +228,7 @@ specs/<feature>/
 └── tasks.md
 ```
 
-Spec activa actual: `specs/003-synthetic-audio-stt/`.
+Spec activa actual: `specs/004-real-microphone-capture/`, completa para captura nativa real; provider real sigue opcional/gated en `T035-T036`.
 
 ## Verificacion
 

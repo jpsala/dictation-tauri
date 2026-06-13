@@ -87,8 +87,8 @@ Cierre:
 
 ### MVP 3 - Captura De Microfono
 
-- Captura local real queda como verificacion manual/opcional aprobada por JP.
-- Permisos de microfono quedan modelados por adapter WebView y estados de setup; no se pidio permiso real en cierre CI-safe.
+- Captura local real fue verificada manualmente con aprobacion de JP usando fallback nativo Rust/Tauri en Windows.
+- Permisos de microfono quedan modelados por adapter WebView y estados de setup; WebView2 `getUserMedia` quedo pendiente sin prompt operable en Windows, por lo que la ruta activa es nativa.
 - Start/stop robusto cubierto por fake gateway y tests de adapter.
 - Persistencia de producto aun no definida; persistencia experimental local permitida en dev.
 - Stop-submit funciona sobre captured-audio fake/testable y pipeline real de la app.
@@ -100,7 +100,8 @@ Cierre:
 Cierre:
 
 - Cierre CI-safe: US1-US3 de `specs/004-real-microphone-capture/tasks.md` pasan sin audio real ni provider real.
-- Cierre manual opcional: JP puede dictar una frase real y obtener texto insertado o copiado sin perdida silenciosa, solo si aprueba grabar audio local.
+- Cierre manual de captura: JP aprobo grabar audio local; la app grabo un WAV real bajo `artifacts/microphone-capture/audio/`, ignorado por git.
+- Cierre manual de provider: sigue pendiente y requiere aprobacion explicita para `T035-T036`.
 - La app muestra estado claro para listening/transcribing/processing/delivering/completed/failed/cancelled.
 - La app no expone secretos al frontend ni reclama paste observado sin evidencia.
 - Audio real, transcript real y logs pueden existir localmente en dev; antes de producto estable, documentar ruta/formato/ciclo de vida.

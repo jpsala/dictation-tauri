@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-13T02:58:14.572Z
+Generated: 2026-06-13T03:02:48.824Z
 
 ## Topics
 
@@ -26,7 +26,7 @@ Generated: 2026-06-13T02:58:14.572Z
 
 - archived/medium: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md) - updated 2026-06-07
 - active/high: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md) - updated 2026-06-10
-- active/medium: [Prompt Para Proxima Sesion](../tracks/next-session-prompt.md) - updated 2026-06-12
+- active/medium: [Prompt Para Proxima Sesion](../tracks/next-session-prompt.md) - updated 2026-06-13
 - active/high: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md) - updated 2026-06-10
 
 ## Specs

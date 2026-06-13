@@ -46,9 +46,16 @@ specs/001-port-foundation/
 ## Decisiones Pendientes
 
 - Motor de dictado/transcripcion.
-- Permisos/capabilities para audio, hotkeys, tray, delivery y UI durable posteriores.
+- Permisos/capabilities para hotkeys, tray, delivery y UI durable posteriores.
 - Persistencia local.
 - Comandos de producto posteriores al scaffold.
+
+## Nota MVP3
+
+La captura real de microfono en Windows usa un fallback nativo Rust/Tauri con
+`cpal` y escribe artifacts WAV locales con `hound` bajo
+`artifacts/microphone-capture/audio/`. WebView `getUserMedia` queda como adapter
+testeado pero no como ruta activa hasta resolver su prompt pendiente en WebView2.
 
 ## Proximo Paso
 

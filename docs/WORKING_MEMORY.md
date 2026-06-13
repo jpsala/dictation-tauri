@@ -2,7 +2,7 @@
 
 Estado vivo del proyecto. Mantener corto.
 
-Ultima actualizacion manual: 2026-06-12.
+Ultima actualizacion manual: 2026-06-13.
 
 ## Regla
 
@@ -20,7 +20,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | UI/design | seeded | `PRODUCT.md`, `DESIGN.md` | Usar antes de cualquier UI durable. |
 | Pipeline simulado | mvp1-complete | `specs/002-simulated-pipeline/tasks.md` | Mantener como baseline para MVP 2. |
 | Audio sintetico/STT | mvp2-dry-run-complete | `specs/003-synthetic-audio-stt/tasks.md` | T031 queda opcional/local si se decide correr provider real. |
-| Microfono real | mvp3-ci-safe-complete | `specs/004-real-microphone-capture/tasks.md` | Pedir aprobacion explicita para T035-T036/T022-T024 o definir proxima spec post-MVP3. |
+| Microfono real | mvp3-native-capture-complete | `specs/004-real-microphone-capture/tasks.md` | Pedir aprobacion explicita solo para T035-T036 provider real o definir proxima spec post-MVP3. |
 | Datos de dictado | decided | `docs/topics/privacy-and-dictation-data.md` | Modo personal/dev permisivo; no imprimir ni commitear secretos. |
 | OS Lite/docs | active | `docs/topics/agentic-project-os-lite.md` | Mantener `docs/tracks/`, `docs/skills/`, junction y audit verde. |
 
@@ -31,7 +31,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `001-port-foundation` | complete | `specs/001-port-foundation/tasks.md` |
 | `002-simulated-pipeline` | complete | `specs/002-simulated-pipeline/tasks.md` |
 | `003-synthetic-audio-stt` | dry-run complete | `specs/003-synthetic-audio-stt/tasks.md` |
-| `004-real-microphone-capture` | ci-safe complete | `specs/004-real-microphone-capture/tasks.md` |
+| `004-real-microphone-capture` | native capture complete; provider optional | `specs/004-real-microphone-capture/tasks.md` |
 
 ## Tracks Activas
 
@@ -53,7 +53,8 @@ rg -l "status:\s*active" docs/tracks -g "*.md" -g "!archive/**"
 - `C:\dev\chat\copyq-tauri` es canon tecnico para Tauri/UI/settings/Windows desktop mechanics.
 - `C:\dev\electro-bun-1` / Fixvox es canon funcional para dictado, runtime, backend/proxy, policies/env y benchmarks; no se porta literal.
 - MVP 0-3: app base, pipeline simulado, audio sintetico/STT dry-run con shell de provider real, microfono real.
-- MVP 3 CI-safe ya cubre captura fake/WebView adapter, pipeline de captured audio, STT shell sin provider real por default, y evidencia honesta de delivery/recovery sin `paste_observed`.
+- MVP 3 cubre captura fake/WebView adapter en tests, captura real nativa Rust/Tauri en Windows con artifact WAV local ignorado, pipeline de captured audio, STT shell sin provider real por default, y evidencia honesta de delivery/recovery sin `paste_observed`.
+- WebView2 `getUserMedia` quedo pendiente sin prompt operable en Windows; la ruta activa de microfono real es el fallback nativo `cpal`/`hound`.
 - Runtime: pipeline por puertos/adapters, `PipelineService`, event ledger y summary derivado antes de side effects reales.
 - `ModelGateway` hibrido: mock port primero, adapter directo local en MVP 2; proxied como spike posterior.
 - Texto seleccionado real queda fuera de MVP 0-3; se permite simulacion en fixtures.
@@ -87,7 +88,7 @@ bun scripts/check-skills-junction.ts
 
 Decidir el siguiente salto:
 
-1. Ejecutar T035-T036 o T022-T024 solo con aprobacion explicita de JP para audio/provider real local.
+1. Ejecutar T035-T036 solo con aprobacion explicita de JP para provider real local sobre artifact capturado.
 2. Definir la proxima spec post-MVP3 si no se aprueba audio/provider real.
 3. Hacer revision arquitectonica antes de sumar side effects reales si se quiere un gate adicional.
 
