@@ -4,6 +4,30 @@ Registro corto de decisiones durables.
 
 ## Aprobadas
 
+### 2026-06-13 - Ordenar el trabajo post-MVP3 por evidencia antes de ergonomia
+
+Estado: accepted
+
+Decision: despues de cerrar captura nativa real de microfono, el siguiente trabajo debe priorizar evidencia end-to-end de dictado antes de sumar ergonomia desktop amplia. El orden recomendado es:
+
+1. Provider real gated sobre artifact capturado (`T035-T036`) solo con aprobacion explicita de JP, manteniendo payloads/transcripts/audio ignorados y logs redactados.
+2. Spec post-MVP3 para una frontera de transcripcion runtime mas clara si el provider real revela gaps entre script/local shell y app runtime.
+3. Delivery real/clipboard/foco con evidencia honesta antes de hotkeys globales.
+4. Hotkeys/tray despues de que captura, transcripcion y recovery esten cerrados como flujo confiable.
+5. Selected text y replace-selection real despues de delivery, porque dependen de target capture y semantics de reemplazo.
+
+Motivo: la captura real ya esta probada, pero el valor de producto depende de obtener texto util y recuperable. Hotkeys, tray y seleccion aumentan side effects y superficie de permisos; conviene no agregarlos hasta que la cadena capture -> transcribe -> recover/deliver tenga evidencia local.
+
+Alcance:
+
+- No se llama provider real por defecto.
+- `CaptureGateway` y `ModelGateway` siguen siendo boundaries.
+- UI sigue observando y disparando comandos; no se aduena de grabacion/transcripcion.
+- WebView recorder queda como adapter testeado, pero Windows usa captura nativa `cpal`/`hound` hasta resolver WebView2.
+- Artifacts reales siguen bajo `artifacts/` y no se versionan.
+
+Proximo paso: si JP no aprueba provider real, crear una spec post-MVP3 de transcripcion/delivery runtime o una mini-spec de delivery evidence real; si aprueba provider real, ejecutar `T035-T036` como Small Batch aislado.
+
 ### 2026-06-10 - Guiar runtime por puertos, eventos y fronteras Tauri
 
 Estado: accepted

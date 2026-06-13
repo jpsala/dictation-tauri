@@ -20,7 +20,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | UI/design | seeded | `PRODUCT.md`, `DESIGN.md` | Usar antes de cualquier UI durable. |
 | Pipeline simulado | mvp1-complete | `specs/002-simulated-pipeline/tasks.md` | Mantener como baseline para MVP 2. |
 | Audio sintetico/STT | mvp2-dry-run-complete | `specs/003-synthetic-audio-stt/tasks.md` | T031 queda opcional/local si se decide correr provider real. |
-| Microfono real | mvp3-native-capture-complete | `specs/004-real-microphone-capture/tasks.md` | Pedir aprobacion explicita solo para T035-T036 provider real o definir proxima spec post-MVP3. |
+| Microfono real | mvp3-native-capture-complete | `specs/004-real-microphone-capture/tasks.md` | Pedir aprobacion explicita solo para T035-T036 provider real o definir spec post-MVP3 de transcripcion/delivery runtime. |
 | Datos de dictado | decided | `docs/topics/privacy-and-dictation-data.md` | Modo personal/dev permisivo; no imprimir ni commitear secretos. |
 | OS Lite/docs | active | `docs/topics/agentic-project-os-lite.md` | Mantener `docs/tracks/`, `docs/skills/`, junction y audit verde. |
 
@@ -41,12 +41,6 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Estudio de fuentes | `docs/tracks/source-project-study-plan.md` | Plan vivo para CopyQ Tauri/Fixvox. |
 | Prompt proxima sesion | `docs/tracks/next-session-prompt.md` | Handoff compacto; no reemplaza working memory. |
 
-Listar activos:
-
-```powershell
-rg -l "status:\s*active" docs/tracks -g "*.md" -g "!archive/**"
-```
-
 ## Decisiones Vigentes
 
 - Stack base: React, Vite, TypeScript strict, npm, Tauri v2, Rust 2021 y Playwright.
@@ -60,6 +54,7 @@ rg -l "status:\s*active" docs/tracks -g "*.md" -g "!archive/**"
 - Texto seleccionado real queda fuera de MVP 0-3; se permite simulacion en fixtures.
 - Tauri/Rust posee side effects desktop cuando entren: microfono, hotkeys, tray, foco, clipboard, ventanas, permisos y secretos.
 - Delivery se modela por evidencia/certeza; no prometer paste observado sin verificacion real.
+- Post-MVP3: priorizar evidencia end-to-end de dictado antes de ergonomia desktop amplia; provider real gated o spec de transcripcion/delivery van antes que hotkeys/tray/selected text.
 - UI durable requiere `PRODUCT.md` y `DESIGN.md`.
 - Small Batches: una task SpecKit, comportamiento o checkpoint por tanda, checks verdes y commit atomico.
 - La ruta inicial debe seguir liviana; no convertir `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` ni tracks activas en historial.
@@ -89,13 +84,9 @@ bun scripts/check-skills-junction.ts
 Decidir el siguiente salto:
 
 1. Ejecutar T035-T036 solo con aprobacion explicita de JP para provider real local sobre artifact capturado.
-2. Definir la proxima spec post-MVP3 si no se aprueba audio/provider real.
-3. Hacer revision arquitectonica antes de sumar side effects reales si se quiere un gate adicional.
+2. Definir spec post-MVP3 de transcripcion/delivery runtime si no se aprueba provider real.
+3. Posponer hotkeys, tray y selected text hasta tener capture -> transcribe -> recover/deliver con evidencia local.
 
 ## Promocion De Memoria
 
-1. Regla critica -> `AGENTS.md`.
-2. Estado vivo -> `WORKING_MEMORY.md`.
-3. Conocimiento reusable -> `docs/topics/<topic>.md`.
-4. Decision durable -> `docs/DECISIONS.md`.
-5. Trabajo retomable -> `docs/tracks/`, sin transcript.
+Regla critica -> `AGENTS.md`; estado vivo -> `WORKING_MEMORY.md`; conocimiento reusable -> topic; decision durable -> `docs/DECISIONS.md`; trabajo retomable -> track.
