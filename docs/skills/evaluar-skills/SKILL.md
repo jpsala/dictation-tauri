@@ -1,6 +1,6 @@
 ---
 name: evaluar-skills
-description: Audit an OS Lite repo's agentic system and propose which commands, topics, tracks, rules, or workflows should become local hybrid skills. Use when JP asks to revisar/evaluar qué se puede pasar a skills, promover algo a skill, crear slash commands desde el sistema agéntico, or inspect whether the repo has skill candidates.
+description: Audit an AOS repo's agentic system and propose which commands, topics, tracks, rules, or workflows should become local hybrid skills. Use when JP asks to revisar/evaluar qué se puede pasar a skills, promover algo a skill, crear slash commands desde el sistema agéntico, or inspect whether the repo has skill candidates.
 ---
 
 # Evaluar Skills

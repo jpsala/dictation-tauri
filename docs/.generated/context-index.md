@@ -2,12 +2,12 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-13T03:10:32.181Z
+Generated: 2026-06-18T12:38:55.698Z
 
 ## Topics
 
-- active: [agentic-os-operations](../topics/agentic-os-operations.md) - crear sistema agentico, migrar sistema agentico, actualizar norte, os lite, adaptar proyecto, repo nuevo
-- active: [agentic-project-os-lite](../topics/agentic-project-os-lite.md) - norte, working memory, os lite, agentic project os, memoria viva, audit docs, tracks, cerrar sesion, continuar sesion, siguiente, handoff thread, nuevo thread, context index, Small Batches, small batches, commits atomicos
+- active: [agentic-os-operations](../topics/agentic-os-operations.md) - crear sistema agentico, migrar sistema agentico, actualizar norte, aos, adaptar proyecto, repo nuevo
+- active: [agentic-os](../topics/agentic-os.md) - norte, working memory, aos, agentic os, memoria viva, audit docs, tracks, cerrar sesion, continuar sesion, siguiente, handoff thread, nuevo thread, context index, Small Batches, small batches, commits atomicos
 - active: [automation-and-reference-fixtures](../topics/automation-and-reference-fixtures.md) - fixtures, audio sintetico, TTS, STT, benchmarks, Fixvox, electro-bun, sin interaccion humana
 - draft: [backend-and-model-routing](../topics/backend-and-model-routing.md) - backend, proxy, model routing, proveedores, API keys, Groq, OpenAI, OpenRouter, xAI
 - active: [dictation-tauri-foundation](../topics/dictation-tauri-foundation.md) - tauri, port, fundacion, stack, comandos, src-tauri
@@ -50,7 +50,7 @@ Generated: 2026-06-13T03:10:32.181Z
 | Proyecto Tauri | `C:\dev\chat\copyq-tauri`. Fuente de verdad tecnica moderna para stack Tauri, ventanas, custom chrome, superficies, Mantine, temas, settings, global shortcuts, tray, foco/paste en Windows, checks visuales y estructura de app desktop. |
 | CopyQ Tauri / Copicu | Nombre del proyecto Tauri de referencia en `C:\dev\chat\copyq-tauri`. |
 | Fixvox | Nombre del proyecto canonico en `C:\dev\electro-bun-1`. |
-| OS Lite | Agentic Project OS Lite, sistema liviano de memoria, docs, topics, specs y skills. |
+| AOS | Agentic OS (AOS), sistema liviano de memoria, docs, topics, specs y skills. |
 | Working Memory | `docs/WORKING_MEMORY.md`, estado vivo y corto del proyecto. |
 | Topic | Documento recuperable en `docs/topics/` con frontmatter y triggers. |
 | Track | Trabajo vivo retomable en `docs/tracks/`, con YAML validado. |

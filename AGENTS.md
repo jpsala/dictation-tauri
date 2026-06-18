@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Este repo usa Agentic Project OS Lite: una capa liviana de reglas, memoria viva, topics, handoffs, SpecKit y skills locales para que agentes puedan trabajar sin cargar contexto innecesario.
+Este repo usa Agentic OS (AOS): una capa liviana de reglas, memoria viva, topics, handoffs, SpecKit y skills locales para que agentes puedan trabajar sin cargar contexto innecesario.
 
 ## Lectura Inicial
 

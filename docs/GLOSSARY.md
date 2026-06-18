@@ -10,7 +10,7 @@ Aliases y terminos recurrentes del proyecto.
 | Proyecto Tauri | `C:\dev\chat\copyq-tauri`. Fuente de verdad tecnica moderna para stack Tauri, ventanas, custom chrome, superficies, Mantine, temas, settings, global shortcuts, tray, foco/paste en Windows, checks visuales y estructura de app desktop. |
 | CopyQ Tauri / Copicu | Nombre del proyecto Tauri de referencia en `C:\dev\chat\copyq-tauri`. |
 | Fixvox | Nombre del proyecto canonico en `C:\dev\electro-bun-1`. |
-| OS Lite | Agentic Project OS Lite, sistema liviano de memoria, docs, topics, specs y skills. |
+| AOS | Agentic OS (AOS), sistema liviano de memoria, docs, topics, specs y skills. |
 | Working Memory | `docs/WORKING_MEMORY.md`, estado vivo y corto del proyecto. |
 | Topic | Documento recuperable en `docs/topics/` con frontmatter y triggers. |
 | Track | Trabajo vivo retomable en `docs/tracks/`, con YAML validado. |

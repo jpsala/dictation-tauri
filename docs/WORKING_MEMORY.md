@@ -22,7 +22,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Audio sintetico/STT | mvp2-dry-run-complete | `specs/003-synthetic-audio-stt/tasks.md` | T031 queda opcional/local si se decide correr provider real. |
 | Microfono real | mvp3-native-capture-complete | `specs/004-real-microphone-capture/tasks.md` | Pedir aprobacion explicita solo para T035-T036 provider real o definir spec post-MVP3 de transcripcion/delivery runtime. |
 | Datos de dictado | decided | `docs/topics/privacy-and-dictation-data.md` | Modo personal/dev permisivo; no imprimir ni commitear secretos. |
-| OS Lite/docs | active | `docs/topics/agentic-project-os-lite.md` | Mantener `docs/tracks/`, `docs/skills/`, junction y audit verde. |
+| AOS/docs | active | `docs/topics/agentic-os.md` | Mantener `docs/tracks/`, `docs/skills/`, junction y audit verde. |
 
 ## Spec Activa
 

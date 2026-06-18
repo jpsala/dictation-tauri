@@ -89,7 +89,7 @@ Formato recomendado:
 ```markdown
 ---
 name: crear-track
-description: Create a new OS Lite track from the canonical template and current work context. Use when the user says `crear track` or wants a resumable work item.
+description: Create a new AOS track from the canonical template and current work context. Use when the user says `crear track` or wants a resumable work item.
 ---
 
 # Crear Track

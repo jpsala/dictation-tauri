@@ -58,7 +58,7 @@ Estado: accepted
 
 Decision: La ruta inicial de Dictation Tauri debe permanecer liviana. `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` y tracks activas no deben convertirse en lectura obligatoria amplia, mini-historiales ni transcripts.
 
-Motivo: el sistema agentico estaba instalado, pero `AGENTS.md` forzaba una lectura inicial amplia y `WORKING_MEMORY.md` acumulaba historia. Eso contradice el objetivo de OS Lite: leer poco, elegir el topic correcto y abrir referencias profundas solo bajo demanda.
+Motivo: el sistema agentico estaba instalado, pero `AGENTS.md` forzaba una lectura inicial amplia y `WORKING_MEMORY.md` acumulaba historia. Eso contradice el objetivo de AOS: leer poco, elegir el topic correcto y abrir referencias profundas solo bajo demanda.
 
 Proximo paso: mantener la ruta caliente corta, mover historia a archivo o referencias profundas, y usar el audit para detectar crecimiento excesivo.
 
@@ -87,7 +87,7 @@ Referencias:
 
 Proximo paso: aplicar Small Batches al Checkpoint B de `001-port-foundation`.
 
-### 2026-06-05 - Instalar Agentic Project OS Lite
+### 2026-06-05 - Instalar Agentic OS (AOS)
 
 Estado: accepted
 
@@ -103,7 +103,7 @@ Estado: accepted
 
 Decision: la continuidad viva del proyecto vive en `docs/tracks/`; `active work` queda solo como alias historico. Las tracks activas tienen `status`, `started`, `updated` y `priority`; las cerradas viven en `docs/tracks/archive/` con `status: archived`.
 
-Motivo: alinear Dictation Tauri con la version actual de OS Lite y permitir validacion mas estricta con indice generado y audit.
+Motivo: alinear Dictation Tauri con la version actual de AOS y permitir validacion mas estricta con indice generado y audit.
 
 Proximo paso: usar `docs/tracks/TEMPLATE.md` para nuevas tracks y correr `bun scripts/context-index.ts` antes del audit cuando cambie contexto.
 

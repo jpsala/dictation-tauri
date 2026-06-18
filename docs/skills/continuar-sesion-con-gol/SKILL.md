@@ -7,7 +7,7 @@ description: Perform the same closeout and handoff flow as `continuar sesion`, b
 
 Cerrar con valor y pedir que la sesion nueva arranque con `gol`.
 
-Fuente canonica: `docs/topics/agentic-project-os-lite.md`, seccion `Continuar Sesion Con Gol`.
+Fuente canonica: `docs/topics/agentic-os.md`, seccion `Continuar Sesion Con Gol`.
 
 ## Flujo
 

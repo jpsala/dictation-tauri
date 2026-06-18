@@ -38,8 +38,8 @@ primary_refs:
 | Backend, proxy, model routing, proveedores, API keys, Groq/OpenAI/OpenRouter/xAI | [Backend y model routing](topics/backend-and-model-routing.md) | Decision de ModelGateway hibrido: mock primero, directo local en MVP 2 y proxy como spike. |
 | UI, diseño, frontend, React, app shell, voice dock, settings, impeccable | [UI Design e Impeccable](topics/ui-design-and-impeccable.md) | Cuando y como usar impeccable para superficies React/Tauri. |
 | Documentacion, topics, indice, contexto liviano, tracks | [Sistema de conocimiento](topics/docs-knowledge-system.md) | Explica como leer, crear y dividir docs sin cargar todo. |
-| Norte, OS Lite, sistema agentico, memoria viva, audit de contexto, Small Batches | [Agentic Project OS Lite](topics/agentic-project-os-lite.md) | Operacion del sistema agentico escalable del proyecto. |
-| Crear, migrar, actualizar o auditar sistema agentico | [Operaciones del sistema agentico](topics/agentic-os-operations.md) | Como adaptar OS Lite a este repo u otro proyecto sin copiar un template ciego. |
+| Norte, AOS, sistema agentico, memoria viva, audit de contexto, Small Batches | [Agentic OS (AOS)](topics/agentic-os.md) | Operacion del sistema agentico escalable del proyecto. |
+| Crear, migrar, actualizar o auditar sistema agentico | [Operaciones del sistema agentico](topics/agentic-os-operations.md) | Como adaptar AOS a este repo u otro proyecto sin copiar un template ciego. |
 | Skills locales, slash commands, comandos Codex, docs/skills, .agents/skills, pasar a skills, evaluar skills | [Skills locales de Codex](topics/local-codex-skills.md) | Skills portables versionadas en `docs/skills/`; `.agents/skills` es compatibilidad local. |
 | Port Tauri, stack inicial, estructura, comandos, fundacion | [Fundacion Dictation Tauri](topics/dictation-tauri-foundation.md) | Contexto inicial del port y decisiones pendientes. |
 | Proyecto canonico, proyecto Tauri, CopyQ Tauri, Fixvox, estudiar fuentes, que sacar de cada repo | [Plan de estudio de proyectos fuente](tracks/source-project-study-plan.md) | Trabajo vivo para separar que se adopta del proyecto Tauri, del proyecto canonico y de nuestro proyecto. |

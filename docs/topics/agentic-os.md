@@ -1,12 +1,12 @@
 ---
-id: agentic-project-os-lite
+id: agentic-os
 status: active
 kind: how-to
 triggers:
   - norte
   - working memory
-  - os lite
-  - agentic project os
+  - aos
+  - agentic os
   - memoria viva
   - audit docs
   - tracks
@@ -31,7 +31,7 @@ primary_refs:
   - scripts/context-refresh.ts
 ---
 
-# Agentic Project OS Lite
+# Agentic OS (AOS)
 
 Sistema agentico liviano del proyecto.
 

@@ -6,7 +6,7 @@ triggers:
   - crear sistema agentico
   - migrar sistema agentico
   - actualizar norte
-  - os lite
+  - aos
   - adaptar proyecto
   - repo nuevo
 primary_refs:
@@ -31,7 +31,7 @@ Usar este topic cuando el usuario quiera crear, migrar, actualizar o auditar un 
 | --- | --- |
 | "Armame un sistema agentico aca" | Crear estructura minima y adaptar docs al proyecto real. |
 | "Esta carpeta esta vacia" | Crear base minima con placeholders honestos. |
-| "Este repo ya tiene sistema, migrarlo" | Fusionar sistema actual con OS Lite sin perder reglas locales. |
+| "Este repo ya tiene sistema, migrarlo" | Fusionar sistema actual con AOS sin perder reglas locales. |
 | "Actualizalo a la ultima version" | Comparar contra este repo y traer mejoras sin pisar contexto local. |
 | "Auditalo" | Correr audit y revisar docs/topics/tracks. |
 | "Se contamino / crecio demasiado" | Auditar context bloat, compactar ruta caliente y mover historia a referencias profundas o archivo. |

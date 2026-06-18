@@ -39,6 +39,6 @@ bun scripts/agent-context-audit.ts
 
 ## Aplicar En Otros Repos
 
-- Copiar o fusionar `docs/skills/` como parte de OS Lite cuando el repo destino necesite slash commands locales.
+- Copiar o fusionar `docs/skills/` como parte de AOS cuando el repo destino necesite slash commands locales.
 - No copiar `.agents/skills` como carpeta real; recrearla en destino con `scripts/ensure-skills-link.ps1`.
 - Mantener las skills hibridas: metadata y cuerpo corto en la skill, procedimiento durable en topics, scripts o docs canonicos del repo destino.
