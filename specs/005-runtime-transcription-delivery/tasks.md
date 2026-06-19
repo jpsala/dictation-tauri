@@ -130,10 +130,10 @@
 
 **Purpose**: Prove one configured local run can transcribe a short captured artifact while keeping secrets/artifacts local and ignored. Execute only with explicit JP approval.
 
-- [ ] T047 [US1] With explicit approval, run one local real-provider transcription against an existing ignored captured clip
-- [ ] T048 [US1] Write only redacted evidence under `artifacts/microphone-capture/reports/` and transcript under `artifacts/microphone-capture/transcripts/`
-- [ ] T049 [US1] Verify `git status --short --ignored artifacts .env` and `git ls-files artifacts .env` show no tracked secrets/artifacts
-- [ ] T050 [US1] Update `specs/005-runtime-transcription-delivery/quickstart.md` with the redacted verification result, without transcript text or secrets
+- [X] T047 [US1] With explicit approval, run one local real-provider transcription against an existing ignored captured clip
+- [X] T048 [US1] Write only redacted evidence under `artifacts/microphone-capture/reports/` and transcript under `artifacts/microphone-capture/transcripts/`
+- [X] T049 [US1] Verify `git status --short --ignored artifacts .env` and `git ls-files artifacts .env` show no tracked secrets/artifacts
+- [X] T050 [US1] Update `specs/005-runtime-transcription-delivery/quickstart.md` with the redacted verification result, without transcript text or secrets
 
 **Checkpoint**: Optional provider evidence is local, redacted, ignored, and not required for CI-safe closure.
 

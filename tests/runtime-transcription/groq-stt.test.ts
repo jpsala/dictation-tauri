@@ -128,6 +128,29 @@ describe("Groq STT runtime gateway", () => {
 
     expect(gateway).toBeTruthy();
   });
+
+  it("accepts legacy local env keys that use hyphens", async () => {
+    const gateway = createGroqSttGatewayFromEnv(
+      {
+        "GROQ-API-KEY": "gsk_test_secret",
+        "GROQ-STT-MODEL": "whisper-large-v3-turbo",
+      },
+      {
+        readAudioFile: async () => new Blob(["audio"]),
+        fetch: async () =>
+          new Response(JSON.stringify({ text: "hyphen env works" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      },
+    );
+
+    await expect(gateway.transcribe(baseInput())).resolves.toMatchObject({
+      status: "ok",
+      text: "hyphen env works",
+      model: "whisper-large-v3-turbo",
+    });
+  });
 });
 
 function baseInput() {

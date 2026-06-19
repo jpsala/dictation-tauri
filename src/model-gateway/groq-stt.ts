@@ -23,8 +23,11 @@ export type GroqSttGatewayOptions = {
 
 export type GroqSttEnv = {
   GROQ_API_KEY?: string;
+  "GROQ-API-KEY"?: string;
   GROQ_STT_MODEL?: string;
+  "GROQ-STT-MODEL"?: string;
   GROQ_STT_LANGUAGE?: string;
+  "GROQ-STT-LANGUAGE"?: string;
 };
 
 const defaultProvider = "groq";
@@ -188,9 +191,9 @@ export function createGroqSttGatewayFromEnv(
 ): ModelGateway {
   return createGroqSttGateway({
     ...options,
-    apiKey: env.GROQ_API_KEY,
-    model: env.GROQ_STT_MODEL,
-    language: env.GROQ_STT_LANGUAGE,
+    apiKey: env.GROQ_API_KEY ?? env["GROQ-API-KEY"],
+    model: env.GROQ_STT_MODEL ?? env["GROQ-STT-MODEL"],
+    language: env.GROQ_STT_LANGUAGE ?? env["GROQ-STT-LANGUAGE"],
   });
 }
 

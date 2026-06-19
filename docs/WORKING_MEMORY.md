@@ -32,7 +32,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `002-simulated-pipeline` | complete | `specs/002-simulated-pipeline/tasks.md` |
 | `003-synthetic-audio-stt` | dry-run complete | `specs/003-synthetic-audio-stt/tasks.md` |
 | `004-real-microphone-capture` | complete incl. optional provider smoke | `specs/004-real-microphone-capture/tasks.md` |
-| `005-runtime-transcription-delivery` | US1-US3 CI-safe complete + gated Groq STT adapter implemented; optional real-provider verification pending approval | `specs/005-runtime-transcription-delivery/tasks.md` |
+| `005-runtime-transcription-delivery` | US1-US3 + gated Groq adapter + approved real-provider verification complete | `specs/005-runtime-transcription-delivery/tasks.md` |
 
 ## Tracks Activas
 
@@ -55,7 +55,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 - Texto seleccionado real queda fuera de MVP 0-3; se permite simulacion en fixtures.
 - Tauri/Rust posee side effects desktop cuando entren: microfono, hotkeys, tray, foco, clipboard, ventanas, permisos y secretos.
 - Delivery se modela por evidencia/certeza; no prometer paste observado sin verificacion real.
-- Post-MVP3: `005-runtime-transcription-delivery` ya cubre foundation runtime, US1 transcription boundary, US2 recovery/review, US3 delivery evidence honesta y adapter Groq STT gated/inyectado con tests fake; real-provider verification sigue opcional/gated.
+- Post-MVP3: `005-runtime-transcription-delivery` ya cubre foundation runtime, US1 transcription boundary, US2 recovery/review, US3 delivery evidence honesta, adapter Groq STT gated/inyectado y verificacion real-provider aprobada con artifacts ignorados/redacted.
 - UI durable requiere `PRODUCT.md` y `DESIGN.md`.
 - Small Batches: una task SpecKit, comportamiento o checkpoint por tanda, checks verdes y commit atomico.
 - La ruta inicial debe seguir liviana; no convertir `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` ni tracks activas en historial.
@@ -84,8 +84,8 @@ bun scripts/check-skills-junction.ts
 
 Cerrar o decidir el siguiente salto tras `005` CI-safe:
 
-1. Si JP aprueba, ejecutar verificacion real-provider opcional (`T047-T050`) sobre artifact ignorado y reporte redacted.
-2. Si no, decidir siguiente producto: wiring seguro del adapter a un comando/script local o ergonomia desktop posterior.
+1. Cerrar commit de la verificacion real-provider si checks finales siguen verdes.
+2. Proximo salto producto recomendado: wiring seguro del adapter a un comando/runtime local reusable, o empezar ergonomia desktop posterior.
 3. Mantener fuera del producto la dependency `@earendil-works/pi-coding-agent`; ya fue removida del cambio pendiente.
 
 ## Promocion De Memoria

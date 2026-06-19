@@ -104,6 +104,24 @@ Expected result:
 - No raw provider payload is source-controlled.
 - No `paste_observed` claim appears unless a verified observation path exists.
 
+### Latest Approved Local Check
+
+Date: 2026-06-19.
+
+With explicit JP approval, the gated Groq runtime adapter transcribed the ignored
+captured WAV `artifacts/microphone-capture/audio/capture-native-1781319419097.wav`.
+
+Redacted result:
+
+- Status: `ok`.
+- Provider/model: `groq` / `whisper-large-v3`.
+- Latency: 960 ms.
+- Request id: redacted in the local report.
+- Transcript length: 11 characters; transcript text is not documented here.
+- Transcript/report paths: written only under ignored `artifacts/microphone-capture/` paths.
+- Raw provider payload stored: `false`.
+- `git ls-files artifacts .env` printed nothing.
+
 ## Out Of Scope For This Feature
 
 - Global hotkeys.
