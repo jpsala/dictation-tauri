@@ -12,10 +12,10 @@
 
 **Purpose**: Create focused host-runtime test surfaces and keep AOS/dirty-worktree separation explicit.
 
-- [ ] T001 Add focused host-runtime test directory and fixtures in `tests/host-runtime/`
-- [ ] T002 Add safe-check notes for host runtime boundary to `specs/006-host-runtime-transcription-boundary/quickstart.md`
-- [ ] T003 Confirm `.env`, artifacts, transcripts, reports, and provider payloads remain ignored/untracked in 006 checks
-- [ ] T004 Preserve unrelated AOS `.agents/.pi` dirty work until JP explicitly decides whether to commit or revert it
+- [X] T001 Add focused host-runtime test directory and fixtures in `tests/host-runtime/`
+- [X] T002 Add safe-check notes for host runtime boundary to `specs/006-host-runtime-transcription-boundary/quickstart.md`
+- [X] T003 Confirm `.env`, artifacts, transcripts, reports, and provider payloads remain ignored/untracked in 006 checks
+- [X] T004 Preserve unrelated AOS `.agents/.pi` dirty work until JP explicitly decides whether to commit or revert it
 
 **Checkpoint**: No provider calls, no secrets read by tests, and no AOS migration mixed into product commits.
 
@@ -29,17 +29,17 @@
 
 ### Tests for Foundation
 
-- [ ] T005 [P] Add host artifact path validation tests in `tests/host-runtime/artifact-policy.test.ts`
-- [ ] T006 [P] Add host readiness redaction/config tests in `tests/host-runtime/readiness.test.ts`
-- [ ] T007 [P] Add host response redaction tests in `tests/host-runtime/redaction.test.ts`
+- [X] T005 [P] Add host artifact path validation tests in `tests/host-runtime/artifact-policy.test.ts`
+- [X] T006 [P] Add host readiness redaction/config tests in `tests/host-runtime/readiness.test.ts`
+- [X] T007 [P] Add host response redaction tests in `tests/host-runtime/redaction.test.ts`
 
 ### Implementation for Foundation
 
-- [ ] T008 Create host runtime types in `src/host-runtime/types.ts`
-- [ ] T009 Implement allowed artifact path validation in `src/host-runtime/artifact-policy.ts`
-- [ ] T010 Implement redacted host runtime error helpers in `src/host-runtime/redaction.ts`
-- [ ] T011 Implement host readiness mapping from injected env/config in `src/host-runtime/readiness.ts`
-- [ ] T012 Verify foundational host-runtime tests pass without `.env`, audio reads, fetch, or provider calls
+- [X] T008 Create host runtime types in `src/host-runtime/types.ts`
+- [X] T009 Implement allowed artifact path validation in `src/host-runtime/artifact-policy.ts`
+- [X] T010 Implement redacted host runtime error helpers in `src/host-runtime/redaction.ts`
+- [X] T011 Implement host readiness mapping from injected env/config in `src/host-runtime/readiness.ts`
+- [X] T012 Verify foundational host-runtime tests pass without `.env`, audio reads, fetch, or provider calls
 
 **Checkpoint**: Host boundary primitives compile and tests prove config/readiness/path/redaction semantics.
 
@@ -53,15 +53,15 @@
 
 ### Tests for User Story 1
 
-- [ ] T013 [P] [US1] Add missing-config readiness test in `tests/host-runtime/readiness.test.ts`
-- [ ] T014 [P] [US1] Add configured Groq readiness test with underscore and hyphen env keys in `tests/host-runtime/readiness.test.ts`
-- [ ] T015 [P] [US1] Add test proving readiness does not read audio or call fetch/provider in `tests/host-runtime/readiness.test.ts`
+- [X] T013 [P] [US1] Add missing-config readiness test in `tests/host-runtime/readiness.test.ts`
+- [X] T014 [P] [US1] Add configured Groq readiness test with underscore and hyphen env keys in `tests/host-runtime/readiness.test.ts`
+- [X] T015 [P] [US1] Add test proving readiness does not read audio or call fetch/provider in `tests/host-runtime/readiness.test.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T016 [US1] Implement `createHostRuntimeReadiness()` in `src/host-runtime/readiness.ts`
-- [ ] T017 [US1] Add optional `HostRuntimeClient.getReadiness()` fake/browser client in `src/host-runtime/client.ts`
-- [ ] T018 [US1] Verify focused readiness tests pass
+- [X] T016 [US1] Implement `createHostRuntimeReadiness()` in `src/host-runtime/readiness.ts`
+- [X] T017 [US1] Add optional `HostRuntimeClient.getReadiness()` fake/browser client in `src/host-runtime/client.ts`
+- [X] T018 [US1] Verify focused readiness tests pass
 
 **Checkpoint**: Readiness can safely drive setup UI/recovery without provider calls.
 
