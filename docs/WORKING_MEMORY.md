@@ -33,7 +33,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `003-synthetic-audio-stt` | dry-run complete | `specs/003-synthetic-audio-stt/tasks.md` |
 | `004-real-microphone-capture` | complete incl. optional provider smoke | `specs/004-real-microphone-capture/tasks.md` |
 | `005-runtime-transcription-delivery` | complete incl. reusable gated runtime script and approved real-provider verification | `specs/005-runtime-transcription-delivery/tasks.md` |
-| `006-host-runtime-transcription-boundary` | TS host boundary complete through transcriber + provider-free UI guardrails; optional Tauri command spike pending | `specs/006-host-runtime-transcription-boundary/tasks.md` |
+| `006-host-runtime-transcription-boundary` | complete: TS host boundary, provider-free UI guardrails, Tauri invoke client and safe unavailable Tauri stub | `specs/006-host-runtime-transcription-boundary/tasks.md` |
 
 ## Tracks Activas
 
@@ -83,10 +83,10 @@ bun scripts/check-skills-junction.ts
 
 ## Proximo Paso Probable
 
-Continuar `006-host-runtime-transcription-boundary` en Small Batches:
+Continuar luego de `006-host-runtime-transcription-boundary`:
 
-1. Decidir si hacer Phase 6 opcional (`T034-T036`): spike Tauri command/capability para readiness/transcribe, sin provider real por default.
-2. Si no, pasar a UI wiring con fake/host client manteniendo React provider-free y sin importar `groq-stt` desde `src/App.tsx`.
+1. Proximo salto recomendado: UI wiring con `HostRuntimeClient`/Tauri client manteniendo React provider-free; el stub host devuelve unavailable/setup-error hasta cablear provider real host-side.
+2. Alternativa: definir la frontera host real para leer config/audio y llamar provider desde Tauri/backend, con aprobacion explicita antes de provider calls.
 3. Antes de push, correr verificacion final y decidir si subir `main` (ahead local).
 
 ## Promocion De Memoria

@@ -46,14 +46,14 @@ Optional real-provider command remains manual and explicit:
 bun scripts/runtime-transcription.ts --mode groq-real --allow-provider-call --audio artifacts/microphone-capture/audio/<ignored-file>.wav
 ```
 
-Future Tauri command candidates:
+Tauri command names for the first host boundary slice:
 
 ```text
 get_runtime_transcription_readiness
 transcribe_captured_audio
 ```
 
-Do not implement or expose them to UI until TypeScript host-boundary tests are green and the batch explicitly owns Rust/capability changes.
+A safe first implementation may be a stub that returns redacted unavailable/setup-error responses. Real provider wiring remains host-owned and gated; React must call commands through `HostRuntimeClient` only.
 
 ## Out Of Scope
 

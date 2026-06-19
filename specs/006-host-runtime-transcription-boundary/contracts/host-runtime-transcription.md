@@ -113,11 +113,13 @@ Rules:
 - Browser/dev tests may use a fake client.
 - Tauri implementation may use `invoke`, but secrets/env/audio reads must remain host-side.
 
-## Tauri Command Shape (Candidate)
+## Tauri Command Shape
+
+The renderer-facing command names are now fixed for the first host boundary slice:
 
 ```rust
 #[tauri::command]
-pub fn get_runtime_transcription_readiness() -> Result<HostRuntimeReadiness, String>
+pub fn get_runtime_transcription_readiness() -> HostRuntimeReadiness
 
 #[tauri::command]
 pub async fn transcribe_captured_audio(request: HostTranscriptionRequest) -> HostTranscriptionResponse
@@ -125,10 +127,11 @@ pub async fn transcribe_captured_audio(request: HostTranscriptionRequest) -> Hos
 
 Rules:
 
-- Rust command names are candidates; final names may change during implementation.
+- A stub implementation may return `configured: false` / `HOST_RUNTIME_UNAVAILABLE` while the real host provider is not wired.
 - Commands must validate artifact roots before reads.
 - Commands must never return secret values or raw provider payloads.
 - Capabilities/permissions must be updated if Tauri requires explicit command allow-listing.
+- The React renderer calls these commands only through `HostRuntimeClient`, not provider-specific modules.
 
 ## Artifact Policy
 

@@ -118,9 +118,9 @@
 
 **Purpose**: Add a minimal Tauri command only if the TypeScript host boundary is stable and the batch explicitly owns Rust/capability changes.
 
-- [ ] T034 [US2] Add Rust/TS command contract notes for `get_runtime_transcription_readiness` and `transcribe_captured_audio`
-- [ ] T035 [US2] Add command registration plan in `src-tauri/src/lib.rs` and any capability implications
-- [ ] T036 [US2] If implemented, add no-provider-call smoke/build check for command registration
+- [X] T034 [US2] Add Rust/TS command contract notes for `get_runtime_transcription_readiness` and `transcribe_captured_audio`
+- [X] T035 [US2] Add command registration plan in `src-tauri/src/lib.rs` and any capability implications
+- [X] T036 [US2] If implemented, add no-provider-call smoke/build check for command registration
 
 **Checkpoint**: Tauri command work is either explicitly implemented and verified, or deferred without blocking TypeScript host boundary completion.
 
