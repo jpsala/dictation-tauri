@@ -39,7 +39,7 @@ export function createGroqSttGateway(
   const provider = options.provider ?? defaultProvider;
   const model = options.model ?? defaultModel;
   const endpoint = options.endpoint ?? groqTranscriptionEndpoint;
-  const fetchImpl = options.fetch ?? globalThis.fetch;
+  const fetchImpl = options.fetch;
   const now = options.now ?? (() => globalThis.performance?.now() ?? Date.now());
 
   return {
@@ -70,7 +70,20 @@ export function createGroqSttGateway(
         };
       }
 
-      if (!fetchImpl || !globalThis.FormData || !globalThis.Blob) {
+      if (!fetchImpl) {
+        return {
+          status: "setup-error",
+          error: createRedactedModelGatewayError(
+            "FETCH_MISSING",
+            "Groq STT fetch boundary is not configured.",
+          ),
+          provider,
+          model,
+          latencyMs: 0,
+        };
+      }
+
+      if (!globalThis.FormData || !globalThis.Blob) {
         return {
           status: "setup-error",
           error: createRedactedModelGatewayError(

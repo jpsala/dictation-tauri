@@ -48,6 +48,29 @@ describe("Groq STT runtime gateway", () => {
     });
   });
 
+  it("requires injected fetch so real calls cannot use an implicit global", async () => {
+    let readCalls = 0;
+    const gateway = createGroqSttGateway({
+      apiKey: "gsk_test_secret",
+      readAudioFile: async () => {
+        readCalls += 1;
+        return new Blob(["audio"]);
+      },
+    });
+
+    const result = await gateway.transcribe(baseInput());
+
+    expect(result).toMatchObject({
+      status: "setup-error",
+      error: {
+        code: "FETCH_MISSING",
+        message: "Groq STT fetch boundary is not configured.",
+        redacted: true,
+      },
+    });
+    expect(readCalls).toBe(0);
+  });
+
   it("posts multipart audio to Groq and returns text with request evidence", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const gateway = createGroqSttGateway({

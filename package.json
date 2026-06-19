@@ -12,6 +12,8 @@
     "synthetic-audio:stt:dry-run": "bun scripts/synthetic-audio-stt.ts --mode stt-dry-run --dry-run",
     "microphone-capture:check": "bun scripts/microphone-capture.ts --mode artifact-check --dry-run",
     "microphone-capture:dry-run": "bun scripts/microphone-capture.ts --mode capture-dry-run --dry-run",
+    "runtime-transcription:check": "bun scripts/runtime-transcription.ts --mode artifact-check --dry-run",
+    "runtime-transcription:groq:dry-run": "bun scripts/runtime-transcription.ts --mode groq-dry-run --dry-run",
     "context:index": "bun scripts/context-index.ts",
     "context:audit": "bun scripts/agent-context-audit.ts",
     "context:refresh": "bun scripts/context-refresh.ts",

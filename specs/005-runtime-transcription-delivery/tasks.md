@@ -158,6 +158,21 @@
 
 ---
 
+## Phase 8: Reusable Runtime Script (CI-Safe)
+
+**Purpose**: Replace the temporary ignored provider-check script with a reusable project script that is safe by default and only calls real providers with explicit approval flags.
+
+- [X] T051 [P] Add runtime script helper tests in `tests/runtime-transcription/runtime-script.test.ts`
+- [X] T052 Implement `scripts/runtime-transcription.ts` with `artifact-check`, `groq-dry-run`, and gated `groq-real` modes
+- [X] T053 Add safe npm scripts `runtime-transcription:check` and `runtime-transcription:groq:dry-run` in `package.json`
+- [X] T054 Document reusable runtime commands and explicit `--allow-provider-call` gate in `specs/005-runtime-transcription-delivery/quickstart.md`
+- [X] T055 Verify runtime script checks do not read secrets or call providers by default
+- [X] T056 Keep UI real-provider wiring out of scope until a safe Tauri/backend boundary owns credentials and audio reads
+
+**Checkpoint**: Runtime transcription is repeatable through a committed script, but real provider execution remains explicit/gated and artifacts stay ignored.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

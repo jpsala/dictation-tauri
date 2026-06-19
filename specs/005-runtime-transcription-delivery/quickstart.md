@@ -18,6 +18,8 @@ npm run test:pipeline
 npm run synthetic-audio:stt:dry-run
 npm run microphone-capture:check
 npm run microphone-capture:dry-run
+npm run runtime-transcription:check
+npm run runtime-transcription:groq:dry-run
 npm run build
 npm run visual:check
 bun scripts/context-index.ts
@@ -35,6 +37,23 @@ npm run test:pipeline -- tests/capture/captured-audio-pipeline.test.ts tests/cap
 The Groq STT adapter is CI-safe by default: it requires injected API key,
 `fetch`, and audio-reader boundaries. Tests use fake fetch/audio data and must
 not read `.env`, open real audio, or call the provider.
+
+The reusable runtime script is also safe by default:
+
+```powershell
+npm run runtime-transcription:check
+npm run runtime-transcription:groq:dry-run
+```
+
+`groq-real` is intentionally not exposed as an npm script. It requires explicit
+approval and the `--allow-provider-call` flag:
+
+```powershell
+bun scripts/runtime-transcription.ts --mode groq-real --allow-provider-call --audio artifacts/microphone-capture/audio/<ignored-file>.wav
+```
+
+The script prints only a redacted summary; transcript text and the full report
+remain under ignored `artifacts/microphone-capture/` paths.
 
 ## Local Artifact Paths
 
