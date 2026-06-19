@@ -95,8 +95,8 @@
 
 ### Manual / Optional Verification for User Story 2
 
-- [ ] T035 [US2] Optionally run a real-provider captured-audio transcription only when local credentials, a captured artifact, and explicit JP approval are present
-- [ ] T036 [US2] Confirm optional provider output is redacted in logs/reports and no real transcript/audio/provider payload is tracked by git
+- [X] T035 [US2] Optionally run a real-provider captured-audio transcription only when local credentials, a captured artifact, and explicit JP approval are present
+- [X] T036 [US2] Confirm optional provider output is redacted in logs/reports and no real transcript/audio/provider payload is tracked by git
 
 **Checkpoint**: US2 closes for CI-safe implementation on dry-run pipeline tests; real-provider evidence remains optional/local.
 

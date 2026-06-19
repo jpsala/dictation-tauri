@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-19T02:31:58.444Z
+Generated: 2026-06-19T10:52:20.711Z
 
 ## Topics
 
@@ -27,7 +27,7 @@ Generated: 2026-06-19T02:31:58.444Z
 
 - archived/medium: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md) - updated 2026-06-07
 - active/high: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md) - updated 2026-06-10
-- active/medium: [Prompt Para Proxima Sesion](../tracks/next-session-prompt.md) - updated 2026-06-13
+- active/medium: [Prompt Para Proxima Sesion](../tracks/next-session-prompt.md) - updated 2026-06-19
 - active/high: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md) - updated 2026-06-10
 
 ## Specs
@@ -36,6 +36,7 @@ Generated: 2026-06-19T02:31:58.444Z
 - [002-simulated-pipeline](../../specs/002-simulated-pipeline/)
 - [003-synthetic-audio-stt](../../specs/003-synthetic-audio-stt/)
 - [004-real-microphone-capture](../../specs/004-real-microphone-capture/)
+- [005-runtime-transcription-delivery](../../specs/005-runtime-transcription-delivery/)
 
 ## Skills
 

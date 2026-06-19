@@ -145,3 +145,29 @@ Conclusion: MVP3 real microphone start/stop can close through the native
 Rust/Tauri fallback. WebView capture remains useful as a tested adapter boundary,
 but should not be treated as the active Windows capture route until its
 permission behavior is resolved.
+
+## Optional Check: Captured Audio Through Real Provider
+
+Date: 2026-06-19.
+
+With explicit JP approval, the captured WAV artifact was submitted once to a
+configured local Groq transcription provider. The check used local credentials
+from ignored environment configuration and did not add provider calls to the
+default app or npm scripts.
+
+Observed result:
+
+- The provider returned HTTP 200 for the captured WAV artifact.
+- A real transcript was written only under
+  `artifacts/microphone-capture/transcripts/`.
+- A local evidence report was written under
+  `artifacts/microphone-capture/reports/` with transcript preview and provider
+  request id redacted.
+- No raw provider payload was stored.
+- `git status --short --ignored artifacts .env` showed `.env` and `artifacts/`
+  as ignored only, and `git ls-files artifacts .env` returned no tracked files.
+
+Conclusion: the captured microphone artifact can be transcribed by a real
+provider in local/dev mode, but runtime product support still needs a dedicated
+post-MVP3 spec so the app owns provider configuration, redaction, retry, and
+honest delivery evidence instead of relying on a one-off local check.

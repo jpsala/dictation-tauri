@@ -20,7 +20,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | UI/design | seeded | `PRODUCT.md`, `DESIGN.md` | Usar antes de cualquier UI durable. |
 | Pipeline simulado | mvp1-complete | `specs/002-simulated-pipeline/tasks.md` | Mantener como baseline para MVP 2. |
 | Audio sintetico/STT | mvp2-dry-run-complete | `specs/003-synthetic-audio-stt/tasks.md` | T031 queda opcional/local si se decide correr provider real. |
-| Microfono real | mvp3-native-capture-complete | `specs/004-real-microphone-capture/tasks.md` | Pedir aprobacion explicita solo para T035-T036 provider real o definir spec post-MVP3 de transcripcion/delivery runtime. |
+| Microfono real | mvp3-complete-provider-smoke | `specs/004-real-microphone-capture/tasks.md` | Mantener como baseline: captura nativa real + smoke local de provider real bajo artifacts ignorados. |
 | Datos de dictado | decided | `docs/topics/privacy-and-dictation-data.md` | Modo personal/dev permisivo; no imprimir ni commitear secretos. |
 | AOS/docs | active | `docs/topics/agentic-os.md` | Mantener `docs/tracks/`, `docs/skills/`, junction y audit verde. |
 
@@ -31,7 +31,8 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `001-port-foundation` | complete | `specs/001-port-foundation/tasks.md` |
 | `002-simulated-pipeline` | complete | `specs/002-simulated-pipeline/tasks.md` |
 | `003-synthetic-audio-stt` | dry-run complete | `specs/003-synthetic-audio-stt/tasks.md` |
-| `004-real-microphone-capture` | native capture complete; provider optional | `specs/004-real-microphone-capture/tasks.md` |
+| `004-real-microphone-capture` | complete incl. optional provider smoke | `specs/004-real-microphone-capture/tasks.md` |
+| `005-runtime-transcription-delivery` | draft spec created | `specs/005-runtime-transcription-delivery/spec.md` |
 
 ## Tracks Activas
 
@@ -54,7 +55,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 - Texto seleccionado real queda fuera de MVP 0-3; se permite simulacion en fixtures.
 - Tauri/Rust posee side effects desktop cuando entren: microfono, hotkeys, tray, foco, clipboard, ventanas, permisos y secretos.
 - Delivery se modela por evidencia/certeza; no prometer paste observado sin verificacion real.
-- Post-MVP3: priorizar evidencia end-to-end de dictado antes de ergonomia desktop amplia; provider real gated o spec de transcripcion/delivery van antes que hotkeys/tray/selected text.
+- Post-MVP3: provider real sobre artifact capturado ya tuvo smoke local aprobado; ahora priorizar `005-runtime-transcription-delivery` para convertir ese smoke en runtime confiable antes de hotkeys/tray/selected text.
 - UI durable requiere `PRODUCT.md` y `DESIGN.md`.
 - Small Batches: una task SpecKit, comportamiento o checkpoint por tanda, checks verdes y commit atomico.
 - La ruta inicial debe seguir liviana; no convertir `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` ni tracks activas en historial.
@@ -83,8 +84,8 @@ bun scripts/check-skills-junction.ts
 
 Decidir el siguiente salto:
 
-1. Ejecutar T035-T036 solo con aprobacion explicita de JP para provider real local sobre artifact capturado.
-2. Definir spec post-MVP3 de transcripcion/delivery runtime si no se aprueba provider real.
+1. Planificar `specs/005-runtime-transcription-delivery/` y generar `plan.md`/`tasks.md` para el runtime real de transcripcion + recovery/delivery.
+2. Mantener el smoke real de provider como evidencia local ignorada, no como ruta de producto por defecto.
 3. Posponer hotkeys, tray y selected text hasta tener capture -> transcribe -> recover/deliver con evidencia local.
 
 ## Promocion De Memoria
