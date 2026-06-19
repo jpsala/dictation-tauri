@@ -33,6 +33,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `003-synthetic-audio-stt` | dry-run complete | `specs/003-synthetic-audio-stt/tasks.md` |
 | `004-real-microphone-capture` | complete incl. optional provider smoke | `specs/004-real-microphone-capture/tasks.md` |
 | `005-runtime-transcription-delivery` | complete incl. reusable gated runtime script and approved real-provider verification | `specs/005-runtime-transcription-delivery/tasks.md` |
+| `006-host-runtime-transcription-boundary` | draft plan/tasks created; next implementation should start with TS host boundary tests, no provider calls | `specs/006-host-runtime-transcription-boundary/tasks.md` |
 
 ## Tracks Activas
 
@@ -82,11 +83,11 @@ bun scripts/check-skills-junction.ts
 
 ## Proximo Paso Probable
 
-Cerrar o decidir el siguiente salto tras `005` CI-safe:
+Continuar `006-host-runtime-transcription-boundary` en Small Batches:
 
-1. Cerrar commit del script runtime reusable si checks finales siguen verdes.
-2. Proximo salto producto recomendado: definir una frontera Tauri/backend segura para credenciales/audio si se quiere llevar provider real a UI, o empezar ergonomia desktop posterior.
-3. No cablear Groq directo en React renderer; mantener provider real como script/host boundary gated.
+1. Empezar por Phase 1-2: `tests/host-runtime/` + `src/host-runtime/` para artifact policy, readiness y redaction, sin provider calls.
+2. Mantener React provider-free: no importar `groq-stt` desde `src/App.tsx`; UI real queda para fake host client o batch posterior.
+3. Decidir aparte la migracion AOS pendiente (`.agents/skills` tracked deletions, `.pi/extensions`, prompts adicionales, `scripts/agent-context-audit.ts`) antes de commitearla o revertirla.
 
 ## Promocion De Memoria
 
