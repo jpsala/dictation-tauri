@@ -33,7 +33,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `003-synthetic-audio-stt` | dry-run complete | `specs/003-synthetic-audio-stt/tasks.md` |
 | `004-real-microphone-capture` | complete incl. optional provider smoke | `specs/004-real-microphone-capture/tasks.md` |
 | `005-runtime-transcription-delivery` | complete incl. reusable gated runtime script and approved real-provider verification | `specs/005-runtime-transcription-delivery/tasks.md` |
-| `006-host-runtime-transcription-boundary` | Phase 1-3 complete: TS host types, artifact policy, redaction, readiness, fake client; no provider calls | `specs/006-host-runtime-transcription-boundary/tasks.md` |
+| `006-host-runtime-transcription-boundary` | TS host boundary complete through transcriber + provider-free UI guardrails; optional Tauri command spike pending | `specs/006-host-runtime-transcription-boundary/tasks.md` |
 
 ## Tracks Activas
 
@@ -85,9 +85,9 @@ bun scripts/check-skills-junction.ts
 
 Continuar `006-host-runtime-transcription-boundary` en Small Batches:
 
-1. Seguir con Phase 4 (`T019-T027`): `createHostRuntimeTranscriber()` fakeable con env/fetch/audio/report inyectados, sin provider real por default.
-2. Mantener React provider-free: no importar `groq-stt` desde `src/App.tsx`; UI real queda para fake host client o batch posterior.
-3. La migracion AOS/Pi adapter ya fue commiteada separada; si hay drift nuevo, resolverlo en commits tooling separados.
+1. Decidir si hacer Phase 6 opcional (`T034-T036`): spike Tauri command/capability para readiness/transcribe, sin provider real por default.
+2. Si no, pasar a UI wiring con fake/host client manteniendo React provider-free y sin importar `groq-stt` desde `src/App.tsx`.
+3. Antes de push, correr verificacion final y decidir si subir `main` (ahead local).
 
 ## Promocion De Memoria
 

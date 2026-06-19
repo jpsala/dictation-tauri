@@ -75,18 +75,18 @@
 
 ### Tests for User Story 2
 
-- [ ] T019 [P] [US2] Add fake successful host transcription test in `tests/host-runtime/transcribe.test.ts`
-- [ ] T020 [P] [US2] Add missing config/no audio read/no fetch test in `tests/host-runtime/transcribe.test.ts`
-- [ ] T021 [P] [US2] Add provider failure redaction test in `tests/host-runtime/transcribe.test.ts`
-- [ ] T022 [P] [US2] Add missing/out-of-root audio path test in `tests/host-runtime/transcribe.test.ts`
-- [ ] T023 [P] [US2] Add empty/unusable transcript mapping test in `tests/host-runtime/transcribe.test.ts`
+- [X] T019 [P] [US2] Add fake successful host transcription test in `tests/host-runtime/transcribe.test.ts`
+- [X] T020 [P] [US2] Add missing config/no audio read/no fetch test in `tests/host-runtime/transcribe.test.ts`
+- [X] T021 [P] [US2] Add provider failure redaction test in `tests/host-runtime/transcribe.test.ts`
+- [X] T022 [P] [US2] Add missing/out-of-root audio path test in `tests/host-runtime/transcribe.test.ts`
+- [X] T023 [P] [US2] Add empty/unusable transcript mapping test in `tests/host-runtime/transcribe.test.ts`
 
 ### Implementation for User Story 2
 
-- [ ] T024 [US2] Implement `createHostRuntimeTranscriber()` using injected env, fetch, audio reader, and report writer in `src/host-runtime/transcriber.ts`
-- [ ] T025 [US2] Reuse `createGroqSttGateway` only inside host-runtime/script boundary, never from React UI
-- [ ] T026 [US2] Write redacted reports/transcripts only through allowed artifact policy helpers
-- [ ] T027 [US2] Verify focused host transcription tests pass without real provider calls
+- [X] T024 [US2] Implement `createHostRuntimeTranscriber()` using injected env, fetch, audio reader, and report writer in `src/host-runtime/transcriber.ts`
+- [X] T025 [US2] Reuse `createGroqSttGateway` only inside host-runtime/script boundary, never from React UI
+- [X] T026 [US2] Write redacted reports/transcripts only through allowed artifact policy helpers
+- [X] T027 [US2] Verify focused host transcription tests pass without real provider calls
 
 **Checkpoint**: Host transcription is repeatable and fakeable, while real provider execution remains explicit/gated.
 
@@ -100,15 +100,15 @@
 
 ### Tests for User Story 3
 
-- [ ] T028 [P] [US3] Add fake host client success/recovery mapping tests in `tests/host-runtime/ui-client.test.ts` or existing UI helper tests
-- [ ] T029 [P] [US3] Add regression test/import scan ensuring `src/App.tsx` does not import provider-specific Groq modules
-- [ ] T030 [P] [US3] Add visual test only if UI text changes; otherwise document UI wiring deferred
+- [X] T028 [P] [US3] Add fake host client success/recovery mapping tests in `tests/host-runtime/ui-client.test.ts` or existing UI helper tests
+- [X] T029 [P] [US3] Add regression test/import scan ensuring `src/App.tsx` does not import provider-specific Groq modules
+- [X] T030 [P] [US3] Add visual test only if UI text changes; otherwise document UI wiring deferred
 
 ### Implementation for User Story 3
 
-- [ ] T031 [US3] Add provider-free `HostRuntimeClient` interface exports for future UI wiring in `src/host-runtime/client.ts`
-- [ ] T032 [US3] Optionally expose browser/dev fake client; defer real Tauri `invoke` wiring unless this batch owns it explicitly
-- [ ] T033 [US3] Document that React renderer remains provider-free until a Tauri/backend command owns secrets/audio reads
+- [X] T031 [US3] Add provider-free `HostRuntimeClient` interface exports for future UI wiring in `src/host-runtime/client.ts`
+- [X] T032 [US3] Optionally expose browser/dev fake client; defer real Tauri `invoke` wiring unless this batch owns it explicitly
+- [X] T033 [US3] Document that React renderer remains provider-free until a Tauri/backend command owns secrets/audio reads
 
 **Checkpoint**: UI boundary is ready for future wiring without exposing secrets or overclaiming delivery.
 
@@ -130,15 +130,15 @@
 
 **Purpose**: Close the feature without provider calls or unrelated AOS migration.
 
-- [ ] T037 Run `npm run test:pipeline -- tests/host-runtime`
-- [ ] T038 Run `npm run test:pipeline`
-- [ ] T039 Run `npm run runtime-transcription:check`
-- [ ] T040 Run `npm run runtime-transcription:groq:dry-run`
-- [ ] T041 Run `npm run build`
-- [ ] T042 Run `bun scripts/context-index.ts`
-- [ ] T043 Run `bun scripts/agent-context-audit.ts`
-- [ ] T044 Inspect `git status --short --ignored artifacts .env` and `git ls-files artifacts .env`
-- [ ] T045 Update `docs/WORKING_MEMORY.md` and relevant docs/topics with 006 status if behavior/docs changed durably
+- [X] T037 Run `npm run test:pipeline -- tests/host-runtime`
+- [X] T038 Run `npm run test:pipeline`
+- [X] T039 Run `npm run runtime-transcription:check`
+- [X] T040 Run `npm run runtime-transcription:groq:dry-run`
+- [X] T041 Run `npm run build`
+- [X] T042 Run `bun scripts/context-index.ts`
+- [X] T043 Run `bun scripts/agent-context-audit.ts`
+- [X] T044 Inspect `git status --short --ignored artifacts .env` and `git ls-files artifacts .env`
+- [X] T045 Update `docs/WORKING_MEMORY.md` and relevant docs/topics with 006 status if behavior/docs changed durably
 
 **Checkpoint**: 006 is verified by host-runtime tests, existing runtime checks, docs sync, and git/artifact hygiene.
 
