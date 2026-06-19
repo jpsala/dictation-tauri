@@ -15,7 +15,10 @@ if (!existsSync(canon)) {
 }
 
 if (!existsSync(compat)) {
-  fail("Missing compatibility path .agents/skills; run npm run skills:on if discovery should be enabled");
+  console.log(
+    ".agents/skills discovery is disabled; canonical docs/skills exists",
+  );
+  process.exit(0);
 }
 
 const canonReal = realpathSync.native(canon);
