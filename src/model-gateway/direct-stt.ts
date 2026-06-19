@@ -1,5 +1,6 @@
 import type { MockTranscriptionAdapter } from "../pipeline/ports";
 import type { ModelGateway, ModelGatewayMode, TranscriptionInput } from "./types";
+import { mapModelGatewayTranscriptionResult } from "./runtime-transcription";
 import { createRedactedModelGatewayError } from "./types";
 
 export type DirectLocalSttGatewayOptions = {
@@ -82,7 +83,7 @@ export function createCapturedAudioTranscriptionAdapter(
       const artifact = context?.capture?.artifact;
       const audioPath = artifact?.relativePath ?? artifact?.path ?? "";
 
-      if (!audioPath) {
+      if (!artifact || !audioPath) {
         return {
           error: {
             phase: "transcribing",
@@ -100,26 +101,27 @@ export function createCapturedAudioTranscriptionAdapter(
         model: options.model,
         mode,
       });
+      const runtimeResult = mapModelGatewayTranscriptionResult(result, artifact);
 
-      if (result.status !== "ok") {
+      if (runtimeResult.status !== "ok") {
         return {
           error: {
             phase: "transcribing",
-            message: result.error.message,
+            message: runtimeResult.error.message,
           },
-          latencyMs: result.latencyMs ?? 0,
+          latencyMs: runtimeResult.latencyMs ?? 0,
         };
       }
 
       return {
-        text: result.text,
-        latencyMs: result.latencyMs,
+        text: runtimeResult.text,
+        latencyMs: runtimeResult.latencyMs,
         stt: {
-          provider: result.provider,
-          model: result.model,
+          provider: runtimeResult.provider,
+          model: runtimeResult.model,
           mode,
           audioPath,
-          requestId: result.requestId,
+          requestId: runtimeResult.requestId,
         },
       };
     },

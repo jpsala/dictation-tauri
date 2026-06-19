@@ -32,7 +32,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `002-simulated-pipeline` | complete | `specs/002-simulated-pipeline/tasks.md` |
 | `003-synthetic-audio-stt` | dry-run complete | `specs/003-synthetic-audio-stt/tasks.md` |
 | `004-real-microphone-capture` | complete incl. optional provider smoke | `specs/004-real-microphone-capture/tasks.md` |
-| `005-runtime-transcription-delivery` | draft spec created | `specs/005-runtime-transcription-delivery/spec.md` |
+| `005-runtime-transcription-delivery` | US1-US3 CI-safe runtime/recovery/delivery evidence complete; optional provider verification gated | `specs/005-runtime-transcription-delivery/tasks.md` |
 
 ## Tracks Activas
 
@@ -55,7 +55,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 - Texto seleccionado real queda fuera de MVP 0-3; se permite simulacion en fixtures.
 - Tauri/Rust posee side effects desktop cuando entren: microfono, hotkeys, tray, foco, clipboard, ventanas, permisos y secretos.
 - Delivery se modela por evidencia/certeza; no prometer paste observado sin verificacion real.
-- Post-MVP3: provider real sobre artifact capturado ya tuvo smoke local aprobado; ahora priorizar `005-runtime-transcription-delivery` para convertir ese smoke en runtime confiable antes de hotkeys/tray/selected text.
+- Post-MVP3: `005-runtime-transcription-delivery` ya cubre foundation runtime, US1 transcription boundary, US2 recovery/review y US3 delivery evidence honesta con tests fake/dry-run; real-provider verification sigue opcional/gated.
 - UI durable requiere `PRODUCT.md` y `DESIGN.md`.
 - Small Batches: una task SpecKit, comportamiento o checkpoint por tanda, checks verdes y commit atomico.
 - La ruta inicial debe seguir liviana; no convertir `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` ni tracks activas en historial.
@@ -82,11 +82,11 @@ bun scripts/check-skills-junction.ts
 
 ## Proximo Paso Probable
 
-Decidir el siguiente salto:
+Cerrar o decidir el siguiente salto tras `005` CI-safe:
 
-1. Planificar `specs/005-runtime-transcription-delivery/` y generar `plan.md`/`tasks.md` para el runtime real de transcripcion + recovery/delivery.
-2. Mantener el smoke real de provider como evidencia local ignorada, no como ruta de producto por defecto.
-3. Posponer hotkeys, tray y selected text hasta tener capture -> transcribe -> recover/deliver con evidencia local.
+1. Si JP aprueba, ejecutar verificacion real-provider opcional (`T033-T036`) sobre artifact ignorado y reporte redacted.
+2. Si no, hacer polish/final verification restante (`T043-T045`) y commit atomico.
+3. Decidir aparte el cambio preexistente de `package.json`/`package-lock.json` que agrega `@earendil-works/pi-coding-agent` como dependency runtime.
 
 ## Promocion De Memoria
 

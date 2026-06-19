@@ -5,6 +5,10 @@ import type { CaptureGateway } from "./capture/gateway";
 import { NativeTauriCaptureGateway } from "./capture/native-tauri-gateway";
 import type { CaptureResult, CaptureState } from "./capture/types";
 import { createCapturedAudioTranscriptionAdapter } from "./model-gateway/direct-stt";
+import {
+  deriveRuntimeRecoveryAction,
+  type RuntimeRecoveryAction,
+} from "./model-gateway/runtime-transcription";
 import { createCapturedAudioPipelineRequest } from "./pipeline/ports";
 import { PipelineService } from "./pipeline/service";
 import type {
@@ -22,6 +26,14 @@ type PipelineUiState = {
   status: "idle" | "running" | "done" | "error" | "cancelled";
   message: string;
   summary?: SimulatedRunSummary;
+};
+
+type TranscriptReview = {
+  text: string;
+  provider?: string;
+  model?: string;
+  latencyMs?: number;
+  requestId?: string;
 };
 
 type CaptureGatewayRuntime = {
@@ -98,42 +110,139 @@ export function applyCopiedFallback(
   };
 }
 
-export function getRecoveryAction(
+export function getRuntimeRecoveryAction(
   summary?: SimulatedRunSummary,
-): string | undefined {
+): RuntimeRecoveryAction | undefined {
   if (!summary) {
     return undefined;
   }
 
+  const clipAvailable = Boolean(summary.capture?.artifact);
+  const transcriptAvailable = Boolean(getTranscriptReview(summary));
+
   if (summary.terminalState === "cancelled") {
-    return "Start a new capture when you are ready.";
+    return deriveRuntimeRecoveryAction({
+      status: "cancelled",
+      clipAvailable,
+      transcriptAvailable,
+    });
+  }
+
+  if (summary.terminalState === "done" && transcriptAvailable) {
+    return deriveRuntimeRecoveryAction({
+      status: "ok",
+      clipAvailable,
+      transcriptAvailable,
+      deliveryStatus: summary.deliveryEvidence?.status,
+    });
   }
 
   if (summary.terminalState === "error") {
-    switch (summary.error?.phase) {
-      case "listening":
-        return "Check microphone permission or device setup, then capture again.";
-      case "transcribing":
-        return "Check STT provider setup or retry the captured artifact.";
-      case "delivering":
-        return "Copy the transcript fallback or retry delivery.";
-      default:
-        return "Retry the captured run after resolving the reported setup issue.";
+    if (summary.error?.phase === "listening") {
+      return {
+        kind: "record_again",
+        label: "Check microphone setup",
+        reason: "Check microphone permission or device setup, then capture again.",
+        clipAvailable: false,
+      };
+    }
+
+    if (summary.error?.phase === "delivering" && transcriptAvailable) {
+      return deriveRuntimeRecoveryAction({
+        status: "ok",
+        clipAvailable,
+        transcriptAvailable,
+        deliveryStatus: "failed",
+      });
+    }
+
+    if (summary.error?.phase === "transcribing") {
+      return deriveRuntimeRecoveryAction({
+        status: classifyTranscriptionFailure(summary.error.message),
+        clipAvailable,
+        transcriptAvailable,
+      });
+    }
+
+    return {
+      kind: clipAvailable ? "retry_transcription" : "record_again",
+      label: clipAvailable ? "Retry captured run" : "Record again",
+      reason: "Retry the captured run after resolving the reported setup issue.",
+      clipAvailable,
+    };
+  }
+
+  return undefined;
+}
+
+export function getRecoveryAction(
+  summary?: SimulatedRunSummary,
+): string | undefined {
+  const action = getRuntimeRecoveryAction(summary);
+
+  if (!action || action.kind === "none") {
+    return undefined;
+  }
+
+  return `${action.label}: ${action.reason}`;
+}
+
+export function getTranscriptReview(
+  summary?: SimulatedRunSummary,
+): TranscriptReview | undefined {
+  const text =
+    summary?.deliveryEvidence?.output ?? summary?.output ?? summary?.transcript;
+
+  if (!summary || !text?.trim()) {
+    return undefined;
+  }
+
+  const transcriptionEvent = findTranscriptionCompletedEvent(summary);
+
+  return {
+    text: text.trim(),
+    provider: transcriptionEvent?.data.stt?.provider,
+    model: transcriptionEvent?.data.stt?.model,
+    latencyMs: transcriptionEvent?.data.latencyMs,
+    requestId: transcriptionEvent?.data.stt?.requestId,
+  };
+}
+
+function classifyTranscriptionFailure(
+  message: string,
+): "setup-error" | "provider-error" | "empty" | "unusable" {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("no usable text") || normalized.includes("empty")) {
+    return "empty";
+  }
+
+  if (normalized.includes("non-speech") || normalized.includes("unusable")) {
+    return "unusable";
+  }
+
+  if (
+    normalized.includes("setup") ||
+    normalized.includes("not configured") ||
+    normalized.includes("missing") ||
+    normalized.includes("unavailable")
+  ) {
+    return "setup-error";
+  }
+
+  return "provider-error";
+}
+
+function findTranscriptionCompletedEvent(summary: SimulatedRunSummary) {
+  for (let index = summary.events.length - 1; index >= 0; index -= 1) {
+    const event = summary.events[index];
+
+    if (event.type === "transcription_completed") {
+      return event;
     }
   }
 
-  switch (summary.deliveryEvidence?.status) {
-    case "available":
-      return "Copy the transcript when you are ready to recover the result.";
-    case "uncertain":
-      return "Copy the transcript or retry delivery without claiming paste success.";
-    case "copied":
-      return "Paste the copied transcript into the target app.";
-    case "failed":
-      return "Retry the captured run after resolving the reported delivery issue.";
-    default:
-      return undefined;
-  }
+  return undefined;
 }
 
 function describeDeliveryEvidence(
@@ -359,6 +468,7 @@ export function App() {
   const artifact = capture.result?.ok ? capture.result.artifact : undefined;
   const error = capture.result && !capture.result.ok ? capture.result.error : undefined;
   const deliveryEvidence = pipelineUi.summary?.deliveryEvidence;
+  const transcriptReview = getTranscriptReview(pipelineUi.summary);
   const recoveryAction = getRecoveryAction(pipelineUi.summary);
   const pipelineTone =
     pipelineUi.status === "done" &&
@@ -482,6 +592,31 @@ export function App() {
         >
           {pipelineUi.message}
         </p>
+
+        {transcriptReview ? (
+          <section className="transcript-review" data-testid="transcript-review">
+            <h2>Transcript review</h2>
+            <p>{transcriptReview.text}</p>
+            <dl>
+              <div>
+                <dt>Provider</dt>
+                <dd>{transcriptReview.provider ?? "unknown"}</dd>
+              </div>
+              <div>
+                <dt>Model</dt>
+                <dd>{transcriptReview.model ?? "unknown"}</dd>
+              </div>
+              <div>
+                <dt>Latency</dt>
+                <dd>
+                  {transcriptReview.latencyMs === undefined
+                    ? "unknown"
+                    : `${transcriptReview.latencyMs} ms`}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        ) : null}
 
         {recoveryAction ? (
           <p className="evidence-line" data-testid="recovery-action">

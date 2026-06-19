@@ -228,7 +228,7 @@ specs/<feature>/
 └── tasks.md
 ```
 
-Spec activa actual: `specs/004-real-microphone-capture/`, completa para captura nativa real; provider real sigue opcional/gated en `T035-T036`.
+Spec activa actual: `specs/005-runtime-transcription-delivery/`, planificada para convertir el smoke local de provider real en runtime confiable de transcripcion, recovery y delivery honesta. `specs/004-real-microphone-capture/` queda completa como baseline de captura nativa real.
 
 ## Verificacion
 

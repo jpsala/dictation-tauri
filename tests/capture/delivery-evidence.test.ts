@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyCopiedFallback,
   getRecoveryAction,
+  getRuntimeRecoveryAction,
+  getTranscriptReview,
 } from "../../src/App";
 import { createFakeCaptureArtifact } from "../../src/capture/fake-gateway";
 import type { CaptureResult } from "../../src/capture/types";
@@ -101,8 +103,13 @@ describe("captured run delivery evidence", () => {
       status: "failed",
       reason: "Capture failed before transcription.",
     });
+    expect(getRuntimeRecoveryAction(summary)).toMatchObject({
+      kind: "record_again",
+      label: "Check microphone setup",
+      clipAvailable: false,
+    });
     expect(getRecoveryAction(summary)).toBe(
-      "Check microphone permission or device setup, then capture again.",
+      "Check microphone setup: Check microphone permission or device setup, then capture again.",
     );
   });
 
@@ -122,9 +129,34 @@ describe("captured run delivery evidence", () => {
       status: "failed",
       reason: "Direct local STT provider is not configured.",
     });
+    expect(getRuntimeRecoveryAction(summary)).toMatchObject({
+      kind: "inspect_setup",
+      label: "Inspect provider setup",
+      clipAvailable: true,
+    });
     expect(getRecoveryAction(summary)).toBe(
-      "Check STT provider setup or retry the captured artifact.",
+      "Inspect provider setup: Provider configuration must be fixed before retrying transcription.",
     );
+  });
+
+  it("exposes transcript review evidence separately from delivery success", async () => {
+    const service = createCapturedAudioService();
+    const summary = await service.run(
+      createCapturedAudioPipelineRequest(createCapturedAudioResult()),
+    );
+
+    expect(getTranscriptReview(summary)).toEqual({
+      text: "captured fake transcript",
+      provider: "captured-dry-run",
+      model: "fake-artifact",
+      latencyMs: 9,
+      requestId: "captured:captured-run-001",
+    });
+    expect(getRuntimeRecoveryAction(summary)).toMatchObject({
+      kind: "copy_manually",
+      label: "Copy transcript manually",
+      clipAvailable: true,
+    });
   });
 });
 
