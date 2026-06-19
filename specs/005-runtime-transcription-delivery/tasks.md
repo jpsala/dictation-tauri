@@ -113,14 +113,27 @@
 
 ---
 
-## Phase 6: Optional Local Real-Provider Verification (Gated)
+## Phase 6: Gated Real-Provider Adapter (CI-Safe)
+
+**Purpose**: Add a real-provider runtime adapter that is testable without credentials, file reads, or network calls by requiring injected API key, fetch, and audio reader boundaries.
+
+- [X] T033 [P] [US1] Add Groq STT adapter tests with fake fetch/audio reader in `tests/runtime-transcription/groq-stt.test.ts`
+- [X] T034 [US1] Implement gated Groq STT `ModelGateway` adapter in `src/model-gateway/groq-stt.ts`
+- [X] T035 [US1] Ensure missing API key, non-real mode, missing reader, HTTP failures, and request failures return redacted setup/provider errors in `src/model-gateway/groq-stt.ts`
+- [X] T036 [US1] Verify Groq adapter tests pass without `.env`, provider calls, or real audio reads
+
+**Checkpoint**: Provider adapter exists but cannot call a provider by default; all credentials, fetch, and audio reads must be injected.
+
+---
+
+## Phase 6B: Optional Local Real-Provider Verification (Gated)
 
 **Purpose**: Prove one configured local run can transcribe a short captured artifact while keeping secrets/artifacts local and ignored. Execute only with explicit JP approval.
 
-- [ ] T033 [US1] With explicit approval, run one local real-provider transcription against an existing ignored captured clip
-- [ ] T034 [US1] Write only redacted evidence under `artifacts/microphone-capture/reports/` and transcript under `artifacts/microphone-capture/transcripts/`
-- [ ] T035 [US1] Verify `git status --short --ignored artifacts .env` and `git ls-files artifacts .env` show no tracked secrets/artifacts
-- [ ] T036 [US1] Update `specs/005-runtime-transcription-delivery/quickstart.md` with the redacted verification result, without transcript text or secrets
+- [ ] T047 [US1] With explicit approval, run one local real-provider transcription against an existing ignored captured clip
+- [ ] T048 [US1] Write only redacted evidence under `artifacts/microphone-capture/reports/` and transcript under `artifacts/microphone-capture/transcripts/`
+- [ ] T049 [US1] Verify `git status --short --ignored artifacts .env` and `git ls-files artifacts .env` show no tracked secrets/artifacts
+- [ ] T050 [US1] Update `specs/005-runtime-transcription-delivery/quickstart.md` with the redacted verification result, without transcript text or secrets
 
 **Checkpoint**: Optional provider evidence is local, redacted, ignored, and not required for CI-safe closure.
 
@@ -154,7 +167,8 @@
 - User Story 1 is the MVP and should complete before US2/US3.
 - User Story 2 depends on US1 transcript/failure outcomes.
 - User Story 3 depends on US1/US2 transcript availability and recovery semantics.
-- Phase 6 is optional/gated and can run only after US1 is CI-safe.
+- Phase 6 depends on US1 and remains CI-safe because credentials, fetch, and audio reads are injected.
+- Phase 6B is optional/gated and can run only after explicit approval.
 - Phase 7 starts after the desired implementation scope is complete.
 
 ### User Story Dependencies

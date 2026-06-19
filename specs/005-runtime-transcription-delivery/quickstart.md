@@ -28,8 +28,13 @@ Focused 005 tests should live under:
 
 ```powershell
 npm run test:pipeline -- tests/runtime-transcription
+npm run test:pipeline -- tests/runtime-transcription/groq-stt.test.ts
 npm run test:pipeline -- tests/capture/captured-audio-pipeline.test.ts tests/capture/delivery-evidence.test.ts
 ```
+
+The Groq STT adapter is CI-safe by default: it requires injected API key,
+`fetch`, and audio-reader boundaries. Tests use fake fetch/audio data and must
+not read `.env`, open real audio, or call the provider.
 
 ## Local Artifact Paths
 
