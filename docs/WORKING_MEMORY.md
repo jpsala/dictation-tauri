@@ -2,7 +2,7 @@
 
 Estado vivo del proyecto. Mantener corto.
 
-Ultima actualizacion manual: 2026-06-13.
+Ultima actualizacion manual: 2026-06-19.
 
 ## Regla
 
@@ -74,7 +74,11 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 ```powershell
 npm run synthetic-audio:fixtures
 npm run synthetic-audio:stt:dry-run
+npm run runtime-transcription:check
+npm run runtime-transcription:groq:dry-run
 npm run test:pipeline
+npm run build
+cd src-tauri && cargo check
 bun scripts/context-index.ts
 bun scripts/agent-context-audit.ts
 bun scripts/context-refresh.ts --track docs/tracks/<track>.md
