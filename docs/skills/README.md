@@ -50,3 +50,4 @@ bun scripts/agent-context-audit.ts
 ## Orquestacion
 
 - `aos-orquestar/`: proponer o ejecutar un fan-out controlado con threads/subagentes AOS.
+- `aos-fanout/`: alias intensivo para usar todos los threads/subagentes seguros y volver a serial cuando no conviene.

@@ -1,11 +1,11 @@
 ---
 name: aos-orquestar
-description: Design or run an AOS orchestration fan-out with Pi threads/subagents. Use when JP says `aos-orquestar`, `orquestá`, `usá threads`, `abrí explorers`, `paralelizá esto`, or asks whether subagents should be used.
+description: Design or run an AOS orchestration fan-out with Pi threads/subagents. Use when JP says `aos-orquestar`, `aos-fanout`, `aos-threads`, `orquestá`, `usá threads`, `abrí explorers`, `paralelizá esto`, or asks whether subagents should be used.
 ---
 
 # AOS Orquestar
 
-Usar threads/subagentes solo cuando aportan paralelismo real y el hilo principal puede seguir siendo el orquestador.
+Usar threads/subagentes solo cuando aportan paralelismo real, son seguros, y el hilo principal puede seguir siendo el orquestador.
 
 ## Flujo
 
