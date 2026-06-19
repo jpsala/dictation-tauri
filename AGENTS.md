@@ -23,8 +23,8 @@ La discusion inicial y las decisiones durables del sistema deben quedar integrad
 ## Reglas Generales
 
 - Respetar el stack, comandos y convenciones ya existentes.
-- El proyecto esta en modo personal/dev permisivo: se pueden leer `.env`, variables locales, logs, audio, transcripciones, bases locales y artifacts de referencia cuando ayuden al trabajo.
-- No imprimir secretos en respuestas ni commitear `.env`/tokens salvo pedido explicito y acotado de JP.
+- Modo personal/dev permisivo: se pueden leer `.env`, variables locales, logs, audio, transcripciones, bases locales y artifacts de referencia cuando ayuden.
+- No imprimir secretos ni commitear `.env`/tokens salvo pedido explicito y acotado de JP.
 - No revertir cambios de usuario sin pedido explicito.
 - Trabajar en Small Batches: una task SpecKit, un comportamiento o un checkpoint verificable por tanda. Cada tanda debe ser chica, revisable, testeada con checks relevantes y reversible con un commit atomico. No mezclar plan/spec/docs con implementacion si pueden separarse limpiamente.
 - Mantener la documentacion liviana: promover decisiones durables a docs estables y evitar transcribir sesiones.
@@ -45,32 +45,22 @@ Para este proyecto, `docs/DEVELOPMENT.md` define un modo personal/dev permisivo:
 
 ## Git Y SDD
 
-- La spec, plan y tasks son la fuente de verdad antes del codigo.
-- Small Batch es la unidad normal: una task SpecKit, un comportamiento observable, o una sincronizacion documental acotada.
-- Un commit debe representar exactamente una unidad reversible.
-- Antes de empezar una tanda, identificar el archivo de task/spec que la autoriza y el check que la cierra.
-- Antes de cada commit, revisar que no entren `.env`, secretos, artifacts de build, `node_modules/`, audio/transcripciones locales sensibles ni caches.
-- Usar mensajes Conventional Commits cortos (`docs:`, `chore:`, `feat:`, `test:`, `fix:`).
-- Si un cambio implementa una task, marcarla en `specs/<feature>/tasks.md` en el mismo commit o en un commit documental inmediatamente asociado.
-- Si una tanda empieza a tocar demasiados archivos o responsabilidades, parar, dividir la task y commitear solo el subresultado verde.
+- Spec/plan/tasks son fuente de verdad antes del codigo; cada Small Batch debe tener origen, alcance chico, check de cierre y commit atomico reversible.
+- Antes de commit, excluir `.env`, secretos, build artifacts, `node_modules/`, audio/transcripciones locales sensibles y caches.
+- Usar Conventional Commits cortos (`docs:`, `chore:`, `feat:`, `test:`, `fix:`).
+- Si se implementa una task, marcar `specs/<feature>/tasks.md` en el mismo commit o en uno documental asociado.
+- Si una tanda mezcla responsabilidades, parar y dividir.
 
 ## Comandos De Sistema
 
-- `sigamos`: seguir el trabajo activo aca, sin cierre/thread/`gol` implicito.
-- Si JP dice "cerrar sesion" o equivalente, cerrar operativamente: promover durable, actualizar tracks/working memory si corresponde, regenerar indice y correr audit.
-- Si JP dice "continuar sesion", hacer el mismo cierre y despues abrir thread/handoff compacto si la herramienta existe; si no, devolver prompt pegable.
-- Si JP dice `continuar sesion con gol`, `continuar con gol`, `siguiente`, `nueva sesion con gol` o equivalente, hacer el cierre de valor de `continuar sesion`, abrir thread/handoff compacto y pedir que la nueva sesion arranque con `gol` para el proximo lote acordado.
+- `aos-sigamos` / `sigamos`: seguir el trabajo activo aca, sin cierre, handoff ni `gol` implicito.
+- `aos-guardar-sesion`, `aos-checkpoint` o `cerrar sesion`: promover solo valor durable a docs/tracks/working memory si corresponde; regenerar indice y correr audit.
+- `aos-nueva-sesion`, `continuar sesion`: hacer el cierre de valor y preparar handoff compacto para un thread nuevo si la herramienta existe; si no, devolver prompt pegable.
+- `aos-nueva-sesion-con-gol`, `aos-continuar-con-gol`, `continuar con gol` o `siguiente`: cierre de valor + handoff compacto pidiendo que la nueva sesion arranque con `gol` para el proximo Small Batch. No continuar en el thread actual.
+- `aos-realinear-os`, `auditar sistema agentico` o `reparar sistema agentico`: abrir `docs/topics/agentic-os-operations.md` y reparar solo capa agentica/docs/scripts/adapters salvo pedido explicito.
+- `aos-perfect-os` o `dejar en condiciones`: abrir `docs/topics/os-quality.md` y optimizar core caliente, docs, tracks, skills/adapters, indice y audit sin tocar producto/runtime/deploy.
 
-## Comando `siguiente`
-
-Cuando JP diga exactamente `siguiente`, tratarlo como alias de `continuar sesion con gol`: cierre de valor, thread/handoff compacto y pedido explicito de arrancar con `gol` en la nueva sesion.
-
-1. Verificar estado real del repo con `git status --short --branch`, ultimo commit y proxima track/spec pendiente.
-2. Armar un prompt compacto para el proximo Small Batch con ruta inicial, estado esperado, objetivo exacto, guardrails, checks de cierre, commit atomico, no push y arranque con `gol`.
-3. Crear o forkear un thread Codex nuevo en el mismo proyecto/directorio y enviarle ese prompt.
-4. Devolver a JP el thread creado. Archivar el thread actual solo si JP lo pidio explicitamente o si el flujo lo requiere despues de confirmar el nuevo thread.
-
-No usar `siguiente` para avanzar en el mismo thread. No inventar estado: el prompt debe basarse en git, `docs/WORKING_MEMORY.md` y la spec/track vigente.
+Para `siguiente`, verificar git/spec/track y armar un prompt compacto con estado esperado, objetivo, guardrails, checks, commit atomico, no push y arranque con `gol`.
 
 ## Design Context
 

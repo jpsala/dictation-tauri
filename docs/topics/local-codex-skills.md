@@ -44,7 +44,7 @@ No abrirlo durante trabajo normal del repo ni durante `cerrar sesion`/`continuar
 
 `docs/skills/` es la fuente de verdad de las skills locales del repo.
 
-`.agents/skills` existe solo como compatibilidad tecnica y debe apuntar por junction o symlink a `docs/skills/`.
+`.agents/skills` existe solo como compatibilidad tecnica y puede estar habilitado por junction/symlink a `docs/skills/` o deshabilitado intencionalmente como toggle de discovery.
 
 No duplicar la misma skill en dos carpetas reales.
 
@@ -146,9 +146,12 @@ Cuando JP pida revisar que del sistema agentico se puede pasar a skills:
 
 ## Validacion
 
-1. Verificar el enlace tecnico:
+1. Verificar o alternar el enlace tecnico:
 
 ```powershell
+npm run skills:status
+npm run skills:on
+npm run skills:off
 powershell -ExecutionPolicy Bypass -File scripts/ensure-skills-link.ps1
 ```
 
@@ -178,3 +181,4 @@ bun scripts/agent-context-audit.ts
 - Preferir skills hibridas cortas cuando ya existe una fuente canonica confiable.
 - Si Git empieza a detectar ruido por la compatibilidad tecnica, mantener `.agents/skills/` ignorado.
 - Despues de portar o mover el repo, correr `scripts/ensure-skills-link.ps1`. Si `.agents/skills` llego como carpeta real, el script debe preservarla como backup, copiar skills faltantes a `docs/skills/` y recrear el junction.
+- Si se necesita bajar ruido de discovery en una sesion, usar `npm run skills:off`; `npm run skills:on` restaura el junction sin tocar `docs/skills/`.

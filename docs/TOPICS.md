@@ -39,7 +39,8 @@ primary_refs:
 | UI, diseño, frontend, React, app shell, voice dock, settings, impeccable | [UI Design e Impeccable](topics/ui-design-and-impeccable.md) | Cuando y como usar impeccable para superficies React/Tauri. |
 | Documentacion, topics, indice, contexto liviano, tracks | [Sistema de conocimiento](topics/docs-knowledge-system.md) | Explica como leer, crear y dividir docs sin cargar todo. |
 | Norte, AOS, sistema agentico, memoria viva, audit de contexto, Small Batches | [Agentic OS (AOS)](topics/agentic-os.md) | Operacion del sistema agentico escalable del proyecto. |
-| Crear, migrar, actualizar o auditar sistema agentico | [Operaciones del sistema agentico](topics/agentic-os-operations.md) | Como adaptar AOS a este repo u otro proyecto sin copiar un template ciego. |
+| `aos-realinear-os`, crear, migrar, actualizar o auditar sistema agentico | [Operaciones del sistema agentico](topics/agentic-os-operations.md) | Como reparar o adaptar AOS sin copiar un template ciego ni manager-only. |
+| `aos-perfect-os`, dejar en condiciones, calidad agentica | [Calidad Agentica / Perfect OS](topics/os-quality.md) | Checklist de contexto, docs, tracks, skills/adapters, indice y audit. |
 | Skills locales, slash commands, comandos Codex, docs/skills, .agents/skills, pasar a skills, evaluar skills | [Skills locales de Codex](topics/local-codex-skills.md) | Skills portables versionadas en `docs/skills/`; `.agents/skills` es compatibilidad local. |
 | Port Tauri, stack inicial, estructura, comandos, fundacion | [Fundacion Dictation Tauri](topics/dictation-tauri-foundation.md) | Contexto inicial del port y decisiones pendientes. |
 | Proyecto canonico, proyecto Tauri, CopyQ Tauri, Fixvox, estudiar fuentes, que sacar de cada repo | [Plan de estudio de proyectos fuente](tracks/source-project-study-plan.md) | Trabajo vivo para separar que se adopta del proyecto Tauri, del proyecto canonico y de nuestro proyecto. |
@@ -63,6 +64,7 @@ primary_refs:
 
 - `docs/skills/impeccable/`: skill local para UI/frontend.
 - `docs/skills/speckit-*`: Skills locales para workflow SpecKit.
+- `docs/skills/{sigamos,cerrar-sesion,continuar-sesion,continuar-sesion-con-gol,realinear-os,evaluar-skills}/`: comandos AOS locales; `aos-*` son aliases en `AGENTS.md`.
 - `.specify/`: infraestructura y templates de SpecKit.
 
 ## Reglas De Mantenimiento

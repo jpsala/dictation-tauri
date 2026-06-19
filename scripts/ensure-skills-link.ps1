@@ -28,35 +28,48 @@ if (-not (Test-Path $agentsDir)) {
   New-Item -ItemType Directory -Path $agentsDir | Out-Null
 }
 
+if (-not (Test-Path $canonical)) {
+  New-Item -ItemType Directory -Force -Path $canonical | Out-Null
+  Write-Output "CREATED: docs/skills"
+}
+
 if (Test-Path $compat) {
   $item = Get-Item $compat -Force
   $isLink = ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
   $target = $item.Target
 
-  if ($isLink -and $target) {
-    $resolvedTarget = (Resolve-Path $target).Path
-    $resolvedCanonical = (Resolve-Path $canonical).Path
-    if ($resolvedTarget -eq $resolvedCanonical) {
-      Write-Output "OK: .agents/skills -> $resolvedTarget"
-      exit 0
-    }
-  }
-
   if ($isLink) {
-    throw ".agents/skills is a reparse point but does not resolve to docs/skills. Repair it manually before continuing."
+    $resolvedCanonical = (Resolve-Path -LiteralPath $canonical).Path
+
+    if ($target) {
+      try {
+        $resolvedTarget = (Resolve-Path -LiteralPath $target).Path
+        if ($resolvedTarget -eq $resolvedCanonical) {
+          Write-Output "OK: .agents/skills -> $resolvedTarget"
+          exit 0
+        }
+        Write-Warning ".agents/skills points to $resolvedTarget, expected $resolvedCanonical. Recreating junction."
+      } catch {
+        Write-Warning ".agents/skills target cannot be resolved: $target. Recreating junction."
+      }
+    } else {
+      Write-Warning ".agents/skills is a reparse point without a readable target. Recreating junction."
+    }
+
+    [System.IO.Directory]::Delete($compat, $false)
+  } else {
+    $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $backup = Join-Path $agentsDir "skills.backup-$stamp"
+    Move-Item -LiteralPath $compat -Destination $backup
+    Write-Warning "Moved real .agents/skills directory to $backup before creating junction."
+
+    if (-not (Test-Path $canonical)) {
+      New-Item -ItemType Directory -Force -Path $canonical | Out-Null
+      Write-Output "CREATED: docs/skills"
+    }
+
+    Copy-MissingChildren -source $backup -destination $canonical
   }
-
-  $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-  $backup = Join-Path $agentsDir "skills.backup-$stamp"
-  Move-Item -LiteralPath $compat -Destination $backup
-  Write-Warning "Moved real .agents/skills directory to $backup before creating junction."
-
-  if (-not (Test-Path $canonical)) {
-    New-Item -ItemType Directory -Force -Path $canonical | Out-Null
-    Write-Output "CREATED: docs/skills"
-  }
-
-  Copy-MissingChildren -source $backup -destination $canonical
 }
 
 if (-not (Test-Path $canonical)) {

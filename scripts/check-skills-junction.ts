@@ -15,14 +15,14 @@ if (!existsSync(canon)) {
 }
 
 if (!existsSync(compat)) {
-  fail("Missing compatibility path docs/skills");
+  fail("Missing compatibility path .agents/skills; run npm run skills:on if discovery should be enabled");
 }
 
 const canonReal = realpathSync.native(canon);
 const compatReal = realpathSync.native(compat);
 
 if (canonReal !== compatReal) {
-  fail(`docs/skills must resolve to docs/skills. Got ${compatReal}, expected ${canonReal}`);
+  fail(`.agents/skills must resolve to docs/skills. Got ${compatReal}, expected ${canonReal}`);
 }
 
-console.log("docs/skills resolves to docs/skills");
+console.log(".agents/skills resolves to docs/skills");

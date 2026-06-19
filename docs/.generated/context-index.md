@@ -2,11 +2,11 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-18T12:38:55.698Z
+Generated: 2026-06-19T02:31:58.444Z
 
 ## Topics
 
-- active: [agentic-os-operations](../topics/agentic-os-operations.md) - crear sistema agentico, migrar sistema agentico, actualizar norte, aos, adaptar proyecto, repo nuevo
+- active: [agentic-os-operations](../topics/agentic-os-operations.md) - crear sistema agentico, migrar sistema agentico, actualizar norte, aos, init os, adopt os, update os, adaptar proyecto, repo nuevo, realinear os, auditar sistema agentico, reparar sistema agentico, drift de contexto
 - active: [agentic-os](../topics/agentic-os.md) - norte, working memory, aos, agentic os, memoria viva, audit docs, tracks, cerrar sesion, continuar sesion, siguiente, handoff thread, nuevo thread, context index, Small Batches, small batches, commits atomicos
 - active: [automation-and-reference-fixtures](../topics/automation-and-reference-fixtures.md) - fixtures, audio sintetico, TTS, STT, benchmarks, Fixvox, electro-bun, sin interaccion humana
 - draft: [backend-and-model-routing](../topics/backend-and-model-routing.md) - backend, proxy, model routing, proveedores, API keys, Groq, OpenAI, OpenRouter, xAI
@@ -15,6 +15,7 @@ Generated: 2026-06-18T12:38:55.698Z
 - active: [docs-knowledge-system](../topics/docs-knowledge-system.md) - documentacion, docs, topics, indice, contexto liviano, tracks, context bloat, contaminacion de contexto
 - active: [fixvox-capability-map](../topics/fixvox-capability-map.md) - Fixvox, Fixbox, electro-bun, capacidades Fixvox, alcance producto, mapa de producto, que copiamos, que implementamos
 - reference: [local-codex-skills](../topics/local-codex-skills.md) - skills locales, local skills, slash commands, docs/skills, .agents/skills, sigamos, cerrar sesion, continuar sesion, continuar sesion con gol, continuar con gol, siguiente, realinear os, evaluar skills, pasar a skills, promover a skill, que se puede pasar a skills, skill o topic, metadata mínima, metadata minima, modelo hibrido
+- active: [os-quality](../topics/os-quality.md) - perfect os, proyecto perfecto, dejar en condiciones, calidad agentica, optimizar contexto, docs livianos, docs indexados, comandos os, os help
 - active: [privacy-and-dictation-data](../topics/privacy-and-dictation-data.md) - privacidad, audio, transcripciones, dictado, logs, storage, modelos
 - active: [product-direction](../topics/product-direction.md) - producto, MVP, alcance, direccion, no human interaction, automatizacion
 - draft: [selection-and-assistant-actions](../topics/selection-and-assistant-actions.md) - texto seleccionado, seleccion, assistant mode, asistente, quick chat, alt-q, presets, hotkeys
@@ -63,6 +64,6 @@ Generated: 2026-06-18T12:38:55.698Z
 | Datos de dictado | Audio, transcripciones, prompts, logs, correcciones y metadata de captura de voz. |
 | Local Skill | Skill local portable versionada dentro del repo. |
 | Skills Canonicas | Carpeta `docs/skills/`, fuente de verdad de las skills locales. |
-| Skills Compat | Carpeta `.agents/skills`, junction de compatibilidad hacia `docs/skills/`. |
+| Skills Compat | `.agents/skills`, junction/toggle de compatibilidad hacia `docs/skills/`. |
 | Small Batch | Unidad de trabajo agentico chica, revisable y reversible: una task SpecKit, un comportamiento observable o una sincronizacion documental acotada, cerrada con checks y commit atomico. |
 | Context Bloat / Contaminacion De Contexto | Cuando reglas, memoria viva, topics o tracks crecen hasta volverse lectura obligatoria amplia y degradan la capacidad de una sesion nueva. |

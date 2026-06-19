@@ -23,6 +23,6 @@ Aliases y terminos recurrentes del proyecto.
 | Datos de dictado | Audio, transcripciones, prompts, logs, correcciones y metadata de captura de voz. |
 | Local Skill | Skill local portable versionada dentro del repo. |
 | Skills Canonicas | Carpeta `docs/skills/`, fuente de verdad de las skills locales. |
-| Skills Compat | Carpeta `.agents/skills`, junction de compatibilidad hacia `docs/skills/`. |
+| Skills Compat | `.agents/skills`, junction/toggle de compatibilidad hacia `docs/skills/`. |
 | Small Batch | Unidad de trabajo agentico chica, revisable y reversible: una task SpecKit, un comportamiento observable o una sincronizacion documental acotada, cerrada con checks y commit atomico. |
 | Context Bloat / Contaminacion De Contexto | Cuando reglas, memoria viva, topics o tracks crecen hasta volverse lectura obligatoria amplia y degradan la capacidad de una sesion nueva. |

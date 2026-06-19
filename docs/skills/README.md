@@ -5,7 +5,7 @@
 ## Regla
 
 - No duplicar skills en dos carpetas reales.
-- `.agents/skills` existe solo como compatibilidad tecnica y debe apuntar por junction a `docs/skills/`.
+- `.agents/skills` existe solo como compatibilidad tecnica y puede apuntar por junction a `docs/skills/` o estar deshabilitado intencionalmente como toggle de discovery.
 - Si se agrega o modifica una skill, editar `docs/skills/<nombre>/`.
 - Si una skill es operativa del sistema, documentarla tambien en topics/working memory/decisions cuando cambie el comportamiento durable.
 
@@ -23,6 +23,9 @@
 ## Validacion
 
 ```powershell
+npm run skills:status
+npm run skills:on
+npm run skills:off
 powershell -ExecutionPolicy Bypass -File scripts/ensure-skills-link.ps1
 python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/<nombre>
 bun scripts/context-index.ts
@@ -32,6 +35,7 @@ bun scripts/agent-context-audit.ts
 ## Mantenimiento
 
 - Tras mover o portar el repo a otro disco, correr `scripts/ensure-skills-link.ps1`: si encuentra una carpeta real en `.agents/skills`, la mueve a backup, fusiona items faltantes hacia `docs/skills/` y recrea el junction sin perder contenido.
+- Para bajar ruido de discovery, usar `npm run skills:off`; para restaurarlo, `npm run skills:on`.
 
 - Si una skill nueva usa metadata UI, crear o regenerar `agents/openai.yaml`.
 - Si un doc humano apunta a `.agents/skills` como fuente de verdad, corregirlo a `docs/skills/`.
@@ -42,3 +46,7 @@ bun scripts/agent-context-audit.ts
 - Copiar o fusionar `docs/skills/` como parte de AOS cuando el repo destino necesite slash commands locales.
 - No copiar `.agents/skills` como carpeta real; recrearla en destino con `scripts/ensure-skills-link.ps1`.
 - Mantener las skills hibridas: metadata y cuerpo corto en la skill, procedimiento durable en topics, scripts o docs canonicos del repo destino.
+
+## Orquestacion
+
+- `aos-orquestar/`: proponer o ejecutar un fan-out controlado con threads/subagentes AOS.

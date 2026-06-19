@@ -60,6 +60,22 @@ function frontmatterValue(frontmatter: string, key: string) {
   return match?.[1]?.trim();
 }
 
+function hasUnsafePlainYamlColon(value: string | undefined) {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (/^["'].*["']$/.test(trimmed)) return false;
+  return /:\s/.test(trimmed);
+}
+
+function warnIfFrontmatterYamlLooksUnsafe(path: string, frontmatter: string) {
+  for (const key of ["description"]) {
+    const value = frontmatterValue(frontmatter, key);
+    if (hasUnsafePlainYamlColon(value)) {
+      add("error", `${path} frontmatter ${key} contains an unquoted colon; quote the value so YAML parsers do not treat it as a nested mapping`);
+    }
+  }
+}
+
 function frontmatterList(frontmatter: string, key: string) {
   const match = frontmatter.match(new RegExp(`^${key}:\\s*\\r?\\n((?:\\s+- .+\\r?\\n?)+)`, "m"));
   if (!match) return [];
@@ -71,6 +87,10 @@ function frontmatterList(frontmatter: string, key: string) {
 
 function modifiedMs(path: string) {
   return statSync(join(root, path)).mtimeMs;
+}
+
+if (!exists("AGENTS.md")) {
+  add("error", "Missing AGENTS.md");
 }
 
 if (!exists("docs/WORKING_MEMORY.md")) {
@@ -90,7 +110,7 @@ if (!exists("docs/skills")) {
 }
 
 if (!exists(".agents/skills")) {
-  add("error", "Missing local compatibility path .agents/skills");
+  // Allowed: .agents/skills is a discovery toggle. Canonical skills remain in docs/skills.
 } else if (!sameRealPath(".agents/skills", "docs/skills")) {
   add("error", ".agents/skills must resolve to canonical docs/skills");
 }
@@ -175,6 +195,19 @@ function walkMarkdownFiles(dir: string): string[] {
     if (entry.isDirectory()) return walkMarkdownFiles(fullPath);
     return entry.isFile() && entry.name.endsWith(".md") ? [fullPath] : [];
   });
+}
+
+function listDirs(path: string) {
+  const fullPath = join(root, path);
+  if (!existsSync(fullPath)) return [];
+  return readdirSync(fullPath, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => `${path}/${entry.name}`.replaceAll("\\", "/"))
+    .sort();
+}
+
+function backtickedSkillRefs(content: string) {
+  return [...content.matchAll(/`([^`*\/]+)\/`/g)].map((match) => match[1]).sort();
 }
 
 const taskStatuses = new Set([
@@ -266,16 +299,67 @@ if (!exists("docs/tracks")) {
   }
 }
 
+
+if (exists("docs/skills")) {
+  const skillDirs = listDirs("docs/skills");
+  if (!skillDirs.length) {
+    add("warn", "docs/skills/ exists but has no skill directories");
+  }
+
+  if (exists("docs/skills/README.md")) {
+    const skillNames = new Set(skillDirs.map((dir) => dir.split("/").at(-1) ?? dir));
+    for (const skillName of backtickedSkillRefs(read("docs/skills/README.md"))) {
+      if (!skillNames.has(skillName)) {
+        add("warn", `docs/skills/README.md references missing skill docs/skills/${skillName}/`);
+      }
+    }
+  }
+
+  for (const skillDir of skillDirs) {
+    const skillFile = `${skillDir}/SKILL.md`;
+    if (!exists(skillFile)) {
+      add("warn", `${skillDir} is missing SKILL.md`);
+      continue;
+    }
+
+    const content = read(skillFile);
+    const frontmatter = topicFrontmatter(content);
+    if (!frontmatter) {
+      add("warn", `${skillFile} has no frontmatter`);
+      continue;
+    }
+
+    for (const key of ["name", "description"]) {
+      if (!hasFrontmatterKey(frontmatter, key)) {
+        add("warn", `${skillFile} frontmatter missing ${key}`);
+      }
+    }
+    warnIfFrontmatterYamlLooksUnsafe(skillFile, frontmatter);
+  }
+}
+
 if (!exists("docs/.generated/context-index.md")) {
   add("warn", "Missing generated context index docs/.generated/context-index.md");
 } else {
   const indexTime = modifiedMs("docs/.generated/context-index.md");
-  for (const path of [
+  const specMarkdown = ["specs", ".specify/specs"].flatMap((specRoot) =>
+    listDirs(specRoot).flatMap((specDir) =>
+      walkMarkdownFiles(join(root, specDir)).map((path) => relative(root, path).replaceAll("\\", "/")),
+    ),
+  );
+  const indexSources = [
     "docs/WORKING_MEMORY.md",
     "docs/GLOSSARY.md",
     "docs/TOPICS.md",
+    "docs/skills/README.md",
     "docs/tracks/README.md",
-  ]) {
+    ...topicFiles.map((file) => `docs/topics/${file}`),
+    ...walkMarkdownFiles(join(root, "docs", "skills")).map((path) => relative(root, path).replaceAll("\\", "/")),
+    ...walkMarkdownFiles(join(root, "docs", "tracks")).map((path) => relative(root, path).replaceAll("\\", "/")),
+    ...specMarkdown,
+  ];
+
+  for (const path of indexSources) {
     if (exists(path) && modifiedMs(path) > indexTime) {
       add("warn", `docs/.generated/context-index.md is older than ${path}`);
     }
