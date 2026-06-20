@@ -21,6 +21,18 @@ primary_refs:
 
 # Backend Y Model Routing
 
+## Actualizacion 2026-06-20
+
+Despues de estudiar `C:\dev\fixvox`, el norte cambia: Dictation Tauri debe poder usar la misma infraestructura cloud managed de Fixvox, pero reimplementando el runtime desktop en Rust/Tauri.
+
+La ruta principal deseada pasa a ser:
+
+```text
+Dictation Tauri -> Rust/Tauri host -> Fixvox Worker -> Groq
+```
+
+El adapter Groq directo local que ya existe queda como BYOK/dev fallback explicito, no como default silencioso de producto. Ver `docs/topics/fixvox-cloud-runtime-port.md` y `specs/009-fixvox-cloud-runtime-port/plan.md`.
+
 ## Modelo Observado En Fixvox
 
 Fixvox tiene dos caminos:
@@ -84,19 +96,22 @@ Contras:
 - Un poco mas de diseño inicial.
 - Requiere documentar bien la prioridad de resolucion.
 
-## Recomendacion Inicial
+## Recomendacion Actual
 
-Usar Opcion C: una interfaz propia y un primer adapter directo para fixtures/benchmarks. Mantener adapter proxied como siguiente paso, usando el proxy existente si el contrato alcanza.
+Usar Opcion C, pero promoviendo el adapter proxied/managed de Fixvox a camino principal post-008.
+
+Dictation Tauri mantiene un `ModelGateway`/host boundary propio, pero el runtime real recomendado debe resolver primero la ruta managed cloud cuando exista backend/device valido. El adapter directo local queda para BYOK/dev y para aislar fallas durante desarrollo.
 
 ## Decision Cerrada
 
 Dictation Tauri usara un `ModelGateway` propio e hibrido.
 
-Orden inicial:
+Orden actualizado:
 
-1. Adapter mock para MVP 1 y tests de pipeline, conectado por puerto y no por acceso directo a fixtures desde todo el runtime.
-2. Adapter directo local para MVP 2, leyendo variables de entorno locales o `.env` propio ignorado desde una frontera host/script, no desde UI React. Plan vigente: `specs/003-synthetic-audio-stt/`.
-3. Adapter proxied como research/early despues de validar el contrato compatible.
+1. Adapter mock para tests de pipeline y provider-free smoke.
+2. Adapter directo local Groq ya implementado como BYOK/dev fallback explicito desde Rust/Tauri, nunca desde React.
+3. Adapter managed cloud Fixvox como camino principal siguiente: device registration, preflight, `X-Device-Id`, `/v1/audio/transcriptions`, headers `X-Fixvox-*` y fail-closed si no hay lane managed.
+4. Postprocess managed via `/v1/chat/completions` despues de estabilizar STT cloud.
 
 Contrato minimo:
 
@@ -129,6 +144,8 @@ Reglas:
 
 ## Pendiente
 
-- Definir provider/model inicial para STT sintetico.
-- Definir provider/model inicial para postprocess si entra en MVP 2.
-- Definir si MVP 2 usa primero script Node/TS de benchmark, Tauri/Rust o ambos. Criterio actual: benchmark local puede empezar en TS/Node; runtime de producto con secretos y side effects debe cruzar por frontera Tauri/host.
+- Implementar `specs/009-fixvox-cloud-runtime-port/` por Small Batches.
+- Decidir si Dictation Tauri registra device ids con semantica propia o reutiliza la semantica alpha de Fixvox tal cual.
+- Definir persistencia local de `installId`/`deviceId` en Rust/Tauri.
+- Confirmar/reparar el dominio `https://fixvox-api.jpsala.dev`; mientras tanto preferir `https://auth-fixvox.jpsala.dev` o `https://fixvox-proxy.jpsala.workers.dev` configurables.
+- Definir provider/model inicial para postprocess managed despues de cerrar STT cloud.

@@ -78,9 +78,9 @@ En este mapa, `mvp` cubre el tramo MVP 0-3 definido en `docs/topics/product-dire
 | Audio sintetico/TTS | Genera WAV/MP3 desde frases para pruebas. | Clave para no depender de JP. | Script propio inspirado en Fixvox. | `mvp` |
 | STT benchmark matrix | Corre escenarios STT/postprocess, mide calidad/costo/latencia. | Clave para elegir modelo. | Copia minima conceptual, no port literal. | `mvp` |
 | Muestras humanas | WAVs reales con expected text. | Valiosas para regresion, pero sensibles. | Referenciar localmente, no copiar al repo. | `research` |
-| Model routing | Elige proveedor/modelo por policy/contexto. | Util si no sobredisena el pipeline. | Interfaz propia `ModelGateway`; mock primero, directo local en MVP 2, proxied despues. | `mvp` |
-| Proxy/backend-managed | Centraliza claves, costos, quotas y policy. | Muy valioso si el producto escala. | Adapter proxied compatible con endpoint existente. | `research` |
-| Control plane/policy | Administra usuarios, quotas, defaults, capabilities. | No bloquea producto local. | No implementar al inicio. | `parked` |
+| Model routing | Elige proveedor/modelo por policy/contexto. | Util si no sobredisena el pipeline. | Interfaz propia `ModelGateway`; mock/provider-free, directo BYOK/dev, managed cloud Fixvox post-008. | `mvp` |
+| Proxy/backend-managed | Centraliza claves, costos, quotas y policy. | Alto: Fixvox ya funciona bien con esta frontera. | Adapter Rust/Tauri contra contratos HTTP Fixvox (`X-Device-Id`, preflight, `/v1/audio/transcriptions`). | `mvp` |
+| Control plane/policy | Administra usuarios, quotas, defaults, capabilities. | Importante para managed cloud sin claves locales. | Adoptar contratos mínimos de device/register/preflight; no portar admin UI/control plane completo. | `early` |
 | Wake words | Activacion por palabra tipo Lulu. | Atractivo, pero permiso microfono y ruido. | No activar por defecto. | `parked` |
 | Voice commands / Smart Dictation | Interpreta comandos hablados complejos. | Potente, pero scope grande. | Fixtures primero, runtime despues. | `later` |
 | App memory / smart memory | Memoria por app/global para comandos. | Interesante, no core. | Markdown/local store posterior. | `later` |
@@ -95,7 +95,7 @@ MVP 0-3:
 1. App Tauri base verificable.
 2. Pipeline simulado con estados, cancelacion, no-overlap, event ledger y delivery verificable.
 3. Harness propio de audio sintetico y STT/postprocess benchmark.
-4. `ModelGateway` hibrido: mock primero, adapter directo local en MVP 2.
+4. `ModelGateway` hibrido: mock primero, adapter directo local en MVP 2; post-008 se promueve managed cloud Fixvox como camino real principal.
 5. Delivery basico `copy` e `insert` best-effort con fallback.
 6. Push-to-talk/toggle y stop-submit para microfono real en MVP 3.
 7. Logs redacted con latencia/costo/calidad.
@@ -129,7 +129,7 @@ Primeras expansiones candidatas despues de MVP 3:
 - Texto seleccionado real entra despues de MVP 3, aunque se simula desde tests antes.
 - `Alt+Q` queda para despues de validar dictado y seleccion real.
 - El minimo aceptable de delivery es copy/insert best-effort con evidencia automatizada.
-- `ModelGateway` sera hibrido: mock primero, adapter directo local en MVP 2, proxied despues si el contrato alcanza.
+- `ModelGateway` sera hibrido: mock/provider-free para tests, directo BYOK/dev como fallback explicito y managed cloud Fixvox como camino principal post-008 si el contrato se mantiene estable.
 
 ## Regla De Mantenimiento
 

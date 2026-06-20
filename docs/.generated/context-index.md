@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-20T02:26:06.012Z
+Generated: 2026-06-20T23:31:07.055Z
 
 ## Topics
 
@@ -14,6 +14,7 @@ Generated: 2026-06-20T02:26:06.012Z
 - draft: [dictation-workflow](../topics/dictation-workflow.md) - dictado, workflow, flujo, estados, pipeline, listening, transcribing
 - active: [docs-knowledge-system](../topics/docs-knowledge-system.md) - documentacion, docs, topics, indice, contexto liviano, tracks, context bloat, contaminacion de contexto
 - active: [fixvox-capability-map](../topics/fixvox-capability-map.md) - Fixvox, Fixbox, electro-bun, capacidades Fixvox, alcance producto, mapa de producto, que copiamos, que implementamos
+- active: [fixvox-cloud-runtime-port](../topics/fixvox-cloud-runtime-port.md) - Fixvox cloud, Fixbox backend, managed runtime, proxy compartido, reemplazar Bun por Rust, Rust Tauri port, cloud infrastructure, X-Device-Id
 - reference: [local-codex-skills](../topics/local-codex-skills.md) - skills locales, local skills, slash commands, docs/skills, .agents/skills, sigamos, cerrar sesion, continuar sesion, continuar sesion con gol, continuar con gol, siguiente, realinear os, evaluar skills, pasar a skills, promover a skill, que se puede pasar a skills, skill o topic, metadata mínima, metadata minima, modelo hibrido
 - active: [os-quality](../topics/os-quality.md) - perfect os, proyecto perfecto, dejar en condiciones, calidad agentica, optimizar contexto, docs livianos, docs indexados, comandos os, os help
 - active: [privacy-and-dictation-data](../topics/privacy-and-dictation-data.md) - privacidad, audio, transcripciones, dictado, logs, storage, modelos
@@ -40,6 +41,7 @@ Generated: 2026-06-20T02:26:06.012Z
 - [006-host-runtime-transcription-boundary](../../specs/006-host-runtime-transcription-boundary/)
 - [007-usable-dictation-loop](../../specs/007-usable-dictation-loop/)
 - [008-real-provider-ui-gate](../../specs/008-real-provider-ui-gate/)
+- [009-fixvox-cloud-runtime-port](../../specs/009-fixvox-cloud-runtime-port/)
 
 ## Skills
 

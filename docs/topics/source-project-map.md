@@ -56,8 +56,8 @@ Este mapa no convierte ningun proyecto fuente en dependencia. Todo lo adoptado d
 | Focus/delivery Win32 | Fixvox + CopyQ Tauri | `adapt` | Delivery best-effort con niveles de certeza; evitar prometer paste observado en Chromium/WebView. |
 | Voice runtime pipeline | Fixvox | `adapt` | Contrato propio por fases, `PipelineService`, event ledger y puertos/adapters. |
 | STT/TTS/benchmarks | Fixvox | `adapt` | Harness propio con frases/prompts/matrices como referencia; no copiar arquitectura Electrobun/Bun. |
-| Model routing | Fixvox | `adapt` | `ModelGateway` hibrido: mock primero, directo local en MVP 2, proxy como spike posterior. |
-| Policy/control plane | Fixvox | `reference` | Tomar lecciones de ownership/policy; no implementar control plane en MVP 0-3. |
+| Model routing | Fixvox | `adapt` | `ModelGateway` hibrido: mock/provider-free, directo BYOK/dev y managed cloud Fixvox como camino principal post-008. |
+| Policy/control plane | Fixvox | `adapt` | Reusar contratos cloud (`/v2/device/register`, preflight, policy/defaults) desde Rust/Tauri, no internals Bun. |
 | Wake words/assistant/Quick Chat | Fixvox | `parked` | No entran en MVP; usar solo para diseno futuro de rutas. |
 | UIA/Koffi/Python/PowerShell helper | Fixvox | `reject` | No reintroducir en hot path sin nueva decision explicita. |
 
@@ -187,9 +187,11 @@ Regla:
 
 - se pueden usar muestras humanas locales como referencia, pero no copiarlas al repo sin decision explicita.
 
-### ModelGateway
+### ModelGateway Y Managed Cloud
 
 Estado: `adapt` desde Fixvox.
+
+Actualizacion 2026-06-20: Fixvox no es solo referencia futura de proxy; su infraestructura cloud managed es el camino recomendado para el siguiente runtime real. El codigo desktop se reimplementa en Rust/Tauri, pero se pueden adoptar contratos, policy, prompts, headers de telemetria, usage/cost y fail-closed managed behavior.
 
 Implementar una frontera propia:
 
@@ -200,17 +202,13 @@ type ModelGateway = {
 };
 ```
 
-Primer adapter:
+Adapters:
 
-- mock/fixture-backed para MVP 1;
-- directo local para MVP 2;
-- configurado por `.env`/variables locales desde script/host, no desde UI React;
-- sin acoplarse al control plane de Fixvox.
+- mock/fixture-backed para tests y provider-free smoke;
+- directo local para BYOK/dev, configurado por `.env`/variables locales desde host Rust/Tauri, no desde UI React;
+- managed Fixvox cloud como camino principal post-008, usando `X-Device-Id`, `/v1/audio/transcriptions`, `/v2/execution/preflight` y headers `X-Fixvox-*`.
 
-Adapter posterior:
-
-- proxy existente si el contrato sirve;
-- policy/costos/quotas como spike separado.
+Regla: acoplarse a contratos HTTP documentados, no a internals Bun/Electrobun. Si Tauri/Rust pide un diseño distinto para side effects, packaging, storage o seguridad, preferir el diseño propio.
 
 ### Delivery Y Target Assurance
 

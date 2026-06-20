@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "allowed": true,
+  "mode": "managed",
+  "usageKind": "transcription",
+  "requestId": "fx_req_contract_123",
+  "limits": {
+    "limit": 3600,
+    "remaining": 3599,
+    "resetAt": "2026-06-21T00:00:00Z"
+  }
+}

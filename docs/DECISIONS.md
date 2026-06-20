@@ -4,6 +4,43 @@ Registro corto de decisiones durables.
 
 ## Aprobadas
 
+### 2026-06-20 - Mantener React con CSS propio y Radix selectivo para frontend
+
+Estado: accepted
+
+Decision: Dictation Tauri mantiene React 19 + Vite + TypeScript y el sistema visual propio definido en `PRODUCT.md`/`DESIGN.md`. No se migra a Svelte ahora, no se adopta MUI/Mantine como libreria visual base y no se adopta shadcn wholesale. Se permite sumar primitivas headless/accesibles tipo Radix de forma selectiva cuando una superficie lo justifique: dialogs, popovers, menus, tooltips, focus traps, listbox/combobox o componentes con a11y no trivial.
+
+Motivo: la UI actual es chica y ya esta integrada/testeada; el producto exige una estetica compacta, sobria y state-first que pelea con librerias visuales opinionadas. React es suficientemente liviano para esta app Tauri y evita una migracion prematura. Radix selectivo reduce riesgo de reinventar accesibilidad sin ceder la identidad visual.
+
+Alcance:
+
+- CSS propio y tokens de `DESIGN.md` siguen siendo fuente visual principal.
+- Componentes simples como buttons, chips, panels, status rows y grids se mantienen propios.
+- Radix/headless se evalua solo para interacciones complejas y se envuelve con componentes propios.
+- Si se reconsidera Svelte, debe ser mediante spike medido de Voice Dock + Readiness, comparando DX, bundle/runtime, accesibilidad y paridad visual.
+- MUI queda descartado para esta direccion visual; Mantine solo podria evaluarse en un spike puntual si Settings crece y el tax visual queda demostrado como aceptable.
+
+Proximo paso: antes de nuevas superficies durables, refactorizar `App.tsx` en componentes/estado mas chicos y aplicar `impeccable`/checks visuales para preservar `DESIGN.md`.
+
+### 2026-06-20 - Promover Fixvox managed cloud como camino runtime post-008
+
+Estado: accepted
+
+Decision: Dictation Tauri debe usar la infraestructura cloud managed de Fixvox como camino principal para el siguiente runtime real, reimplementando el desktop runtime en Rust/Tauri en vez de portar internals Bun/Electrobun. El camino directo Groq local queda como BYOK/dev fallback explicito, no como default silencioso.
+
+Motivo: Fixvox ya funciona bien con device registration, proxy managed, policy/preflight, claves server-side, costos/usage/timings y prompts/heuristicas maduras. Dictation Tauri puede aprovechar esa frontera cloud sin heredar deuda de Bun/Electrobun, manteniendo React sin secretos y dejando side effects desktop en Rust/Tauri.
+
+Alcance:
+
+- Usar contratos HTTP Fixvox: `/v2/device/register`, `/v2/device/activate`, `/v2/execution/preflight`, `/v1/audio/transcriptions` y luego `/v1/chat/completions`.
+- Managed inference usa `X-Device-Id`; no bearer vendor desde el desktop/frontend.
+- Managed mode debe fallar cerrado si falta backend/device/preflight/lane proxied.
+- El soporte managed actual se considera Groq-only hasta que el Worker amplie providers.
+- El endpoint confiable actual es `https://auth-fixvox.jpsala.dev`; `https://fixvox-api.jpsala.dev` no debe ser default hasta confirmar health.
+- Antes de default de producto, UI/docs deben explicar que audio/transcript pasan por Fixvox cloud y Groq.
+
+Proximo paso: implementar `specs/009-fixvox-cloud-runtime-port/` por Small Batches empezando con tests de contrato sin llamadas reales.
+
 ### 2026-06-20 - Separar transcripcion real de smoke seguro en UI
 
 Estado: accepted

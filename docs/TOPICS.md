@@ -35,7 +35,8 @@ primary_refs:
 | Dictado, flujo, pipeline, estados, listening, transcribing, delivery | [Workflow de dictado](topics/dictation-workflow.md) | Modelo de fases de ejecucion y preguntas de UX/runtime. |
 | Fixtures, audio sintetico, TTS, STT, benchmarks, Fixvox, pruebas sin JP | [Automatizacion y fixtures](topics/automation-and-reference-fixtures.md) | Como usar recursos de Fixvox sin copiar arquitectura ni secretos. |
 | Texto seleccionado, Assistant Mode, Quick Chat, Alt+Q, presets, hotkeys de acciones | [Seleccion y acciones asistidas](topics/selection-and-assistant-actions.md) | Separa dictado directo de transformaciones sobre seleccion y superficies asistidas. |
-| Backend, proxy, model routing, proveedores, API keys, Groq/OpenAI/OpenRouter/xAI | [Backend y model routing](topics/backend-and-model-routing.md) | Decision de ModelGateway hibrido: mock primero, directo local en MVP 2 y proxy como spike. |
+| Backend, proxy, model routing, proveedores, API keys, Groq/OpenAI/OpenRouter/xAI | [Backend y model routing](topics/backend-and-model-routing.md) | Decision de ModelGateway hibrido y orden de adapters. |
+| Fixvox cloud, Fixbox backend, managed runtime, proxy compartido, reemplazar Bun por Rust/Tauri | [Fixvox Cloud Runtime Port](topics/fixvox-cloud-runtime-port.md) | Camino para usar la infraestructura cloud de Fixvox desde un runtime Rust/Tauri propio. |
 | UI, diseño, frontend, React, app shell, voice dock, settings, impeccable | [UI Design e Impeccable](topics/ui-design-and-impeccable.md) | Cuando y como usar impeccable para superficies React/Tauri. |
 | Documentacion, topics, indice, contexto liviano, tracks | [Sistema de conocimiento](topics/docs-knowledge-system.md) | Explica como leer, crear y dividir docs sin cargar todo. |
 | Norte, AOS, sistema agentico, memoria viva, audit de contexto, Small Batches | [Agentic OS (AOS)](topics/agentic-os.md) | Operacion del sistema agentico escalable del proyecto. |

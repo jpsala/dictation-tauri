@@ -2,7 +2,7 @@
 
 Estado vivo del proyecto. Mantener corto.
 
-Ultima actualizacion manual: 2026-06-20.
+Ultima actualizacion manual: 2026-06-20 (AOS guardar sesion).
 
 ## Regla
 
@@ -16,7 +16,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Producto/MVP dictado | decided | `docs/topics/product-direction.md` | Respetar MVP 0-3. |
 | Fuentes de referencia | active | `docs/topics/source-project-map.md` | Usar como mapa adopt/adapt/reference bajo demanda. |
 | Fixtures/STT | active | `docs/topics/automation-and-reference-fixtures.md` | Diseñar harness propio antes de pruebas manuales. |
-| Backend/model routing | decided | `docs/topics/backend-and-model-routing.md` | Mock port primero; directo local en MVP 2; proxy como spike posterior. |
+| Backend/model routing | decided | `docs/topics/backend-and-model-routing.md`, `docs/topics/fixvox-cloud-runtime-port.md` | Post-008: promover Fixvox managed cloud desde Rust/Tauri; directo Groq queda BYOK/dev fallback. |
 | UI/design | seeded | `PRODUCT.md`, `DESIGN.md` | Usar antes de cualquier UI durable. |
 | Pipeline simulado | mvp1-complete | `specs/002-simulated-pipeline/tasks.md` | Mantener como baseline para MVP 2. |
 | Audio sintetico/STT | mvp2-dry-run-complete | `specs/003-synthetic-audio-stt/tasks.md` | T031 queda opcional/local si se decide correr provider real. |
@@ -36,6 +36,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `006-host-runtime-transcription-boundary` | complete: TS host boundary, provider-free UI guardrails, Tauri invoke client and safe unavailable Tauri stub | `specs/006-host-runtime-transcription-boundary/tasks.md` |
 | `007-usable-dictation-loop` | complete and committed (`78438e7`): Rust host Groq multipart path implemented behind explicit gate; provider smoke passed with redacted evidence | `specs/007-usable-dictation-loop/tasks.md` |
 | `008-real-provider-ui-gate` | complete and committed (`d0cfac7` + fixes): UI separates `Transcribe with provider` from provider-free `Check host boundary`; manual Tauri real-provider validation passed | `specs/008-real-provider-ui-gate/tasks.md` |
+| `009-fixvox-cloud-runtime-port` | Phase 2 partial: T001-T008 complete; no-network Rust contracts now cover cloud config/register seam and minimal app-data device state JSON | `specs/009-fixvox-cloud-runtime-port/plan.md` |
 
 ## Tracks Activas
 
@@ -53,7 +54,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 - MVP 3 cubre captura fake/WebView adapter en tests, captura real nativa Rust/Tauri en Windows con artifact WAV local ignorado, pipeline de captured audio, STT shell sin provider real por default, y evidencia honesta de delivery/recovery sin `paste_observed`.
 - WebView2 `getUserMedia` quedo pendiente sin prompt operable en Windows; la ruta activa de microfono real es el fallback nativo `cpal`/`hound`.
 - Runtime: pipeline por puertos/adapters, `PipelineService`, event ledger y summary derivado antes de side effects reales.
-- `ModelGateway` hibrido: mock port primero, adapter directo local en MVP 2; proxied como spike posterior.
+- `ModelGateway` hibrido: mock/provider-free para tests, directo local como BYOK/dev fallback explicito y managed cloud Fixvox como camino principal post-008.
 - Texto seleccionado real queda fuera de MVP 0-3; se permite simulacion en fixtures.
 - Tauri/Rust posee side effects desktop cuando entren: microfono, hotkeys, tray, foco, clipboard, ventanas, permisos y secretos.
 - Delivery se modela por evidencia/certeza; no prometer paste observado sin verificacion real.
@@ -88,11 +89,14 @@ bun scripts/check-skills-junction.ts
 
 ## Proximo Paso Probable
 
-Continuar despues de `008-real-provider-ui-gate`:
+Continuar despues de `009` Phase 2 parcial:
 
-1. Estado funcional local: app Tauri captura WAV real, readiness lee `.env` root/src-tauri, `Transcribe with provider` llama Groq desde Rust host y devuelve transcript; `Check host boundary` queda provider-free para smoke seguro.
-2. Commits locales relevantes: `78438e7` 007, `d0cfac7` 008, `b116d4e` dotenv root, `883b6e0` artifact cwd, `70270f8` copy del boton seguro. Branch `main` esta ahead de origin; no push hecho.
-3. Proximo Small Batch recomendado: decidir entre push, hotkey/tray minimo, copy/paste delivery observado, o selected-text/assistant spec. Antes de producto estable revisar CSP/capabilities y no prometer paste observado sin verificacion.
+1. Estado funcional local: app Tauri captura WAV real, readiness lee `.env` root/src-tauri, `Transcribe with provider` llama Groq directo desde Rust host y devuelve transcript; `Check host boundary` queda provider-free para smoke seguro.
+2. Decision vigente: el siguiente runtime real debe usar Fixvox managed cloud desde Rust/Tauri (`X-Device-Id`, register/preflight, `/v1/audio/transcriptions`) y dejar Groq directo como BYOK/dev fallback explicito.
+3. Hecho ultimo Small Batch: `009` T006-T008 GREEN con config backend segura, request/client seam de register sin red real y persistencia JSON minima fuera de React.
+4. Proximo Small Batch recomendado: `009` T009, extender readiness con estados managed cloud/device sin tocar STT real ni UI amplia.
+5. Estado repo: cambios documentales y Rust sin commit para `009`; no hubo push.
+6. Checks recientes: `cd src-tauri && cargo test --test fixvox_cloud_contract -- --nocapture` OK (11 passed); `cd src-tauri && cargo check` OK; `npm run test:pipeline` OK; `bun scripts/agent-context-audit.ts` OK con warnings de tamaño.
 
 ## Promocion De Memoria
 

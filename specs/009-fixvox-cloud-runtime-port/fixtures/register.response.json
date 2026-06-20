@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "deviceId": "dev_test_1234567890abcdef",
+  "activated": true,
+  "policyId": "alpha-basic",
+  "policyLabel": "Alpha Basic",
+  "auth": {
+    "required": false,
+    "providers": []
+  },
+  "features": {
+    "speech": true,
+    "chat": true
+  },
+  "defaults": {
+    "sttModel": "whisper-large-v3",
+    "responseFormat": "verbose_json"
+  },
+  "limits": {
+    "transcriptionSecondsPerDay": 3600
+  },
+  "telemetry": {
+    "level": "basic"
+  },
+  "transportPolicy": {
+    "mode": "managed",
+    "speechProvider": "groq"
+  }
+}

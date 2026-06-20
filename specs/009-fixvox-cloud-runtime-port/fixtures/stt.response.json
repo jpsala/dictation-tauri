@@ -1,0 +1,8 @@
+{
+  "text": "fixture managed transcript",
+  "model": "whisper-large-v3",
+  "usage": {
+    "seconds": 1.25,
+    "language": "es"
+  }
+}

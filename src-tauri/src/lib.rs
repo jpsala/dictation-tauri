@@ -1,3 +1,4 @@
+mod fixvox_cloud;
 mod native_capture;
 mod runtime_transcription;
 

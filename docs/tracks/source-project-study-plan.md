@@ -41,11 +41,11 @@ El inventario y las decisiones largas ya viven en `docs/topics/source-project-ma
 
 ## Proximo Trabajo
 
-Despues de MVP 0:
+Despues del estudio Fixvox cloud del 2026-06-20:
 
-1. Crear `PRODUCT.md` y `DESIGN.md` antes de UI durable.
-2. Abrir spec de MVP 2: audio sintetico + STT real sobre fixtures.
-3. Usar Fixvox como referencia para fixtures/STT/postprocess sin copiar arquitectura Electrobun/Bun.
+1. Ejecutar `specs/009-fixvox-cloud-runtime-port/` Phase 1 RED: tests de contrato sin red para device registration, preflight, managed STT y headers `X-Fixvox-*`.
+2. Reimplementar el runtime desktop que Fixvox tiene en Bun/Electrobun como Rust/Tauri propio, tomando contratos y comportamiento, no internals.
+3. Usar Fixvox como referencia fuerte para STT managed, postprocess, prompts, policy, telemetry, VAD/no-speech y recovery.
 4. Usar CopyQ Tauri como referencia solo cuando entren ventanas custom, settings, tray o shortcuts.
 
 ## Referencias
