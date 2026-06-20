@@ -91,7 +91,7 @@ bun scripts/check-skills-junction.ts
 
 Continuar despues de `008-real-provider-ui-gate`:
 
-1. 007 esta committeado en `78438e7`; 008 queda listo localmente con boton explicito `Transcribe with provider` que solo se habilita con artifact capturado + readiness configurada, mientras `Submit captured run` sigue provider-free.
+1. 007 esta committeado en `78438e7`; 008 queda listo localmente con boton explicito `Transcribe with provider` que solo se habilita con artifact capturado + readiness configurada, mientras `Check host boundary` sigue provider-free.
 2. Proximo Small Batch recomendado: commit atomico de 008; luego validar manualmente en Tauri si JP quiere probar el boton real con `.env` local.
 3. Antes de push, revisar worktree y decidir si subir `main` (ahead local).
 

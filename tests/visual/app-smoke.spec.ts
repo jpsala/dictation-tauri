@@ -38,14 +38,14 @@ test("runs a fake start and stop capture flow", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Transcribe with provider" })).toBeDisabled();
 });
 
-test("submits a captured run to the host transcription boundary", async ({
+test("checks the safe host boundary without a provider call", async ({
   page,
 }) => {
   await page.goto("/");
 
   await page.getByRole("button", { name: "Start capture" }).click();
   await page.getByRole("button", { name: "Stop capture" }).click();
-  await page.getByRole("button", { name: "Submit captured run" }).click();
+  await page.getByRole("button", { name: "Check host boundary" }).click();
 
   await expect(page.getByTestId("pipeline-state")).toHaveText("Setup needed");
   await expect(page.getByTestId("pipeline-message")).toHaveText(

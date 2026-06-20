@@ -298,7 +298,7 @@ export function App() {
   });
   const [pipelineUi, setPipelineUi] = useState<PipelineUiState>({
     status: "idle",
-    message: "Capture an artifact before submitting it to host transcription.",
+    message: "Capture an artifact before checking the safe host boundary.",
   });
   const [hostReadinessUi, setHostReadinessUi] = useState<HostReadinessUiState>(
     () => describeHostReadiness(),
@@ -327,7 +327,7 @@ export function App() {
   async function startCapture() {
     setPipelineUi({
       status: "idle",
-      message: "Capture an artifact before submitting it to host transcription.",
+      message: "Capture an artifact before checking the safe host boundary.",
     });
     setCapture({
       state: "requesting_permission",
@@ -371,7 +371,7 @@ export function App() {
     setPipelineUi({
       status: "idle",
       message: result.ok
-        ? "Captured artifact can be submitted to host transcription."
+        ? "Captured artifact is ready for provider transcription or a safe boundary check."
         : "Capture failed before pipeline submission.",
     });
     setCapture({
@@ -408,7 +408,7 @@ export function App() {
       status: "running",
       message: useRealProvider
         ? "Submitting captured artifact to the configured host provider."
-        : "Submitting captured artifact to the host transcription boundary.",
+        : "Checking the safe host boundary without a provider call.",
     });
 
     try {
@@ -595,7 +595,7 @@ export function App() {
             disabled={!canSubmit}
             onClick={() => void submitCapturedRun()}
           >
-            Submit captured run
+            Check host boundary
           </button>
           <button
             type="button"
