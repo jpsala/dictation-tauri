@@ -5,3 +5,4 @@
 - [X] T003 Add a dedicated UI action for real-provider transcription, disabled until captured + readiness configured.
 - [X] T004 Verify host-runtime tests, full pipeline tests, build, cargo check, visual smoke, and artifact hygiene.
 - [X] T005 Update working memory/context index if behavior changed durably.
+- [X] T006 Manually validate Tauri real-provider UI path with local `.env` and ignored WAV artifact, recording only redacted outcome.

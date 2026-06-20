@@ -4,6 +4,23 @@ Registro corto de decisiones durables.
 
 ## Aprobadas
 
+### 2026-06-20 - Separar transcripcion real de smoke seguro en UI
+
+Estado: accepted
+
+Decision: la UI durable mantiene dos acciones distintas: `Transcribe with provider` ejecuta la ruta real gated (`mode: real` + `allowProviderCall`) solo cuando hay artifact capturado y readiness configurada; `Check host boundary` queda como smoke provider-free/dry-run para validar la frontera sin costo ni secretos.
+
+Motivo: evita que JP confunda un smoke seguro con una transcripcion real, preserva checks default sin provider calls y mantiene el renderer sin secretos. La verificacion manual Tauri confirmo el flujo capture -> host Rust -> Groq -> transcript review; las rutas de `.env` y artifacts deben resolverse tanto desde repo root como desde `src-tauri` porque `tauri:dev` puede variar el cwd.
+
+Alcance:
+
+- React no contiene API keys, headers auth ni SDK de provider.
+- El host Rust lee config local permitida y artifacts ignorados, validando paths antes de leer.
+- Delivery sigue siendo honesta: transcript `available`/copy fallback; no `paste_observed` hasta implementar observacion real.
+- `Check host boundary` no debe activar llamadas reales.
+
+Proximo paso: elegir el proximo Small Batch: push, hotkey/tray minimo, delivery/paste observado, o selected-text/assistant spec.
+
 ### 2026-06-19 - Implementar provider real de 007 en Rust nativo
 
 Estado: accepted

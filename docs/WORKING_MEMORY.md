@@ -2,7 +2,7 @@
 
 Estado vivo del proyecto. Mantener corto.
 
-Ultima actualizacion manual: 2026-06-19.
+Ultima actualizacion manual: 2026-06-20.
 
 ## Regla
 
@@ -35,7 +35,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `005-runtime-transcription-delivery` | complete incl. reusable gated runtime script and approved real-provider verification | `specs/005-runtime-transcription-delivery/tasks.md` |
 | `006-host-runtime-transcription-boundary` | complete: TS host boundary, provider-free UI guardrails, Tauri invoke client and safe unavailable Tauri stub | `specs/006-host-runtime-transcription-boundary/tasks.md` |
 | `007-usable-dictation-loop` | complete and committed (`78438e7`): Rust host Groq multipart path implemented behind explicit gate; provider smoke passed with redacted evidence | `specs/007-usable-dictation-loop/tasks.md` |
-| `008-real-provider-ui-gate` | complete locally: UI has separate disabled-by-default `Transcribe with provider` action; default submit remains dry-run/provider-free; checks green | `specs/008-real-provider-ui-gate/tasks.md` |
+| `008-real-provider-ui-gate` | complete and committed (`d0cfac7` + fixes): UI separates `Transcribe with provider` from provider-free `Check host boundary`; manual Tauri real-provider validation passed | `specs/008-real-provider-ui-gate/tasks.md` |
 
 ## Tracks Activas
 
@@ -43,7 +43,6 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | --- | --- | --- |
 | MVP y recursos | `docs/tracks/mvp-and-reference-resources.md` | Continuidad de recursos Fixvox y fases. |
 | Estudio de fuentes | `docs/tracks/source-project-study-plan.md` | Plan vivo para CopyQ Tauri/Fixvox. |
-| Prompt proxima sesion | `docs/tracks/next-session-prompt.md` | Handoff compacto; no reemplaza working memory. |
 
 ## Decisiones Vigentes
 
@@ -58,7 +57,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 - Texto seleccionado real queda fuera de MVP 0-3; se permite simulacion en fixtures.
 - Tauri/Rust posee side effects desktop cuando entren: microfono, hotkeys, tray, foco, clipboard, ventanas, permisos y secretos.
 - Delivery se modela por evidencia/certeza; no prometer paste observado sin verificacion real.
-- Post-MVP3: `005-runtime-transcription-delivery` ya cubre foundation runtime, US1 transcription boundary, US2 recovery/review, US3 delivery evidence honesta, adapter Groq STT gated/inyectado, script runtime reusable seguro por defecto y verificacion real-provider aprobada con artifacts ignorados/redacted.
+- Post-MVP3: `005-runtime-transcription-delivery` cubre foundation runtime y script Groq gated; `007`/`008` cierran app UI -> Tauri host -> Groq STT real con gesto explicito, artifacts ignorados y evidencia honesta.
 - UI durable requiere `PRODUCT.md` y `DESIGN.md`.
 - Small Batches: una task SpecKit, comportamiento o checkpoint por tanda, checks verdes y commit atomico.
 - La ruta inicial debe seguir liviana; no convertir `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` ni tracks activas en historial.
@@ -91,9 +90,9 @@ bun scripts/check-skills-junction.ts
 
 Continuar despues de `008-real-provider-ui-gate`:
 
-1. 007 esta committeado en `78438e7`; 008 queda listo localmente con boton explicito `Transcribe with provider` que solo se habilita con artifact capturado + readiness configurada, mientras `Check host boundary` sigue provider-free.
-2. Proximo Small Batch recomendado: commit atomico de 008; luego validar manualmente en Tauri si JP quiere probar el boton real con `.env` local.
-3. Antes de push, revisar worktree y decidir si subir `main` (ahead local).
+1. Estado funcional local: app Tauri captura WAV real, readiness lee `.env` root/src-tauri, `Transcribe with provider` llama Groq desde Rust host y devuelve transcript; `Check host boundary` queda provider-free para smoke seguro.
+2. Commits locales relevantes: `78438e7` 007, `d0cfac7` 008, `b116d4e` dotenv root, `883b6e0` artifact cwd, `70270f8` copy del boton seguro. Branch `main` esta ahead de origin; no push hecho.
+3. Proximo Small Batch recomendado: decidir entre push, hotkey/tray minimo, copy/paste delivery observado, o selected-text/assistant spec. Antes de producto estable revisar CSP/capabilities y no prometer paste observado sin verificacion.
 
 ## Promocion De Memoria
 
