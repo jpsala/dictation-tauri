@@ -309,7 +309,21 @@ async fn transcribe_captured_audio_with_provider_call(
         };
     }
 
-    let audio = match fs::read(&request.audio_path) {
+    let audio_file_path = match resolve_existing_artifact_file_path(&request.audio_path) {
+        Some(path) => path,
+        None => {
+            return HostTranscriptionResponse::MissingAudio {
+                error: error(
+                    "AUDIO_READ_FAILED",
+                    "Captured audio could not be read for host transcription.",
+                ),
+                retryable: true,
+                redacted: true,
+            };
+        }
+    };
+
+    let audio = match fs::read(&audio_file_path) {
         Ok(audio) => audio,
         Err(_) => {
             return HostTranscriptionResponse::MissingAudio {
@@ -657,7 +671,8 @@ fn write_host_artifacts(
     } = response
     {
         validate_transcript_path(transcript_path)?;
-        if let Some(parent) = Path::new(transcript_path).parent() {
+        let transcript_file_path = writable_artifact_file_path(transcript_path);
+        if let Some(parent) = Path::new(&transcript_file_path).parent() {
             fs::create_dir_all(parent).map_err(|_| {
                 error(
                     "ARTIFACT_WRITE_FAILED",
@@ -665,7 +680,7 @@ fn write_host_artifacts(
                 )
             })?;
         }
-        fs::write(transcript_path, text).map_err(|_| {
+        fs::write(&transcript_file_path, text).map_err(|_| {
             error(
                 "ARTIFACT_WRITE_FAILED",
                 "Host runtime transcript could not be written.",
@@ -676,7 +691,8 @@ fn write_host_artifacts(
     let report_path =
         response_report_path(response).unwrap_or_else(|| create_report_path(&request.run_id));
     validate_report_path(&report_path)?;
-    if let Some(parent) = Path::new(&report_path).parent() {
+    let report_file_path = writable_artifact_file_path(&report_path);
+    if let Some(parent) = Path::new(&report_file_path).parent() {
         fs::create_dir_all(parent).map_err(|_| {
             error(
                 "ARTIFACT_WRITE_FAILED",
@@ -684,7 +700,7 @@ fn write_host_artifacts(
             )
         })?;
     }
-    fs::write(&report_path, create_redacted_report(response, request)).map_err(|_| {
+    fs::write(&report_file_path, create_redacted_report(response, request)).map_err(|_| {
         error(
             "ARTIFACT_WRITE_FAILED",
             "Host runtime redacted report could not be written.",
@@ -756,6 +772,26 @@ fn file_name_from_audio_path(audio_path: &str) -> String {
         .last()
         .unwrap_or("captured-audio.wav")
         .to_string()
+}
+
+fn resolve_existing_artifact_file_path(artifact_path: &str) -> Option<String> {
+    artifact_file_path_candidates(artifact_path)
+        .into_iter()
+        .find(|path| Path::new(path).is_file())
+}
+
+fn writable_artifact_file_path(artifact_path: &str) -> String {
+    let normalized = normalize_path(artifact_path);
+    if Path::new(ARTIFACT_ROOT).is_dir() || !Path::new("../artifacts").is_dir() {
+        normalized
+    } else {
+        format!("../{}", normalized)
+    }
+}
+
+fn artifact_file_path_candidates(artifact_path: &str) -> Vec<String> {
+    let normalized = normalize_path(artifact_path);
+    vec![normalized.clone(), format!("../{}", normalized)]
 }
 
 fn elapsed_ms(started_at: Instant) -> u64 {
@@ -976,6 +1012,17 @@ mod tests {
         assert_eq!(configured.provider.as_deref(), Some("groq"));
         assert_eq!(configured.model.as_deref(), Some("whisper-large-v3-turbo"));
         assert!(format!("{:?}", configured.reason).contains("None"));
+    }
+
+    #[test]
+    fn resolves_artifact_files_from_repo_root_or_tauri_cwd() {
+        assert_eq!(
+            artifact_file_path_candidates("artifacts/microphone-capture/audio/capture.wav"),
+            vec![
+                "artifacts/microphone-capture/audio/capture.wav".to_string(),
+                "../artifacts/microphone-capture/audio/capture.wav".to_string(),
+            ],
+        );
     }
 
     #[test]
