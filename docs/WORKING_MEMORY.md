@@ -34,7 +34,8 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `004-real-microphone-capture` | complete incl. optional provider smoke | `specs/004-real-microphone-capture/tasks.md` |
 | `005-runtime-transcription-delivery` | complete incl. reusable gated runtime script and approved real-provider verification | `specs/005-runtime-transcription-delivery/tasks.md` |
 | `006-host-runtime-transcription-boundary` | complete: TS host boundary, provider-free UI guardrails, Tauri invoke client and safe unavailable Tauri stub | `specs/006-host-runtime-transcription-boundary/tasks.md` |
-| `007-usable-dictation-loop` | complete locally through T039: Rust host Groq multipart path implemented behind explicit `mode: real` + `allowProviderCall`; default checks provider-free; T031 real-provider smoke passed with redacted evidence on ignored WAV | `specs/007-usable-dictation-loop/tasks.md` |
+| `007-usable-dictation-loop` | complete and committed (`78438e7`): Rust host Groq multipart path implemented behind explicit gate; provider smoke passed with redacted evidence | `specs/007-usable-dictation-loop/tasks.md` |
+| `008-real-provider-ui-gate` | complete locally: UI has separate disabled-by-default `Transcribe with provider` action; default submit remains dry-run/provider-free; checks green | `specs/008-real-provider-ui-gate/tasks.md` |
 
 ## Tracks Activas
 
@@ -88,10 +89,10 @@ bun scripts/check-skills-junction.ts
 
 ## Proximo Paso Probable
 
-Continuar despues de `007-usable-dictation-loop`:
+Continuar despues de `008-real-provider-ui-gate`:
 
-1. 007 queda completo localmente: UI usa `HostRuntimeClient`, readiness/copy fallback honesto; Rust host implementa Groq STT HTTP/multipart gated; provider smoke aprobado paso con evidencia redacted (`ok`, Groq, transcriptLength 11) sobre artifact ignorado.
-2. Proximo Small Batch recomendado: commit atomico de 007, luego decidir la proxima spec de usabilidad (activar llamada real desde UI con gesto explicito, hotkey/tray, selected text o delivery/paste observado).
+1. 007 esta committeado en `78438e7`; 008 queda listo localmente con boton explicito `Transcribe with provider` que solo se habilita con artifact capturado + readiness configurada, mientras `Submit captured run` sigue provider-free.
+2. Proximo Small Batch recomendado: commit atomico de 008; luego validar manualmente en Tauri si JP quiere probar el boton real con `.env` local.
 3. Antes de push, revisar worktree y decidir si subir `main` (ahead local).
 
 ## Promocion De Memoria

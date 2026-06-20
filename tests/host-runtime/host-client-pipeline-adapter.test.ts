@@ -57,6 +57,45 @@ describe("createHostClientTranscriptionAdapter", () => {
     expect(JSON.stringify(summary)).not.toContain("GROQ_API_KEY");
   });
 
+  it("sends explicit real provider requests only when the adapter is configured for them", async () => {
+    const { client, requests } = createRecordingHostClient({
+      status: "ok",
+      text: "real host transcript",
+      provider: "groq",
+      model: "whisper-large-v3",
+      latencyMs: 88,
+      requestId: "req_redacted_real",
+      redacted: true,
+    });
+
+    const pipeline = new PipelineService({
+      createRunId: () => "host-client-real-run",
+      transcriptionAdapter: createHostClientTranscriptionAdapter(client, {
+        mode: "real",
+        allowProviderCall: true,
+      }),
+    });
+
+    const summary = await pipeline.run(
+      createCapturedAudioPipelineRequest(createCapturedAudioResult()),
+    );
+
+    expect(summary).toMatchObject({
+      terminalState: "done",
+      transcript: "real host transcript",
+    });
+    expect(requests).toEqual([
+      expect.objectContaining({
+        runId: "host-client-real-run",
+        audioPath: "artifacts/microphone-capture/audio/host-client-adapter.wav",
+        mode: "real",
+        allowProviderCall: true,
+      }),
+    ]);
+    expect(JSON.stringify(requests)).not.toContain("GROQ_API_KEY");
+    expect(JSON.stringify(requests)).not.toContain("Authorization");
+  });
+
   it("maps setup-error host responses to redacted transcribing errors", async () => {
     const { client, requests } = createRecordingHostClient({
       status: "setup-error",

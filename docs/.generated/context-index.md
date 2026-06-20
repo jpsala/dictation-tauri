@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-20T00:58:20.197Z
+Generated: 2026-06-20T02:04:46.619Z
 
 ## Topics
 
@@ -39,6 +39,7 @@ Generated: 2026-06-20T00:58:20.197Z
 - [005-runtime-transcription-delivery](../../specs/005-runtime-transcription-delivery/)
 - [006-host-runtime-transcription-boundary](../../specs/006-host-runtime-transcription-boundary/)
 - [007-usable-dictation-loop](../../specs/007-usable-dictation-loop/)
+- [008-real-provider-ui-gate](../../specs/008-real-provider-ui-gate/)
 
 ## Skills
 

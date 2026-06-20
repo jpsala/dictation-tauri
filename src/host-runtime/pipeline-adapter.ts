@@ -2,11 +2,18 @@ import type { MockTranscriptionAdapter } from "../pipeline/ports";
 import type { MockTranscriptionResult } from "../pipeline/types";
 import type {
   HostRuntimeClient,
+  HostRuntimeMode,
   HostTranscriptionResponse,
 } from "./types";
 
+export type HostClientTranscriptionAdapterOptions = {
+  mode?: HostRuntimeMode;
+  allowProviderCall?: boolean;
+};
+
 export function createHostClientTranscriptionAdapter(
   client: HostRuntimeClient,
+  options: HostClientTranscriptionAdapterOptions = {},
 ): MockTranscriptionAdapter {
   return {
     async transcribe(_fixture, context) {
@@ -14,8 +21,8 @@ export function createHostClientTranscriptionAdapter(
       const response = await client.transcribeCapturedAudio({
         runId: context?.runId ?? "host-client-run",
         audioPath: artifact?.relativePath ?? artifact?.path ?? "",
-        mode: "dry-run",
-        allowProviderCall: false,
+        mode: options.mode ?? "dry-run",
+        allowProviderCall: options.allowProviderCall ?? false,
       });
 
       return mapHostTranscriptionResponse(response);

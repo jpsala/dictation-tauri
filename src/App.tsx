@@ -292,13 +292,6 @@ export function App() {
     [],
   );
   const gateway = captureRuntime.gateway;
-  const pipeline = useMemo(
-    () =>
-      new PipelineService({
-        transcriptionAdapter: createHostClientTranscriptionAdapter(hostRuntime.client),
-      }),
-    [hostRuntime.client],
-  );
   const [capture, setCapture] = useState<CaptureUiState>({
     state: "idle",
     message: captureRuntime.readyMessage,
@@ -401,7 +394,7 @@ export function App() {
     });
   }
 
-  async function submitCapturedRun() {
+  async function submitCapturedRun(options: { useRealProvider?: boolean } = {}) {
     if (!capture.result?.ok) {
       setPipelineUi({
         status: "error",
@@ -410,12 +403,23 @@ export function App() {
       return;
     }
 
+    const useRealProvider = options.useRealProvider === true;
     setPipelineUi({
       status: "running",
-      message: "Submitting captured artifact to the host transcription boundary.",
+      message: useRealProvider
+        ? "Submitting captured artifact to the configured host provider."
+        : "Submitting captured artifact to the host transcription boundary.",
     });
 
     try {
+      const pipeline = new PipelineService({
+        transcriptionAdapter: createHostClientTranscriptionAdapter(
+          hostRuntime.client,
+          useRealProvider
+            ? { mode: "real", allowProviderCall: true }
+            : undefined,
+        ),
+      });
       const summary = await pipeline.run(
         createCapturedAudioPipelineRequest(capture.result),
       );
@@ -455,6 +459,10 @@ export function App() {
         message: "Captured run could not start because another run is active.",
       });
     }
+  }
+
+  async function transcribeCapturedRunWithProvider() {
+    await submitCapturedRun({ useRealProvider: true });
   }
 
   async function copyTranscriptFallback() {
@@ -508,6 +516,8 @@ export function App() {
   const canCancel =
     capture.state === "recording" || capture.state === "requesting_permission";
   const canSubmit = Boolean(capture.result?.ok) && pipelineUi.status !== "running";
+  const canTranscribeWithProvider =
+    canSubmit && hostReadinessUi.status === "configured";
   const canCopyTranscript = Boolean(
     pipelineUi.summary?.deliveryEvidence?.output ??
       pipelineUi.summary?.output ??
@@ -583,9 +593,17 @@ export function App() {
             type="button"
             className="button button-secondary"
             disabled={!canSubmit}
-            onClick={submitCapturedRun}
+            onClick={() => void submitCapturedRun()}
           >
             Submit captured run
+          </button>
+          <button
+            type="button"
+            className="button button-primary"
+            disabled={!canTranscribeWithProvider}
+            onClick={transcribeCapturedRunWithProvider}
+          >
+            Transcribe with provider
           </button>
           <button
             type="button"

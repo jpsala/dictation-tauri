@@ -11,6 +11,7 @@ test("renders the MVP 3 fake capture surface", async ({ page }) => {
   await expect(page.getByTestId("capture-state")).toHaveText("Idle");
   await expect(page.getByText("Fake capture")).toBeVisible();
   await expect(page.getByText("Browser unavailable host")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Transcribe with provider" })).toBeDisabled();
   await expect(page.getByTestId("host-readiness-state")).toHaveText(
     "Unavailable",
   );
@@ -34,6 +35,7 @@ test("runs a fake start and stop capture flow", async ({ page }) => {
     "artifacts/microphone-capture/audio/capture-001.webm",
   );
   await expect(page.getByTestId("pipeline-state")).toHaveText("Not submitted");
+  await expect(page.getByRole("button", { name: "Transcribe with provider" })).toBeDisabled();
 });
 
 test("submits a captured run to the host transcription boundary", async ({
