@@ -373,7 +373,13 @@ fn read_dot_env_value(key: &str) -> Option<String> {
         return None;
     }
 
-    let text = fs::read_to_string(".env").ok()?;
+    [".env", "../.env"]
+        .iter()
+        .find_map(|path| read_dot_env_value_from_path(path, key))
+}
+
+fn read_dot_env_value_from_path(path: &str, key: &str) -> Option<String> {
+    let text = fs::read_to_string(path).ok()?;
     for line in text.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -970,6 +976,27 @@ mod tests {
         assert_eq!(configured.provider.as_deref(), Some("groq"));
         assert_eq!(configured.model.as_deref(), Some("whisper-large-v3-turbo"));
         assert!(format!("{:?}", configured.reason).contains("None"));
+    }
+
+    #[test]
+    fn reads_dot_env_values_from_allowed_relative_locations() {
+        let path = "target/runtime-transcription-dotenv-test.env";
+        if let Some(parent) = Path::new(path).parent() {
+            fs::create_dir_all(parent).expect("test dotenv parent should be created");
+        }
+        fs::write(
+            path,
+            "GROQ-API-KEY='gsk_test_secret_must_not_leak'\nOTHER_KEY=ignored\n",
+        )
+        .expect("test dotenv should be written");
+
+        assert_eq!(
+            read_dot_env_value_from_path(path, "GROQ-API-KEY"),
+            Some("gsk_test_secret_must_not_leak".to_string()),
+        );
+        assert_eq!(read_dot_env_value_from_path(path, "MISSING_GROQ_KEY"), None,);
+
+        let _ = fs::remove_file(path);
     }
 
     #[test]
