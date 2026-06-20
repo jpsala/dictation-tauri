@@ -240,7 +240,8 @@ h1 {
 
 .evidence-line,
 .error-line,
-.pipeline-line {
+.pipeline-line,
+.readiness-line {
   margin: 16px 0 0;
   border-radius: 6px;
   padding: 10px 12px;
@@ -261,26 +262,32 @@ h1 {
   color: oklch(0.38 0.12 25);
 }
 
-.pipeline-line {
+.pipeline-line,
+.readiness-line,
+.readiness-line--checking {
   border: 1px solid oklch(0.86 0.012 235);
   background: oklch(0.97 0.004 230);
   color: oklch(0.21 0.018 235);
 }
 
-.pipeline-line--captured {
+.pipeline-line--captured,
+.readiness-line--configured {
   border-color: oklch(0.52 0.115 150 / 36%);
   background: oklch(0.52 0.115 150 / 8%);
   color: oklch(0.28 0.07 150);
 }
 
-.pipeline-line--failed {
+.pipeline-line--failed,
+.readiness-line--failed {
   border-color: oklch(0.54 0.165 25 / 36%);
   background: oklch(0.54 0.165 25 / 8%);
   color: oklch(0.38 0.12 25);
 }
 
 .pipeline-line--requesting_permission,
-.pipeline-line--cancelled {
+.pipeline-line--cancelled,
+.readiness-line--unavailable,
+.readiness-line--unconfigured {
   border-color: oklch(0.66 0.14 70 / 36%);
   background: oklch(0.66 0.14 70 / 10%);
   color: oklch(0.4 0.09 70);

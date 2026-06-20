@@ -10,6 +10,13 @@ test("renders the MVP 3 fake capture surface", async ({ page }) => {
   await expect(page.getByText("MVP 3 capture")).toBeVisible();
   await expect(page.getByTestId("capture-state")).toHaveText("Idle");
   await expect(page.getByText("Fake capture")).toBeVisible();
+  await expect(page.getByText("Browser unavailable host")).toBeVisible();
+  await expect(page.getByTestId("host-readiness-state")).toHaveText(
+    "Unavailable",
+  );
+  await expect(page.getByTestId("host-readiness-message")).toHaveText(
+    "Host runtime transcription boundary is unavailable.",
+  );
 });
 
 test("runs a fake start and stop capture flow", async ({ page }) => {
@@ -29,7 +36,7 @@ test("runs a fake start and stop capture flow", async ({ page }) => {
   await expect(page.getByTestId("pipeline-state")).toHaveText("Not submitted");
 });
 
-test("submits a captured run to the credential-free STT shell", async ({
+test("submits a captured run to the host transcription boundary", async ({
   page,
 }) => {
   await page.goto("/");
@@ -40,7 +47,7 @@ test("submits a captured run to the credential-free STT shell", async ({
 
   await expect(page.getByTestId("pipeline-state")).toHaveText("Setup needed");
   await expect(page.getByTestId("pipeline-message")).toHaveText(
-    "Direct local STT provider is not configured.",
+    "Host runtime transcription boundary is unavailable.",
   );
 });
 

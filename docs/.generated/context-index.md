@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-19T19:52:31.685Z
+Generated: 2026-06-20T00:58:20.197Z
 
 ## Topics
 
@@ -38,6 +38,7 @@ Generated: 2026-06-19T19:52:31.685Z
 - [004-real-microphone-capture](../../specs/004-real-microphone-capture/)
 - [005-runtime-transcription-delivery](../../specs/005-runtime-transcription-delivery/)
 - [006-host-runtime-transcription-boundary](../../specs/006-host-runtime-transcription-boundary/)
+- [007-usable-dictation-loop](../../specs/007-usable-dictation-loop/)
 
 ## Skills
 

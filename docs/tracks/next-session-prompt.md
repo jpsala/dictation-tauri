@@ -6,7 +6,7 @@ priority: medium
 topic: docs/topics/dictation-tauri-foundation.md
 related:
   - docs/WORKING_MEMORY.md
-  - specs/001-port-foundation/tasks.md
+  - specs/007-usable-dictation-loop/tasks.md
 ---
 
 # Prompt Para Proxima Sesion
@@ -14,34 +14,44 @@ related:
 Prompt compacto para retomar sin reabrir decisiones resueltas:
 
 ```text
-Estamos en C:\dev\dictation-tauri. Usa la ruta liviana de AGENTS.md: context-index si existe, WORKING_MEMORY y luego el topic/spec/track puntual.
+Estamos en C:\dev\dictation-tauri. Usa la ruta liviana de AGENTS.md: lee docs/.generated/context-index.md si existe, docs/WORKING_MEMORY.md y luego solo el topic/spec/track puntual.
 
-Objetivo probable: planificar `specs/005-runtime-transcription-delivery/` y generar plan/tasks para convertir el smoke local de provider real en runtime confiable de transcripcion + recovery/delivery. `specs/001-port-foundation/tasks.md` quedo completo para MVP 0, `specs/002-simulated-pipeline/tasks.md` para MVP 1, `specs/003-synthetic-audio-stt/tasks.md` para MVP 2 dry-run, `specs/004-real-microphone-capture/tasks.md` quedo completo con captura nativa real + provider smoke local, y `specs/005-runtime-transcription-delivery/spec.md` existe como draft.
+Estado actual importante:
 
-Estado verificado:
+- Repo en main, ahead de origin/main. Verificar con `git status --short --branch` y `git log -1 --oneline` al iniciar.
+- Hay cambios sin commitear del batch 007: spec nueva, UI host-client wiring, readiness UI, copy fallback tests/helpers, Rust host CI-safe tests y docs de contexto. No asumir arbol limpio.
+- `specs/007-usable-dictation-loop/` existe con spec/plan/research/data-model/contracts/quickstart/tasks.
+- 007 T001-T026 estan completos: `src/App.tsx` usa `HostRuntimeClient`, carga `getReadiness()`, muestra readiness compacta, mantiene copy fallback honesto sin `paste_observed`; JP eligio Rust nativo HTTP/multipart y `src-tauri/src/runtime_transcription.rs` tiene tests CI-safe de setup/path/provider/error/redaction/artifact roots.
+- En Tauri, runtime selection usa `createTauriHostRuntimeClient(invoke)`; en browser/dev usa unavailable host client salvo fake inyectado en tests.
+- Helpers nuevos: `src/host-runtime/pipeline-adapter.ts`, `src/host-runtime/readiness-ui.ts`, `src/host-runtime/runtime-selection.ts`.
+- Tests nuevos/relevantes: `tests/host-runtime/host-client-pipeline-adapter.test.ts`, `readiness-ui.test.ts`, `runtime-selection.test.ts`, `copy-fallback.test.ts` y tests inline en `src-tauri/src/runtime_transcription.rs`.
+- `tests/visual/app-smoke.spec.ts` espera browser/dev honesto: `Host runtime transcription boundary is unavailable.` y readiness `Unavailable`.
+- `src-tauri/src/runtime_transcription.rs` sigue siendo stub seguro unavailable/setup-error; no hay provider real host-side todavia.
+- No correr provider real sin gating local explicito y aprobacion para verificacion real T031.
 
-- Verificar estado real inicial con `git status --short --branch` y `git log -1 --oneline`; el repo debe venir tracked limpio y ahead sobre `origin/main`.
-- Ultimo cierre de secuencia post-MVP3: `9ee59e1 docs: decide post-mvp3 sequence`.
-- Ultimo cierre funcional de MVP3 real/native capture: `8ba5bc9 feat: add native microphone fallback`; commits posteriores pueden ser refresh de handoff/contexto.
-- `npm run build` pasa.
-- `npm run visual:check` pasa.
-- `npm run test:pipeline` pasa para success/failure/cancelacion/no-overlap/event ledger.
-- `npm run synthetic-audio:stt:dry-run`, `npm run microphone-capture:check`, `npm run microphone-capture:dry-run`, `bun scripts/context-index.ts` y `bun scripts/agent-context-audit.ts` pasan.
-- MVP 3 cubre fake capture, WebView adapter testeado, captura real nativa Rust/Tauri en Windows, captured-audio pipeline, STT shell sin provider real por default y delivery evidence honesta con copy fallback sin `paste_observed`.
-- WebView2 `getUserMedia` quedo pendiente sin prompt operable; la ruta activa de microfono real es `NativeTauriCaptureGateway` + comandos Tauri `cpal`/`hound`.
-- Se grabo un WAV real local con aprobacion de JP y quedo bajo `artifacts/microphone-capture/audio/`, ignorado por git.
-- Con aprobacion explicita de JP, se ejecuto un smoke local de provider real sobre ese WAV: Groq respondio HTTP 200, el transcript quedo solo en `artifacts/microphone-capture/transcripts/`, el report redacted en `artifacts/microphone-capture/reports/`, no se guardo raw provider payload y `git ls-files artifacts .env` no muestra archivos trackeados.
-- Arbol tracked limpio al cierre; ignored esperados pueden incluir `.env`, `artifacts/`, `dist/`, `node_modules/`, `target-codex-check/`, `test-results/` y `.agents/skills/`.
-- Arquitectura guia: pipeline por puertos/adapters, `PipelineService`, event ledger, UI como observadora, Tauri/Rust para side effects desktop, delivery por evidencia.
-- `PRODUCT.md` define register `product`, usuarios, proposito, personalidad, anti-referencias, principios y accesibilidad.
-- `DESIGN.md` define el sistema visual inicial: "The Quiet Control Room", paleta restringida, tipografia Inter/system, componentes base y prohibiciones.
+Checks verdes del cierre anterior:
 
-Siguiente batch sugerido:
+- `npm run test:pipeline -- tests/host-runtime/host-client-pipeline-adapter.test.ts tests/host-runtime/provider-free-ui.test.ts tests/host-runtime/tauri-client.test.ts`
+- `npm run test:pipeline -- tests/host-runtime`
+- `npm run test:pipeline`
+- `npm run build`
+- `cd src-tauri && cargo test && cargo check`
+- `npm run visual:check` (hubo un timeout inicial flake en 1/8, retry focal y suite completa pasaron)
+- `bun scripts/context-index.ts`
+- `bun scripts/agent-context-audit.ts` con 0 errores y warnings conocidos de contexto grande.
+- `git ls-files artifacts .env` no mostro archivos trackeados; `.env` y `artifacts/` aparecen como ignored esperados.
 
-- Ejecutar SpecKit plan/tasks para `005-runtime-transcription-delivery` en Small Batches.
-- Primer alcance recomendado: adapter/gateway real testeable + redaccion + recovery, sin hotkeys/tray/selected-text ni persistencia durable.
+Siguiente batch recomendado:
 
-No reabras alcance MVP salvo contradiccion tecnica fuerte. Priorizar evidencia end-to-end de dictado antes de ergonomia desktop amplia. Mantener hotkeys, tray, settings amplias, selected-text real y persistencia durable fuera de alcance salvo decision explicita. Mantener modo personal/dev permisivo para lectura local, pero no imprimir secretos completos ni commitear `.env`/tokens.
+- Continuar 007 T027-T029: implementar provider real Rust detras de gating explicito, usando los tests CI-safe existentes como guardrail.
+- Mantener React provider-free, sin provider calls default, sin hotkeys/tray/selected-text/history/settings/paste observation.
+- Checks sugeridos antes de cerrar: `npm run test:pipeline`, `npm run build`, `cd src-tauri && cargo test && cargo check`, `npm run visual:check`, `bun scripts/context-index.ts`, `bun scripts/agent-context-audit.ts`, hygiene de `.env`/`artifacts`.
+
+Guardrails:
+
+- No imprimir secretos ni commitear `.env`, artifacts, transcripts, reports o provider payloads.
+- No mezclar real provider path con readiness UI salvo decision explicita.
+- Si se commitea, usar Small Batch atomico; no push sin pedido de JP.
 ```
 
 ## Nota

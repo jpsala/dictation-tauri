@@ -17,7 +17,7 @@ describe("runtime recovery actions", () => {
     });
   });
 
-  it("keeps copied delivery as manual recovery completion guidance", () => {
+  it("treats copied delivery as completed recovery", () => {
     expect(
       deriveRuntimeRecoveryAction({
         status: "ok",
@@ -25,9 +25,11 @@ describe("runtime recovery actions", () => {
         transcriptAvailable: true,
         deliveryStatus: "copied",
       }),
-    ).toMatchObject({
-      kind: "copy_manually",
-      label: "Copy transcript manually",
+    ).toEqual({
+      kind: "none",
+      label: "No action needed",
+      reason: "The transcript already has confirmed delivery evidence.",
+      clipAvailable: true,
     });
   });
 

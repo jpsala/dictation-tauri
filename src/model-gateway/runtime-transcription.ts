@@ -177,6 +177,18 @@ export function deriveRuntimeRecoveryAction(
   input: RuntimeRecoveryInput,
 ): RuntimeRecoveryAction {
   if (input.status === "ok" && input.transcriptAvailable) {
+    if (
+      input.deliveryStatus === "copied" ||
+      input.deliveryStatus === "paste_observed"
+    ) {
+      return {
+        kind: "none",
+        label: "No action needed",
+        reason: "The transcript already has confirmed delivery evidence.",
+        clipAvailable: input.clipAvailable,
+      };
+    }
+
     return {
       kind: "copy_manually",
       label: "Copy transcript manually",

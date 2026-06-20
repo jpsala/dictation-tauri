@@ -236,7 +236,9 @@ pub fn cancel_native_microphone_capture() -> CaptureResult {
                 capture.device_label.clone(),
             )
         })
-        .unwrap_or_else(|| create_metadata(format!("capture-native-{}", now_ms()), "unknown", None));
+        .unwrap_or_else(|| {
+            create_metadata(format!("capture-native-{}", now_ms()), "unknown", None)
+        });
 
     if let Some(active) = active {
         let _ = active.stop_sender.send(());
@@ -251,9 +253,7 @@ pub fn cancel_native_microphone_capture() -> CaptureResult {
     )
 }
 
-fn start_capture_stream(
-    samples: Arc<Mutex<Vec<i16>>>,
-) -> Result<(Stream, StartedCapture), String> {
+fn start_capture_stream(samples: Arc<Mutex<Vec<i16>>>) -> Result<(Stream, StartedCapture), String> {
     let host = cpal::default_host();
     let device = host
         .default_input_device()

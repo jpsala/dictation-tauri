@@ -4,6 +4,24 @@ Registro corto de decisiones durables.
 
 ## Aprobadas
 
+### 2026-06-19 - Implementar provider real de 007 en Rust nativo
+
+Estado: accepted
+
+Decision: la ruta real host-provider de `specs/007-usable-dictation-loop` se implementara nativamente en Rust dentro del host Tauri (`src-tauri/src/runtime_transcription.rs`) usando HTTP/multipart, no como script/sidecar TypeScript.
+
+Motivo: mantiene secretos y side effects en el host, evita deuda de process management/packaging del sidecar y alinea el producto con una app desktop empaquetable. React sigue provider-free y los checks default siguen sin provider calls.
+
+Alcance:
+
+- Provider real solo detras de gating local explicito; no entra a CI/default checks.
+- Validar artifact paths antes de leer archivos o llamar proveedores.
+- Redactar credenciales, auth headers, request ids y diagnosticos secret-looking antes de devolver a React o escribir reports.
+- Agregar deps Rust solo despues de tests CI-safe para setup/path/provider/error/redaction.
+- `scripts/runtime-transcription.ts` queda como referencia de comportamiento, no como ruta seleccionada.
+
+Proximo paso: implementar 007 T027-T029 con provider real Rust detras de gating explicito, usando los tests CI-safe de T025-T026 como guardrail antes de cualquier verificacion real aprobada.
+
 ### 2026-06-13 - Ordenar el trabajo post-MVP3 por evidencia antes de ergonomia
 
 Estado: accepted

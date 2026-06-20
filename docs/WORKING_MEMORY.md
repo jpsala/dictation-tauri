@@ -34,6 +34,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `004-real-microphone-capture` | complete incl. optional provider smoke | `specs/004-real-microphone-capture/tasks.md` |
 | `005-runtime-transcription-delivery` | complete incl. reusable gated runtime script and approved real-provider verification | `specs/005-runtime-transcription-delivery/tasks.md` |
 | `006-host-runtime-transcription-boundary` | complete: TS host boundary, provider-free UI guardrails, Tauri invoke client and safe unavailable Tauri stub | `specs/006-host-runtime-transcription-boundary/tasks.md` |
+| `007-usable-dictation-loop` | complete locally through T039: Rust host Groq multipart path implemented behind explicit `mode: real` + `allowProviderCall`; default checks provider-free; T031 real-provider smoke passed with redacted evidence on ignored WAV | `specs/007-usable-dictation-loop/tasks.md` |
 
 ## Tracks Activas
 
@@ -87,11 +88,11 @@ bun scripts/check-skills-junction.ts
 
 ## Proximo Paso Probable
 
-Continuar luego de `006-host-runtime-transcription-boundary`:
+Continuar despues de `007-usable-dictation-loop`:
 
-1. Proximo salto recomendado: UI wiring con `HostRuntimeClient`/Tauri client manteniendo React provider-free; el stub host devuelve unavailable/setup-error hasta cablear provider real host-side.
-2. Alternativa: definir la frontera host real para leer config/audio y llamar provider desde Tauri/backend, con aprobacion explicita antes de provider calls.
-3. Antes de push, correr verificacion final y decidir si subir `main` (ahead local).
+1. 007 queda completo localmente: UI usa `HostRuntimeClient`, readiness/copy fallback honesto; Rust host implementa Groq STT HTTP/multipart gated; provider smoke aprobado paso con evidencia redacted (`ok`, Groq, transcriptLength 11) sobre artifact ignorado.
+2. Proximo Small Batch recomendado: commit atomico de 007, luego decidir la proxima spec de usabilidad (activar llamada real desde UI con gesto explicito, hotkey/tray, selected text o delivery/paste observado).
+3. Antes de push, revisar worktree y decidir si subir `main` (ahead local).
 
 ## Promocion De Memoria
 

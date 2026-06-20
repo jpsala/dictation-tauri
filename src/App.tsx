@@ -1,10 +1,17 @@
-import { useMemo, useState } from "react";
-import { isTauri } from "@tauri-apps/api/core";
+import { useEffect, useMemo, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { FakeCaptureGateway } from "./capture/fake-gateway";
 import type { CaptureGateway } from "./capture/gateway";
 import { NativeTauriCaptureGateway } from "./capture/native-tauri-gateway";
 import type { CaptureResult, CaptureState } from "./capture/types";
-import { createCapturedAudioTranscriptionAdapter } from "./model-gateway/direct-stt";
+import { createHostClientTranscriptionAdapter } from "./host-runtime/pipeline-adapter";
+import {
+  describeHostReadiness,
+  describeHostReadinessFailure,
+  type HostReadinessUiState,
+} from "./host-runtime/readiness-ui";
+import { createHostRuntimeClientRuntime } from "./host-runtime/runtime-selection";
+import type { HostRuntimeClient } from "./host-runtime/types";
 import {
   deriveRuntimeRecoveryAction,
   type RuntimeRecoveryAction,
@@ -45,6 +52,16 @@ type CaptureGatewayRuntime = {
   stoppingMessage: string;
   capturedMessage: string;
 };
+
+async function loadHostReadinessUi(
+  client: HostRuntimeClient,
+): Promise<HostReadinessUiState> {
+  try {
+    return describeHostReadiness(await client.getReadiness());
+  } catch (error) {
+    return describeHostReadinessFailure(error);
+  }
+}
 
 function createCaptureGatewayRuntime(): CaptureGatewayRuntime {
   if (isTauri()) {
@@ -266,13 +283,21 @@ function describeDeliveryEvidence(
 
 export function App() {
   const captureRuntime = useMemo(() => createCaptureGatewayRuntime(), []);
+  const hostRuntime = useMemo(
+    () =>
+      createHostRuntimeClientRuntime({
+        isTauriRuntime: isTauri(),
+        invokeImpl: invoke,
+      }),
+    [],
+  );
   const gateway = captureRuntime.gateway;
   const pipeline = useMemo(
     () =>
       new PipelineService({
-        transcriptionAdapter: createCapturedAudioTranscriptionAdapter(),
+        transcriptionAdapter: createHostClientTranscriptionAdapter(hostRuntime.client),
       }),
-    [],
+    [hostRuntime.client],
   );
   const [capture, setCapture] = useState<CaptureUiState>({
     state: "idle",
@@ -280,13 +305,36 @@ export function App() {
   });
   const [pipelineUi, setPipelineUi] = useState<PipelineUiState>({
     status: "idle",
-    message: "Capture an artifact before submitting it to the STT shell.",
+    message: "Capture an artifact before submitting it to host transcription.",
   });
+  const [hostReadinessUi, setHostReadinessUi] = useState<HostReadinessUiState>(
+    () => describeHostReadiness(),
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setHostReadinessUi(describeHostReadiness());
+    void loadHostReadinessUi(hostRuntime.client).then((nextReadiness) => {
+      if (!cancelled) {
+        setHostReadinessUi(nextReadiness);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hostRuntime.client]);
+
+  async function refreshHostReadiness() {
+    setHostReadinessUi(describeHostReadiness());
+    setHostReadinessUi(await loadHostReadinessUi(hostRuntime.client));
+  }
 
   async function startCapture() {
     setPipelineUi({
       status: "idle",
-      message: "Capture an artifact before submitting it to the STT shell.",
+      message: "Capture an artifact before submitting it to host transcription.",
     });
     setCapture({
       state: "requesting_permission",
@@ -330,7 +378,7 @@ export function App() {
     setPipelineUi({
       status: "idle",
       message: result.ok
-        ? "Captured artifact can be submitted to the STT shell."
+        ? "Captured artifact can be submitted to host transcription."
         : "Capture failed before pipeline submission.",
     });
     setCapture({
@@ -364,7 +412,7 @@ export function App() {
 
     setPipelineUi({
       status: "running",
-      message: "Submitting captured artifact to the credential-free STT shell.",
+      message: "Submitting captured artifact to the host transcription boundary.",
     });
 
     try {
@@ -547,6 +595,13 @@ export function App() {
           >
             Copy transcript
           </button>
+          <button
+            type="button"
+            className="button button-ghost"
+            onClick={refreshHostReadiness}
+          >
+            Refresh readiness
+          </button>
         </div>
 
         <dl className="status-grid" aria-label="Capture evidence">
@@ -569,10 +624,43 @@ export function App() {
             </dd>
           </div>
           <div>
+            <dt>Host</dt>
+            <dd>{hostRuntime.label}</dd>
+          </div>
+          <div>
+            <dt>Readiness</dt>
+            <dd data-testid="host-readiness-state">
+              {hostReadinessUi.statusLabel}
+            </dd>
+          </div>
+          <div>
+            <dt>Provider</dt>
+            <dd data-testid="host-readiness-provider">
+              {hostReadinessUi.providerLabel}
+            </dd>
+          </div>
+          <div>
+            <dt>Model</dt>
+            <dd data-testid="host-readiness-model">
+              {hostReadinessUi.modelLabel}
+            </dd>
+          </div>
+          <div>
+            <dt>Host calls</dt>
+            <dd>{hostReadinessUi.supportsRealProviderCallLabel}</dd>
+          </div>
+          <div>
             <dt>Delivery</dt>
             <dd>{deliveryEvidence?.status ?? "Not available"}</dd>
           </div>
         </dl>
+
+        <p
+          className={`readiness-line readiness-line--${hostReadinessUi.status}`}
+          data-testid="host-readiness-message"
+        >
+          {hostReadinessUi.detail}
+        </p>
 
         {artifact ? (
           <p className="evidence-line" data-testid="capture-artifact">
