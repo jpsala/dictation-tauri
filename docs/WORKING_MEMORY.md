@@ -93,9 +93,9 @@ Continuar despues de `009` Phase 2 complete:
 
 1. Estado funcional local: app Tauri captura WAV real, readiness lee `.env` root/src-tauri, `Transcribe with provider` llama Groq directo desde Rust host y devuelve transcript; `Check host boundary` queda provider-free para smoke seguro.
 2. Decision vigente: el siguiente runtime real debe usar Fixvox managed cloud desde Rust/Tauri (`X-Device-Id`, register/preflight, `/v1/audio/transcriptions`) y dejar Groq directo como BYOK/dev fallback explicito.
-3. Hecho ultimo Small Batch: `009` T009 GREEN extiende readiness Rust/TS/UI con estados managed cloud, device registration y direct BYOK; `T006-T008` quedaron commiteados en `de39e64`.
+3. Hecho ultimo Small Batch: `009` T006-T008 commiteado en `de39e64`; `009` T009 commiteado en `7ee6e89` con readiness Rust/TS/UI para managed cloud, device registration y direct BYOK.
 4. Proximo Small Batch recomendado: `009` T010/T011, implementar proxied multipart STT request a `/v1/audio/transcriptions` y parseo de transcript/headers sin activar smoke real por defecto.
-5. Estado repo: cambios de T009 pendientes de commit; no hubo push.
+5. Estado repo: worktree limpio tras commits locales; no hubo push.
 6. Checks recientes: `cd src-tauri && cargo test --test fixvox_cloud_contract -- --nocapture` OK (11 passed); `cd src-tauri && cargo check` OK; `npm run test:pipeline` OK (136 tests); `npm run build` OK; `npm run visual:check` OK en retry; `bun scripts/agent-context-audit.ts` OK con warnings de tamaño.
 
 ## Promocion De Memoria
