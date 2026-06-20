@@ -17,7 +17,7 @@
 - [x] T006 Add Rust host config for Fixvox cloud base URL, install id and device id.
 - [x] T007 Implement device register client behind test seam.
 - [x] T008 Persist minimal device/register snapshot outside React.
-- [ ] T009 Extend readiness response with managed cloud/device states.
+- [x] T009 Extend readiness response with managed cloud/device states.
 
 ## Phase 3: Managed STT Transport
 

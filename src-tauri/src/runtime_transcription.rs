@@ -1,5 +1,6 @@
 use std::{env, fs, path::Path, time::Instant};
 
+use crate::fixvox_cloud;
 use reqwest::header;
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +22,13 @@ pub struct HostRuntimeReadiness {
     model: Option<String>,
     artifact_root: &'static str,
     supports_real_provider_call: bool,
+    direct_byok_configured: bool,
+    managed_cloud_configured: bool,
+    managed_device_registered: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    managed_backend_base_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    managed_cloud_reason: Option<RedactedHostRuntimeError>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<RedactedHostRuntimeError>,
 }
@@ -148,6 +156,13 @@ struct GroqTranscriptionResponseBody {
     text: Option<String>,
 }
 
+struct ManagedCloudReadiness {
+    configured: bool,
+    device_registered: bool,
+    backend_base_url: Option<String>,
+    reason: Option<RedactedHostRuntimeError>,
+}
+
 #[tauri::command]
 pub fn get_runtime_transcription_readiness() -> HostRuntimeReadiness {
     create_runtime_transcription_readiness(&read_host_env_value)
@@ -167,6 +182,8 @@ pub async fn transcribe_captured_audio(
 fn create_runtime_transcription_readiness(
     env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
 ) -> HostRuntimeReadiness {
+    let managed = create_managed_cloud_readiness(env_lookup);
+
     match read_host_runtime_config(env_lookup) {
         Ok(config) => HostRuntimeReadiness {
             configured: true,
@@ -174,6 +191,11 @@ fn create_runtime_transcription_readiness(
             model: Some(config.model),
             artifact_root: ARTIFACT_ROOT,
             supports_real_provider_call: true,
+            direct_byok_configured: true,
+            managed_cloud_configured: managed.configured,
+            managed_device_registered: managed.device_registered,
+            managed_backend_base_url: managed.backend_base_url,
+            managed_cloud_reason: managed.reason,
             reason: None,
         },
         Err(reason) => HostRuntimeReadiness {
@@ -182,9 +204,51 @@ fn create_runtime_transcription_readiness(
             model: None,
             artifact_root: ARTIFACT_ROOT,
             supports_real_provider_call: false,
+            direct_byok_configured: false,
+            managed_cloud_configured: managed.configured,
+            managed_device_registered: managed.device_registered,
+            managed_backend_base_url: managed.backend_base_url,
+            managed_cloud_reason: managed.reason,
             reason: Some(reason),
         },
     }
+}
+
+fn create_managed_cloud_readiness(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> ManagedCloudReadiness {
+    match fixvox_cloud::resolve_backend_base_url(env_lookup) {
+        Ok(backend_base_url) => ManagedCloudReadiness {
+            configured: true,
+            device_registered: resolve_fixvox_device_id(env_lookup).is_some(),
+            backend_base_url: Some(backend_base_url),
+            reason: None,
+        },
+        Err(reason) => ManagedCloudReadiness {
+            configured: false,
+            device_registered: false,
+            backend_base_url: None,
+            reason: Some(error(&reason.code, &reason.message)),
+        },
+    }
+}
+
+fn resolve_fixvox_device_id(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Option<String> {
+    first_env_value(env_lookup, &["FIXVOX_DEVICE_ID"])
+        .or_else(|| read_persisted_fixvox_device_id(env_lookup))
+}
+
+fn read_persisted_fixvox_device_id(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Option<String> {
+    let path = fixvox_cloud::resolve_device_state_path(env_lookup).ok()?;
+    fixvox_cloud::read_device_state(&path)
+        .ok()
+        .flatten()
+        .and_then(|state| state.device_id)
+        .filter(|device_id| !device_id.trim().is_empty())
 }
 
 fn transcribe_captured_audio_without_provider_call(
@@ -996,6 +1060,13 @@ mod tests {
         let missing = create_runtime_transcription_readiness(&|_key| None);
         assert!(!missing.configured);
         assert!(!missing.supports_real_provider_call);
+        assert!(!missing.direct_byok_configured);
+        assert!(missing.managed_cloud_configured);
+        assert!(!missing.managed_device_registered);
+        assert_eq!(
+            missing.managed_backend_base_url.as_deref(),
+            Some(fixvox_cloud::PREFERRED_FIXVOX_BACKEND_URL),
+        );
         assert_eq!(
             missing.reason.as_ref().map(|reason| reason.code.as_str()),
             Some("GROQ_API_KEY_MISSING"),
@@ -1009,9 +1080,33 @@ mod tests {
         });
 
         assert!(configured.configured);
+        assert!(configured.direct_byok_configured);
         assert_eq!(configured.provider.as_deref(), Some("groq"));
         assert_eq!(configured.model.as_deref(), Some("whisper-large-v3-turbo"));
         assert!(format!("{:?}", configured.reason).contains("None"));
+    }
+
+    #[test]
+    fn readiness_reports_managed_cloud_and_device_state_without_secret_leakage() {
+        let secret = "gsk_test_secret_must_not_leak";
+        let readiness = create_runtime_transcription_readiness(&|key| match key {
+            "GROQ_API_KEY" => Some(secret.to_string()),
+            "FIXVOX_BACKEND_URL" => Some(" https://auth-fixvox.jpsala.dev/ ".to_string()),
+            "FIXVOX_DEVICE_ID" => Some("dev_test_1234567890abcdef".to_string()),
+            _ => None,
+        });
+
+        assert!(readiness.configured);
+        assert!(readiness.direct_byok_configured);
+        assert!(readiness.managed_cloud_configured);
+        assert!(readiness.managed_device_registered);
+        assert_eq!(
+            readiness.managed_backend_base_url.as_deref(),
+            Some("https://auth-fixvox.jpsala.dev"),
+        );
+        assert!(!serde_json::to_string(&readiness)
+            .expect("readiness should serialize")
+            .contains(secret));
     }
 
     #[test]

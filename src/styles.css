@@ -287,7 +287,8 @@ h1 {
 .pipeline-line--requesting_permission,
 .pipeline-line--cancelled,
 .readiness-line--unavailable,
-.readiness-line--unconfigured {
+.readiness-line--unconfigured,
+.readiness-line--device-needed {
   border-color: oklch(0.66 0.14 70 / 36%);
   background: oklch(0.66 0.14 70 / 10%);
   color: oklch(0.4 0.09 70);

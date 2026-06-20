@@ -15,6 +15,10 @@ describe("host runtime readiness", () => {
       configured: false,
       artifactRoot: "artifacts/microphone-capture",
       supportsRealProviderCall: false,
+      directByokConfigured: false,
+      managedCloudConfigured: true,
+      managedDeviceRegistered: false,
+      managedBackendBaseUrl: "https://auth-fixvox.jpsala.dev",
       reason: {
         code: "GROQ_API_KEY_MISSING",
         message: "Groq STT provider is not configured.",
@@ -37,8 +41,48 @@ describe("host runtime readiness", () => {
       model: "whisper-large-v3-turbo",
       artifactRoot: "artifacts/microphone-capture",
       supportsRealProviderCall: true,
+      directByokConfigured: true,
+      managedCloudConfigured: true,
+      managedDeviceRegistered: false,
+      managedBackendBaseUrl: "https://auth-fixvox.jpsala.dev",
     });
     expect(JSON.stringify(readiness)).not.toContain(secretKey);
+  });
+
+  it("reports managed cloud readiness and device state without provider secrets", () => {
+    const readiness = createHostRuntimeReadiness({
+      GROQ_API_KEY: secretKey,
+      FIXVOX_BACKEND_URL: " https://auth-fixvox.jpsala.dev/ ",
+      FIXVOX_DEVICE_ID: "dev_test_1234567890abcdef",
+    });
+
+    expect(readiness).toMatchObject({
+      configured: true,
+      directByokConfigured: true,
+      managedCloudConfigured: true,
+      managedDeviceRegistered: true,
+      managedBackendBaseUrl: "https://auth-fixvox.jpsala.dev",
+    });
+    expect(JSON.stringify(readiness)).not.toContain(secretKey);
+    expect(JSON.stringify(readiness)).not.toContain("Authorization");
+  });
+
+  it("rejects stale managed cloud backend readiness while keeping direct BYOK explicit", () => {
+    const readiness = createHostRuntimeReadiness({
+      GROQ_API_KEY: secretKey,
+      FIXVOX_API_BASE_URL: "https://fixvox-api.jpsala.dev",
+    });
+
+    expect(readiness).toMatchObject({
+      configured: true,
+      directByokConfigured: true,
+      managedCloudConfigured: false,
+      managedDeviceRegistered: false,
+      managedCloudReason: {
+        code: "FIXVOX_BACKEND_URL_STALE",
+        redacted: true,
+      },
+    });
   });
 
   it("accepts legacy hyphen env keys for local runtime config", () => {

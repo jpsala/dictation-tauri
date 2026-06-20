@@ -14,6 +14,11 @@ export type HostRuntimeReadiness = {
   model?: string;
   artifactRoot: "artifacts/microphone-capture";
   supportsRealProviderCall: boolean;
+  directByokConfigured: boolean;
+  managedCloudConfigured: boolean;
+  managedDeviceRegistered: boolean;
+  managedBackendBaseUrl?: string;
+  managedCloudReason?: RedactedHostRuntimeError;
   reason?: RedactedHostRuntimeError;
 };
 
@@ -71,4 +76,8 @@ export type HostRuntimeEnv = {
   "GROQ-STT-MODEL"?: string;
   GROQ_STT_LANGUAGE?: string;
   "GROQ-STT-LANGUAGE"?: string;
+  FIXVOX_BACKEND_URL?: string;
+  FIXVOX_API_BASE_URL?: string;
+  PROXY_BASE_URL?: string;
+  FIXVOX_DEVICE_ID?: string;
 };

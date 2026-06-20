@@ -668,6 +668,14 @@ export function App() {
             <dd>{hostReadinessUi.supportsRealProviderCallLabel}</dd>
           </div>
           <div>
+            <dt>Managed cloud</dt>
+            <dd>{hostReadinessUi.managedCloudLabel}</dd>
+          </div>
+          <div>
+            <dt>Device</dt>
+            <dd>{hostReadinessUi.managedDeviceLabel}</dd>
+          </div>
+          <div>
             <dt>Delivery</dt>
             <dd>{deliveryEvidence?.status ?? "Not available"}</dd>
           </div>
