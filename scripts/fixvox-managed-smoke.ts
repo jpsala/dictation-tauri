@@ -8,6 +8,8 @@ const transcriptRoot = `${artifactRoot}/transcripts`;
 const reportRoot = `${artifactRoot}/reports`;
 const preferredBackendUrl = "https://auth-fixvox.jpsala.dev";
 const staleBackendUrl = "https://fixvox-api.jpsala.dev";
+const defaultPostprocessPrompt =
+  "Clean Spanish/bilingual dictation with minimal edits. Preserve wording, language mix, technical tokens, and intent. Return only the cleaned transcript.";
 
 type DeviceState = {
   installId: string;
@@ -50,9 +52,14 @@ async function main() {
     envValue("GROQ-STT-MODEL") ??
     envValue("FIXVOX_SPEECH_MODEL_OVERRIDE") ??
     "whisper-large-v3";
+  const postprocessModel =
+    envValue("FIXVOX_POSTPROCESS_MODEL") ??
+    envValue("FIXVOX_LLM_POST_PROCESS_MODEL_OVERRIDE") ??
+    "openai/gpt-oss-120b";
+  const postprocessPrompt = readPostprocessPrompt();
   const language = envValue("FIXVOX_STT_LANGUAGE") ?? envValue("GROQ_STT_LANGUAGE");
 
-  const preflight = await callPreflight({ backendBaseUrl, state });
+  const preflight = await callPreflight({ backendBaseUrl, state, usageKind: "transcription" });
   if (!preflight.ok) {
     const reportPath = await writeEvidence({
       runId,
@@ -180,9 +187,43 @@ async function main() {
     process.exit(1);
   }
 
+  let postprocess: Awaited<ReturnType<typeof callManagedPostprocess>> | undefined;
+  if (postprocessPrompt) {
+    const postprocessPreflight = await callPreflight({
+      backendBaseUrl,
+      state,
+      usageKind: "aiAction",
+    });
+    if (!postprocessPreflight.ok) {
+      postprocess = {
+        ok: false,
+        status: "preflight-denied",
+        model: postprocessModel,
+        error: {
+          code: postprocessPreflight.code ?? "FIXVOX_POSTPROCESS_PREFLIGHT_DENIED",
+          message: "Fixvox managed post-process preflight denied execution.",
+          redacted: true,
+        },
+      };
+    } else {
+      postprocess = await callManagedPostprocess({
+        backendBaseUrl,
+        state,
+        transcript,
+        model: postprocessModel,
+        prompt: postprocessPrompt,
+      });
+    }
+  }
+
   const transcriptPath = `${transcriptRoot}/${runId}.txt`;
   await mkdir(dirname(transcriptPath), { recursive: true });
   await writeFile(transcriptPath, `${transcript}\n`, "utf8");
+  const processedTranscriptPath =
+    postprocess?.ok === true ? `${transcriptRoot}/${runId}.postprocessed.txt` : undefined;
+  if (processedTranscriptPath && postprocess?.output) {
+    await writeFile(processedTranscriptPath, `${postprocess.output}\n`, "utf8");
+  }
   const reportPath = await writeEvidence({
     runId,
     ok: true,
@@ -196,6 +237,8 @@ async function main() {
     metadata,
     transcriptLength: transcript.length,
     transcriptPath,
+    postprocess,
+    processedTranscriptPath,
   });
 
   console.log(
@@ -210,6 +253,10 @@ async function main() {
         fixvoxMetadataPresent: Object.values(metadata).some((value) => value !== undefined),
         transcriptLength: transcript.length,
         transcriptPath,
+        postprocessStatus: postprocess?.status,
+        postprocessModel: postprocess?.model,
+        postprocessOutputLength: postprocess?.ok === true ? postprocess.output.length : undefined,
+        processedTranscriptPath,
         reportPath,
         rawProviderPayloadStored: false,
         redacted: true,
@@ -279,7 +326,11 @@ async function ensureRegisteredDevice(input: {
   return state;
 }
 
-async function callPreflight(input: { backendBaseUrl: string; state: DeviceState }) {
+async function callPreflight(input: {
+  backendBaseUrl: string;
+  state: DeviceState;
+  usageKind: "transcription" | "aiAction";
+}) {
   const response = await fetch(`${input.backendBaseUrl}/v2/execution/preflight`, {
     method: "POST",
     headers: {
@@ -290,13 +341,116 @@ async function callPreflight(input: { backendBaseUrl: string; state: DeviceState
       mode: "managed",
       deviceId: input.state.deviceId,
       installId: input.state.installId,
-      usageKind: "transcription",
+      usageKind: input.usageKind,
     }),
   });
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   return {
     ok: response.ok && payload.ok !== false && payload.allowed !== false,
     code: typeof payload.code === "string" ? payload.code : undefined,
+  };
+}
+
+async function callManagedPostprocess(input: {
+  backendBaseUrl: string;
+  state: DeviceState;
+  transcript: string;
+  model: string;
+  prompt: string;
+}): Promise<
+  | {
+      ok: true;
+      status: "ok";
+      output: string;
+      model: string;
+      latencyMs: number;
+      metadata: Record<string, unknown>;
+    }
+  | {
+      ok: false;
+      status: string;
+      model: string;
+      latencyMs?: number;
+      metadata?: Record<string, unknown>;
+      error: unknown;
+    }
+> {
+  const started = performance.now();
+  const response = await fetch(`${input.backendBaseUrl}/v1/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Device-Id": input.state.deviceId ?? "",
+    },
+    body: JSON.stringify({
+      model: input.model,
+      messages: [
+        { role: "system", content: input.prompt },
+        { role: "user", content: input.transcript },
+      ],
+      max_tokens: Math.max(256, Math.min(4096, Math.ceil(input.transcript.length / 2))),
+      stream: false,
+    }),
+  });
+  const latencyMs = Math.round(performance.now() - started);
+  const metadata = readFixvoxMetadata(response.headers);
+  const bodyText = await response.text();
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: `http-${response.status}`,
+      model: input.model,
+      latencyMs,
+      metadata,
+      error: {
+        code: `FIXVOX_CHAT_HTTP_${response.status}`,
+        message: `Fixvox managed post-processing returned HTTP ${response.status}.`,
+        redacted: true,
+      },
+    };
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(bodyText);
+  } catch {
+    body = undefined;
+  }
+  const output =
+    typeof body === "object" &&
+    body !== null &&
+    Array.isArray((body as { choices?: unknown }).choices) &&
+    typeof (body as { choices: Array<{ message?: { content?: unknown } }> }).choices[0]?.message
+      ?.content === "string"
+      ? (body as { choices: Array<{ message: { content: string } }> }).choices[0].message.content.trim()
+      : "";
+  if (!output) {
+    return {
+      ok: false,
+      status: "empty",
+      model: input.model,
+      latencyMs,
+      metadata,
+      error: {
+        code: "FIXVOX_CHAT_RESPONSE_TEXT_MISSING",
+        message: "Fixvox managed post-processing returned no usable text.",
+        redacted: true,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    status: "ok",
+    output,
+    model:
+      typeof body === "object" &&
+      body !== null &&
+      typeof (body as { model?: unknown }).model === "string"
+        ? (body as { model: string }).model
+        : input.model,
+    latencyMs,
+    metadata,
   };
 }
 
@@ -313,6 +467,8 @@ async function writeEvidence(input: {
   metadata?: Record<string, unknown>;
   transcriptLength?: number;
   transcriptPath?: string;
+  processedTranscriptPath?: string;
+  postprocess?: Awaited<ReturnType<typeof callManagedPostprocess>>;
   error?: unknown;
 }) {
   const reportPath = `${reportRoot}/${input.runId}.json`;
@@ -337,6 +493,26 @@ async function writeEvidence(input: {
     fixvoxMetadata: input.metadata,
     transcriptLength: input.transcriptLength ?? 0,
     transcriptPath: input.transcriptPath,
+    postprocess: input.postprocess
+      ? {
+          ok: input.postprocess.ok,
+          status: input.postprocess.status,
+          model: input.postprocess.model,
+          latencyMs: input.postprocess.latencyMs,
+          requestIdPresent: Boolean(
+            input.postprocess.metadata?.fixvoxRequestId ||
+              input.postprocess.metadata?.providerRequestId,
+          ),
+          fixvoxMetadataPresent: input.postprocess.metadata
+            ? Object.values(input.postprocess.metadata).some((value) => value !== undefined)
+            : false,
+          fixvoxMetadata: input.postprocess.metadata,
+          outputLength: input.postprocess.ok ? input.postprocess.output.length : 0,
+          outputPreviewRedacted: input.postprocess.ok,
+          processedTranscriptPath: input.processedTranscriptPath,
+          error: input.postprocess.ok ? undefined : input.postprocess.error,
+        }
+      : undefined,
     error: input.error,
     rawProviderPayloadStored: false,
     transcriptTextStoredSeparately: Boolean(input.transcriptPath),
@@ -442,6 +618,12 @@ function readDotEnv(path: string, key: string) {
 
 function unquote(value: string) {
   return value.replace(/^['\"]|['\"]$/g, "").trim() || undefined;
+}
+
+function readPostprocessPrompt() {
+  const explicit = readArg("--postprocess-prompt") ?? envValue("FIXVOX_POSTPROCESS_PROMPT");
+  if (explicit) return explicit;
+  return process.argv.includes("--postprocess") ? defaultPostprocessPrompt : undefined;
 }
 
 function readArg(name: string) {

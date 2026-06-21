@@ -67,3 +67,30 @@ Multipart fields:
 - `temperature?`
 
 Response: OpenAI/Groq-compatible transcription JSON plus `X-Fixvox-*` headers.
+
+## Managed Chat Postprocess
+
+`POST /v1/chat/completions`
+
+Headers:
+
+```text
+Content-Type: application/json
+X-Device-Id: <device-id>
+```
+
+JSON body:
+
+```json
+{
+  "model": "openai/gpt-oss-120b",
+  "messages": [
+    { "role": "system", "content": "postprocess prompt" },
+    { "role": "user", "content": "raw transcript" }
+  ],
+  "max_tokens": 512,
+  "stream": false
+}
+```
+
+Response: OpenAI-compatible chat completion JSON (`choices[0].message.content`) plus `X-Fixvox-*` headers.

@@ -74,6 +74,15 @@ fn parses_fixvox_contract_fixtures_without_network() {
     ));
     assert_eq!(stt.text, "fixture managed transcript");
     assert_eq!(stt.model, "whisper-large-v3");
+
+    let chat: ChatCompletionResponseFixture = fixture(include_str!(
+        "../../specs/009-fixvox-cloud-runtime-port/fixtures/chat.response.json"
+    ));
+    assert_eq!(chat.model, "openai/gpt-oss-120b");
+    assert_eq!(
+        chat.choices[0].message.content,
+        "fixture cleaned transcript"
+    );
 }
 
 #[test]
@@ -366,6 +375,42 @@ fn managed_stt_uses_device_id_header_and_never_vendor_bearer() {
 }
 
 #[test]
+fn managed_chat_postprocess_uses_device_id_header_and_never_vendor_bearer() {
+    let preview = build_managed_chat_completion_request_preview(
+        FixvoxCloudConfig {
+            backend_base_url: PREFERRED_FIXVOX_BACKEND_URL.to_string(),
+            device_id: Some("dev_test_1234567890abcdef".to_string()),
+        },
+        ManagedChatInput {
+            transcript: "hola mundo".to_string(),
+            system_prompt: "Clean up the transcript.".to_string(),
+            model: "openai/gpt-oss-120b".to_string(),
+            max_tokens: Some(512),
+        },
+    )
+    .expect("managed chat request preview should be constructable without network");
+
+    assert_eq!(
+        preview.endpoint,
+        "https://auth-fixvox.jpsala.dev/v1/chat/completions",
+    );
+    assert!(preview
+        .headers
+        .iter()
+        .any(|(name, value)| name == "X-Device-Id" && value == "dev_test_1234567890abcdef"));
+    assert!(!preview.has_authorization_header);
+    assert!(preview
+        .headers
+        .iter()
+        .all(|(name, _)| !name.eq_ignore_ascii_case("authorization")));
+    assert_eq!(preview.body["model"], "openai/gpt-oss-120b");
+    assert_eq!(preview.body["messages"][0]["role"], "system");
+    assert_eq!(preview.body["messages"][1]["content"], "hola mundo");
+    assert_eq!(preview.body["max_tokens"], 512);
+    assert_eq!(preview.body["stream"], false);
+}
+
+#[test]
 fn managed_mode_fails_closed_instead_of_silent_direct_groq_fallback() {
     let denied = choose_transcription_transport(TranscriptionTransportRequest {
         requested_mode: "managed".to_string(),
@@ -400,6 +445,23 @@ fn parses_managed_stt_response_body_without_network() {
     let missing_text = parse_managed_stt_json_response("{\"model\":\"whisper-large-v3\"}")
         .expect_err("managed STT response without text should fail closed");
     assert_eq!(missing_text.code, "FIXVOX_STT_RESPONSE_TEXT_MISSING");
+}
+
+#[test]
+fn parses_managed_chat_response_body_without_network() {
+    let parsed = parse_managed_chat_json_response(include_str!(
+        "../../specs/009-fixvox-cloud-runtime-port/fixtures/chat.response.json"
+    ))
+    .expect("managed chat response should parse from fixture JSON");
+
+    assert_eq!(parsed.output, "fixture cleaned transcript");
+    assert_eq!(parsed.model.as_deref(), Some("openai/gpt-oss-120b"));
+
+    let missing_text = parse_managed_chat_json_response(
+        "{\"model\":\"openai/gpt-oss-120b\",\"choices\":[{\"message\":{}}]}",
+    )
+    .expect_err("managed chat response without output should fail closed");
+    assert_eq!(missing_text.code, "FIXVOX_CHAT_RESPONSE_TEXT_MISSING");
 }
 
 #[test]

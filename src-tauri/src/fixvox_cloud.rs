@@ -146,6 +146,23 @@ pub(crate) struct SttResponseFixture {
     pub(crate) usage: serde_json::Value,
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct ChatCompletionResponseFixture {
+    pub(crate) model: String,
+    pub(crate) choices: Vec<ChatCompletionChoiceFixture>,
+    pub(crate) usage: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ChatCompletionChoiceFixture {
+    pub(crate) message: ChatCompletionMessageFixture,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ChatCompletionMessageFixture {
+    pub(crate) content: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ManagedSttParsedResponse {
     pub(crate) text: String,
@@ -172,6 +189,44 @@ pub(crate) struct ManagedSttRequestPreview {
     pub(crate) headers: Vec<(String, String)>,
     pub(crate) has_authorization_header: bool,
     pub(crate) multipart_fields: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ManagedChatInput {
+    pub(crate) transcript: String,
+    pub(crate) system_prompt: String,
+    pub(crate) model: String,
+    pub(crate) max_tokens: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ManagedChatRequestPreview {
+    pub(crate) endpoint: String,
+    pub(crate) headers: Vec<(String, String)>,
+    pub(crate) has_authorization_header: bool,
+    pub(crate) body: serde_json::Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ManagedChatParsedResponse {
+    pub(crate) output: String,
+    pub(crate) model: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ManagedChatResponseBody {
+    model: Option<String>,
+    choices: Vec<ManagedChatChoiceBody>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ManagedChatChoiceBody {
+    message: ManagedChatMessageBody,
+}
+
+#[derive(Debug, Deserialize)]
+struct ManagedChatMessageBody {
+    content: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -541,6 +596,62 @@ pub(crate) fn build_managed_stt_request_preview(
     })
 }
 
+pub(crate) fn build_managed_chat_completion_request_preview(
+    config: FixvoxCloudConfig,
+    input: ManagedChatInput,
+) -> Result<ManagedChatRequestPreview, FixvoxCloudError> {
+    let device_id = config
+        .device_id
+        .and_then(|value| clean_env_value(Some(value)))
+        .ok_or_else(|| {
+            error(
+                "FIXVOX_DEVICE_ID_MISSING",
+                "Managed Fixvox post-processing requires a registered device id.",
+            )
+        })?;
+    let transcript = clean_env_value(Some(input.transcript)).ok_or_else(|| {
+        error(
+            "FIXVOX_CHAT_TRANSCRIPT_MISSING",
+            "Managed Fixvox post-processing requires transcript text.",
+        )
+    })?;
+    let system_prompt = clean_env_value(Some(input.system_prompt)).ok_or_else(|| {
+        error(
+            "FIXVOX_CHAT_PROMPT_MISSING",
+            "Managed Fixvox post-processing requires a system prompt.",
+        )
+    })?;
+    let model = clean_env_value(Some(input.model)).ok_or_else(|| {
+        error(
+            "FIXVOX_CHAT_MODEL_MISSING",
+            "Managed Fixvox post-processing requires a model.",
+        )
+    })?;
+
+    let mut body = serde_json::json!({
+        "model": model,
+        "messages": [
+            { "role": "system", "content": system_prompt },
+            { "role": "user", "content": transcript }
+        ],
+        "stream": false
+    });
+
+    if let Some(max_tokens) = input.max_tokens.filter(|value| *value > 0) {
+        body["max_tokens"] = serde_json::json!(max_tokens);
+    }
+
+    Ok(ManagedChatRequestPreview {
+        endpoint: join_url(&config.backend_base_url, "/v1/chat/completions"),
+        headers: vec![
+            ("Content-Type".to_string(), "application/json".to_string()),
+            ("X-Device-Id".to_string(), device_id),
+        ],
+        has_authorization_header: false,
+        body,
+    })
+}
+
 pub(crate) fn choose_transcription_transport(
     request: TranscriptionTransportRequest,
 ) -> Result<TranscriptionTransport, FixvoxCloudError> {
@@ -594,6 +705,34 @@ pub(crate) fn parse_managed_stt_json_response(
 
     Ok(ManagedSttParsedResponse {
         text,
+        model: parsed.model.and_then(|value| clean_env_value(Some(value))),
+    })
+}
+
+pub(crate) fn parse_managed_chat_json_response(
+    body: &str,
+) -> Result<ManagedChatParsedResponse, FixvoxCloudError> {
+    let parsed: ManagedChatResponseBody = serde_json::from_str(body).map_err(|_| {
+        error(
+            "FIXVOX_CHAT_RESPONSE_PARSE_FAILED",
+            "Fixvox managed chat response did not match the expected JSON contract.",
+        )
+    })?;
+
+    let output = parsed
+        .choices
+        .first()
+        .and_then(|choice| choice.message.content.clone())
+        .and_then(|value| clean_env_value(Some(value)))
+        .ok_or_else(|| {
+            error(
+                "FIXVOX_CHAT_RESPONSE_TEXT_MISSING",
+                "Fixvox managed chat response did not include output text.",
+            )
+        })?;
+
+    Ok(ManagedChatParsedResponse {
+        output,
         model: parsed.model.and_then(|value| clean_env_value(Some(value))),
     })
 }

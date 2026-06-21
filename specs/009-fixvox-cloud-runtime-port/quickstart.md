@@ -17,6 +17,9 @@ Only after implementation and JP approval:
 ```powershell
 $env:FIXVOX_BACKEND_URL="https://auth-fixvox.jpsala.dev"
 bun scripts/fixvox-managed-smoke.ts --allow-provider-call
+
+# Optional postprocess lane through managed /v1/chat/completions:
+bun scripts/fixvox-managed-smoke.ts --allow-provider-call --postprocess
 ```
 
 Expected script flow:
@@ -25,7 +28,8 @@ Expected script flow:
 2. Calls `/v2/execution/preflight` before provider work.
 3. Uses the latest ignored WAV artifact under `artifacts/microphone-capture/audio/`.
 4. Calls Fixvox managed STT with `X-Device-Id`, no vendor bearer token.
-5. Writes a transcript artifact plus redacted report under ignored `artifacts/microphone-capture/`.
+5. With `--postprocess`, calls `/v2/execution/preflight` for `aiAction`, then managed `/v1/chat/completions` with `X-Device-Id` and no vendor bearer token.
+6. Writes transcript/postprocess artifacts plus redacted report under ignored `artifacts/microphone-capture/`.
 
 Optional UI flow after the script has registered a device:
 
