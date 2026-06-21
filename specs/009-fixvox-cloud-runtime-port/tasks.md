@@ -37,7 +37,8 @@
 - [x] T017 Update readiness UI copy for managed cloud vs direct BYOK.
 - [x] T018 Add focused UI tests for cloud-ready/device-needed/backend-unavailable states.
 - [x] T019 Run default safe checks.
-- [ ] T020 With JP approval, run one real managed cloud transcription smoke and record redacted evidence.
+- [x] T020 With JP approval, run one real managed cloud transcription smoke and record redacted evidence.
+  - Evidence: `bun scripts/fixvox-managed-smoke.ts --allow-provider-call` returned `ok: true` via `fixvox-cloud` (`whisper-large-v3`), request id/metadata present, transcript length 14, raw provider payload not stored; redacted local report at `artifacts/microphone-capture/reports/fixvox-managed-smoke-2026-06-21T20-47-42-890Z.json` (ignored).
 
 ## Phase 6: Follow-up Candidates
 
