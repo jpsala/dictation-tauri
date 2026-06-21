@@ -2,7 +2,7 @@
 
 Estado vivo del proyecto. Mantener corto.
 
-Ultima actualizacion manual: 2026-06-20 (AOS guardar sesion).
+Ultima actualizacion manual: 2026-06-21 (AOS guardar sesion).
 
 ## Regla
 
