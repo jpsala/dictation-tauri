@@ -21,8 +21,8 @@
 
 ## Phase 3: Managed STT Transport
 
-- [ ] T010 Implement proxied multipart STT request to `/v1/audio/transcriptions`.
-- [ ] T011 Parse transcript body and Fixvox proxy headers.
+- [x] T010 Implement proxied multipart STT request to `/v1/audio/transcriptions`.
+- [x] T011 Parse transcript body and Fixvox proxy headers.
 - [ ] T012 Write redacted transcript/report artifacts under allowed roots.
 - [ ] T013 Keep provider-free `Check host boundary` behavior unchanged.
 

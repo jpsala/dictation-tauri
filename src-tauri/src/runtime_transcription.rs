@@ -130,6 +130,15 @@ struct HostRuntimeConfig {
     language: Option<String>,
 }
 
+#[derive(Clone)]
+struct ManagedHostRuntimeConfig {
+    backend_base_url: String,
+    device_id: String,
+    provider: String,
+    model: String,
+    language: Option<String>,
+}
+
 #[allow(dead_code)]
 #[derive(Debug)]
 enum ProviderTranscriptionOutcome {
@@ -342,36 +351,72 @@ async fn transcribe_captured_audio_with_provider_call(
         };
     }
 
-    let config = match read_host_runtime_config(env_lookup) {
-        Ok(config) => config,
-        Err(reason) => {
+    let requested_provider = request
+        .provider
+        .clone()
+        .filter(|value| !value.trim().is_empty());
+    let use_direct_byok = requested_provider
+        .as_deref()
+        .map(|provider| {
+            matches!(
+                provider.trim().to_ascii_lowercase().as_str(),
+                "groq" | "direct" | "byok"
+            )
+        })
+        .unwrap_or(false);
+
+    let direct_config = if use_direct_byok {
+        match read_host_runtime_config(env_lookup) {
+            Ok(config) => Some(config),
+            Err(reason) => {
+                return HostTranscriptionResponse::SetupError {
+                    error: reason,
+                    provider: request.provider,
+                    model: request.model,
+                    retryable: true,
+                    redacted: true,
+                };
+            }
+        }
+    } else {
+        None
+    };
+
+    if let Some(provider) = requested_provider.as_deref() {
+        let normalized = provider.trim().to_ascii_lowercase();
+        if !matches!(normalized.as_str(), "groq" | "direct" | "byok") {
             return HostTranscriptionResponse::SetupError {
-                error: reason,
-                provider: request.provider,
-                model: request.model,
+                error: error(
+                    "UNSUPPORTED_PROVIDER",
+                    "Only managed Fixvox cloud or explicit direct BYOK transcription is supported in this build.",
+                ),
+                provider: Some(redact_host_text(provider)),
+                model: request.model.clone(),
                 retryable: true,
                 redacted: true,
             };
         }
-    };
-
-    let provider = request
-        .provider
-        .clone()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| config.provider.clone());
-    if provider.to_ascii_lowercase() != DEFAULT_PROVIDER {
-        return HostTranscriptionResponse::SetupError {
-            error: error(
-                "UNSUPPORTED_PROVIDER",
-                "Only the Groq host transcription provider is supported in this build.",
-            ),
-            provider: Some(redact_host_text(&provider)),
-            model: request.model.clone().or_else(|| Some(config.model.clone())),
-            retryable: true,
-            redacted: true,
-        };
     }
+
+    let managed_config = if use_direct_byok {
+        None
+    } else {
+        match read_managed_runtime_config(env_lookup, &request) {
+            Ok(config) => Some(config),
+            Err(reason) => {
+                return HostTranscriptionResponse::SetupError {
+                    error: reason,
+                    provider: Some("fixvox-cloud".to_string()),
+                    model: request
+                        .model
+                        .clone()
+                        .or_else(|| Some(DEFAULT_MODEL.to_string())),
+                    retryable: true,
+                    redacted: true,
+                };
+            }
+        }
+    };
 
     let audio_file_path = match resolve_existing_artifact_file_path(&request.audio_path) {
         Some(path) => path,
@@ -401,7 +446,16 @@ async fn transcribe_captured_audio_with_provider_call(
         }
     };
 
-    let outcome = transcribe_groq_audio(config, &request, audio).await;
+    let outcome = if let Some(config) = managed_config {
+        transcribe_fixvox_managed_audio(config, &request, audio).await
+    } else {
+        transcribe_groq_audio(
+            direct_config.expect("direct config should be present for direct BYOK"),
+            &request,
+            audio,
+        )
+        .await
+    };
     let response = map_provider_outcome_to_host_response(outcome, &request);
 
     if let Err(write_error) = write_host_artifacts(&response, &request) {
@@ -442,12 +496,59 @@ fn read_host_runtime_config(
     })
 }
 
+fn read_managed_runtime_config(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+    request: &HostTranscriptionRequest,
+) -> Result<ManagedHostRuntimeConfig, RedactedHostRuntimeError> {
+    let backend_base_url = fixvox_cloud::resolve_backend_base_url(env_lookup)
+        .map_err(|reason| error(&reason.code, &reason.message))?;
+    let device_id = resolve_fixvox_device_id(env_lookup).ok_or_else(|| {
+        error(
+            "FIXVOX_DEVICE_ID_MISSING",
+            "Managed Fixvox transcription requires a registered device id.",
+        )
+    })?;
+    let model = request
+        .model
+        .clone()
+        .or_else(|| {
+            first_env_value(
+                env_lookup,
+                &["FIXVOX_STT_MODEL", "GROQ_STT_MODEL", "GROQ-STT-MODEL"],
+            )
+        })
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_MODEL.to_string());
+    let language = request
+        .language
+        .clone()
+        .or_else(|| {
+            first_env_value(
+                env_lookup,
+                &[
+                    "FIXVOX_STT_LANGUAGE",
+                    "GROQ_STT_LANGUAGE",
+                    "GROQ-STT-LANGUAGE",
+                ],
+            )
+        })
+        .filter(|value| !value.trim().is_empty());
+
+    Ok(ManagedHostRuntimeConfig {
+        backend_base_url,
+        device_id,
+        provider: "fixvox-cloud".to_string(),
+        model,
+        language,
+    })
+}
+
 fn read_host_env_value(key: &str) -> Option<String> {
     env::var(key).ok().or_else(|| read_dot_env_value(key))
 }
 
 fn read_dot_env_value(key: &str) -> Option<String> {
-    if !is_groq_env_key(key) {
+    if !is_allowed_host_dot_env_key(key) {
         return None;
     }
 
@@ -481,7 +582,7 @@ fn read_dot_env_value_from_path(path: &str, key: &str) -> Option<String> {
     None
 }
 
-fn is_groq_env_key(key: &str) -> bool {
+fn is_allowed_host_dot_env_key(key: &str) -> bool {
     matches!(
         key,
         "GROQ_API_KEY"
@@ -490,6 +591,12 @@ fn is_groq_env_key(key: &str) -> bool {
             | "GROQ-STT-MODEL"
             | "GROQ_STT_LANGUAGE"
             | "GROQ-STT-LANGUAGE"
+            | "FIXVOX_BACKEND_URL"
+            | "FIXVOX_API_BASE_URL"
+            | "PROXY_BASE_URL"
+            | "FIXVOX_DEVICE_ID"
+            | "FIXVOX_STT_MODEL"
+            | "FIXVOX_STT_LANGUAGE"
     )
 }
 
@@ -615,6 +722,158 @@ async fn transcribe_groq_audio(
         text,
         provider: config.provider,
         model,
+        latency_ms,
+        request_id,
+    }
+}
+
+async fn transcribe_fixvox_managed_audio(
+    config: ManagedHostRuntimeConfig,
+    request: &HostTranscriptionRequest,
+    audio: Vec<u8>,
+) -> ProviderTranscriptionOutcome {
+    let started_at = Instant::now();
+    let file_name = file_name_from_audio_path(&request.audio_path);
+    let preview = match fixvox_cloud::build_managed_stt_request_preview(
+        fixvox_cloud::FixvoxCloudConfig {
+            backend_base_url: config.backend_base_url.clone(),
+            device_id: Some(config.device_id.clone()),
+        },
+        fixvox_cloud::ManagedSttInput {
+            audio_file_name: file_name.clone(),
+            model: config.model.clone(),
+            language: config.language.clone(),
+        },
+    ) {
+        Ok(preview) => preview,
+        Err(reason) => {
+            return ProviderTranscriptionOutcome::ProviderError {
+                code: reason.code,
+                message: reason.message,
+                provider: Some(config.provider),
+                model: Some(config.model),
+                latency_ms: Some(elapsed_ms(started_at)),
+                request_id: None,
+            };
+        }
+    };
+
+    let file_part = reqwest::multipart::Part::bytes(audio).file_name(file_name);
+    let mut form = reqwest::multipart::Form::new()
+        .text("model", config.model.clone())
+        .text("response_format", "verbose_json")
+        .part("file", file_part);
+
+    if let Some(language) = config.language.clone() {
+        form = form.text("language", language);
+    }
+
+    let response = match reqwest::Client::new()
+        .post(&preview.endpoint)
+        .header("X-Device-Id", config.device_id.clone())
+        .multipart(form)
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            return ProviderTranscriptionOutcome::ProviderError {
+                code: "FIXVOX_REQUEST_FAILED".to_string(),
+                message: error.to_string(),
+                provider: Some(config.provider),
+                model: Some(config.model),
+                latency_ms: Some(elapsed_ms(started_at)),
+                request_id: None,
+            };
+        }
+    };
+
+    let latency_ms = elapsed_ms(started_at);
+    let status = response.status();
+    let status_text = status
+        .canonical_reason()
+        .unwrap_or("provider error")
+        .to_string();
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let header_pairs: Vec<(String, String)> = response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.as_str().to_string(), value.to_string()))
+        })
+        .collect();
+    let header_refs: Vec<(&str, &str)> = header_pairs
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect();
+    let metadata = fixvox_cloud::parse_fixvox_response_metadata(&header_refs);
+    let request_id = metadata
+        .fixvox_request_id
+        .clone()
+        .or_else(|| metadata.provider_request_id.clone());
+
+    if !status.is_success() {
+        return ProviderTranscriptionOutcome::ProviderError {
+            code: format!("FIXVOX_HTTP_{}", status.as_u16()),
+            message: format!(
+                "Fixvox managed transcription returned HTTP {} {}.",
+                status.as_u16(),
+                status_text
+            ),
+            provider: Some(config.provider),
+            model: Some(config.model),
+            latency_ms: Some(latency_ms),
+            request_id,
+        };
+    }
+
+    let text_body = match response.text().await {
+        Ok(body) => body,
+        Err(error) => {
+            return ProviderTranscriptionOutcome::ProviderError {
+                code: "FIXVOX_RESPONSE_READ_FAILED".to_string(),
+                message: error.to_string(),
+                provider: Some(config.provider),
+                model: Some(config.model),
+                latency_ms: Some(latency_ms),
+                request_id,
+            };
+        }
+    };
+
+    let parsed = if content_type.contains("application/json") {
+        match fixvox_cloud::parse_managed_stt_json_response(&text_body) {
+            Ok(parsed) => parsed,
+            Err(reason) => {
+                return ProviderTranscriptionOutcome::ProviderError {
+                    code: reason.code,
+                    message: reason.message,
+                    provider: Some(config.provider),
+                    model: Some(config.model),
+                    latency_ms: Some(latency_ms),
+                    request_id,
+                };
+            }
+        }
+    } else {
+        fixvox_cloud::ManagedSttParsedResponse {
+            text: text_body,
+            model: None,
+        }
+    };
+
+    ProviderTranscriptionOutcome::Ok {
+        text: parsed.text,
+        provider: config.provider,
+        model: parsed.model.unwrap_or(config.model),
         latency_ms,
         request_id,
     }
@@ -1128,13 +1387,17 @@ mod tests {
         }
         fs::write(
             path,
-            "GROQ-API-KEY='gsk_test_secret_must_not_leak'\nOTHER_KEY=ignored\n",
+            "GROQ-API-KEY='gsk_test_secret_must_not_leak'\nFIXVOX_DEVICE_ID='dev_test_1234567890abcdef'\nOTHER_KEY=ignored\n",
         )
         .expect("test dotenv should be written");
 
         assert_eq!(
             read_dot_env_value_from_path(path, "GROQ-API-KEY"),
             Some("gsk_test_secret_must_not_leak".to_string()),
+        );
+        assert_eq!(
+            read_dot_env_value_from_path(path, "FIXVOX_DEVICE_ID"),
+            Some("dev_test_1234567890abcdef".to_string()),
         );
         assert_eq!(read_dot_env_value_from_path(path, "MISSING_GROQ_KEY"), None,);
 

@@ -12,6 +12,9 @@ describe("host runtime client", () => {
       configured: false,
       artifactRoot: "artifacts/microphone-capture",
       supportsRealProviderCall: false,
+      directByokConfigured: false,
+      managedCloudConfigured: false,
+      managedDeviceRegistered: false,
       reason: {
         code: "HOST_RUNTIME_UNAVAILABLE",
         message: "Host runtime transcription boundary is unavailable.",
@@ -45,6 +48,9 @@ describe("host runtime client", () => {
         model: "whisper-large-v3",
         artifactRoot: "artifacts/microphone-capture",
         supportsRealProviderCall: true,
+        directByokConfigured: true,
+        managedCloudConfigured: false,
+        managedDeviceRegistered: false,
       },
       transcribe: (request) => ({
         status: "ok",

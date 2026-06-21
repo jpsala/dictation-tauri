@@ -307,6 +307,21 @@ fn managed_mode_fails_closed_instead_of_silent_direct_groq_fallback() {
 }
 
 #[test]
+fn parses_managed_stt_response_body_without_network() {
+    let parsed = parse_managed_stt_json_response(include_str!(
+        "../../specs/009-fixvox-cloud-runtime-port/fixtures/stt.response.json"
+    ))
+    .expect("managed STT response should parse from fixture JSON");
+
+    assert_eq!(parsed.text, "fixture managed transcript");
+    assert_eq!(parsed.model.as_deref(), Some("whisper-large-v3"));
+
+    let missing_text = parse_managed_stt_json_response("{\"model\":\"whisper-large-v3\"}")
+        .expect_err("managed STT response without text should fail closed");
+    assert_eq!(missing_text.code, "FIXVOX_STT_RESPONSE_TEXT_MISSING");
+}
+
+#[test]
 fn maps_fixvox_proxy_headers_into_typed_metadata() {
     let metadata = parse_fixvox_response_metadata(&[
         ("X-Fixvox-Request-Id", "fx_req_contract_123"),

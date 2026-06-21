@@ -36,7 +36,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `006-host-runtime-transcription-boundary` | complete: TS host boundary, provider-free UI guardrails, Tauri invoke client and safe unavailable Tauri stub | `specs/006-host-runtime-transcription-boundary/tasks.md` |
 | `007-usable-dictation-loop` | complete and committed (`78438e7`): Rust host Groq multipart path implemented behind explicit gate; provider smoke passed with redacted evidence | `specs/007-usable-dictation-loop/tasks.md` |
 | `008-real-provider-ui-gate` | complete and committed (`d0cfac7` + fixes): UI separates `Transcribe with provider` from provider-free `Check host boundary`; manual Tauri real-provider validation passed | `specs/008-real-provider-ui-gate/tasks.md` |
-| `009-fixvox-cloud-runtime-port` | Phase 2 complete: T001-T009 complete; readiness now exposes managed cloud/backend/device states alongside direct BYOK | `specs/009-fixvox-cloud-runtime-port/plan.md` |
+| `009-fixvox-cloud-runtime-port` | Phase 3 started: T001-T011 complete; managed STT multipart path and Fixvox transcript/header parsing are implemented without default real smoke | `specs/009-fixvox-cloud-runtime-port/plan.md` |
 
 ## Tracks Activas
 
@@ -89,14 +89,14 @@ bun scripts/check-skills-junction.ts
 
 ## Proximo Paso Probable
 
-Continuar despues de `009` Phase 2 complete:
+Continuar despues de `009` T010/T011:
 
-1. Estado funcional local: app Tauri captura WAV real, readiness lee `.env` root/src-tauri, `Transcribe with provider` llama Groq directo desde Rust host y devuelve transcript; `Check host boundary` queda provider-free para smoke seguro.
-2. Decision vigente: el siguiente runtime real debe usar Fixvox managed cloud desde Rust/Tauri (`X-Device-Id`, register/preflight, `/v1/audio/transcriptions`) y dejar Groq directo como BYOK/dev fallback explicito.
-3. Hecho ultimo Small Batch: `009` T006-T008 commiteado en `de39e64`; `009` T009 commiteado en `7ee6e89` con readiness Rust/TS/UI para managed cloud, device registration y direct BYOK.
-4. Proximo Small Batch recomendado: `009` T010/T011, implementar proxied multipart STT request a `/v1/audio/transcriptions` y parseo de transcript/headers sin activar smoke real por defecto.
-5. Estado repo: worktree limpio tras commits locales; no hubo push.
-6. Checks recientes: `cd src-tauri && cargo test --test fixvox_cloud_contract -- --nocapture` OK (11 passed); `cd src-tauri && cargo check` OK; `npm run test:pipeline` OK (136 tests); `npm run build` OK; `npm run visual:check` OK en retry; `bun scripts/agent-context-audit.ts` OK con warnings de tamaño.
+1. Estado funcional local: app Tauri captura WAV real, readiness lee `.env` root/src-tauri, `Transcribe with provider` usa Fixvox managed cloud cuando hay device id (`X-Device-Id`, sin bearer vendor); `Check host boundary` queda provider-free para smoke seguro.
+2. Decision vigente: direct Groq queda como BYOK/dev fallback explicito (`provider: groq/direct/byok`), no fallback silencioso si managed no esta listo.
+3. Hecho ultimo Small Batch: `009` T010/T011 implementa request multipart proxied a `/v1/audio/transcriptions`, parsea body JSON/text y headers Fixvox (`X-Fixvox-*`, provider request id, timings) para request id/metadata interna; no smoke real ejecutado.
+4. Proximo Small Batch recomendado: `009` T012/T013, escribir artifacts/report redacted con metadata permitida y confirmar que `Check host boundary` sigue provider-free.
+5. Estado repo: cerrar con commit atomico local; no push.
+6. Checks recientes: `cd src-tauri && cargo test --test fixvox_cloud_contract -- --nocapture` OK (12 passed); `cd src-tauri && cargo check` OK; `npm run test:pipeline` OK (136 tests); `npm run build` OK.
 
 ## Promocion De Memoria
 

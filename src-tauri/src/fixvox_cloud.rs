@@ -108,6 +108,19 @@ pub(crate) struct SttResponseFixture {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ManagedSttParsedResponse {
+    pub(crate) text: String,
+    pub(crate) model: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ManagedSttResponseBody {
+    text: Option<String>,
+    model: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ManagedSttInput {
     pub(crate) audio_file_name: String,
     pub(crate) model: String,
@@ -408,6 +421,32 @@ pub(crate) fn choose_transcription_transport(
             "Requested transcription transport mode is unsupported.",
         )),
     }
+}
+
+pub(crate) fn parse_managed_stt_json_response(
+    body: &str,
+) -> Result<ManagedSttParsedResponse, FixvoxCloudError> {
+    let parsed: ManagedSttResponseBody = serde_json::from_str(body).map_err(|_| {
+        error(
+            "FIXVOX_STT_RESPONSE_PARSE_FAILED",
+            "Fixvox managed transcription response did not match the expected JSON contract.",
+        )
+    })?;
+
+    let text = parsed
+        .text
+        .and_then(|value| clean_env_value(Some(value)))
+        .ok_or_else(|| {
+            error(
+                "FIXVOX_STT_RESPONSE_TEXT_MISSING",
+                "Fixvox managed transcription response did not include transcript text.",
+            )
+        })?;
+
+    Ok(ManagedSttParsedResponse {
+        text,
+        model: parsed.model.and_then(|value| clean_env_value(Some(value))),
+    })
 }
 
 pub(crate) fn parse_fixvox_response_metadata(headers: &[(&str, &str)]) -> FixvoxResponseMetadata {
