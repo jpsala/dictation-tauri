@@ -28,9 +28,9 @@
 
 ## Phase 4: Preflight And Fail-Closed Behavior
 
-- [ ] T014 Implement `/v2/execution/preflight` client for transcription estimates.
-- [ ] T015 Deny managed execution locally on policy/quota/auth/backend failures.
-- [ ] T016 Prove managed mode does not silently fall back to direct Groq.
+- [x] T014 Implement `/v2/execution/preflight` client for transcription estimates.
+- [x] T015 Deny managed execution locally on policy/quota/auth/backend failures.
+- [x] T016 Prove managed mode does not silently fall back to direct Groq.
 
 ## Phase 5: UI Gate And Manual Smoke
 

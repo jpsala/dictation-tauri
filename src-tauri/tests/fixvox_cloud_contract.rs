@@ -38,6 +38,18 @@ impl DeviceRegisterHttpClient for FakeRegisterClient {
     }
 }
 
+impl PreflightHttpClient for FakeRegisterClient {
+    fn post_json(
+        &self,
+        endpoint: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, FixvoxCloudError> {
+        self.endpoint.replace(Some(endpoint.to_string()));
+        self.body.replace(Some(body));
+        Ok(self.response.clone())
+    }
+}
+
 #[test]
 fn parses_fixvox_contract_fixtures_without_network() {
     let register: DeviceRegisterResponseFixture = fixture(include_str!(
@@ -246,6 +258,75 @@ fn persists_redacted_register_error_without_losing_existing_device_id() {
         Some("Backend unavailable.")
     );
     assert!(state.transport_policy.is_none());
+}
+
+#[test]
+fn builds_and_posts_preflight_request_without_network() {
+    let client = FakeRegisterClient {
+        endpoint: RefCell::new(None),
+        body: RefCell::new(None),
+        response: fixture(include_str!(
+            "../../specs/009-fixvox-cloud-runtime-port/fixtures/preflight.response.json"
+        )),
+    };
+    let config = FixvoxCloudRuntimeConfig {
+        backend_base_url: PREFERRED_FIXVOX_BACKEND_URL.to_string(),
+        install_id: "install_test_123".to_string(),
+        device_id: Some("dev_test_1234567890abcdef".to_string()),
+    };
+
+    let decision = preflight_with_client(
+        &client,
+        &config,
+        PreflightInput {
+            install_id: config.install_id.clone(),
+            device_id: config.device_id.clone().expect("device id should exist"),
+            usage_kind: "transcription".to_string(),
+            estimated_audio_seconds: Some(12),
+        },
+    )
+    .expect("preflight should use injected client seam");
+
+    assert_eq!(
+        client.endpoint.borrow().as_deref(),
+        Some("https://auth-fixvox.jpsala.dev/v2/execution/preflight")
+    );
+    let body = client.body.borrow();
+    let body = body.as_ref().expect("preflight body should be captured");
+    assert_eq!(body["mode"], "managed");
+    assert_eq!(body["installId"], "install_test_123");
+    assert_eq!(body["deviceId"], "dev_test_1234567890abcdef");
+    assert_eq!(body["usageKind"], "transcription");
+    assert_eq!(body["estimate"]["audioSeconds"], 12);
+    assert!(decision.ok);
+    assert!(decision.allowed);
+    assert_eq!(decision.request_id.as_deref(), Some("fx_req_contract_123"));
+}
+
+#[test]
+fn maps_preflight_denials_to_fail_closed_error_codes() {
+    for (deny_code, expected) in [
+        ("device_not_registered", "FIXVOX_DEVICE_NOT_REGISTERED"),
+        ("auth_required", "FIXVOX_AUTH_REQUIRED"),
+        ("policy_blocked", "FIXVOX_POLICY_BLOCKED"),
+        ("quota_exceeded", "FIXVOX_QUOTA_EXCEEDED"),
+        ("service_unavailable", "FIXVOX_SERVICE_UNAVAILABLE"),
+        ("unknown", "FIXVOX_PREFLIGHT_DENIED"),
+    ] {
+        let decision = parse_preflight_decision(serde_json::json!({
+            "ok": true,
+            "allowed": false,
+            "mode": "managed",
+            "usageKind": "transcription",
+            "requestId": "fx_req_contract_123",
+            "denyCode": deny_code,
+            "message": "redacted denial"
+        }))
+        .expect("denied preflight should parse");
+
+        assert!(!decision.allowed);
+        assert_eq!(preflight_denial_error_code(&decision), expected);
+    }
 }
 
 #[test]

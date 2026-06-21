@@ -88,6 +88,45 @@ pub(crate) trait DeviceRegisterHttpClient {
     ) -> Result<serde_json::Value, FixvoxCloudError>;
 }
 
+pub(crate) trait PreflightHttpClient {
+    fn post_json(
+        &self,
+        endpoint: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, FixvoxCloudError>;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PreflightRequest {
+    pub(crate) mode: String,
+    pub(crate) device_id: String,
+    pub(crate) install_id: String,
+    pub(crate) usage_kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) estimate: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PreflightInput {
+    pub(crate) install_id: String,
+    pub(crate) device_id: String,
+    pub(crate) usage_kind: String,
+    pub(crate) estimated_audio_seconds: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PreflightDecision {
+    pub(crate) ok: bool,
+    pub(crate) allowed: bool,
+    pub(crate) mode: Option<String>,
+    pub(crate) usage_kind: Option<String>,
+    pub(crate) request_id: Option<String>,
+    pub(crate) deny_code: Option<String>,
+    pub(crate) deny_message: Option<String>,
+    pub(crate) limits: Option<serde_json::Value>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PreflightResponseFixture {
@@ -253,6 +292,116 @@ pub(crate) fn register_device_with_client(
             "Fixvox device register response did not match the expected contract.",
         )
     })
+}
+
+pub(crate) fn build_preflight_request(
+    input: PreflightInput,
+) -> Result<PreflightRequest, FixvoxCloudError> {
+    let install_id = clean_env_value(Some(input.install_id)).ok_or_else(|| {
+        error(
+            "FIXVOX_INSTALL_ID_MISSING",
+            "Fixvox managed preflight requires an install id.",
+        )
+    })?;
+    let device_id = clean_env_value(Some(input.device_id)).ok_or_else(|| {
+        error(
+            "FIXVOX_DEVICE_ID_MISSING",
+            "Fixvox managed preflight requires a registered device id.",
+        )
+    })?;
+    let usage_kind =
+        clean_env_value(Some(input.usage_kind)).unwrap_or_else(|| "transcription".to_string());
+    let estimate = input.estimated_audio_seconds.map(|seconds| {
+        serde_json::json!({
+            "audioSeconds": seconds,
+        })
+    });
+
+    Ok(PreflightRequest {
+        mode: "managed".to_string(),
+        device_id,
+        install_id,
+        usage_kind,
+        estimate,
+    })
+}
+
+pub(crate) fn preflight_endpoint(base_url: &str) -> String {
+    join_url(base_url, "/v2/execution/preflight")
+}
+
+pub(crate) fn preflight_with_client(
+    client: &dyn PreflightHttpClient,
+    config: &FixvoxCloudRuntimeConfig,
+    input: PreflightInput,
+) -> Result<PreflightDecision, FixvoxCloudError> {
+    let endpoint = preflight_endpoint(&config.backend_base_url);
+    let request = build_preflight_request(input)?;
+    let body = serde_json::to_value(request).map_err(|_| {
+        error(
+            "FIXVOX_PREFLIGHT_SERIALIZE_FAILED",
+            "Fixvox preflight request could not be serialized.",
+        )
+    })?;
+    let response = client.post_json(&endpoint, body)?;
+
+    parse_preflight_decision(response)
+}
+
+pub(crate) fn parse_preflight_decision(
+    value: serde_json::Value,
+) -> Result<PreflightDecision, FixvoxCloudError> {
+    Ok(PreflightDecision {
+        ok: value
+            .get("ok")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false),
+        allowed: value
+            .get("allowed")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false),
+        mode: value
+            .get("mode")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+        usage_kind: value
+            .get("usageKind")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+        request_id: value
+            .get("requestId")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+        deny_code: value
+            .get("denyCode")
+            .or_else(|| value.get("code"))
+            .or_else(|| value.get("reason"))
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+        deny_message: value
+            .get("message")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string()),
+        limits: value.get("limits").cloned(),
+    })
+}
+
+pub(crate) fn preflight_denial_error_code(decision: &PreflightDecision) -> String {
+    match decision
+        .deny_code
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "device_not_registered" => "FIXVOX_DEVICE_NOT_REGISTERED".to_string(),
+        "auth_required" => "FIXVOX_AUTH_REQUIRED".to_string(),
+        "policy_blocked" => "FIXVOX_POLICY_BLOCKED".to_string(),
+        "quota_exceeded" => "FIXVOX_QUOTA_EXCEEDED".to_string(),
+        "service_unavailable" => "FIXVOX_SERVICE_UNAVAILABLE".to_string(),
+        _ => "FIXVOX_PREFLIGHT_DENIED".to_string(),
+    }
 }
 
 pub(crate) fn resolve_device_state_path(

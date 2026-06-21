@@ -170,9 +170,10 @@ struct HostRuntimeConfig {
     language: Option<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ManagedHostRuntimeConfig {
     backend_base_url: String,
+    install_id: String,
     device_id: String,
     provider: String,
     model: String,
@@ -312,15 +313,34 @@ fn resolve_fixvox_device_id(
         .or_else(|| read_persisted_fixvox_device_id(env_lookup))
 }
 
+fn resolve_fixvox_install_id(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Option<String> {
+    first_env_value(env_lookup, &["FIXVOX_INSTALL_ID"])
+        .or_else(|| read_persisted_fixvox_install_id(env_lookup))
+}
+
 fn read_persisted_fixvox_device_id(
     env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
 ) -> Option<String> {
-    let path = fixvox_cloud::resolve_device_state_path(env_lookup).ok()?;
-    fixvox_cloud::read_device_state(&path)
-        .ok()
-        .flatten()
+    read_persisted_fixvox_device_state(env_lookup)
         .and_then(|state| state.device_id)
         .filter(|device_id| !device_id.trim().is_empty())
+}
+
+fn read_persisted_fixvox_install_id(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Option<String> {
+    read_persisted_fixvox_device_state(env_lookup)
+        .map(|state| state.install_id)
+        .filter(|install_id| !install_id.trim().is_empty())
+}
+
+fn read_persisted_fixvox_device_state(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Option<fixvox_cloud::FixvoxDeviceState> {
+    let path = fixvox_cloud::resolve_device_state_path(env_lookup).ok()?;
+    fixvox_cloud::read_device_state(&path).ok().flatten()
 }
 
 fn transcribe_captured_audio_without_provider_call(
@@ -481,6 +501,25 @@ async fn transcribe_captured_audio_with_provider_call(
         }
     };
 
+    if let Some(config) = managed_config.as_ref() {
+        if let Some(outcome) = preflight_fixvox_managed_transcription(config).await {
+            let response = map_provider_outcome_to_host_response(outcome, &request);
+            if let Err(write_error) = write_host_artifacts(&response, &request) {
+                return HostTranscriptionResponse::ProviderError {
+                    error: write_error,
+                    provider: response_provider(&response),
+                    model: response_model(&response),
+                    latency_ms: response_latency_ms(&response),
+                    request_id: response_request_id(&response),
+                    fixvox_metadata: response_fixvox_metadata(&response).cloned(),
+                    retryable: true,
+                    redacted: true,
+                };
+            }
+            return response;
+        }
+    }
+
     let audio_file_path = match resolve_existing_artifact_file_path(&request.audio_path) {
         Some(path) => path,
         None => {
@@ -566,6 +605,12 @@ fn read_managed_runtime_config(
 ) -> Result<ManagedHostRuntimeConfig, RedactedHostRuntimeError> {
     let backend_base_url = fixvox_cloud::resolve_backend_base_url(env_lookup)
         .map_err(|reason| error(&reason.code, &reason.message))?;
+    let install_id = resolve_fixvox_install_id(env_lookup).ok_or_else(|| {
+        error(
+            "FIXVOX_INSTALL_ID_MISSING",
+            "Managed Fixvox transcription preflight requires an install id.",
+        )
+    })?;
     let device_id = resolve_fixvox_device_id(env_lookup).ok_or_else(|| {
         error(
             "FIXVOX_DEVICE_ID_MISSING",
@@ -600,6 +645,7 @@ fn read_managed_runtime_config(
 
     Ok(ManagedHostRuntimeConfig {
         backend_base_url,
+        install_id,
         device_id,
         provider: "fixvox-cloud".to_string(),
         model,
@@ -659,6 +705,7 @@ fn is_allowed_host_dot_env_key(key: &str) -> bool {
             | "FIXVOX_API_BASE_URL"
             | "PROXY_BASE_URL"
             | "FIXVOX_DEVICE_ID"
+            | "FIXVOX_INSTALL_ID"
             | "FIXVOX_STT_MODEL"
             | "FIXVOX_STT_LANGUAGE"
     )
@@ -794,6 +841,137 @@ async fn transcribe_groq_audio(
         request_id,
         fixvox_metadata: None,
     }
+}
+
+async fn preflight_fixvox_managed_transcription(
+    config: &ManagedHostRuntimeConfig,
+) -> Option<ProviderTranscriptionOutcome> {
+    let started_at = Instant::now();
+    let request = match fixvox_cloud::build_preflight_request(fixvox_cloud::PreflightInput {
+        install_id: config.install_id.clone(),
+        device_id: config.device_id.clone(),
+        usage_kind: "transcription".to_string(),
+        estimated_audio_seconds: None,
+    }) {
+        Ok(request) => request,
+        Err(reason) => {
+            return Some(ProviderTranscriptionOutcome::ProviderError {
+                code: reason.code,
+                message: reason.message,
+                provider: Some(config.provider.clone()),
+                model: Some(config.model.clone()),
+                latency_ms: Some(elapsed_ms(started_at)),
+                request_id: None,
+                fixvox_metadata: None,
+            });
+        }
+    };
+    let body = match serde_json::to_value(request) {
+        Ok(body) => body,
+        Err(_) => {
+            return Some(ProviderTranscriptionOutcome::ProviderError {
+                code: "FIXVOX_PREFLIGHT_SERIALIZE_FAILED".to_string(),
+                message: "Fixvox managed preflight request could not be serialized.".to_string(),
+                provider: Some(config.provider.clone()),
+                model: Some(config.model.clone()),
+                latency_ms: Some(elapsed_ms(started_at)),
+                request_id: None,
+                fixvox_metadata: None,
+            });
+        }
+    };
+
+    let response = match reqwest::Client::new()
+        .post(fixvox_cloud::preflight_endpoint(&config.backend_base_url))
+        .header("X-Device-Id", config.device_id.clone())
+        .json(&body)
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            return Some(ProviderTranscriptionOutcome::ProviderError {
+                code: "FIXVOX_PREFLIGHT_REQUEST_FAILED".to_string(),
+                message: error.to_string(),
+                provider: Some(config.provider.clone()),
+                model: Some(config.model.clone()),
+                latency_ms: Some(elapsed_ms(started_at)),
+                request_id: None,
+                fixvox_metadata: None,
+            });
+        }
+    };
+
+    let latency_ms = elapsed_ms(started_at);
+    let status = response.status();
+    let status_text = status
+        .canonical_reason()
+        .unwrap_or("preflight error")
+        .to_string();
+    let response_body = match response.text().await {
+        Ok(body) => body,
+        Err(error) => {
+            return Some(ProviderTranscriptionOutcome::ProviderError {
+                code: "FIXVOX_PREFLIGHT_RESPONSE_READ_FAILED".to_string(),
+                message: error.to_string(),
+                provider: Some(config.provider.clone()),
+                model: Some(config.model.clone()),
+                latency_ms: Some(latency_ms),
+                request_id: None,
+                fixvox_metadata: None,
+            });
+        }
+    };
+
+    let decision = match serde_json::from_str::<serde_json::Value>(&response_body)
+        .ok()
+        .and_then(|value| fixvox_cloud::parse_preflight_decision(value).ok())
+    {
+        Some(decision) => decision,
+        None => {
+            return Some(ProviderTranscriptionOutcome::ProviderError {
+                code: "FIXVOX_PREFLIGHT_RESPONSE_PARSE_FAILED".to_string(),
+                message: "Fixvox managed preflight response did not match the expected contract."
+                    .to_string(),
+                provider: Some(config.provider.clone()),
+                model: Some(config.model.clone()),
+                latency_ms: Some(latency_ms),
+                request_id: None,
+                fixvox_metadata: None,
+            });
+        }
+    };
+
+    if !status.is_success() {
+        return Some(ProviderTranscriptionOutcome::ProviderError {
+            code: format!("FIXVOX_PREFLIGHT_HTTP_{}", status.as_u16()),
+            message: format!(
+                "Fixvox managed preflight returned HTTP {} {}.",
+                status.as_u16(),
+                status_text
+            ),
+            provider: Some(config.provider.clone()),
+            model: Some(config.model.clone()),
+            latency_ms: Some(latency_ms),
+            request_id: decision.request_id,
+            fixvox_metadata: None,
+        });
+    }
+
+    if !decision.ok || !decision.allowed {
+        return Some(ProviderTranscriptionOutcome::ProviderError {
+            code: fixvox_cloud::preflight_denial_error_code(&decision),
+            message: "Fixvox managed preflight denied transcription before provider execution."
+                .to_string(),
+            provider: Some(config.provider.clone()),
+            model: Some(config.model.clone()),
+            latency_ms: Some(latency_ms),
+            request_id: decision.request_id,
+            fixvox_metadata: None,
+        });
+    }
+
+    None
 }
 
 async fn transcribe_fixvox_managed_audio(
@@ -1537,6 +1715,43 @@ mod tests {
         assert_eq!(readiness.provider.as_deref(), Some("fixvox-cloud"));
         assert_eq!(readiness.model.as_deref(), Some("whisper-large-v3"));
         assert!(readiness.reason.is_none());
+    }
+
+    #[test]
+    fn managed_runtime_requires_install_id_for_preflight_without_direct_groq_fallback() {
+        let request = test_request("managed-preflight-config");
+        let denied = read_managed_runtime_config(
+            &|key| match key {
+                "GROQ_API_KEY" => Some("gsk_test_secret_must_not_leak".to_string()),
+                "FIXVOX_BACKEND_URL" => Some("https://auth-fixvox.jpsala.dev".to_string()),
+                "FIXVOX_DEVICE_ID" => Some("dev_test_1234567890abcdef".to_string()),
+                _ => None,
+            },
+            &request,
+        )
+        .expect_err("managed mode should fail closed before direct Groq fallback");
+
+        assert_eq!(denied.code, "FIXVOX_INSTALL_ID_MISSING");
+        assert!(!denied.message.to_ascii_lowercase().contains("groq"));
+    }
+
+    #[test]
+    fn managed_runtime_config_resolves_install_and_device_for_preflight() {
+        let request = test_request("managed-preflight-config-ready");
+        let config = read_managed_runtime_config(
+            &|key| match key {
+                "FIXVOX_BACKEND_URL" => Some("https://auth-fixvox.jpsala.dev".to_string()),
+                "FIXVOX_INSTALL_ID" => Some("install_test_123".to_string()),
+                "FIXVOX_DEVICE_ID" => Some("dev_test_1234567890abcdef".to_string()),
+                _ => None,
+            },
+            &request,
+        )
+        .expect("managed runtime config should resolve preflight identity");
+
+        assert_eq!(config.install_id, "install_test_123");
+        assert_eq!(config.device_id, "dev_test_1234567890abcdef");
+        assert_eq!(config.provider, "fixvox-cloud");
     }
 
     #[test]
