@@ -36,7 +36,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `006-host-runtime-transcription-boundary` | complete: TS host boundary, provider-free UI guardrails, Tauri invoke client and safe unavailable Tauri stub | `specs/006-host-runtime-transcription-boundary/tasks.md` |
 | `007-usable-dictation-loop` | complete and committed (`78438e7`): Rust host Groq multipart path implemented behind explicit gate; provider smoke passed with redacted evidence | `specs/007-usable-dictation-loop/tasks.md` |
 | `008-real-provider-ui-gate` | complete and committed (`d0cfac7` + fixes): UI separates `Transcribe with provider` from provider-free `Check host boundary`; manual Tauri real-provider validation passed | `specs/008-real-provider-ui-gate/tasks.md` |
-| `009-fixvox-cloud-runtime-port` | Phase 4 complete through T016; managed STT now preflights and fails closed without direct Groq fallback | `specs/009-fixvox-cloud-runtime-port/plan.md` |
+| `009-fixvox-cloud-runtime-port` | Phase 5 complete through T019; readiness UI now separates managed cloud/device/backend states from direct Groq BYOK; real smoke T020 remains approval-gated | `specs/009-fixvox-cloud-runtime-port/plan.md` |
 
 ## Tracks Activas
 
@@ -89,14 +89,14 @@ bun scripts/check-skills-junction.ts
 
 ## Proximo Paso Probable
 
-Continuar despues de `009` T014-T016:
+Continuar despues de `009` T017-T019:
 
 1. Estado funcional local: app Tauri captura WAV real, readiness lee `.env` root/src-tauri, `Transcribe with provider` usa Fixvox managed cloud cuando hay install+device id (`X-Device-Id`, sin bearer vendor); antes del STT llama `/v2/execution/preflight`.
 2. Decision vigente: direct Groq queda como BYOK/dev fallback explicito (`provider: groq/direct/byok`), no fallback silencioso si managed/preflight no esta listo; managed+device cuenta como configured aunque no haya `GROQ_API_KEY` local.
-3. Hecho ultimo Small Batch: `009` T014-T016 agrega request/cliente preflight con seam de tests sin red, mapea denials `device_not_registered/auth_required/policy_blocked/quota_exceeded/service_unavailable`, falla cerrado antes de leer audio/STT, y exige install id para preflight managed.
-4. Proximo Small Batch recomendado: `009` T017-T018, actualizar copy/tests de readiness UI para managed cloud vs direct BYOK sin ejecutar smoke real.
+3. Hecho ultimo Small Batch: `009` T017-T019 actualiza copy de readiness para `Managed cloud ready`, `Device registration needed`, `Backend unavailable` y `Direct Groq BYOK`, agrega tests UI/readiness focalizados, y corre checks safe sin smoke real.
+4. Proximo Small Batch recomendado: `009` T020 solo con aprobacion explicita de JP para ejecutar un smoke real managed cloud con artifact WAV ignorado y evidencia redactada; si no, cerrar/archivar spec o abrir follow-up `T021+`.
 5. Estado repo: cerrar con commit atomico local; no push.
-6. Checks recientes: `cd src-tauri && cargo test --test fixvox_cloud_contract -- --nocapture` OK (14 passed); `cd src-tauri && cargo test --lib --no-run` OK; `cd src-tauri && cargo check` OK; `npm run test:pipeline` OK (137 tests); `npm run build` OK.
+6. Checks recientes: `cd src-tauri && cargo test --test fixvox_cloud_contract -- --nocapture` OK (14 passed); `cd src-tauri && cargo test --lib --no-run` OK; `cd src-tauri && cargo check` OK; `npm run test:pipeline` OK (138 tests); `npm run build` OK.
 
 ## Promocion De Memoria
 

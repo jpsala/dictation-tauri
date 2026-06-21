@@ -676,6 +676,10 @@ export function App() {
             <dd>{hostReadinessUi.managedDeviceLabel}</dd>
           </div>
           <div>
+            <dt>Direct BYOK</dt>
+            <dd>{hostReadinessUi.directByokLabel}</dd>
+          </div>
+          <div>
             <dt>Delivery</dt>
             <dd>{deliveryEvidence?.status ?? "Not available"}</dd>
           </div>

@@ -14,6 +14,9 @@ describe("host readiness UI labels", () => {
       model: "whisper-large-v3",
       artifactRoot: "artifacts/microphone-capture",
       supportsRealProviderCall: true,
+      directByokConfigured: true,
+      managedCloudConfigured: false,
+      managedDeviceRegistered: false,
       reason: {
         code: "IGNORED_SECRET_CONTEXT",
         message: `configured with ${secret}`,
@@ -23,14 +26,14 @@ describe("host readiness UI labels", () => {
 
     expect(ui).toEqual({
       status: "configured",
-      statusLabel: "Ready",
+      statusLabel: "Direct BYOK ready",
       providerLabel: "groq",
       modelLabel: "whisper-large-v3",
-      detail: "Host transcription is configured for groq / whisper-large-v3.",
+      detail: "Direct Groq BYOK is ready as an explicit fallback. Fixvox managed cloud is not ready.",
       supportsRealProviderCallLabel: "Real provider gated",
       managedCloudLabel: "Not configured",
-      managedDeviceLabel: "Registration needed",
-      directByokLabel: "Not configured",
+      managedDeviceLabel: "Not available",
+      directByokLabel: "Direct Groq BYOK ready",
     });
     expect(JSON.stringify(ui)).not.toContain(secret);
     expect(JSON.stringify(ui)).not.toContain("GROQ_API_KEY");
@@ -39,11 +42,11 @@ describe("host readiness UI labels", () => {
   it("labels managed cloud ready when backend and device are registered", () => {
     const ui = describeHostReadiness({
       configured: true,
-      provider: "groq",
+      provider: "fixvox-cloud",
       model: "whisper-large-v3",
       artifactRoot: "artifacts/microphone-capture",
       supportsRealProviderCall: true,
-      directByokConfigured: true,
+      directByokConfigured: false,
       managedCloudConfigured: true,
       managedDeviceRegistered: true,
       managedBackendBaseUrl: "https://auth-fixvox.jpsala.dev",
@@ -52,10 +55,14 @@ describe("host readiness UI labels", () => {
     expect(ui).toMatchObject({
       status: "configured",
       statusLabel: "Managed cloud ready",
-      managedCloudLabel: "https://auth-fixvox.jpsala.dev",
+      providerLabel: "Fixvox managed cloud",
+      managedCloudLabel: "Ready via https://auth-fixvox.jpsala.dev",
       managedDeviceLabel: "Registered",
-      directByokLabel: "Configured",
+      directByokLabel: "Direct Groq BYOK not configured",
     });
+    expect(ui.detail).toBe(
+      "Fixvox managed cloud is ready for gated transcription. Direct Groq BYOK is not configured and will not be used silently.",
+    );
   });
 
   it("labels managed cloud device registration needed separately from direct BYOK", () => {
@@ -77,10 +84,45 @@ describe("host readiness UI labels", () => {
     expect(ui).toMatchObject({
       status: "device-needed",
       statusLabel: "Device registration needed",
-      managedCloudLabel: "https://auth-fixvox.jpsala.dev",
+      managedCloudLabel: "Backend configured: https://auth-fixvox.jpsala.dev",
       managedDeviceLabel: "Registration needed",
-      directByokLabel: "Not configured",
+      directByokLabel: "Direct Groq BYOK not configured",
     });
+    expect(ui.detail).toBe(
+      "Fixvox managed cloud backend is configured, but this device is not registered yet. Direct Groq BYOK is not configured.",
+    );
+  });
+
+  it("labels managed cloud backend unavailable separately from direct BYOK", () => {
+    const ui = describeHostReadiness({
+      configured: false,
+      artifactRoot: "artifacts/microphone-capture",
+      supportsRealProviderCall: false,
+      directByokConfigured: false,
+      managedCloudConfigured: false,
+      managedDeviceRegistered: false,
+      managedCloudReason: {
+        code: "FIXVOX_BACKEND_UNAVAILABLE",
+        message: "Configured Fixvox backend is unavailable.",
+        redacted: true,
+      },
+      reason: {
+        code: "GROQ_API_KEY_MISSING",
+        message: "Groq STT provider is not configured.",
+        redacted: true,
+      },
+    });
+
+    expect(ui).toMatchObject({
+      status: "backend-unavailable",
+      statusLabel: "Backend unavailable",
+      managedCloudLabel: "Backend unavailable",
+      managedDeviceLabel: "Not available",
+      directByokLabel: "Direct Groq BYOK not configured",
+    });
+    expect(ui.detail).toBe(
+      "Fixvox managed cloud backend is unavailable or misconfigured. Direct Groq BYOK is not configured.",
+    );
   });
 
   it("labels unavailable/setup-error readiness with redacted setup guidance", () => {
@@ -105,8 +147,8 @@ describe("host readiness UI labels", () => {
       modelLabel: "Not configured",
       supportsRealProviderCallLabel: "Provider calls disabled",
       managedCloudLabel: "Not configured",
-      managedDeviceLabel: "Registration needed",
-      directByokLabel: "Not configured",
+      managedDeviceLabel: "Not available",
+      directByokLabel: "Direct Groq BYOK not configured",
     });
     expect(ui.detail).toBe(
       "Groq STT provider is not configured. GROQ_API_KEY=[REDACTED]",

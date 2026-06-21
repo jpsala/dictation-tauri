@@ -34,9 +34,9 @@
 
 ## Phase 5: UI Gate And Manual Smoke
 
-- [ ] T017 Update readiness UI copy for managed cloud vs direct BYOK.
-- [ ] T018 Add focused UI tests for cloud-ready/device-needed/backend-unavailable states.
-- [ ] T019 Run default safe checks.
+- [x] T017 Update readiness UI copy for managed cloud vs direct BYOK.
+- [x] T018 Add focused UI tests for cloud-ready/device-needed/backend-unavailable states.
+- [x] T019 Run default safe checks.
 - [ ] T020 With JP approval, run one real managed cloud transcription smoke and record redacted evidence.
 
 ## Phase 6: Follow-up Candidates
