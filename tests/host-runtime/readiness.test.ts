@@ -67,6 +67,27 @@ describe("host runtime readiness", () => {
     expect(JSON.stringify(readiness)).not.toContain("Authorization");
   });
 
+  it("treats managed cloud with a device id as configured without direct BYOK", () => {
+    const readiness = createHostRuntimeReadiness({
+      FIXVOX_BACKEND_URL: " https://auth-fixvox.jpsala.dev/ ",
+      FIXVOX_DEVICE_ID: "dev_test_1234567890abcdef",
+      FIXVOX_STT_MODEL: "whisper-large-v3",
+    });
+
+    expect(readiness).toMatchObject({
+      configured: true,
+      provider: "fixvox-cloud",
+      model: "whisper-large-v3",
+      supportsRealProviderCall: true,
+      directByokConfigured: false,
+      managedCloudConfigured: true,
+      managedDeviceRegistered: true,
+      managedBackendBaseUrl: "https://auth-fixvox.jpsala.dev",
+    });
+    expect(readiness.reason).toBeUndefined();
+    expect(JSON.stringify(readiness)).not.toContain("Authorization");
+  });
+
   it("rejects stale managed cloud backend readiness while keeping direct BYOK explicit", () => {
     const readiness = createHostRuntimeReadiness({
       GROQ_API_KEY: secretKey,

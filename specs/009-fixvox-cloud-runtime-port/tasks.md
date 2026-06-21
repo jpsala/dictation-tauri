@@ -23,8 +23,8 @@
 
 - [x] T010 Implement proxied multipart STT request to `/v1/audio/transcriptions`.
 - [x] T011 Parse transcript body and Fixvox proxy headers.
-- [ ] T012 Write redacted transcript/report artifacts under allowed roots.
-- [ ] T013 Keep provider-free `Check host boundary` behavior unchanged.
+- [x] T012 Write redacted transcript/report artifacts under allowed roots.
+- [x] T013 Keep provider-free `Check host boundary` behavior unchanged.
 
 ## Phase 4: Preflight And Fail-Closed Behavior
 

@@ -53,6 +53,40 @@ pub struct RedactedHostRuntimeError {
     redacted: bool,
 }
 
+#[derive(Clone, Serialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RedactedFixvoxResponseMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fixvox_request_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider_request_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cost_usd: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pricing_source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    limit: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    remaining: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reset_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    usage_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proxy_parse_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proxy_usage_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proxy_upstream_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proxy_init_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proxy_total_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    server_timing: Option<String>,
+    redacted: bool,
+}
+
 #[allow(dead_code)]
 #[derive(Serialize, Debug, PartialEq, Eq)]
 #[serde(tag = "status", rename_all = "kebab-case")]
@@ -69,6 +103,8 @@ pub enum HostTranscriptionResponse {
         latency_ms: u64,
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fixvox_metadata: Option<RedactedFixvoxResponseMetadata>,
         redacted: bool,
     },
     #[serde(rename_all = "camelCase")]
@@ -98,6 +134,8 @@ pub enum HostTranscriptionResponse {
         latency_ms: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fixvox_metadata: Option<RedactedFixvoxResponseMetadata>,
         retryable: bool,
         redacted: bool,
     },
@@ -111,6 +149,8 @@ pub enum HostTranscriptionResponse {
         latency_ms: u64,
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fixvox_metadata: Option<RedactedFixvoxResponseMetadata>,
         retryable: bool,
         redacted: bool,
     },
@@ -148,6 +188,7 @@ enum ProviderTranscriptionOutcome {
         model: String,
         latency_ms: u64,
         request_id: Option<String>,
+        fixvox_metadata: Option<fixvox_cloud::FixvoxResponseMetadata>,
     },
     ProviderError {
         code: String,
@@ -156,6 +197,7 @@ enum ProviderTranscriptionOutcome {
         model: Option<String>,
         latency_ms: Option<u64>,
         request_id: Option<String>,
+        fixvox_metadata: Option<fixvox_cloud::FixvoxResponseMetadata>,
     },
     Cancelled,
 }
@@ -207,19 +249,40 @@ fn create_runtime_transcription_readiness(
             managed_cloud_reason: managed.reason,
             reason: None,
         },
-        Err(reason) => HostRuntimeReadiness {
-            configured: false,
-            provider: None,
-            model: None,
-            artifact_root: ARTIFACT_ROOT,
-            supports_real_provider_call: false,
-            direct_byok_configured: false,
-            managed_cloud_configured: managed.configured,
-            managed_device_registered: managed.device_registered,
-            managed_backend_base_url: managed.backend_base_url,
-            managed_cloud_reason: managed.reason,
-            reason: Some(reason),
-        },
+        Err(reason) => {
+            if managed.configured && managed.device_registered {
+                return HostRuntimeReadiness {
+                    configured: true,
+                    provider: Some("fixvox-cloud".to_string()),
+                    model: Some(
+                        first_env_value(env_lookup, &["FIXVOX_STT_MODEL"])
+                            .unwrap_or_else(|| DEFAULT_MODEL.to_string()),
+                    ),
+                    artifact_root: ARTIFACT_ROOT,
+                    supports_real_provider_call: true,
+                    direct_byok_configured: false,
+                    managed_cloud_configured: managed.configured,
+                    managed_device_registered: managed.device_registered,
+                    managed_backend_base_url: managed.backend_base_url,
+                    managed_cloud_reason: managed.reason,
+                    reason: None,
+                };
+            }
+
+            HostRuntimeReadiness {
+                configured: false,
+                provider: None,
+                model: None,
+                artifact_root: ARTIFACT_ROOT,
+                supports_real_provider_call: false,
+                direct_byok_configured: false,
+                managed_cloud_configured: managed.configured,
+                managed_device_registered: managed.device_registered,
+                managed_backend_base_url: managed.backend_base_url,
+                managed_cloud_reason: managed.reason,
+                reason: Some(reason),
+            }
+        }
     }
 }
 
@@ -465,6 +528,7 @@ async fn transcribe_captured_audio_with_provider_call(
             model: response_model(&response),
             latency_ms: response_latency_ms(&response),
             request_id: response_request_id(&response),
+            fixvox_metadata: response_fixvox_metadata(&response).cloned(),
             retryable: true,
             redacted: true,
         };
@@ -651,6 +715,7 @@ async fn transcribe_groq_audio(
                 model: Some(model),
                 latency_ms: Some(elapsed_ms(started_at)),
                 request_id: None,
+                fixvox_metadata: None,
             };
         }
     };
@@ -685,6 +750,7 @@ async fn transcribe_groq_audio(
             model: Some(model),
             latency_ms: Some(latency_ms),
             request_id,
+            fixvox_metadata: None,
         };
     }
 
@@ -699,6 +765,7 @@ async fn transcribe_groq_audio(
                     model: Some(model),
                     latency_ms: Some(latency_ms),
                     request_id,
+                    fixvox_metadata: None,
                 };
             }
         }
@@ -713,6 +780,7 @@ async fn transcribe_groq_audio(
                     model: Some(model),
                     latency_ms: Some(latency_ms),
                     request_id,
+                    fixvox_metadata: None,
                 };
             }
         }
@@ -724,6 +792,7 @@ async fn transcribe_groq_audio(
         model,
         latency_ms,
         request_id,
+        fixvox_metadata: None,
     }
 }
 
@@ -754,6 +823,7 @@ async fn transcribe_fixvox_managed_audio(
                 model: Some(config.model),
                 latency_ms: Some(elapsed_ms(started_at)),
                 request_id: None,
+                fixvox_metadata: None,
             };
         }
     };
@@ -784,6 +854,7 @@ async fn transcribe_fixvox_managed_audio(
                 model: Some(config.model),
                 latency_ms: Some(elapsed_ms(started_at)),
                 request_id: None,
+                fixvox_metadata: None,
             };
         }
     };
@@ -832,6 +903,7 @@ async fn transcribe_fixvox_managed_audio(
             model: Some(config.model),
             latency_ms: Some(latency_ms),
             request_id,
+            fixvox_metadata: Some(metadata),
         };
     }
 
@@ -845,6 +917,7 @@ async fn transcribe_fixvox_managed_audio(
                 model: Some(config.model),
                 latency_ms: Some(latency_ms),
                 request_id,
+                fixvox_metadata: Some(metadata),
             };
         }
     };
@@ -860,6 +933,7 @@ async fn transcribe_fixvox_managed_audio(
                     model: Some(config.model),
                     latency_ms: Some(latency_ms),
                     request_id,
+                    fixvox_metadata: Some(metadata),
                 };
             }
         }
@@ -876,6 +950,7 @@ async fn transcribe_fixvox_managed_audio(
         model: parsed.model.unwrap_or(config.model),
         latency_ms,
         request_id,
+        fixvox_metadata: Some(metadata),
     }
 }
 
@@ -890,8 +965,12 @@ fn map_provider_outcome_to_host_response(
             model,
             latency_ms,
             request_id,
+            fixvox_metadata,
         } => {
             let normalized_text = text.trim().to_string();
+            let fixvox_metadata = fixvox_metadata
+                .as_ref()
+                .map(redact_fixvox_response_metadata);
             if !is_usable_transcript(&normalized_text) {
                 return HostTranscriptionResponse::Empty {
                     error: error("EMPTY_TRANSCRIPT", "Transcription returned no usable text."),
@@ -900,6 +979,7 @@ fn map_provider_outcome_to_host_response(
                     model,
                     latency_ms,
                     request_id: redact_request_id(request_id),
+                    fixvox_metadata,
                     retryable: true,
                     redacted: true,
                 };
@@ -913,6 +993,7 @@ fn map_provider_outcome_to_host_response(
                 model: redact_host_text(&model),
                 latency_ms,
                 request_id: redact_request_id(request_id),
+                fixvox_metadata,
                 redacted: true,
             }
         }
@@ -923,12 +1004,16 @@ fn map_provider_outcome_to_host_response(
             model,
             latency_ms,
             request_id,
+            fixvox_metadata,
         } => HostTranscriptionResponse::ProviderError {
             error: error(&code, &message),
             provider: provider.map(|value| redact_host_text(&value)),
             model: model.map(|value| redact_host_text(&value)),
             latency_ms,
             request_id: redact_request_id(request_id),
+            fixvox_metadata: fixvox_metadata
+                .as_ref()
+                .map(redact_fixvox_response_metadata),
             retryable: true,
             redacted: true,
         },
@@ -965,13 +1050,80 @@ fn create_redacted_report(
         _ => 0,
     };
 
-    format!(
-        "{{\"runId\":\"{}\",\"status\":\"{}\",\"audioPath\":\"{}\",\"transcriptLength\":{},\"rawProviderPayloadStored\":false,\"redacted\":true}}",
-        redact_host_text(&request.run_id),
-        status,
-        redact_host_text(&request.audio_path),
-        transcript_length,
-    )
+    let mut report = serde_json::json!({
+        "runId": redact_host_text(&request.run_id),
+        "status": status,
+        "audioPath": redact_host_text(&request.audio_path),
+        "transcriptLength": transcript_length,
+        "rawProviderPayloadStored": false,
+        "redacted": true,
+    });
+
+    if let Some(metadata) = response_fixvox_metadata(response) {
+        report["fixvoxMetadata"] =
+            serde_json::to_value(metadata).unwrap_or(serde_json::Value::Null);
+    }
+
+    serde_json::to_string(&report).unwrap_or_else(|_| {
+        "{\"status\":\"report-error\",\"rawProviderPayloadStored\":false,\"redacted\":true}"
+            .to_string()
+    })
+}
+
+fn response_fixvox_metadata(
+    response: &HostTranscriptionResponse,
+) -> Option<&RedactedFixvoxResponseMetadata> {
+    match response {
+        HostTranscriptionResponse::Ok {
+            fixvox_metadata, ..
+        }
+        | HostTranscriptionResponse::ProviderError {
+            fixvox_metadata, ..
+        }
+        | HostTranscriptionResponse::Empty {
+            fixvox_metadata, ..
+        } => fixvox_metadata.as_ref(),
+        HostTranscriptionResponse::MissingAudio { .. }
+        | HostTranscriptionResponse::SetupError { .. }
+        | HostTranscriptionResponse::Cancelled { .. } => None,
+    }
+}
+
+fn redact_fixvox_response_metadata(
+    metadata: &fixvox_cloud::FixvoxResponseMetadata,
+) -> RedactedFixvoxResponseMetadata {
+    RedactedFixvoxResponseMetadata {
+        fixvox_request_id: redact_request_id(metadata.fixvox_request_id.clone()),
+        provider_request_id: redact_request_id(metadata.provider_request_id.clone()),
+        cost_usd: metadata
+            .cost_usd
+            .clone()
+            .map(|value| redact_host_text(&value)),
+        pricing_source: metadata
+            .pricing_source
+            .clone()
+            .map(|value| redact_host_text(&value)),
+        limit: metadata.limit,
+        remaining: metadata.remaining,
+        reset_at: metadata
+            .reset_at
+            .clone()
+            .map(|value| redact_host_text(&value)),
+        usage_key: metadata
+            .usage_key
+            .as_ref()
+            .map(|_| "redacted-usage-key".to_string()),
+        proxy_parse_ms: metadata.proxy_parse_ms,
+        proxy_usage_ms: metadata.proxy_usage_ms,
+        proxy_upstream_ms: metadata.proxy_upstream_ms,
+        proxy_init_ms: metadata.proxy_init_ms,
+        proxy_total_ms: metadata.proxy_total_ms,
+        server_timing: metadata
+            .server_timing
+            .clone()
+            .map(|value| redact_host_text(&value)),
+        redacted: true,
+    }
 }
 
 fn is_usable_transcript(text: &str) -> bool {
@@ -1369,6 +1521,25 @@ mod tests {
     }
 
     #[test]
+    fn readiness_allows_managed_cloud_without_direct_byok_secret() {
+        let readiness = create_runtime_transcription_readiness(&|key| match key {
+            "FIXVOX_BACKEND_URL" => Some(" https://auth-fixvox.jpsala.dev/ ".to_string()),
+            "FIXVOX_DEVICE_ID" => Some("dev_test_1234567890abcdef".to_string()),
+            "FIXVOX_STT_MODEL" => Some("whisper-large-v3".to_string()),
+            _ => None,
+        });
+
+        assert!(readiness.configured);
+        assert!(readiness.supports_real_provider_call);
+        assert!(!readiness.direct_byok_configured);
+        assert!(readiness.managed_cloud_configured);
+        assert!(readiness.managed_device_registered);
+        assert_eq!(readiness.provider.as_deref(), Some("fixvox-cloud"));
+        assert_eq!(readiness.model.as_deref(), Some("whisper-large-v3"));
+        assert!(readiness.reason.is_none());
+    }
+
+    #[test]
     fn resolves_artifact_files_from_repo_root_or_tauri_cwd() {
         assert_eq!(
             artifact_file_path_candidates("artifacts/microphone-capture/audio/capture.wav"),
@@ -1464,6 +1635,7 @@ mod tests {
                 model: "whisper-large-v3".to_string(),
                 latency_ms: 7,
                 request_id: None,
+                fixvox_metadata: None,
             },
             &request,
         );
@@ -1481,6 +1653,7 @@ mod tests {
                 model: Some("whisper-large-v3".to_string()),
                 latency_ms: Some(7),
                 request_id: Some("Bearer gsk_request_secret".to_string()),
+                fixvox_metadata: None,
             },
             &request,
         );
@@ -1503,10 +1676,17 @@ mod tests {
         let response = map_provider_outcome_to_host_response(
             ProviderTranscriptionOutcome::Ok {
                 text: " host transcript ".to_string(),
-                provider: "groq".to_string(),
+                provider: "fixvox-cloud".to_string(),
                 model: "whisper-large-v3".to_string(),
                 latency_ms: 42,
                 request_id: Some("req_safe_123".to_string()),
+                fixvox_metadata: Some(fixvox_cloud::FixvoxResponseMetadata {
+                    fixvox_request_id: Some("fx_req_safe_123".to_string()),
+                    cost_usd: Some("0.000042".to_string()),
+                    usage_key: Some("transcription:dev_test_1234567890abcdef".to_string()),
+                    proxy_total_ms: Some(140),
+                    ..Default::default()
+                }),
             },
             &request,
         );
@@ -1536,6 +1716,9 @@ mod tests {
         let report = create_redacted_report(&response, &request);
         assert!(report.contains("\"rawProviderPayloadStored\":false"));
         assert!(report.contains("\"transcriptLength\":15"));
+        assert!(report.contains("\"fixvoxMetadata\""));
+        assert!(report.contains("redacted-usage-key"));
+        assert!(!report.contains("dev_test_1234567890abcdef"));
         assert!(!report.contains("host transcript"));
     }
 

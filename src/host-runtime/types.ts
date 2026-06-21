@@ -32,6 +32,24 @@ export type HostTranscriptionRequest = {
   allowProviderCall: boolean;
 };
 
+export type RedactedFixvoxResponseMetadata = {
+  fixvoxRequestId?: string;
+  providerRequestId?: string;
+  costUsd?: string;
+  pricingSource?: string;
+  limit?: number;
+  remaining?: number;
+  resetAt?: string;
+  usageKey?: string;
+  proxyParseMs?: number;
+  proxyUsageMs?: number;
+  proxyUpstreamMs?: number;
+  proxyInitMs?: number;
+  proxyTotalMs?: number;
+  serverTiming?: string;
+  redacted: true;
+};
+
 export type HostTranscriptionResponse =
   | {
       status: "ok";
@@ -42,6 +60,7 @@ export type HostTranscriptionResponse =
       model: string;
       latencyMs: number;
       requestId?: string;
+      fixvoxMetadata?: RedactedFixvoxResponseMetadata;
       redacted: true;
     }
   | {
@@ -58,6 +77,7 @@ export type HostTranscriptionResponse =
       model?: string;
       latencyMs?: number;
       requestId?: string;
+      fixvoxMetadata?: RedactedFixvoxResponseMetadata;
       retryable: boolean;
       redacted: true;
     };
@@ -80,4 +100,6 @@ export type HostRuntimeEnv = {
   FIXVOX_API_BASE_URL?: string;
   PROXY_BASE_URL?: string;
   FIXVOX_DEVICE_ID?: string;
+  FIXVOX_STT_MODEL?: string;
+  FIXVOX_STT_LANGUAGE?: string;
 };

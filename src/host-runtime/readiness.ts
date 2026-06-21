@@ -36,6 +36,7 @@ export function createHostRuntimeReadiness(
     defaultProvider) as HostRuntimeProvider;
   const model = firstNonBlank(
     options.model,
+    env.FIXVOX_STT_MODEL,
     env.GROQ_STT_MODEL,
     env["GROQ-STT-MODEL"],
     defaultModel,
@@ -44,6 +45,21 @@ export function createHostRuntimeReadiness(
   const managedCloud = createManagedCloudReadiness(options, env);
 
   if (!apiKey) {
+    if (managedCloud.configured && managedCloud.deviceRegistered) {
+      return {
+        configured: true,
+        provider: "fixvox-cloud",
+        model,
+        artifactRoot: hostRuntimeArtifactRoot,
+        supportsRealProviderCall: options.supportsRealProviderCall ?? true,
+        directByokConfigured: false,
+        managedCloudConfigured: true,
+        managedDeviceRegistered: true,
+        managedBackendBaseUrl: managedCloud.backendBaseUrl,
+        ...(managedCloud.reason ? { managedCloudReason: managedCloud.reason } : {}),
+      };
+    }
+
     return {
       configured: false,
       artifactRoot: hostRuntimeArtifactRoot,
