@@ -2,7 +2,7 @@
 
 Estado vivo del proyecto. Mantener corto.
 
-Ultima actualizacion manual: 2026-06-21 (AOS guardar sesion).
+Ultima actualizacion manual: 2026-06-22 (AOS guardar sesion).
 
 ## Regla
 
@@ -96,8 +96,8 @@ Continuar con `010`:
 2. Primer Small Batch recomendado: ejecutar `010` Phase 1-2 RED/foundation (`tests/desktop-control/*`, `src/desktop-control/types.ts`, `src/delivery/types.ts`) sin provider calls ni desktop side effects reales.
 3. Decision vigente: direct Groq queda como BYOK/dev fallback explicito (`provider: groq/direct/byok`), no fallback silencioso si managed/preflight no esta listo; managed+device cuenta como configured aunque no haya `GROQ_API_KEY` local.
 4. Guardrail `010`: fake control events antes de hotkey real; review/manual copy antes de paste automation; nunca `paste_observed` sin observador verificado.
-5. Estado repo: cerrar con commit atomico local; no push.
-6. Checks recientes pre-010: `bun scripts/fixvox-managed-smoke.ts --allow-provider-call --postprocess` OK; `npm run build` OK; `npm run test:pipeline` OK (138 tests); `cd src-tauri && cargo check` OK; `cd src-tauri && cargo test --test fixvox_cloud_contract --no-run` OK. Rust test executables currently fail to launch in this shell with `STATUS_ENTRYPOINT_NOT_FOUND`, so real smoke used the Bun gated script.
+5. Estado repo: limpio; `main` esta ahead de `origin/main` por 11 commits; ultimo commit local `eead154 docs: add desktop dictation control spec`; no push.
+6. Checks recientes: `bun scripts/context-index.ts` OK; `bun scripts/agent-context-audit.ts` OK con 0 errores y warnings de tamano de contexto; pre-010 tambien estaban OK `bun scripts/fixvox-managed-smoke.ts --allow-provider-call --postprocess`, `npm run build`, `npm run test:pipeline` (138 tests), `cd src-tauri && cargo check`, `cd src-tauri && cargo test --test fixvox_cloud_contract --no-run`. Rust test executables currently fail to launch in this shell with `STATUS_ENTRYPOINT_NOT_FOUND`, so real smoke used the Bun gated script.
 
 ## Promocion De Memoria
 
