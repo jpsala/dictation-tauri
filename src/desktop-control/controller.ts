@@ -1,3 +1,8 @@
+import {
+  createReviewOnlyDeliveryGateway,
+  type DeliveryEvidence,
+  type DesktopDeliveryGateway,
+} from "../delivery";
 import type {
   DesktopControlEvent,
   DesktopDictationController as DesktopDictationControllerContract,
@@ -32,11 +37,13 @@ export type DesktopRuntimeResult = {
   model?: string;
   latencyMs?: number;
   requestId?: string;
+  summary?: unknown;
 };
 
 export type DesktopDictationControllerOptions = {
   capture: DesktopCaptureGateway;
   runtime: DesktopRuntimeGateway;
+  delivery?: DesktopDeliveryGateway;
   createSessionId?: () => string;
   now?: () => string;
 };
@@ -51,12 +58,14 @@ export class DesktopDictationController
   private cancelRequestedSessionIds = new Set<string>();
   private readonly capture: DesktopCaptureGateway;
   private readonly runtime: DesktopRuntimeGateway;
+  private readonly delivery: DesktopDeliveryGateway;
   private readonly createSessionId: () => string;
   private readonly now: () => string;
 
   constructor(options: DesktopDictationControllerOptions) {
     this.capture = options.capture;
     this.runtime = options.runtime;
+    this.delivery = options.delivery ?? createReviewOnlyDeliveryGateway();
     this.createSessionId = options.createSessionId ?? createDefaultSessionId;
     this.now = options.now ?? (() => new Date().toISOString());
   }
@@ -143,12 +152,7 @@ export class DesktopDictationController
         return this.finishCancelled(session, event, { capture, runtime });
       }
 
-      return this.patchCurrent(session.sessionId, {
-        capture,
-        runtime,
-        state: "reviewing",
-        recoveryAction: copyManuallyRecovery(),
-      });
+      return this.finishReviewing(session, event, { capture, runtime });
     } catch (error) {
       const current = this.requireCurrentSession();
       return this.finishError(session, "Dictation processing failed.", {
@@ -197,10 +201,9 @@ export class DesktopDictationController
         });
       }
 
-      return this.patchCurrent(session.sessionId, {
+      return this.finishReviewing(session, event, {
+        capture: session.capture,
         runtime,
-        state: "reviewing",
-        recoveryAction: copyManuallyRecovery(),
       });
     } catch (error) {
       return this.finishError(session, "Retry from clip failed.", {
@@ -209,6 +212,32 @@ export class DesktopDictationController
         recoveryAction: retryFromClipRecovery(),
       });
     }
+  }
+
+  private async finishReviewing(
+    session: DesktopDictationSession,
+    event: DesktopControlEvent,
+    input: {
+      capture?: unknown;
+      runtime: DesktopRuntimeResult;
+    },
+  ): Promise<DesktopDictationSession> {
+    const text = input.runtime.output ?? input.runtime.transcript;
+    const delivery = await this.delivery.deliver({
+      sessionId: session.sessionId,
+      text,
+      strategy: "review_only",
+      allowDesktopSideEffects: false,
+      targetSnapshot: event.targetSnapshot,
+    });
+
+    return this.patchCurrent(session.sessionId, {
+      capture: input.capture,
+      runtime: attachDeliveryEvidenceToRuntime(input.runtime, delivery),
+      delivery,
+      state: "reviewing",
+      recoveryAction: copyManuallyRecovery(),
+    });
   }
 
   private rejectControl(
@@ -333,6 +362,33 @@ export class DesktopDictationController
   private isCancellationRequested(sessionId: string): boolean {
     return this.cancelRequestedSessionIds.has(sessionId);
   }
+}
+
+function attachDeliveryEvidenceToRuntime(
+  runtime: DesktopRuntimeResult,
+  delivery: DeliveryEvidence,
+): DesktopRuntimeResult {
+  const runtimeWithSummary = runtime as DesktopRuntimeResult & {
+    summary?: {
+      deliveryEvidence?: unknown;
+    };
+  };
+
+  if (!runtimeWithSummary.summary) {
+    return runtime;
+  }
+
+  return {
+    ...runtime,
+    summary: {
+      ...runtimeWithSummary.summary,
+      deliveryEvidence: {
+        status: delivery.status,
+        output: delivery.output,
+        reason: delivery.reason ?? delivery.message,
+      },
+    },
+  };
 }
 
 export function copyManuallyRecovery(): DesktopRecoveryAction {

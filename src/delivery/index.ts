@@ -24,3 +24,13 @@ export type {
   DeliveryEvidenceDraft,
   DeliveryEvidenceOptions,
 } from "./evidence";
+export {
+  createCopyDeliveryGateway,
+  createPasteSendDeliveryGateway,
+  createReviewOnlyDeliveryGateway,
+} from "./adapters";
+export type {
+  CopyDeliveryGatewayOptions,
+  CopyDeliveryWriter,
+  PasteSendDeliveryGatewayOptions,
+} from "./adapters";

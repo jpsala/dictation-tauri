@@ -79,17 +79,17 @@
 
 ### Tests for User Story 2
 
-- [ ] T023 [P] [US2] Add review-only available delivery tests in `tests/desktop-control/delivery-evidence.test.ts`
-- [ ] T024 [P] [US2] Add fake copy success/failure tests in `tests/desktop-control/delivery-evidence.test.ts`
-- [ ] T025 [P] [US2] Add fake paste-send tests proving `paste_sent`/`uncertain`, never observed, in `tests/desktop-control/delivery-evidence.test.ts`
-- [ ] T026 [P] [US2] Add App copy fallback test proving transcript remains visible after delivery failure in `tests/desktop-control/app-delivery.test.tsx`
+- [x] T023 [P] [US2] Add review-only available delivery tests in `tests/desktop-control/delivery-evidence.test.ts`
+- [x] T024 [P] [US2] Add fake copy success/failure tests in `tests/desktop-control/delivery-evidence.test.ts`
+- [x] T025 [P] [US2] Add fake paste-send tests proving `paste_sent`/`uncertain`, never observed, in `tests/desktop-control/delivery-evidence.test.ts`
+- [x] T026 [P] [US2] Add App copy fallback test proving transcript remains visible after delivery failure in `tests/desktop-control/app-delivery.test.ts`
 
 ### Implementation for User Story 2
 
-- [ ] T027 [US2] Implement review-only and fake/copy delivery adapters in `src/delivery/`
-- [ ] T028 [US2] Move or wrap current `src/App.tsx` copy fallback semantics behind the delivery port where feasible
-- [ ] T029 [US2] Feed delivery evidence back into session/pipeline summary without claiming paste observation
-- [ ] T030 [US2] Verify delivery tests and existing runtime delivery tests pass
+- [x] T027 [US2] Implement review-only and fake/copy delivery adapters in `src/delivery/`
+- [x] T028 [US2] Move or wrap current `src/App.tsx` copy fallback semantics behind the delivery port where feasible
+- [x] T029 [US2] Feed delivery evidence back into session/pipeline summary without claiming paste observation
+- [x] T030 [US2] Verify delivery tests and existing runtime delivery tests pass
 
 **Checkpoint**: US2 is complete when text delivery is recoverable, tested, and never overclaims evidence.
 

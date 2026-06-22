@@ -145,6 +145,11 @@ describe("DesktopDictationController US1 session lifecycle", () => {
         output: "fake transcript",
         provider: "fake-host-runtime",
       },
+      delivery: {
+        status: "available",
+        output: "fake transcript",
+        strategy: "review_only",
+      },
       recoveryAction: {
         kind: "copy_manually",
         label: "Copy transcript manually",
@@ -157,6 +162,48 @@ describe("DesktopDictationController US1 session lifecycle", () => {
       capture: captureArtifact,
       event: expect.objectContaining({ action: "stop" }),
     });
+  });
+
+  it("feeds review-only delivery evidence into a runtime summary without paste observation", async () => {
+    const controller = createController({
+      runtime: {
+        transcribe: vi.fn(async () => ({
+          transcript: "summary transcript",
+          summary: {
+            terminalState: "done",
+            deliveryEvidence: {
+              status: "failed",
+              output: "stale delivery",
+              reason: "should be replaced",
+            },
+          },
+        })),
+      },
+    });
+
+    await controller.handleControl(createControlEvent({ action: "start" }));
+    const reviewed = await controller.handleControl(
+      createControlEvent({ action: "stop", id: "stop-summary-delivery" }),
+    );
+
+    expect(reviewed).toMatchObject({
+      state: "reviewing",
+      delivery: {
+        status: "available",
+        output: "summary transcript",
+        strategy: "review_only",
+      },
+      runtime: {
+        summary: {
+          deliveryEvidence: {
+            status: "available",
+            output: "summary transcript",
+            reason: "Transcript is available for review and manual copy.",
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(reviewed)).not.toContain("paste_observed");
   });
 
   it("rejects overlapping starts without replacing the active session", async () => {

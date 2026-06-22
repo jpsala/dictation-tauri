@@ -5,6 +5,11 @@ import {
   deriveDeliveryEvidence,
   isPasteObservedEvidence,
 } from "../../src/delivery/evidence";
+import {
+  createCopyDeliveryGateway,
+  createPasteSendDeliveryGateway,
+  createReviewOnlyDeliveryGateway,
+} from "../../src/delivery/adapters";
 import { createDeliveryRequest } from "./desktop-control-fixtures";
 
 describe("desktop delivery evidence foundation", () => {
@@ -93,5 +98,79 @@ describe("desktop delivery evidence foundation", () => {
         message: "unverified",
       }),
     ).toThrow("verified desktop observer");
+  });
+
+  it("delivers review-only evidence as available without a desktop handoff", async () => {
+    const gateway = createReviewOnlyDeliveryGateway();
+
+    await expect(
+      gateway.deliver(
+        createDeliveryRequest({
+          strategy: "copy",
+          allowDesktopSideEffects: true,
+        }),
+      ),
+    ).resolves.toMatchObject({
+      status: "available",
+      output: "desktop control transcript",
+      strategy: "review_only",
+      message: "Transcript is available for review and manual copy.",
+    });
+  });
+
+  it("records fake copy success and failure without hiding the transcript", async () => {
+    const copied = createCopyDeliveryGateway({
+      copyText: async () => undefined,
+      successReason: "Fake clipboard accepted the text.",
+    });
+    const failed = createCopyDeliveryGateway({
+      copyText: async () => {
+        throw new Error("Fake clipboard rejected the text.");
+      },
+    });
+
+    await expect(
+      copied.deliver(createDeliveryRequest({ strategy: "copy", allowDesktopSideEffects: true })),
+    ).resolves.toMatchObject({
+      status: "copied",
+      output: "desktop control transcript",
+      strategy: "copy",
+      reason: "Fake clipboard accepted the text.",
+    });
+
+    await expect(
+      failed.deliver(createDeliveryRequest({ strategy: "copy", allowDesktopSideEffects: true })),
+    ).resolves.toMatchObject({
+      status: "failed",
+      output: "desktop control transcript",
+      strategy: "copy",
+      reason: "Fake clipboard rejected the text.",
+      message: "Delivery failed; transcript remains available for review.",
+    });
+  });
+
+  it("records fake paste-send as sent or uncertain, never observed", async () => {
+    const gateway = createPasteSendDeliveryGateway({
+      reason: "A fake paste command was sent without observation.",
+    });
+
+    const sent = await gateway.deliver(
+      createDeliveryRequest({ strategy: "paste_send", allowDesktopSideEffects: true }),
+    );
+    const blocked = await gateway.deliver(
+      createDeliveryRequest({ strategy: "paste_send", allowDesktopSideEffects: false }),
+    );
+
+    expect(sent).toMatchObject({
+      status: "paste_sent",
+      strategy: "paste_send",
+      reason: "A fake paste command was sent without observation.",
+    });
+    expect(blocked).toMatchObject({
+      status: "uncertain",
+      strategy: "paste_send",
+      reason: "A fake paste command was sent without observation.",
+    });
+    expect(JSON.stringify([sent, blocked])).not.toContain("paste_observed");
   });
 });

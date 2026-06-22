@@ -12,6 +12,10 @@ import {
   getAppSessionSummary,
 } from "./desktop-control/app-session";
 import { DesktopDictationController } from "./desktop-control/controller";
+import {
+  createCopyDeliveryGateway,
+  type DeliveryEvidence as DesktopDeliveryEvidence,
+} from "./delivery";
 import { createHostClientTranscriptionAdapter } from "./host-runtime/pipeline-adapter";
 import {
   describeHostReadiness,
@@ -27,7 +31,7 @@ import {
 import { createCapturedAudioPipelineRequest } from "./pipeline/ports";
 import { PipelineService } from "./pipeline/service";
 import type {
-  DeliveryEvidence,
+  DeliveryEvidence as PipelineDeliveryEvidence,
   SimulatedRunSummary,
 } from "./pipeline/types";
 
@@ -121,16 +125,40 @@ export function applyCopiedFallback(
     return summary;
   }
 
-  if (!summary.deliveryEvidence?.output) {
+  const output = summary.deliveryEvidence?.output;
+  if (!output) {
+    return summary;
+  }
+
+  return applyDeliveryEvidenceFallback(summary, {
+    status: "copied",
+    output,
+    strategy: "copy",
+    message: "Transcript was copied; target insertion was not observed.",
+    reason: "Transcript copied as fallback.",
+  });
+}
+
+export function applyDeliveryEvidenceFallback(
+  summary: SimulatedRunSummary,
+  evidence: DesktopDeliveryEvidence,
+): SimulatedRunSummary {
+  const output =
+    evidence.output ??
+    summary.deliveryEvidence?.output ??
+    summary.output ??
+    summary.transcript;
+
+  if (!output) {
     return summary;
   }
 
   return {
     ...summary,
     deliveryEvidence: {
-      status: "copied",
-      output: summary.deliveryEvidence.output,
-      reason: "Transcript copied as fallback.",
+      status: evidence.status,
+      output,
+      reason: evidence.reason ?? evidence.message,
     },
   };
 }
@@ -271,7 +299,7 @@ function findTranscriptionCompletedEvent(summary: SimulatedRunSummary) {
 }
 
 function describeDeliveryEvidence(
-  evidence: DeliveryEvidence | undefined,
+  evidence: PipelineDeliveryEvidence | undefined,
 ): string | undefined {
   switch (evidence?.status) {
     case "available":
@@ -308,6 +336,21 @@ export function App() {
 
     return createAppSessionControllerFacade(controller);
   }, [gateway, hostRuntime.client]);
+  const copyDelivery = useMemo(
+    () =>
+      createCopyDeliveryGateway({
+        async copyText(text) {
+          const writer = navigator.clipboard?.writeText;
+          if (!writer) {
+            throw new Error("Clipboard fallback is unavailable in this environment.");
+          }
+
+          await writer.call(navigator.clipboard, text);
+        },
+        successReason: "Transcript copied as fallback.",
+      }),
+    [],
+  );
   const [capture, setCapture] = useState<CaptureUiState>({
     state: "idle",
     message: captureRuntime.readyMessage,
@@ -517,31 +560,22 @@ export function App() {
       return;
     }
 
-    if (!navigator.clipboard?.writeText) {
-      setPipelineUi({
-        status: "error",
-        message: "Clipboard fallback is unavailable in this environment.",
-        summary,
-      });
-      return;
-    }
+    const evidence = await copyDelivery.deliver({
+      sessionId: summary.runId,
+      text,
+      strategy: "copy",
+      allowDesktopSideEffects: true,
+    });
+    const nextSummary = applyDeliveryEvidenceFallback(summary, evidence);
 
-    try {
-      await navigator.clipboard.writeText(text);
-      const copiedSummary = applyCopiedFallback(summary);
-      setPipelineUi({
-        status: "done",
-        message: describeDeliveryEvidence(copiedSummary.deliveryEvidence) ??
-          "Transcript copied as fallback.",
-        summary: copiedSummary,
-      });
-    } catch {
-      setPipelineUi({
-        status: "error",
-        message: "Clipboard copy failed. Transcript remains available in the app.",
-        summary,
-      });
-    }
+    setPipelineUi({
+      status: evidence.status === "failed" ? "error" : "done",
+      message: describeDeliveryEvidence(nextSummary.deliveryEvidence) ??
+        (evidence.status === "failed"
+          ? "Clipboard copy failed. Transcript remains available in the app."
+          : "Transcript copied as fallback."),
+      summary: nextSummary,
+    });
   }
 
   const canStart =
