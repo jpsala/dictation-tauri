@@ -6,7 +6,7 @@ export type {
   DesktopControlReadiness,
   DesktopControlSource,
   DesktopControlTransitionDecision,
-  DesktopDictationController,
+  DesktopDictationController as DesktopDictationControllerContract,
   DesktopDictationError,
   DesktopDictationSession,
   DesktopDictationState,
@@ -14,6 +14,20 @@ export type {
   IdleDesktopDictationState,
   TerminalDesktopDictationState,
 } from "./types";
+export type {
+  DesktopCaptureGateway,
+  DesktopDictationControllerOptions,
+  DesktopRuntimeGateway,
+  DesktopRuntimeResult,
+} from "./controller";
+
+export {
+  DesktopDictationController,
+  copyManuallyRecovery,
+  dismissRecovery,
+  recordAgainRecovery,
+  retryFromClipRecovery,
+} from "./controller";
 
 export {
   activeDesktopDictationStates,

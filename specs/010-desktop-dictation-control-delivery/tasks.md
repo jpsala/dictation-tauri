@@ -54,14 +54,14 @@
 
 ### Tests for User Story 1
 
-- [ ] T014 [P] [US1] Add fake start→listening and stop→review success test in `tests/desktop-control/session-controller.test.ts`
-- [ ] T015 [P] [US1] Add cancellation during capture/transcription/delivery tests in `tests/desktop-control/session-controller.test.ts`
-- [ ] T016 [P] [US1] Add retry-from-clip and record-again guidance tests in `tests/desktop-control/session-controller.test.ts`
+- [x] T014 [P] [US1] Add fake start→listening and stop→review success test in `tests/desktop-control/session-controller.test.ts`
+- [x] T015 [P] [US1] Add cancellation during capture/transcription/delivery tests in `tests/desktop-control/session-controller.test.ts`
+- [x] T016 [P] [US1] Add retry-from-clip and record-again guidance tests in `tests/desktop-control/session-controller.test.ts`
 - [ ] T017 [P] [US1] Add App integration test proving buttons call the controller path in `tests/desktop-control/app-session-controller.test.tsx`
 
 ### Implementation for User Story 1
 
-- [ ] T018 [US1] Implement `DesktopDictationController` in `src/desktop-control/controller.ts`
+- [x] T018 [US1] Implement `DesktopDictationController` in `src/desktop-control/controller.ts`
 - [ ] T019 [US1] Adapt existing capture and host-runtime calls behind controller dependencies without changing provider routing
 - [ ] T020 [US1] Wire `src/App.tsx` start/stop/cancel/submit controls through the controller or a narrow controller facade
 - [ ] T021 [US1] Preserve existing readiness UI and provider explicit gate while routing session state through the controller
