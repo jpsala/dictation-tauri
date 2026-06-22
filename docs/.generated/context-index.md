@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-21T21:10:17.869Z
+Generated: 2026-06-22T12:53:05.211Z
 
 ## Topics
 
@@ -42,6 +42,7 @@ Generated: 2026-06-21T21:10:17.869Z
 - [007-usable-dictation-loop](../../specs/007-usable-dictation-loop/)
 - [008-real-provider-ui-gate](../../specs/008-real-provider-ui-gate/)
 - [009-fixvox-cloud-runtime-port](../../specs/009-fixvox-cloud-runtime-port/)
+- [010-desktop-dictation-control-delivery](../../specs/010-desktop-dictation-control-delivery/)
 
 ## Skills
 

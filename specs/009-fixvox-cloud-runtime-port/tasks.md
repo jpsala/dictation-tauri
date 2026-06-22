@@ -45,4 +45,5 @@
 - [x] T021 Port Fixvox postprocess prompt through managed `/v1/chat/completions`.
   - Evidence: `bun scripts/fixvox-managed-smoke.ts --allow-provider-call --postprocess` returned STT `ok` plus postprocess `ok` via managed `/v1/chat/completions` (`openai/gpt-oss-120b`), request ids/metadata present for both calls, raw provider payload not stored; redacted local report at `artifacts/microphone-capture/reports/fixvox-managed-smoke-2026-06-21T21-08-53-854Z.json` (ignored).
 - [ ] T022 Evaluate porting Fixvox VAD/no-speech/prosody heuristics to Rust/Tauri.
-- [ ] T023 Decide delivery/hotkey next spec after cloud STT is stable.
+- [x] T023 Decide delivery/hotkey next spec after cloud STT is stable.
+  - Decision: created `specs/010-desktop-dictation-control-delivery/` to scope session control, honest delivery evidence, fake desktop control events, and gated minimal hotkey work after managed cloud STT/postprocess.

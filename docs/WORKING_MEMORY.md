@@ -36,7 +36,8 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `006-host-runtime-transcription-boundary` | complete: TS host boundary, provider-free UI guardrails, Tauri invoke client and safe unavailable Tauri stub | `specs/006-host-runtime-transcription-boundary/tasks.md` |
 | `007-usable-dictation-loop` | complete and committed (`78438e7`): Rust host Groq multipart path implemented behind explicit gate; provider smoke passed with redacted evidence | `specs/007-usable-dictation-loop/tasks.md` |
 | `008-real-provider-ui-gate` | complete and committed (`d0cfac7` + fixes): UI separates `Transcribe with provider` from provider-free `Check host boundary`; manual Tauri real-provider validation passed | `specs/008-real-provider-ui-gate/tasks.md` |
-| `009-fixvox-cloud-runtime-port` | complete through T021: managed STT smoke and managed chat postprocess smoke passed with redacted evidence; readiness UI separates managed cloud/device/backend states from direct Groq BYOK | `specs/009-fixvox-cloud-runtime-port/plan.md` |
+| `009-fixvox-cloud-runtime-port` | complete through T023: managed STT/postprocess passed; delivery/hotkey next spec decided | `specs/009-fixvox-cloud-runtime-port/tasks.md` |
+| `010-desktop-dictation-control-delivery` | drafted: session controller, honest delivery, fake desktop control events, gated minimal hotkey | `specs/010-desktop-dictation-control-delivery/tasks.md` |
 
 ## Tracks Activas
 
@@ -89,14 +90,14 @@ bun scripts/check-skills-junction.ts
 
 ## Proximo Paso Probable
 
-Continuar despues de `009` T021:
+Continuar con `010`:
 
-1. Estado funcional local: app Tauri captura WAV real, readiness lee `.env` root/src-tauri o app-data, `Transcribe with provider` usa Fixvox managed cloud cuando hay install+device id (`X-Device-Id`, sin bearer vendor); antes del STT llama `/v2/execution/preflight`.
-2. Decision vigente: direct Groq queda como BYOK/dev fallback explicito (`provider: groq/direct/byok`), no fallback silencioso si managed/preflight no esta listo; managed+device cuenta como configured aunque no haya `GROQ_API_KEY` local.
-3. Hecho ultimo Small Batch: `009` T021 extendio el smoke gated para postprocess managed; `bun scripts/fixvox-managed-smoke.ts --allow-provider-call --postprocess` corrio STT managed OK y `/v1/chat/completions` managed OK (`openai/gpt-oss-120b`, request/metadata presentes, output length 14) con evidencia redactada ignorada.
-4. Proximo Small Batch recomendado: cerrar/archivar `009` con commit atomico o abrir `T022` para VAD/no-speech/prosody heuristics.
+1. `009` quedo decidido hasta T023: managed STT + managed postprocess funcionan; la proxima spec de delivery/hotkey es `010-desktop-dictation-control-delivery`.
+2. Primer Small Batch recomendado: ejecutar `010` Phase 1-2 RED/foundation (`tests/desktop-control/*`, `src/desktop-control/types.ts`, `src/delivery/types.ts`) sin provider calls ni desktop side effects reales.
+3. Decision vigente: direct Groq queda como BYOK/dev fallback explicito (`provider: groq/direct/byok`), no fallback silencioso si managed/preflight no esta listo; managed+device cuenta como configured aunque no haya `GROQ_API_KEY` local.
+4. Guardrail `010`: fake control events antes de hotkey real; review/manual copy antes de paste automation; nunca `paste_observed` sin observador verificado.
 5. Estado repo: cerrar con commit atomico local; no push.
-6. Checks recientes: `bun scripts/fixvox-managed-smoke.ts --allow-provider-call --postprocess` OK; `npm run build` OK; `npm run test:pipeline` OK (138 tests); `cd src-tauri && cargo check` OK; `cd src-tauri && cargo test --test fixvox_cloud_contract --no-run` OK. Rust test executables currently fail to launch in this shell with `STATUS_ENTRYPOINT_NOT_FOUND`, so real smoke used the Bun gated script.
+6. Checks recientes pre-010: `bun scripts/fixvox-managed-smoke.ts --allow-provider-call --postprocess` OK; `npm run build` OK; `npm run test:pipeline` OK (138 tests); `cd src-tauri && cargo check` OK; `cd src-tauri && cargo test --test fixvox_cloud_contract --no-run` OK. Rust test executables currently fail to launch in this shell with `STATUS_ENTRYPOINT_NOT_FOUND`, so real smoke used the Bun gated script.
 
 ## Promocion De Memoria
 
