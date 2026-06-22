@@ -37,7 +37,8 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `007-usable-dictation-loop` | complete and committed (`78438e7`): Rust host Groq multipart path implemented behind explicit gate; provider smoke passed with redacted evidence | `specs/007-usable-dictation-loop/tasks.md` |
 | `008-real-provider-ui-gate` | complete and committed (`d0cfac7` + fixes): UI separates `Transcribe with provider` from provider-free `Check host boundary`; manual Tauri real-provider validation passed | `specs/008-real-provider-ui-gate/tasks.md` |
 | `009-fixvox-cloud-runtime-port` | complete through T023: managed STT/postprocess passed; delivery/hotkey next spec decided | `specs/009-fixvox-cloud-runtime-port/tasks.md` |
-| `010-desktop-dictation-control-delivery` | safe scope complete through Phase 8: controller/delivery/fake control/recovery closed, safe checks green; optional Phase 7 real hotkey remains gated | `specs/010-desktop-dictation-control-delivery/tasks.md` |
+| `010-desktop-dictation-control-delivery` | safe scope complete through Phase 8; Phase 7 T042 decision done (`Ctrl+Shift+F9`, Rust-owned global shortcut), implementation/smoke still gated | `specs/010-desktop-dictation-control-delivery/tasks.md` |
+| `011-selection-transform-and-recovery-ergonomics` | active: docs/contracts plus fixture-first selection routing/transforms and safe paste-last recovery implemented; real selection capture gated | `specs/011-selection-transform-and-recovery-ergonomics/tasks.md` |
 
 ## Tracks Activas
 
@@ -62,6 +63,8 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 - Post-MVP3: `005-runtime-transcription-delivery` cubre foundation runtime y script Groq gated; `007`/`008` cierran app UI -> Tauri host -> Groq STT real con gesto explicito, artifacts ignorados y evidencia honesta.
 - UI durable requiere `PRODUCT.md` y `DESIGN.md`.
 - Small Batches: una task SpecKit, comportamiento o checkpoint por tanda, checks verdes y commit atomico.
+- Post-010: `011` arranca seleccion fixture-first; no leer seleccion real, no paste automation y no historial durable hasta nueva decision gated.
+- `paste-last` seguro es solo evidencia/UI `uncertain`: no envia teclas, no toca foco/clipboard y nunca reclama `paste_observed`.
 - La ruta inicial debe seguir liviana; no convertir `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` ni tracks activas en historial.
 
 ## Riesgos
@@ -90,21 +93,16 @@ bun scripts/check-skills-junction.ts
 
 ## Proximo Paso Probable
 
-`010` safe scope cerrado:
+`011` seleccion/recovery esta abierto con alcance seguro avanzado:
 
-1. `009` quedo decidido hasta T023: managed STT + managed postprocess funcionan; la spec de delivery/hotkey activa es `010-desktop-dictation-control-delivery`.
-2. Foundation `010` T001-T013 quedo completo: `tests/desktop-control/*`, `src/desktop-control/types.ts`, `src/delivery/types.ts`, `src/delivery/evidence.ts` e indices renderer-safe.
-3. US1 T014-T022 quedo completo: `src/desktop-control/controller.ts` implementa lifecycle start/listening/stop/reviewing, cancel con late results ignorados, no-overlap, retry-from-clip y record-again guidance; `src/desktop-control/app-session.ts` adapta CaptureGateway/HostRuntimeClient; `src/App.tsx` usa facade para start/stop/cancel.
-4. US2 T023-T030 quedo completo: `src/delivery/adapters.ts` agrega review-only/copy/paste-send por puerto inyectado, el controller adjunta evidencia review-only al session/runtime summary, y `src/App.tsx` envuelve el copy fallback detras del delivery port preservando review visible si falla.
-5. US3 T031-T037 quedo completo: `src/desktop-control/fake-host-control.ts` crea eventos `fake_host_event`, `toggle()` usa `controller.handleControl`, y readiness fake/unavailable reporta `hotkeyRegistered:false` sin registrar shortcuts reales.
-6. US4 T038-T041 quedo completo: `src/desktop-control/recovery.ts` centraliza recovery redacted/actionable para capture/runtime/managed preflight/desktop control/delivery; `App.tsx` muestra recovery del controller cuando aplica; delivery failure conserva review/copy sin `paste_observed`.
-7. Phase 8 T047-T054 quedo completo: focused/full tests, build, cargo check, visual check, artifact hygiene, context index y audit OK. En cierre se endurecio `src/delivery/adapters.ts` para redaction de reasons y el controller revalida evidencia inyectada para no aceptar `paste_observed` no verificado.
-8. Importante: `Stop capture` ahora ejecuta el controller y una safe host-boundary dry-run (`allowProviderCall:false`) hasta review/error; `Transcribe with provider` sigue separado con gate explícito `hostReadinessUi.status === "configured"`. No se agrego accion `submit` al contrato.
-9. Proximo Small Batch recomendado: decidir si se salta Phase 7 opcional o pedir aprobacion explicita para spike real de hotkey (T042-T046). Sin aprobacion, pasar a la siguiente spec/track.
-10. Decision vigente: direct Groq queda como BYOK/dev fallback explicito (`provider: groq/direct/byok`), no fallback silencioso si managed/preflight no esta listo; managed+device cuenta como configured aunque no haya `GROQ_API_KEY` local.
-11. Guardrail `010`: fake control events antes de hotkey real; review/manual copy antes de paste automation; nunca `paste_observed` sin observador verificado.
-12. Estado repo esperado al cierre: limpio, con commits locales ahead de `origin/main`; correr `git status --branch --short` para conteo exacto; no push.
-13. Checks recientes: `npm run test:pipeline -- tests/desktop-control` OK (42 tests), `npm run test:pipeline` OK (180 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, `npm run visual:check` OK (8 tests), artifact hygiene OK (`.env`/`artifacts/` ignored, no tracked files), `bun scripts/context-index.ts` OK, `bun scripts/agent-context-audit.ts` OK con 4 warnings conocidos. Rust test executables currently fail to launch in this shell with `STATUS_ENTRYPOINT_NOT_FOUND`, so real smoke used the Bun gated script.
+1. `010` safe scope sigue cerrado; Phase 7 T042 quedo decidido sin implementar: shortcut fijo `Ctrl+Shift+F9`, ruta Rust-owned Tauri v2 global shortcut, sin JS hotkey registration. T043-T046 siguen gated/manual.
+2. `011` se creo como siguiente spec post-010: `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/selection-transform-and-recovery.md`, `quickstart.md`, `tasks.md`.
+3. Foundation/US1/US2 `011` quedaron implementados provider-free: `src/selection-transform/*` con `SelectionContext`, routing direct-vs-transform y presets fixture `rewrite`/`shorten`/`bulletize`; tests en `tests/selection-transform/*`.
+4. US3/US4 safe recovery quedo implementado en `src/App.tsx`: boton `Paste last (safe)` solo cuando hay transcript, helper `applySafePasteLastRecovery`, evidencia `uncertain`, review visible y sin teclas/foco/clipboard/paste observado.
+5. `vitest.config.ts` incluye `tests/selection-transform/**/*.test.ts`; visual smoke verifica que el estado inicial no reclama paste observed.
+6. Proximo Small Batch recomendado: cerrar 011 Phase 8 documental (`docs/WORKING_MEMORY.md`, context index/audit, commit atomico) y luego elegir entre: (a) completar no-gated refinements de 011, (b) implementar 010 hotkey T043-T045 y pedir smoke local T046, o (c) diseñar 011 real selection capture T036 sin implementarlo.
+7. Guardrails vigentes: no selection real, no paste automation, no durable history, no provider calls por default, no `paste_observed` sin observador verificado.
+8. Checks recientes de esta tanda: `npm run test:pipeline -- tests/selection-transform tests/desktop-control/app-delivery.test.ts` OK (17 tests), `npm run test:pipeline` OK (195 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, `npm run visual:check` OK (8 tests), artifact hygiene OK (`.env`/`artifacts/` ignored, no tracked files).
 
 ## Promocion De Memoria
 

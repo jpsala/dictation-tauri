@@ -4,6 +4,23 @@ Registro corto de decisiones durables.
 
 ## Aprobadas
 
+### 2026-06-22 - Iniciar post-MVP con seleccion fixture-first y recuperacion efimera
+
+Estado: accepted
+
+Decision: La expansion post-010 empieza con `011-selection-transform-and-recovery-ergonomics`: contratos y fixtures de texto seleccionado, presets deterministas provider-free y recuperacion paste-last/copy-last solo efimera en memoria. La captura real de seleccion, replace-selection observado, paste automation e historial durable quedan gated para specs/tasks posteriores.
+
+Motivo: texto seleccionado real y delivery observado son side effects sensibles y fragiles; primero conviene probar routing, evidencia, recovery y UI sin leer seleccion real, tocar foco/clipboard ni llamar providers. Paste-last aporta ergonomia sin prometer insercion y sin crear historial sensible.
+
+Alcance:
+
+- Default tests pueden simular `selectedText`, pero no leer seleccion real del sistema.
+- `paste-last` seguro marca evidencia `uncertain`: no envia teclas, no toca foco, no usa clipboard y no reclama `paste_observed`.
+- Transform presets iniciales corren en modo fixture; managed/direct BYOK requieren gates existentes.
+- Resultado ultimo vive solo en proceso; no se persiste historial.
+
+Proximo paso: completar si se desea el resto de 011 por Small Batches o retomar 010 Phase 7 real hotkey con `Ctrl+Shift+F9` Rust-owned si se aprueba correr el smoke local.
+
 ### 2026-06-20 - Mantener React con CSS propio y Radix selectivo para frontend
 
 Estado: accepted

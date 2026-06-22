@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-22T16:41:19.117Z
+Generated: 2026-06-22T17:54:07.364Z
 
 ## Topics
 
@@ -43,6 +43,7 @@ Generated: 2026-06-22T16:41:19.117Z
 - [008-real-provider-ui-gate](../../specs/008-real-provider-ui-gate/)
 - [009-fixvox-cloud-runtime-port](../../specs/009-fixvox-cloud-runtime-port/)
 - [010-desktop-dictation-control-delivery](../../specs/010-desktop-dictation-control-delivery/)
+- [011-selection-transform-and-recovery-ergonomics](../../specs/011-selection-transform-and-recovery-ergonomics/)
 
 ## Skills
 

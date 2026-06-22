@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyDeliveryEvidenceFallback,
+  applySafePasteLastRecovery,
   formatDesktopRecoveryAction,
   getTranscriptReview,
 } from "../../src/App";
@@ -49,6 +50,35 @@ describe("App delivery fallback", () => {
       provider: "host-runtime-fake",
       model: "fake-model",
     });
+  });
+
+  it("marks paste-last recovery as uncertain without sending or observing paste", () => {
+    const summary = createReviewSummary();
+    const afterPasteLast = applySafePasteLastRecovery(summary);
+
+    expect(afterPasteLast.deliveryEvidence).toEqual({
+      status: "uncertain",
+      output: "transcript remains visible",
+      reason:
+        "Paste last was not sent in safe mode; transcript remains available for manual copy.",
+    });
+    expect(getTranscriptReview(afterPasteLast)).toMatchObject({
+      text: "transcript remains visible",
+    });
+    expect(JSON.stringify(afterPasteLast)).not.toContain("paste_observed");
+    expect(afterPasteLast.deliveryEvidence?.status).not.toBe("paste_sent");
+  });
+
+  it("leaves summaries without latest output unchanged", () => {
+    const summary: SimulatedRunSummary = {
+      ...createReviewSummary(),
+      transcript: undefined,
+      output: undefined,
+      deliveryEvidence: undefined,
+    };
+
+    expect(applySafePasteLastRecovery(summary)).toBe(summary);
+    expect(getTranscriptReview(summary)).toBeUndefined();
   });
 });
 

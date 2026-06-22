@@ -12,6 +12,8 @@ test("renders the MVP 3 fake capture surface", async ({ page }) => {
   await expect(page.getByText("Fake capture")).toBeVisible();
   await expect(page.getByText("Browser unavailable host")).toBeVisible();
   await expect(page.getByRole("button", { name: "Transcribe with provider" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Paste last (safe)" })).toBeDisabled();
+  await expect(page.getByText("paste observed", { exact: false })).toHaveCount(0);
   await expect(page.getByTestId("host-readiness-state")).toHaveText(
     "Unavailable",
   );

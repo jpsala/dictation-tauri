@@ -1,0 +1,75 @@
+# Quickstart: Selection Transform And Recovery Ergonomics
+
+## Safe Verification
+
+Run focused tests for the first implemented slice:
+
+```powershell
+npm run test:pipeline -- tests/desktop-control/app-delivery.test.ts
+```
+
+Run the default safe suite:
+
+```powershell
+npm run test:pipeline
+npm run build
+cd src-tauri && cargo check
+```
+
+If UI layout changes, run:
+
+```powershell
+npm run visual:check
+```
+
+If docs/context changed, run:
+
+```powershell
+bun scripts/context-index.ts
+bun scripts/agent-context-audit.ts
+```
+
+## Safe Paste-Last Demo
+
+The current safe paste-last recovery affordance is evidence/UI-only:
+
+- it does not send paste keys;
+- it does not touch focus or real desktop targets;
+- it does not use the clipboard;
+- it records delivery as `uncertain`;
+- it keeps transcript review visible for manual copy.
+
+Expected wording:
+
+```text
+Paste last was not sent in safe mode; transcript remains available for manual copy.
+```
+
+## Selection Transform First Slice
+
+Until real OS selection capture is approved, use fixture contexts only:
+
+```ts
+const selection = {
+  selectionId: "fixture-selection-1",
+  selectedText: "Synthetic selected text.",
+  textLength: 24,
+  source: "fixture",
+  confidence: "medium",
+  redacted: true,
+};
+```
+
+Default tests must not read the real selected text, mutate the clipboard, send keys, or call providers.
+
+## Gated Future Checks
+
+These require explicit approval before running:
+
+```powershell
+npm run tauri:dev
+# future: real selection capture smoke
+# future: real paste/replace-selection smoke
+```
+
+Evidence from gated checks must be redacted and must not include secrets, real transcripts, raw selected text, or provider payloads.

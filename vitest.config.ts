@@ -10,6 +10,7 @@ export default defineConfig({
       "tests/runtime-transcription/**/*.test.ts",
       "tests/host-runtime/**/*.test.ts",
       "tests/desktop-control/**/*.test.ts",
+      "tests/selection-transform/**/*.test.ts",
     ],
     passWithNoTests: false,
   },

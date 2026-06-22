@@ -164,6 +164,27 @@ export function applyDeliveryEvidenceFallback(
   };
 }
 
+export function applySafePasteLastRecovery(
+  summary: SimulatedRunSummary,
+): SimulatedRunSummary {
+  const output =
+    summary.deliveryEvidence?.output ?? summary.output ?? summary.transcript;
+
+  if (!output) {
+    return summary;
+  }
+
+  return applyDeliveryEvidenceFallback(summary, {
+    status: "uncertain",
+    output,
+    strategy: "paste_send",
+    message:
+      "Paste last was not sent in safe mode; transcript remains available for manual copy.",
+    reason:
+      "Paste last was not sent in safe mode; transcript remains available for manual copy.",
+  });
+}
+
 export function getRuntimeRecoveryAction(
   summary?: SimulatedRunSummary,
 ): RuntimeRecoveryAction | undefined {
@@ -595,6 +616,31 @@ export function App() {
     });
   }
 
+  function markSafePasteLastRecovery() {
+    const summary = pipelineUi.summary;
+    const text =
+      summary?.deliveryEvidence?.output ?? summary?.output ?? summary?.transcript;
+
+    if (!summary || !text) {
+      setPipelineUi({
+        status: "error",
+        message: "No latest transcript is available for paste-last recovery.",
+        summary,
+      });
+      return;
+    }
+
+    const nextSummary = applySafePasteLastRecovery(summary);
+
+    setPipelineUi({
+      status: "done",
+      message:
+        describeDeliveryEvidence(nextSummary.deliveryEvidence) ??
+        "Paste last was not sent in safe mode; transcript remains available for manual copy.",
+      summary: nextSummary,
+    });
+  }
+
   const canStart =
     capture.state === "idle" ||
     capture.state === "captured" ||
@@ -706,6 +752,14 @@ export function App() {
           </button>
           <button
             type="button"
+            className="button button-secondary"
+            disabled={!canCopyTranscript}
+            onClick={markSafePasteLastRecovery}
+          >
+            Paste last (safe)
+          </button>
+          <button
+            type="button"
             className="button button-ghost"
             onClick={refreshHostReadiness}
           >
@@ -806,6 +860,9 @@ export function App() {
           <section className="transcript-review" data-testid="transcript-review">
             <h2>Transcript review</h2>
             <p>{transcriptReview.text}</p>
+            <p className="evidence-line" data-testid="latest-result-recovery">
+              Latest transcript is recoverable in this session. Paste-last safe mode does not send keys or observe insertion.
+            </p>
             <dl>
               <div>
                 <dt>Provider</dt>

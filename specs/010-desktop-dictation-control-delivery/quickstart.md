@@ -40,9 +40,10 @@ Using fakes/tests only:
 Only after explicit approval and after provider-free tests pass:
 
 ```powershell
-# Placeholder examples; exact commands must be added by the implementation batch.
 npm run tauri:dev
-# Manually trigger one fixed hotkey or desktop control event.
+# Future Phase 7 route decision: use one Rust-owned Tauri v2 global shortcut,
+# fixed as Ctrl+Shift+F9, emitting source=global_hotkey/action=toggle.
+# Do not add JS hotkey registration or frontend global-shortcut permissions for this slice.
 # Optionally submit one ignored captured WAV through managed Fixvox cloud if approved.
 ```
 
