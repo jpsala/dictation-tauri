@@ -103,16 +103,16 @@
 
 ### Tests for User Story 3
 
-- [ ] T031 [P] [US3] Add fake toggle event starts idle session test in `tests/desktop-control/desktop-control-events.test.ts`
-- [ ] T032 [P] [US3] Add fake toggle event stops listening session test in `tests/desktop-control/desktop-control-events.test.ts`
-- [ ] T033 [P] [US3] Add desktop control readiness unavailable test in `tests/desktop-control/desktop-control-events.test.ts`
+- [x] T031 [P] [US3] Add fake toggle event starts idle session test in `tests/desktop-control/desktop-control-events.test.ts`
+- [x] T032 [P] [US3] Add fake toggle event stops listening session test in `tests/desktop-control/desktop-control-events.test.ts`
+- [x] T033 [P] [US3] Add desktop control readiness unavailable test in `tests/desktop-control/desktop-control-events.test.ts`
 
 ### Implementation for User Story 3
 
-- [ ] T034 [US3] Implement fake host control event adapter in `src/desktop-control/fake-host-control.ts`
-- [ ] T035 [US3] Expose desktop control readiness through renderer-safe state without registering real shortcuts
-- [ ] T036 [US3] Wire fake control events to the controller in tests or dev-only harness
-- [ ] T037 [US3] Verify fake control tests pass
+- [x] T034 [US3] Implement fake host control event adapter in `src/desktop-control/fake-host-control.ts`
+- [x] T035 [US3] Expose desktop control readiness through renderer-safe state without registering real shortcuts
+- [x] T036 [US3] Wire fake control events to the controller in tests or dev-only harness
+- [x] T037 [US3] Verify fake control tests pass
 
 **Checkpoint**: Fake host events prove hotkey semantics before any real OS integration.
 

@@ -20,6 +20,11 @@ export type {
   AppSessionRuntimeOptions,
 } from "./app-session";
 export type {
+  FakeHostControlEventOptions,
+  FakeHostControlEventSource,
+  FakeHostControlSourceOptions,
+} from "./fake-host-control";
+export type {
   DesktopCaptureGateway,
   DesktopDictationControllerOptions,
   DesktopRuntimeGateway,
@@ -43,6 +48,11 @@ export {
   recordAgainRecovery,
   retryFromClipRecovery,
 } from "./controller";
+
+export {
+  createFakeHostControlEventSource,
+  createFakeHostControlReadiness,
+} from "./fake-host-control";
 
 export {
   activeDesktopDictationStates,
