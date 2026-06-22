@@ -108,6 +108,8 @@ Rules:
 
 - Safe paste-last does not send keys, touch focus, or claim paste was sent.
 - Output remains available for manual copy.
+- Latest-result helpers only return successful, non-empty outputs and never persist history.
+- Failed, cancelled, empty, or whitespace-only runs must not become reusable latest results.
 - `paste_observed` remains forbidden without a verified observer.
 
 ## Event And Evidence Rules

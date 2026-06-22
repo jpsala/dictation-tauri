@@ -30,6 +30,7 @@ import {
   type RuntimeRecoveryAction,
 } from "./model-gateway/runtime-transcription";
 import { createCapturedAudioPipelineRequest } from "./pipeline/ports";
+import { latestResultFromPipelineSummary } from "./selection-transform";
 import { PipelineService } from "./pipeline/service";
 import type {
   DeliveryEvidence as PipelineDeliveryEvidence,
@@ -167,16 +168,15 @@ export function applyDeliveryEvidenceFallback(
 export function applySafePasteLastRecovery(
   summary: SimulatedRunSummary,
 ): SimulatedRunSummary {
-  const output =
-    summary.deliveryEvidence?.output ?? summary.output ?? summary.transcript;
+  const latestResult = latestResultFromPipelineSummary(summary);
 
-  if (!output) {
+  if (!latestResult) {
     return summary;
   }
 
   return applyDeliveryEvidenceFallback(summary, {
     status: "uncertain",
-    output,
+    output: latestResult.text,
     strategy: "paste_send",
     message:
       "Paste last was not sent in safe mode; transcript remains available for manual copy.",
@@ -275,17 +275,16 @@ export function formatDesktopRecoveryAction(
 export function getTranscriptReview(
   summary?: SimulatedRunSummary,
 ): TranscriptReview | undefined {
-  const text =
-    summary?.deliveryEvidence?.output ?? summary?.output ?? summary?.transcript;
+  const latestResult = latestResultFromPipelineSummary(summary);
 
-  if (!summary || !text?.trim()) {
+  if (!summary || !latestResult) {
     return undefined;
   }
 
   const transcriptionEvent = findTranscriptionCompletedEvent(summary);
 
   return {
-    text: text.trim(),
+    text: latestResult.text,
     provider: transcriptionEvent?.data.stt?.provider,
     model: transcriptionEvent?.data.stt?.model,
     latencyMs: transcriptionEvent?.data.latencyMs,
@@ -586,10 +585,9 @@ export function App() {
 
   async function copyTranscriptFallback() {
     const summary = pipelineUi.summary;
-    const text =
-      summary?.deliveryEvidence?.output ?? summary?.output ?? summary?.transcript;
+    const latestResult = latestResultFromPipelineSummary(summary);
 
-    if (!summary || !text) {
+    if (!summary || !latestResult) {
       setPipelineUi({
         status: "error",
         message: "No transcript is available to copy.",
@@ -600,7 +598,7 @@ export function App() {
 
     const evidence = await copyDelivery.deliver({
       sessionId: summary.runId,
-      text,
+      text: latestResult.text,
       strategy: "copy",
       allowDesktopSideEffects: true,
     });
@@ -618,10 +616,9 @@ export function App() {
 
   function markSafePasteLastRecovery() {
     const summary = pipelineUi.summary;
-    const text =
-      summary?.deliveryEvidence?.output ?? summary?.output ?? summary?.transcript;
+    const latestResult = latestResultFromPipelineSummary(summary);
 
-    if (!summary || !text) {
+    if (!summary || !latestResult) {
       setPipelineUi({
         status: "error",
         message: "No latest transcript is available for paste-last recovery.",
@@ -654,9 +651,7 @@ export function App() {
   const canTranscribeWithProvider =
     canSubmit && hostReadinessUi.status === "configured";
   const canCopyTranscript = Boolean(
-    pipelineUi.summary?.deliveryEvidence?.output ??
-      pipelineUi.summary?.output ??
-      pipelineUi.summary?.transcript,
+    latestResultFromPipelineSummary(pipelineUi.summary),
   );
   const artifact = capture.result?.ok ? capture.result.artifact : undefined;
   const error = capture.result && !capture.result.ok ? capture.result.error : undefined;

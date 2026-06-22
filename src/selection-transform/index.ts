@@ -1,5 +1,7 @@
 export type {
   FixtureTransformPresetId,
+  LatestResult,
+  LatestResultSource,
   SelectionContext,
   SelectionContextInput,
   SelectionContextSource,
@@ -21,3 +23,7 @@ export {
   isSupportedFixturePreset,
   runFixtureSelectionTransform,
 } from "./fixture-transform";
+export {
+  latestResultFromPipelineSummary,
+  latestResultFromSelectionTransform,
+} from "./latest-result";

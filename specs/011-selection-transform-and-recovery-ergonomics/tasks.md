@@ -147,6 +147,8 @@
 
 ## Phase 8: Polish & Verification
 
+- [x] T048 Add latest-result helper/tests for in-memory dictation and selection-transform recovery without durable history
+- [x] T049 Wire copy/paste-last App recovery paths to the latest-result helper so failed or empty runs cannot become reusable results
 - [x] T040 Run `npm run test:pipeline -- tests/selection-transform tests/desktop-control/app-delivery.test.ts`
 - [x] T041 Run `npm run test:pipeline`
 - [x] T042 Run `npm run build`

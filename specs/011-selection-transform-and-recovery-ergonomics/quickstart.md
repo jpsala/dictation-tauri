@@ -5,7 +5,7 @@
 Run focused tests for the first implemented slice:
 
 ```powershell
-npm run test:pipeline -- tests/desktop-control/app-delivery.test.ts
+npm run test:pipeline -- tests/selection-transform tests/desktop-control/app-delivery.test.ts
 ```
 
 Run the default safe suite:

@@ -97,13 +97,14 @@ bun scripts/check-skills-junction.ts
 
 1. `010` safe scope sigue cerrado; Phase 7 T042 quedo decidido sin implementar: shortcut fijo `Ctrl+Shift+F9`, ruta Rust-owned Tauri v2 global shortcut, sin JS hotkey registration. T043-T046 siguen gated/manual.
 2. `011` se creo como siguiente spec post-010: `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/selection-transform-and-recovery.md`, `quickstart.md`, `tasks.md`.
-3. Foundation/US1/US2 `011` quedaron implementados provider-free: `src/selection-transform/*` con `SelectionContext`, routing direct-vs-transform y presets fixture `rewrite`/`shorten`/`bulletize`; tests en `tests/selection-transform/*`.
-4. US3/US4 safe recovery quedo implementado en `src/App.tsx`: boton `Paste last (safe)` solo cuando hay transcript, helper `applySafePasteLastRecovery`, evidencia `uncertain`, review visible y sin teclas/foco/clipboard/paste observado.
+3. Foundation/US1/US2 `011` quedaron implementados provider-free: `src/selection-transform/*` con `SelectionContext`, routing direct-vs-transform, presets fixture `rewrite`/`shorten`/`bulletize` y latest-result helpers ephemerales; tests en `tests/selection-transform/*`.
+4. US3/US4 safe recovery quedo implementado/refinado en `src/App.tsx`: boton `Paste last (safe)` solo con latest result exitoso, helper `applySafePasteLastRecovery`, evidencia `uncertain`, review visible y sin teclas/foco/clipboard/paste observado.
 5. `vitest.config.ts` incluye `tests/selection-transform/**/*.test.ts`; visual smoke verifica que el estado inicial no reclama paste observed.
 6. Phase 8 documental de `011` quedo cerrado y commiteado; OS sync posterior dejo `.agents/skills` apuntando a `docs/skills`, context index/audit OK con 4 warnings conocidos.
-7. Proximo Small Batch recomendado: elegir entre (a) completar refinements no-gated de `011`, (b) implementar `010` hotkey T043-T045 y pedir smoke local T046, o (c) diseñar `011` real selection capture T036 sin implementarlo.
-8. Guardrails vigentes: no selection real, no paste automation, no durable history, no provider calls por default, no `paste_observed` sin observador verificado.
-9. Checks recientes de esta tanda: `npm run test:pipeline -- tests/selection-transform tests/desktop-control/app-delivery.test.ts` OK (17 tests), `npm run test:pipeline` OK (195 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, `npm run visual:check` OK (8 tests), artifact hygiene OK (`.env`/`artifacts/` ignored, no tracked files), `bun scripts/context-index.ts` OK, `bun scripts/agent-context-audit.ts` OK con 4 warnings conocidos, `bun scripts/check-skills-junction.ts` OK.
+7. Ultimo refinement no-gated de `011`: `latestResultFromPipelineSummary` y `latestResultFromSelectionTransform` impiden que runs fallidos/cancelados/vacios se vuelvan reusables y mantienen latest-result en memoria/tipo, sin historial durable.
+8. Proximo Small Batch recomendado: elegir entre (a) implementar `010` hotkey T043-T045 y pedir smoke local T046, o (b) diseñar `011` real selection capture T036 sin implementarlo.
+9. Guardrails vigentes: no selection real, no paste automation, no durable history, no provider calls por default, no `paste_observed` sin observador verificado.
+10. Checks recientes de esta tanda: `npm run test:pipeline -- tests/selection-transform tests/desktop-control/app-delivery.test.ts` OK (21 tests), `npm run test:pipeline` OK (199 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, artifact hygiene OK (`.env`/`artifacts/` ignored, no tracked files), `bun scripts/context-index.ts` OK, `bun scripts/agent-context-audit.ts` OK con 4 warnings conocidos.
 
 ## Promocion De Memoria
 

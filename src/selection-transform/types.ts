@@ -1,5 +1,6 @@
 import type { DesktopTargetConfidence, DesktopTargetSnapshot } from "../delivery/types";
 import type { DesktopRecoveryAction } from "../desktop-control/types";
+import type { DeliveryEvidence } from "../pipeline/types";
 
 export type SelectionContextSource = "fixture" | "host_capture" | "none";
 
@@ -71,3 +72,13 @@ export type SelectionRoute =
     };
 
 export type FixtureTransformPresetId = "rewrite" | "shorten" | "bulletize";
+
+export type LatestResultSource = "dictation" | "selection_transform";
+
+export type LatestResult = {
+  runId: string;
+  text: string;
+  source: LatestResultSource;
+  createdAt?: string;
+  deliveryEvidence?: DeliveryEvidence;
+};
