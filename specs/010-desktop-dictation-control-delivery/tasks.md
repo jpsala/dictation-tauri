@@ -12,10 +12,10 @@
 
 **Purpose**: Establish focused test surfaces and keep provider/desktop side effects out of defaults.
 
-- [ ] T001 Add focused desktop-control test directory and fixtures in `tests/desktop-control/desktop-control-fixtures.ts`
-- [ ] T002 [P] Add import/side-effect guard test proving default tests do not import real desktop hotkey/clipboard adapters in `tests/desktop-control/desktop-side-effect-guard.test.ts`
-- [ ] T003 [P] Add quickstart safe-check notes to `specs/010-desktop-dictation-control-delivery/quickstart.md` if commands change
-- [ ] T004 Confirm `.env`, artifacts, transcripts, reports, provider payloads, and any desktop evidence remain ignored/untracked
+- [x] T001 Add focused desktop-control test directory and fixtures in `tests/desktop-control/desktop-control-fixtures.ts`
+- [x] T002 [P] Add import/side-effect guard test proving default tests do not import real desktop hotkey/clipboard adapters in `tests/desktop-control/desktop-side-effect-guard.test.ts`
+- [x] T003 [P] Add quickstart safe-check notes to `specs/010-desktop-dictation-control-delivery/quickstart.md` if commands change
+- [x] T004 Confirm `.env`, artifacts, transcripts, reports, provider payloads, and any desktop evidence remain ignored/untracked
 
 **Checkpoint**: Provider-free and desktop-side-effect-free test harness exists.
 
@@ -29,18 +29,18 @@
 
 ### Tests for Foundation
 
-- [ ] T005 [P] Add session state transition tests in `tests/desktop-control/session-controller.test.ts`
-- [ ] T006 [P] Add non-overlap/control dedupe tests in `tests/desktop-control/session-controller.test.ts`
-- [ ] T007 [P] Add delivery evidence contract tests forbidding default `paste_observed` in `tests/desktop-control/delivery-evidence.test.ts`
-- [ ] T008 [P] Add fake control event contract tests in `tests/desktop-control/desktop-control-events.test.ts`
+- [x] T005 [P] Add session state transition tests in `tests/desktop-control/session-controller.test.ts`
+- [x] T006 [P] Add non-overlap/control dedupe tests in `tests/desktop-control/session-controller.test.ts`
+- [x] T007 [P] Add delivery evidence contract tests forbidding default `paste_observed` in `tests/desktop-control/delivery-evidence.test.ts`
+- [x] T008 [P] Add fake control event contract tests in `tests/desktop-control/desktop-control-events.test.ts`
 
 ### Implementation for Foundation
 
-- [ ] T009 Create desktop control/session types in `src/desktop-control/types.ts`
-- [ ] T010 Create delivery port types/helpers in `src/delivery/types.ts`
-- [ ] T011 Implement delivery evidence derivation helpers in `src/delivery/evidence.ts`
-- [ ] T012 Export only renderer-safe contracts from local module indexes if needed
-- [ ] T013 Verify foundation tests pass without providers or desktop side effects
+- [x] T009 Create desktop control/session types in `src/desktop-control/types.ts`
+- [x] T010 Create delivery port types/helpers in `src/delivery/types.ts`
+- [x] T011 Implement delivery evidence derivation helpers in `src/delivery/evidence.ts`
+- [x] T012 Export only renderer-safe contracts from local module indexes if needed
+- [x] T013 Verify foundation tests pass without providers or desktop side effects
 
 **Checkpoint**: Contracts compile and tests prove state, no-overlap, fake events, and delivery evidence semantics.
 

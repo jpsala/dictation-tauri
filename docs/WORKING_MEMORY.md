@@ -37,7 +37,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `007-usable-dictation-loop` | complete and committed (`78438e7`): Rust host Groq multipart path implemented behind explicit gate; provider smoke passed with redacted evidence | `specs/007-usable-dictation-loop/tasks.md` |
 | `008-real-provider-ui-gate` | complete and committed (`d0cfac7` + fixes): UI separates `Transcribe with provider` from provider-free `Check host boundary`; manual Tauri real-provider validation passed | `specs/008-real-provider-ui-gate/tasks.md` |
 | `009-fixvox-cloud-runtime-port` | complete through T023: managed STT/postprocess passed; delivery/hotkey next spec decided | `specs/009-fixvox-cloud-runtime-port/tasks.md` |
-| `010-desktop-dictation-control-delivery` | drafted: session controller, honest delivery, fake desktop control events, gated minimal hotkey | `specs/010-desktop-dictation-control-delivery/tasks.md` |
+| `010-desktop-dictation-control-delivery` | foundation complete through T013: provider-free desktop-control tests, renderer-safe session/delivery contracts, delivery evidence helpers | `specs/010-desktop-dictation-control-delivery/tasks.md` |
 
 ## Tracks Activas
 
@@ -92,12 +92,13 @@ bun scripts/check-skills-junction.ts
 
 Continuar con `010`:
 
-1. `009` quedo decidido hasta T023: managed STT + managed postprocess funcionan; la proxima spec de delivery/hotkey es `010-desktop-dictation-control-delivery`.
-2. Primer Small Batch recomendado: ejecutar `010` Phase 1-2 RED/foundation (`tests/desktop-control/*`, `src/desktop-control/types.ts`, `src/delivery/types.ts`) sin provider calls ni desktop side effects reales.
-3. Decision vigente: direct Groq queda como BYOK/dev fallback explicito (`provider: groq/direct/byok`), no fallback silencioso si managed/preflight no esta listo; managed+device cuenta como configured aunque no haya `GROQ_API_KEY` local.
-4. Guardrail `010`: fake control events antes de hotkey real; review/manual copy antes de paste automation; nunca `paste_observed` sin observador verificado.
-5. Estado repo esperado al cierre: limpio, con commits locales ahead de `origin/main`; correr `git status --branch --short` para conteo exacto; no push.
-6. Checks recientes: `bun scripts/context-index.ts` OK; `bun scripts/agent-context-audit.ts` OK con 0 errores y warnings de tamano de contexto; pre-010 tambien estaban OK `bun scripts/fixvox-managed-smoke.ts --allow-provider-call --postprocess`, `npm run build`, `npm run test:pipeline` (138 tests), `cd src-tauri && cargo check`, `cd src-tauri && cargo test --test fixvox_cloud_contract --no-run`. Rust test executables currently fail to launch in this shell with `STATUS_ENTRYPOINT_NOT_FOUND`, so real smoke used the Bun gated script.
+1. `009` quedo decidido hasta T023: managed STT + managed postprocess funcionan; la spec de delivery/hotkey activa es `010-desktop-dictation-control-delivery`.
+2. Foundation `010` T001-T013 quedo completo: `tests/desktop-control/*`, `src/desktop-control/types.ts`, `src/delivery/types.ts`, `src/delivery/evidence.ts` e indices renderer-safe.
+3. Proximo Small Batch recomendado: Phase 3 US1, implementar `DesktopDictationController` con fakes (`src/desktop-control/controller.ts`) y ampliar `tests/desktop-control/session-controller.test.ts` sin tocar provider routing ni side effects desktop reales.
+4. Decision vigente: direct Groq queda como BYOK/dev fallback explicito (`provider: groq/direct/byok`), no fallback silencioso si managed/preflight no esta listo; managed+device cuenta como configured aunque no haya `GROQ_API_KEY` local.
+5. Guardrail `010`: fake control events antes de hotkey real; review/manual copy antes de paste automation; nunca `paste_observed` sin observador verificado.
+6. Estado repo esperado al cierre: limpio, con commits locales ahead de `origin/main`; correr `git status --branch --short` para conteo exacto; no push.
+7. Checks recientes: `npm run test:pipeline -- tests/desktop-control` OK (15 tests), `npm run test:pipeline` OK (153 tests), `npm run build` OK, `cd src-tauri && cargo check` OK. Antes de 010 tambien estaban OK `bun scripts/context-index.ts`, `bun scripts/agent-context-audit.ts`, `bun scripts/fixvox-managed-smoke.ts --allow-provider-call --postprocess`, y `cd src-tauri && cargo test --test fixvox_cloud_contract --no-run`. Rust test executables currently fail to launch in this shell with `STATUS_ENTRYPOINT_NOT_FOUND`, so real smoke used the Bun gated script.
 
 ## Promocion De Memoria
 

@@ -1,0 +1,30 @@
+export type {
+  ActiveDesktopDictationState,
+  DesktopControlAction,
+  DesktopControlDedupeDecision,
+  DesktopControlEvent,
+  DesktopControlReadiness,
+  DesktopControlSource,
+  DesktopControlTransitionDecision,
+  DesktopDictationController,
+  DesktopDictationError,
+  DesktopDictationSession,
+  DesktopDictationState,
+  DesktopRecoveryAction,
+  IdleDesktopDictationState,
+  TerminalDesktopDictationState,
+} from "./types";
+
+export {
+  activeDesktopDictationStates,
+  createDesktopControlEvent,
+  createUnavailableDesktopControlReadiness,
+  desktopControlActions,
+  desktopControlSources,
+  desktopDictationStates,
+  isActiveDesktopDictationState,
+  isTerminalDesktopDictationState,
+  rememberDesktopControlEvent,
+  resolveDesktopControlTransition,
+  terminalDesktopDictationStates,
+} from "./types";

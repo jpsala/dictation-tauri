@@ -5,6 +5,7 @@
 These commands must not call Fixvox/Groq, register global hotkeys, access real clipboard/focus APIs, or require microphone hardware:
 
 ```powershell
+npm run test:pipeline -- tests/desktop-control
 npm run test:pipeline
 npm run build
 cd src-tauri && cargo check
