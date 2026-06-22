@@ -12,6 +12,7 @@ import {
   getAppSessionSummary,
 } from "./desktop-control/app-session";
 import { DesktopDictationController } from "./desktop-control/controller";
+import type { DesktopRecoveryAction } from "./desktop-control";
 import {
   createCopyDeliveryGateway,
   type DeliveryEvidence as DesktopDeliveryEvidence,
@@ -240,6 +241,16 @@ export function getRecoveryAction(
   return `${action.label}: ${action.reason}`;
 }
 
+export function formatDesktopRecoveryAction(
+  action?: DesktopRecoveryAction,
+): string | undefined {
+  if (!action || action.kind === "dismiss") {
+    return undefined;
+  }
+
+  return `${action.label}: ${action.reason}`;
+}
+
 export function getTranscriptReview(
   summary?: SimulatedRunSummary,
 ): TranscriptReview | undefined {
@@ -362,6 +373,8 @@ export function App() {
   const [hostReadinessUi, setHostReadinessUi] = useState<HostReadinessUiState>(
     () => describeHostReadiness(),
   );
+  const [desktopRecoveryAction, setDesktopRecoveryAction] =
+    useState<DesktopRecoveryAction>();
 
   useEffect(() => {
     let cancelled = false;
@@ -384,6 +397,7 @@ export function App() {
   }
 
   async function startCapture() {
+    setDesktopRecoveryAction(undefined);
     setPipelineUi({
       status: "idle",
       message: "Capture an artifact before checking the safe host boundary.",
@@ -394,6 +408,7 @@ export function App() {
     });
 
     const session = await desktopSession.start();
+    setDesktopRecoveryAction(session.recoveryAction);
     if (session.state === "listening") {
       setCapture({
         state: "recording",
@@ -419,6 +434,7 @@ export function App() {
     });
 
     const session = await desktopSession.stop();
+    setDesktopRecoveryAction(session.recoveryAction);
     const result = getAppSessionCaptureResult(session);
     const summary = getAppSessionSummary(session);
 
@@ -463,6 +479,7 @@ export function App() {
 
   async function cancelCapture() {
     const session = await desktopSession.cancel();
+    setDesktopRecoveryAction(session.recoveryAction);
     const result = getAppSessionCaptureResult(session);
     setPipelineUi({
       status: "cancelled",
@@ -599,7 +616,9 @@ export function App() {
   const error = capture.result && !capture.result.ok ? capture.result.error : undefined;
   const deliveryEvidence = pipelineUi.summary?.deliveryEvidence;
   const transcriptReview = getTranscriptReview(pipelineUi.summary);
-  const recoveryAction = getRecoveryAction(pipelineUi.summary);
+  const recoveryAction =
+    getRecoveryAction(pipelineUi.summary) ??
+    formatDesktopRecoveryAction(desktopRecoveryAction);
   const pipelineTone =
     pipelineUi.status === "done" &&
     deliveryEvidence?.status !== "uncertain" &&

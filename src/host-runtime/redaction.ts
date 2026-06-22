@@ -50,7 +50,7 @@ export function redactHostRuntimeText(
     .replace(/\b(?:sk|gsk|xoxb|ghp|github_pat)[_-][A-Za-z0-9_-]+\b/g, redactedToken)
     .replace(/\b[A-Za-z0-9+/]{32,}={0,2}\b/g, redactedToken);
 
-  return truncateForUi(sanitized, maxLength);
+  return truncateForUi(sanitized.replace(/\[REDACTED\]\]+/g, redactedToken), maxLength);
 }
 
 export function redactHostRuntimeRequestId(

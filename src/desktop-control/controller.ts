@@ -3,6 +3,16 @@ import {
   type DeliveryEvidence,
   type DesktopDeliveryGateway,
 } from "../delivery";
+import {
+  copyManuallyRecovery,
+  createFailedDeliveryEvidence,
+  dismissRecovery,
+  isManagedPreflightFailure,
+  mapDesktopFailureToRecovery,
+  recordAgainRecovery,
+  redactDesktopFailureMessage,
+  retryFromClipRecovery,
+} from "./recovery";
 import type {
   DesktopControlEvent,
   DesktopDictationController as DesktopDictationControllerContract,
@@ -121,10 +131,15 @@ export class DesktopDictationController
         state: "listening",
       });
     } catch (error) {
-      return this.finishError(session, "Capture setup failed.", {
-        code: "capture-start-failed",
+      const recovery = mapDesktopFailureToRecovery({
+        kind: "capture_setup",
         cause: error,
-        recoveryAction: recordAgainRecovery(),
+        clipAvailable: false,
+      });
+
+      return this.finishError(session, recovery.error.message, {
+        code: recovery.error.code ?? "capture-start-failed",
+        recoveryAction: recovery.recoveryAction,
       });
     }
   }
@@ -155,12 +170,20 @@ export class DesktopDictationController
       return this.finishReviewing(session, event, { capture, runtime });
     } catch (error) {
       const current = this.requireCurrentSession();
-      return this.finishError(session, "Dictation processing failed.", {
-        code: "runtime-failed",
+      const clipAvailable = Boolean(current.capture);
+      const recovery = mapDesktopFailureToRecovery({
+        kind: isManagedPreflightFailure(error)
+          ? "managed_preflight"
+          : clipAvailable
+            ? "runtime_transcription"
+            : "capture_setup",
         cause: error,
-        recoveryAction: current.capture
-          ? retryFromClipRecovery()
-          : recordAgainRecovery(),
+        clipAvailable,
+      });
+
+      return this.finishError(session, recovery.error.message, {
+        code: recovery.error.code ?? "runtime-failed",
+        recoveryAction: recovery.recoveryAction,
       });
     }
   }
@@ -206,10 +229,18 @@ export class DesktopDictationController
         runtime,
       });
     } catch (error) {
-      return this.finishError(session, "Retry from clip failed.", {
-        code: "retry-failed",
+      const recovery = mapDesktopFailureToRecovery({
+        kind: isManagedPreflightFailure(error)
+          ? "managed_preflight"
+          : "runtime_transcription",
         cause: error,
-        recoveryAction: retryFromClipRecovery(),
+        clipAvailable: true,
+        code: isManagedPreflightFailure(error) ? undefined : "retry-failed",
+      });
+
+      return this.finishError(session, recovery.error.message, {
+        code: recovery.error.code ?? "retry-failed",
+        recoveryAction: recovery.recoveryAction,
       });
     }
   }
@@ -223,20 +254,35 @@ export class DesktopDictationController
     },
   ): Promise<DesktopDictationSession> {
     const text = input.runtime.output ?? input.runtime.transcript;
-    const delivery = await this.delivery.deliver({
+    const request = {
       sessionId: session.sessionId,
       text,
-      strategy: "review_only",
+      strategy: "review_only" as const,
       allowDesktopSideEffects: false,
       targetSnapshot: event.targetSnapshot,
-    });
+    };
+    let delivery: DeliveryEvidence;
+    let recoveryAction = copyManuallyRecovery();
+
+    try {
+      delivery = await this.delivery.deliver(request);
+    } catch (error) {
+      const recovery = mapDesktopFailureToRecovery({
+        kind: "delivery",
+        cause: error,
+        clipAvailable: Boolean(input.capture),
+        transcriptAvailable: true,
+      });
+      delivery = createFailedDeliveryEvidence(request, recovery.error.message);
+      recoveryAction = recovery.recoveryAction;
+    }
 
     return this.patchCurrent(session.sessionId, {
       capture: input.capture,
       runtime: attachDeliveryEvidenceToRuntime(input.runtime, delivery),
       delivery,
       state: "reviewing",
-      recoveryAction: copyManuallyRecovery(),
+      recoveryAction,
     });
   }
 
@@ -319,7 +365,7 @@ export class DesktopDictationController
     return this.patchCurrent(session.sessionId, {
       endedAt: this.now(),
       error: {
-        message: redactErrorMessage(input.cause, message),
+        message: redactDesktopFailureMessage(input.cause, message),
         code: input.code,
       },
       recoveryAction: input.recoveryAction,
@@ -391,37 +437,12 @@ function attachDeliveryEvidenceToRuntime(
   };
 }
 
-export function copyManuallyRecovery(): DesktopRecoveryAction {
-  return {
-    kind: "copy_manually",
-    label: "Copy transcript manually",
-    clipAvailable: true,
-  };
-}
-
-export function retryFromClipRecovery(): DesktopRecoveryAction {
-  return {
-    kind: "retry_from_clip",
-    label: "Retry from captured clip",
-    clipAvailable: true,
-  };
-}
-
-export function recordAgainRecovery(): DesktopRecoveryAction {
-  return {
-    kind: "record_again",
-    label: "Record again",
-    clipAvailable: false,
-  };
-}
-
-export function dismissRecovery(): DesktopRecoveryAction {
-  return {
-    kind: "dismiss",
-    label: "Dismiss",
-    clipAvailable: false,
-  };
-}
+export {
+  copyManuallyRecovery,
+  dismissRecovery,
+  recordAgainRecovery,
+  retryFromClipRecovery,
+};
 
 function createDefaultSessionId(): string {
   return `desktop-session-${cryptoSafeRandom()}`;
@@ -431,10 +452,3 @@ function cryptoSafeRandom(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function redactErrorMessage(cause: unknown, fallback: string): string {
-  if (cause instanceof Error && cause.message.trim()) {
-    return cause.message;
-  }
-
-  return fallback;
-}

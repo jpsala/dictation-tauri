@@ -30,6 +30,11 @@ export type {
   DesktopRuntimeGateway,
   DesktopRuntimeResult,
 } from "./controller";
+export type {
+  DesktopFailureKind,
+  DesktopFailureRecovery,
+  DesktopFailureRecoveryInput,
+} from "./recovery";
 
 export {
   createAppControlEvent,
@@ -41,13 +46,18 @@ export {
   isAppDesktopRuntimeResult,
 } from "./app-session";
 
+export { DesktopDictationController } from "./controller";
+
 export {
-  DesktopDictationController,
   copyManuallyRecovery,
+  createFailedDeliveryEvidence,
   dismissRecovery,
+  isManagedPreflightFailure,
+  mapDesktopFailureToRecovery,
   recordAgainRecovery,
+  redactDesktopFailureMessage,
   retryFromClipRecovery,
-} from "./controller";
+} from "./recovery";
 
 export {
   createFakeHostControlEventSource,

@@ -124,10 +124,10 @@
 
 **Independent Test**: Focused tests fake each failure class and assert next actions.
 
-- [ ] T038 [P] [US4] Add failure matrix tests in `tests/desktop-control/recovery.test.ts`
-- [ ] T039 [US4] Implement recovery mapping extensions in `src/desktop-control/recovery.ts` or existing recovery helper modules
-- [ ] T040 [US4] Render recovery messages in `src/App.tsx` only as needed for new controller/delivery states
-- [ ] T041 [US4] Verify recovery tests pass
+- [x] T038 [P] [US4] Add failure matrix tests in `tests/desktop-control/recovery.test.ts`
+- [x] T039 [US4] Implement recovery mapping extensions in `src/desktop-control/recovery.ts` or existing recovery helper modules
+- [x] T040 [US4] Render recovery messages in `src/App.tsx` only as needed for new controller/delivery states
+- [x] T041 [US4] Verify recovery tests pass
 
 **Checkpoint**: Every terminal failure has a safe next action and redacted message.
 

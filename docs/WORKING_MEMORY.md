@@ -37,7 +37,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `007-usable-dictation-loop` | complete and committed (`78438e7`): Rust host Groq multipart path implemented behind explicit gate; provider smoke passed with redacted evidence | `specs/007-usable-dictation-loop/tasks.md` |
 | `008-real-provider-ui-gate` | complete and committed (`d0cfac7` + fixes): UI separates `Transcribe with provider` from provider-free `Check host boundary`; manual Tauri real-provider validation passed | `specs/008-real-provider-ui-gate/tasks.md` |
 | `009-fixvox-cloud-runtime-port` | complete through T023: managed STT/postprocess passed; delivery/hotkey next spec decided | `specs/009-fixvox-cloud-runtime-port/tasks.md` |
-| `010-desktop-dictation-control-delivery` | US3 complete through T037: fake host control source toggles start/stop through controller path, readiness remains renderer-safe with no real shortcut registered | `specs/010-desktop-dictation-control-delivery/tasks.md` |
+| `010-desktop-dictation-control-delivery` | US4 complete through T041: recovery matrix maps capture/runtime/managed preflight/desktop control/delivery failures to redacted actionable guidance, with transcript review preserved on delivery failure | `specs/010-desktop-dictation-control-delivery/tasks.md` |
 
 ## Tracks Activas
 
@@ -90,19 +90,20 @@ bun scripts/check-skills-junction.ts
 
 ## Proximo Paso Probable
 
-Continuar con `010`:
+Cerrar `010`:
 
 1. `009` quedo decidido hasta T023: managed STT + managed postprocess funcionan; la spec de delivery/hotkey activa es `010-desktop-dictation-control-delivery`.
 2. Foundation `010` T001-T013 quedo completo: `tests/desktop-control/*`, `src/desktop-control/types.ts`, `src/delivery/types.ts`, `src/delivery/evidence.ts` e indices renderer-safe.
 3. US1 T014-T022 quedo completo: `src/desktop-control/controller.ts` implementa lifecycle start/listening/stop/reviewing, cancel con late results ignorados, no-overlap, retry-from-clip y record-again guidance; `src/desktop-control/app-session.ts` adapta CaptureGateway/HostRuntimeClient; `src/App.tsx` usa facade para start/stop/cancel.
 4. US2 T023-T030 quedo completo: `src/delivery/adapters.ts` agrega review-only/copy/paste-send por puerto inyectado, el controller adjunta evidencia review-only al session/runtime summary, y `src/App.tsx` envuelve el copy fallback detras del delivery port preservando review visible si falla.
 5. US3 T031-T037 quedo completo: `src/desktop-control/fake-host-control.ts` crea eventos `fake_host_event`, `toggle()` usa `controller.handleControl`, y readiness fake/unavailable reporta `hotkeyRegistered:false` sin registrar shortcuts reales.
-6. Importante: `Stop capture` ahora ejecuta el controller y una safe host-boundary dry-run (`allowProviderCall:false`) hasta review/error; `Transcribe with provider` sigue separado con gate explícito `hostReadinessUi.status === "configured"`. No se agrego accion `submit` al contrato.
-7. Proximo Small Batch recomendado: Phase 6 / US4 T038-T041: failure matrix/recovery mapping para capture, runtime, managed preflight, desktop control y delivery, con mensajes redacted/actionable.
-8. Decision vigente: direct Groq queda como BYOK/dev fallback explicito (`provider: groq/direct/byok`), no fallback silencioso si managed/preflight no esta listo; managed+device cuenta como configured aunque no haya `GROQ_API_KEY` local.
-9. Guardrail `010`: fake control events antes de hotkey real; review/manual copy antes de paste automation; nunca `paste_observed` sin observador verificado.
-10. Estado repo esperado al cierre: limpio, con commits locales ahead de `origin/main`; correr `git status --branch --short` para conteo exacto; no push.
-11. Checks recientes: `npm run test:pipeline -- tests/desktop-control` OK (30 tests), `npm run test:pipeline` OK (168 tests), `npm run build` OK, `cd src-tauri && cargo check` OK. Antes de 010 tambien estaban OK `bun scripts/context-index.ts`, `bun scripts/agent-context-audit.ts`, `bun scripts/fixvox-managed-smoke.ts --allow-provider-call --postprocess`, y `cd src-tauri && cargo test --test fixvox_cloud_contract --no-run`. Rust test executables currently fail to launch in this shell with `STATUS_ENTRYPOINT_NOT_FOUND`, so real smoke used the Bun gated script.
+6. US4 T038-T041 quedo completo: `src/desktop-control/recovery.ts` centraliza recovery redacted/actionable para capture/runtime/managed preflight/desktop control/delivery; `App.tsx` muestra recovery del controller cuando aplica; delivery failure conserva review/copy sin `paste_observed`.
+7. Importante: `Stop capture` ahora ejecuta el controller y una safe host-boundary dry-run (`allowProviderCall:false`) hasta review/error; `Transcribe with provider` sigue separado con gate explícito `hostReadinessUi.status === "configured"`. No se agrego accion `submit` al contrato.
+8. Proximo Small Batch recomendado: Phase 8 / T047-T054 verification & hygiene: correr focused/full tests, build, cargo check, artifact hygiene, actualizar docs si hace falta, regenerar indice/audit y commit de cierre. Phase 7 real hotkey sigue opcional/gated y requiere aprobacion explicita.
+9. Decision vigente: direct Groq queda como BYOK/dev fallback explicito (`provider: groq/direct/byok`), no fallback silencioso si managed/preflight no esta listo; managed+device cuenta como configured aunque no haya `GROQ_API_KEY` local.
+10. Guardrail `010`: fake control events antes de hotkey real; review/manual copy antes de paste automation; nunca `paste_observed` sin observador verificado.
+11. Estado repo esperado al cierre: limpio, con commits locales ahead de `origin/main`; correr `git status --branch --short` para conteo exacto; no push.
+12. Checks recientes: `npm run test:pipeline -- tests/desktop-control` OK (40 tests), `npm run test:pipeline` OK (178 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, artifact hygiene OK (`.env`/`artifacts/` ignored, no tracked files). Antes de 010 tambien estaban OK `bun scripts/context-index.ts`, `bun scripts/agent-context-audit.ts`, `bun scripts/fixvox-managed-smoke.ts --allow-provider-call --postprocess`, y `cd src-tauri && cargo test --test fixvox_cloud_contract --no-run`. Rust test executables currently fail to launch in this shell with `STATUS_ENTRYPOINT_NOT_FOUND`, so real smoke used the Bun gated script.
 
 ## Promocion De Memoria
 

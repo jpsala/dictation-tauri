@@ -1,4 +1,5 @@
 import type { DeliveryEvidence, DesktopTargetSnapshot } from "../delivery/types";
+import { redactHostRuntimeText } from "../host-runtime/redaction";
 
 export const desktopControlSources = [
   "app_button",
@@ -79,6 +80,7 @@ export type DesktopRecoveryAction = {
     | "inspect_setup"
     | "dismiss";
   label: string;
+  reason: string;
   clipAvailable: boolean;
 };
 
@@ -163,7 +165,7 @@ export function createUnavailableDesktopControlReadiness(
     hotkeyRegistered: false,
     deliveryAvailable: false,
     backgroundModeAvailable: false,
-    reason,
+    reason: redactHostRuntimeText(reason, { maxMessageLength: 220 }),
   };
 }
 

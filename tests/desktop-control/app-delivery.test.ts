@@ -1,11 +1,34 @@
 import { describe, expect, it } from "vitest";
 import {
   applyDeliveryEvidenceFallback,
+  formatDesktopRecoveryAction,
   getTranscriptReview,
 } from "../../src/App";
 import type { SimulatedRunSummary } from "../../src/pipeline/types";
 
 describe("App delivery fallback", () => {
+  it("formats controller recovery actions for the shared recovery line", () => {
+    expect(
+      formatDesktopRecoveryAction({
+        kind: "record_again",
+        label: "Check microphone setup",
+        reason: "Check microphone permission or device setup, then record again.",
+        clipAvailable: false,
+      }),
+    ).toBe(
+      "Check microphone setup: Check microphone permission or device setup, then record again.",
+    );
+
+    expect(
+      formatDesktopRecoveryAction({
+        kind: "dismiss",
+        label: "Dismiss",
+        reason: "No further automatic action is required for this control event.",
+        clipAvailable: false,
+      }),
+    ).toBeUndefined();
+  });
+
   it("keeps transcript review visible after delivery failure", () => {
     const summary = createReviewSummary();
     const afterFailure = applyDeliveryEvidenceFallback(summary, {
