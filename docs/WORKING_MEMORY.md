@@ -100,9 +100,10 @@ bun scripts/check-skills-junction.ts
 3. Foundation/US1/US2 `011` quedaron implementados provider-free: `src/selection-transform/*` con `SelectionContext`, routing direct-vs-transform y presets fixture `rewrite`/`shorten`/`bulletize`; tests en `tests/selection-transform/*`.
 4. US3/US4 safe recovery quedo implementado en `src/App.tsx`: boton `Paste last (safe)` solo cuando hay transcript, helper `applySafePasteLastRecovery`, evidencia `uncertain`, review visible y sin teclas/foco/clipboard/paste observado.
 5. `vitest.config.ts` incluye `tests/selection-transform/**/*.test.ts`; visual smoke verifica que el estado inicial no reclama paste observed.
-6. Proximo Small Batch recomendado: cerrar 011 Phase 8 documental (`docs/WORKING_MEMORY.md`, context index/audit, commit atomico) y luego elegir entre: (a) completar no-gated refinements de 011, (b) implementar 010 hotkey T043-T045 y pedir smoke local T046, o (c) diseñar 011 real selection capture T036 sin implementarlo.
-7. Guardrails vigentes: no selection real, no paste automation, no durable history, no provider calls por default, no `paste_observed` sin observador verificado.
-8. Checks recientes de esta tanda: `npm run test:pipeline -- tests/selection-transform tests/desktop-control/app-delivery.test.ts` OK (17 tests), `npm run test:pipeline` OK (195 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, `npm run visual:check` OK (8 tests), artifact hygiene OK (`.env`/`artifacts/` ignored, no tracked files).
+6. Phase 8 documental de `011` quedo cerrado y commiteado; OS sync posterior dejo `.agents/skills` apuntando a `docs/skills`, context index/audit OK con 4 warnings conocidos.
+7. Proximo Small Batch recomendado: elegir entre (a) completar refinements no-gated de `011`, (b) implementar `010` hotkey T043-T045 y pedir smoke local T046, o (c) diseñar `011` real selection capture T036 sin implementarlo.
+8. Guardrails vigentes: no selection real, no paste automation, no durable history, no provider calls por default, no `paste_observed` sin observador verificado.
+9. Checks recientes de esta tanda: `npm run test:pipeline -- tests/selection-transform tests/desktop-control/app-delivery.test.ts` OK (17 tests), `npm run test:pipeline` OK (195 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, `npm run visual:check` OK (8 tests), artifact hygiene OK (`.env`/`artifacts/` ignored, no tracked files), `bun scripts/context-index.ts` OK, `bun scripts/agent-context-audit.ts` OK con 4 warnings conocidos, `bun scripts/check-skills-junction.ts` OK.
 
 ## Promocion De Memoria
 
