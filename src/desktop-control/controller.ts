@@ -1,4 +1,5 @@
 import {
+  assertDefaultDeliveryEvidenceAllowed,
   createReviewOnlyDeliveryGateway,
   type DeliveryEvidence,
   type DesktopDeliveryGateway,
@@ -266,6 +267,7 @@ export class DesktopDictationController
 
     try {
       delivery = await this.delivery.deliver(request);
+      assertDefaultDeliveryEvidenceAllowed(delivery);
     } catch (error) {
       const recovery = mapDesktopFailureToRecovery({
         kind: "delivery",

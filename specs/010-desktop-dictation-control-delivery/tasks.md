@@ -149,14 +149,14 @@
 
 ## Phase 8: Polish & Verification
 
-- [ ] T047 Run `npm run test:pipeline -- tests/desktop-control`
-- [ ] T048 Run `npm run test:pipeline`
-- [ ] T049 Run `npm run build`
-- [ ] T050 Run `cd src-tauri && cargo check`
-- [ ] T051 Run `npm run visual:check` if UI text/layout changed
-- [ ] T052 Run artifact hygiene checks: `git status --short --ignored artifacts .env` and `git ls-files artifacts .env`
-- [ ] T053 Update `docs/WORKING_MEMORY.md` and relevant topics if behavior/docs changed durably
-- [ ] T054 Run `bun scripts/context-index.ts` and `bun scripts/agent-context-audit.ts`
+- [x] T047 Run `npm run test:pipeline -- tests/desktop-control`
+- [x] T048 Run `npm run test:pipeline`
+- [x] T049 Run `npm run build`
+- [x] T050 Run `cd src-tauri && cargo check`
+- [x] T051 Run `npm run visual:check` if UI text/layout changed
+- [x] T052 Run artifact hygiene checks: `git status --short --ignored artifacts .env` and `git ls-files artifacts .env`
+- [x] T053 Update `docs/WORKING_MEMORY.md` and relevant topics if behavior/docs changed durably
+- [x] T054 Run `bun scripts/context-index.ts` and `bun scripts/agent-context-audit.ts`
 
 **Checkpoint**: 010 has green safe checks, updated tasks, and no tracked secrets/artifacts.
 

@@ -149,6 +149,32 @@ describe("desktop delivery evidence foundation", () => {
     });
   });
 
+  it("redacts secret-looking diagnostics from delivery adapter reasons", async () => {
+    const failedCopy = createCopyDeliveryGateway({
+      copyText: async () => {
+        throw new Error("Clipboard rejected TOKEN=ghp_secret_copy");
+      },
+    });
+    const failedPaste = createPasteSendDeliveryGateway({
+      failWith: "Paste failed with Authorization: Bearer sk-secret-paste",
+    });
+
+    await expect(
+      failedCopy.deliver(createDeliveryRequest({ strategy: "copy", allowDesktopSideEffects: true })),
+    ).resolves.toMatchObject({
+      status: "failed",
+      reason: "Clipboard rejected TOKEN=[REDACTED]",
+    });
+    await expect(
+      failedPaste.deliver(
+        createDeliveryRequest({ strategy: "paste_send", allowDesktopSideEffects: true }),
+      ),
+    ).resolves.toMatchObject({
+      status: "failed",
+      reason: "Paste failed with Authorization: Bearer [REDACTED]",
+    });
+  });
+
   it("records fake paste-send as sent or uncertain, never observed", async () => {
     const gateway = createPasteSendDeliveryGateway({
       reason: "A fake paste command was sent without observation.",

@@ -179,6 +179,45 @@ describe("DesktopDictationController recovery integration", () => {
     expect(JSON.stringify(failed)).not.toMatch(/direct fallback|ghp_secret_preflight/);
   });
 
+  it("downgrades an injected unverified paste observation to failed review evidence", async () => {
+    const delivery: DesktopDeliveryGateway = {
+      deliver: vi.fn(async () => ({
+        status: "paste_observed",
+        output: "overclaimed transcript",
+        strategy: "paste_send",
+        message: "Fake adapter overclaimed insertion.",
+      })),
+    };
+    const controller = createController({
+      runtime: {
+        transcribe: vi.fn(async () => ({
+          transcript: "overclaimed transcript",
+          output: "overclaimed transcript",
+        })),
+      },
+      delivery,
+    });
+
+    await controller.handleControl(createControlEvent({ action: "start" }));
+    const reviewed = await controller.handleControl(
+      createControlEvent({ action: "stop", id: "stop-overclaimed-delivery" }),
+    );
+
+    expect(reviewed).toMatchObject({
+      state: "reviewing",
+      delivery: {
+        status: "failed",
+        output: "overclaimed transcript",
+        strategy: "review_only",
+        reason: "paste_observed is forbidden without a verified desktop observer.",
+      },
+      recoveryAction: {
+        kind: "copy_manually",
+      },
+    });
+    expect(JSON.stringify(reviewed)).not.toContain('"status":"paste_observed"');
+  });
+
   it("keeps transcript review available when delivery throws after text is produced", async () => {
     const delivery: DesktopDeliveryGateway = {
       deliver: vi.fn(async () => {

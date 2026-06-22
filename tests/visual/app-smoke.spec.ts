@@ -34,7 +34,10 @@ test("runs a fake start and stop capture flow", async ({ page }) => {
   await expect(page.getByTestId("capture-artifact")).toHaveText(
     "artifacts/microphone-capture/audio/capture-001.webm",
   );
-  await expect(page.getByTestId("pipeline-state")).toHaveText("Not submitted");
+  await expect(page.getByTestId("pipeline-state")).toHaveText("Setup needed");
+  await expect(page.getByTestId("pipeline-message")).toHaveText(
+    "Host runtime transcription boundary is unavailable.",
+  );
   await expect(page.getByRole("button", { name: "Transcribe with provider" })).toBeDisabled();
 });
 

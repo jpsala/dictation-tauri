@@ -1,3 +1,4 @@
+import { redactHostRuntimeText } from "../host-runtime/redaction";
 import {
   createReviewOnlyEvidence,
   deriveDeliveryEvidence,
@@ -74,22 +75,21 @@ export function createPasteSendDeliveryGateway(
       if (options.failWith) {
         return deriveDeliveryEvidence(pasteRequest, {
           status: "failed",
-          reason: options.failWith,
+          reason: redactedReason(options.failWith, "Paste delivery failed."),
         });
       }
 
       return deriveDeliveryEvidence(pasteRequest, {
         status: "paste_sent",
-        reason: options.reason ?? "Paste command was sent without observation.",
+        reason: redactedReason(
+          options.reason,
+          "Paste command was sent without observation.",
+        ),
       });
     },
   };
 }
 
 function redactedReason(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-
-  return fallback;
+  return redactHostRuntimeText(error ?? fallback, { maxMessageLength: 220 });
 }
