@@ -195,7 +195,11 @@ export function resolveDesktopControlTransition(
   const effectiveAction = resolveEffectiveAction(currentState, event.action);
 
   if (effectiveAction === "start") {
-    if (currentState === "idle" || isTerminalDesktopDictationState(currentState)) {
+    if (
+      currentState === "idle" ||
+      currentState === "reviewing" ||
+      isTerminalDesktopDictationState(currentState)
+    ) {
       return {
         accepted: true,
         effectiveAction,

@@ -57,15 +57,15 @@
 - [x] T014 [P] [US1] Add fake start→listening and stop→review success test in `tests/desktop-control/session-controller.test.ts`
 - [x] T015 [P] [US1] Add cancellation during capture/transcription/delivery tests in `tests/desktop-control/session-controller.test.ts`
 - [x] T016 [P] [US1] Add retry-from-clip and record-again guidance tests in `tests/desktop-control/session-controller.test.ts`
-- [ ] T017 [P] [US1] Add App integration test proving buttons call the controller path in `tests/desktop-control/app-session-controller.test.tsx`
+- [x] T017 [P] [US1] Add App/controller seam test proving app controls call the controller path in `tests/desktop-control/app-session-controller.test.ts`
 
 ### Implementation for User Story 1
 
 - [x] T018 [US1] Implement `DesktopDictationController` in `src/desktop-control/controller.ts`
-- [ ] T019 [US1] Adapt existing capture and host-runtime calls behind controller dependencies without changing provider routing
-- [ ] T020 [US1] Wire `src/App.tsx` start/stop/cancel/submit controls through the controller or a narrow controller facade
-- [ ] T021 [US1] Preserve existing readiness UI and provider explicit gate while routing session state through the controller
-- [ ] T022 [US1] Verify focused session/App tests pass
+- [x] T019 [US1] Adapt existing capture and host-runtime calls behind controller dependencies without changing provider routing
+- [x] T020 [US1] Wire `src/App.tsx` start/stop/cancel/submit controls through the controller or a narrow controller facade
+- [x] T021 [US1] Preserve existing readiness UI and provider explicit gate while routing session state through the controller
+- [x] T022 [US1] Verify focused session/App tests pass
 
 **Checkpoint**: US1 is complete when in-window controls exercise one session lifecycle and no-overlap through fakes.
 

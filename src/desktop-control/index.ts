@@ -15,11 +15,26 @@ export type {
   TerminalDesktopDictationState,
 } from "./types";
 export type {
+  AppDesktopRuntimeResult,
+  AppSessionControllerFacade,
+  AppSessionRuntimeOptions,
+} from "./app-session";
+export type {
   DesktopCaptureGateway,
   DesktopDictationControllerOptions,
   DesktopRuntimeGateway,
   DesktopRuntimeResult,
 } from "./controller";
+
+export {
+  createAppControlEvent,
+  createAppSessionControllerFacade,
+  createCaptureGatewayControllerAdapter,
+  createHostRuntimeControllerAdapter,
+  getAppSessionCaptureResult,
+  getAppSessionSummary,
+  isAppDesktopRuntimeResult,
+} from "./app-session";
 
 export {
   DesktopDictationController,

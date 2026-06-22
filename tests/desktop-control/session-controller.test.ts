@@ -47,6 +47,19 @@ describe("desktop dictation foundation state transitions", () => {
     });
   });
 
+  it("allows a new recording from review without treating transcript review as overlap", () => {
+    const decision = resolveDesktopControlTransition(
+      createSession({ state: "reviewing" }),
+      createControlEvent({ action: "start" }),
+    );
+
+    expect(decision).toEqual({
+      accepted: true,
+      effectiveAction: "start",
+      nextState: "arming",
+    });
+  });
+
   it("allows cancellation from active work and marks the next state terminal", () => {
     const decision = resolveDesktopControlTransition(
       createSession({ state: "transcribing" }),

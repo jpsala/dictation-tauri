@@ -4,6 +4,14 @@ import { FakeCaptureGateway } from "./capture/fake-gateway";
 import type { CaptureGateway } from "./capture/gateway";
 import { NativeTauriCaptureGateway } from "./capture/native-tauri-gateway";
 import type { CaptureResult, CaptureState } from "./capture/types";
+import {
+  createAppSessionControllerFacade,
+  createCaptureGatewayControllerAdapter,
+  createHostRuntimeControllerAdapter,
+  getAppSessionCaptureResult,
+  getAppSessionSummary,
+} from "./desktop-control/app-session";
+import { DesktopDictationController } from "./desktop-control/controller";
 import { createHostClientTranscriptionAdapter } from "./host-runtime/pipeline-adapter";
 import {
   describeHostReadiness,
@@ -292,6 +300,14 @@ export function App() {
     [],
   );
   const gateway = captureRuntime.gateway;
+  const desktopSession = useMemo(() => {
+    const controller = new DesktopDictationController({
+      capture: createCaptureGatewayControllerAdapter(gateway),
+      runtime: createHostRuntimeControllerAdapter(hostRuntime.client),
+    });
+
+    return createAppSessionControllerFacade(controller);
+  }, [gateway, hostRuntime.client]);
   const [capture, setCapture] = useState<CaptureUiState>({
     state: "idle",
     message: captureRuntime.readyMessage,
@@ -334,31 +350,19 @@ export function App() {
       message: captureRuntime.permissionMessage,
     });
 
-    const permissionStatus = await gateway.getPermissionState();
-    if (
-      permissionStatus === "denied" ||
-      permissionStatus === "unavailable" ||
-      permissionStatus === "error"
-    ) {
-      setCapture({
-        state: "permission_needed",
-        message: "Microphone capture is not available in this test adapter.",
-      });
-      return;
-    }
-
-    try {
-      await gateway.startCapture();
+    const session = await desktopSession.start();
+    if (session.state === "listening") {
       setCapture({
         state: "recording",
         message: captureRuntime.listeningMessage,
       });
-    } catch {
-      setCapture({
-        state: "failed",
-        message: "A capture session is already active.",
-      });
+      return;
     }
+
+    setCapture({
+      state: session.error?.code === "capture-start-failed" ? "permission_needed" : "failed",
+      message: session.error?.message ?? "A capture session is already active.",
+    });
   }
 
   async function stopCapture() {
@@ -366,23 +370,57 @@ export function App() {
       state: "stopping",
       message: captureRuntime.stoppingMessage,
     });
-
-    const result = await gateway.stopCapture();
     setPipelineUi({
-      status: "idle",
-      message: result.ok
-        ? "Captured artifact is ready for provider transcription or a safe boundary check."
-        : "Capture failed before pipeline submission.",
+      status: "running",
+      message: "Checking the safe host boundary without a provider call.",
     });
+
+    const session = await desktopSession.stop();
+    const result = getAppSessionCaptureResult(session);
+    const summary = getAppSessionSummary(session);
+
     setCapture({
-      state: result.ok ? "captured" : "failed",
-      message: result.ok ? captureRuntime.capturedMessage : result.error.message,
+      state: result?.ok ? "captured" : session.state === "cancelled" ? "cancelled" : "failed",
+      message: result?.ok
+        ? captureRuntime.capturedMessage
+        : session.error?.message ?? "Capture failed before pipeline submission.",
       result,
+    });
+
+    if (summary?.terminalState === "done") {
+      const deliveryMessage =
+        describeDeliveryEvidence(summary.deliveryEvidence) ??
+        (summary.transcript
+          ? "Transcript is available from the captured run."
+          : "Captured run completed without transcript text.");
+
+      setPipelineUi({
+        status: "done",
+        message: deliveryMessage,
+        summary,
+      });
+      return;
+    }
+
+    if (session.state === "cancelled" || summary?.terminalState === "cancelled") {
+      setPipelineUi({
+        status: "cancelled",
+        message: "Captured run was cancelled before completion.",
+        summary,
+      });
+      return;
+    }
+
+    setPipelineUi({
+      status: "error",
+      message: session.error?.message ?? summary?.error?.message ?? "Captured run failed.",
+      summary,
     });
   }
 
   async function cancelCapture() {
-    const result = await gateway.cancelCapture();
+    const session = await desktopSession.cancel();
+    const result = getAppSessionCaptureResult(session);
     setPipelineUi({
       status: "cancelled",
       message: "Pipeline submission was skipped because capture was cancelled.",
