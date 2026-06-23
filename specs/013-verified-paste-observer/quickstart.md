@@ -43,4 +43,10 @@ Manual steps:
   - Report: `artifacts/microphone-capture/reports/dock-smoke-Fallback-20260623-201528.json`.
   - Result: fresh WAV created, scratch Notepad target changed to non-empty redacted content, clipboard sentinel restored.
   - Follow-up probe: Win32 child text probe against the scratch Notepad matched the saved redacted content (`readableTextSurfaces=12`, `win32ProbeMatchedSavedContent=true`).
-  - Limitation: this session does not expose a computer-use/UI-inspection tool that can read the dock's React evidence state, so `paste_observed` was not independently captured from the app UI/log. Treat as observer-readiness evidence, not final verified `paste_observed` closeout.
+  - Limitation: this session did not yet capture the dock's React evidence state, so `paste_observed` was not independently captured from the app UI/log. Treat as observer-readiness evidence, not final verified `paste_observed` closeout.
+- 2026-06-23 computer-use assisted fallback smoke:
+  - `@amaster.ai/pi-computer-use` installed and exposed Windows UIA tools in the session.
+  - Command: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-dock.ps1 -Mode Fallback -RecordSeconds 4 -SpeakText '[REDACTED_SYNTHETIC_SPEECH]'`.
+  - Report: `artifacts/microphone-capture/reports/dock-smoke-Fallback-20260623-202847.json`.
+  - Computer-use evidence: `computer_use_get_window_state` on Notepad showed the scratch document value matched the dictated fixture text and `32 characters`; dock state showed `Review ready`, transcript text, and recovery actions.
+  - Limitation: the dock UI still did not expose a distinct `paste_observed` label in the compact view, so final closeout still needs machine-readable/logged delivery status or a UI affordance that shows observed-vs-sent.
