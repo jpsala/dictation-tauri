@@ -38,7 +38,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `008-real-provider-ui-gate` | complete and committed (`d0cfac7` + fixes): UI separates `Transcribe with provider` from provider-free `Check host boundary`; manual Tauri real-provider validation passed | `specs/008-real-provider-ui-gate/tasks.md` |
 | `009-fixvox-cloud-runtime-port` | complete through T023: managed STT/postprocess passed; delivery/hotkey next spec decided | `specs/009-fixvox-cloud-runtime-port/tasks.md` |
 | `010-desktop-dictation-control-delivery` | safe scope complete through Phase 8 plus Phase 7 T043-T045: Rust-owned `Ctrl+Shift+F9` hotkey boundary implemented; T046 manual smoke still gated | `specs/010-desktop-dictation-control-delivery/tasks.md` |
-| `011-selection-transform-and-recovery-ergonomics` | active: fixture-first selection routing/transforms and safe paste-last recovery implemented; T036 design chose host-owned non-mutating Windows UI Automation first route, real capture still gated | `specs/011-selection-transform-and-recovery-ergonomics/tasks.md` |
+| `011-selection-transform-and-recovery-ergonomics` | active: fixture-first selection routing/transforms and safe paste-last recovery implemented; T036/T037 chose and compile-guarded host-owned non-mutating Windows UI Automation first route, real capture still gated | `specs/011-selection-transform-and-recovery-ergonomics/tasks.md` |
 
 ## Tracks Activas
 
@@ -63,7 +63,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 - Post-MVP3: `005-runtime-transcription-delivery` cubre foundation runtime y script Groq gated; `007`/`008` cierran app UI -> Tauri host -> Groq STT real con gesto explicito, artifacts ignorados y evidencia honesta.
 - UI durable requiere `PRODUCT.md` y `DESIGN.md`.
 - Small Batches ahora optimizan por checkpoint verificable: agrupar 2-5 tasks acopladas cuando aceleran un unico comportamiento; separar siempre gates, manual smokes, provider calls, side effects reales, paste/selection real e historial durable.
-- Post-010: `011` arranca seleccion fixture-first; T036 define captura real futura como host-owned Windows UI Automation no-mutating first, con clipboard roundtrip separado/gated; no leer seleccion real, no paste automation y no historial durable hasta aprobacion explicita.
+- Post-010: `011` arranca seleccion fixture-first; T036/T037 definen y compile-guardan captura real futura como host-owned Windows UI Automation no-mutating first, con clipboard roundtrip separado/gated; no leer seleccion real, no paste automation y no historial durable hasta aprobacion explicita.
 - `paste-last` seguro es solo evidencia/UI `uncertain`: no envia teclas, no toca foco/clipboard y nunca reclama `paste_observed`.
 - La ruta inicial debe seguir liviana; no convertir `AGENTS.md`, `WORKING_MEMORY.md`, `TOPICS.md` ni tracks activas en historial.
 
@@ -103,10 +103,10 @@ bun scripts/check-skills-junction.ts
 6. Phase 8 documental de `011` quedo cerrado y commiteado; OS sync posterior dejo `.agents/skills` apuntando a `docs/skills`, context index/audit OK con 4 warnings conocidos.
 7. Ultimo refinement no-gated de `011`: `latestResultFromPipelineSummary` y `latestResultFromSelectionTransform` impiden que runs fallidos/cancelados/vacios se vuelvan reusables y mantienen latest-result en memoria/tipo, sin historial durable.
 8. Modo de trabajo actualizado por JP: evitar microbatches; ejecutar batches de checkpoint mas amplios cuando sean verificables y reversibles.
-9. `011` T036 quedo diseñado sin implementacion: ruta futura host-owned non-mutating Windows UI Automation first; failure behavior documentado (`unsupported_target`, `no_selection`, `timeout`, etc.); clipboard roundtrip/`Ctrl+C` diferido a decision separada.
-10. Proximo checkpoint recomendado: `011` T037 boundary tests/compile checks sin side effects, o pedir aprobacion explicita para `010` T046 manual hotkey smoke local.
+9. `011` T036/T037 quedaron diseñados/compile-guarded sin captura real: ruta futura host-owned non-mutating Windows UI Automation first; failure behavior modelado (`unsupported_target`, `no_selection`, `timeout`, etc.); clipboard roundtrip/`Ctrl+C` diferido a decision separada.
+10. Proximo checkpoint recomendado: pedir aprobacion explicita antes de `011` T038 real selection capture o antes de `010` T046 manual hotkey smoke local.
 11. Guardrails vigentes: no selection real, no paste automation, no durable history, no provider calls por default, no `paste_observed` sin observador verificado.
-12. Checks recientes de esta tanda: `npm run test:pipeline -- tests/desktop-control/tauri-host-control.test.ts tests/desktop-control/desktop-side-effect-guard.test.ts` OK, `npm run test:pipeline -- tests/desktop-control` OK (48 tests), `npm run test:pipeline` OK (203 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, `npm run visual:check` OK on rerun (first attempt had transient desktop page.goto timeouts), artifact hygiene OK (`.env`/`artifacts/` ignored, no tracked files), `bun scripts/context-index.ts` OK, `bun scripts/agent-context-audit.ts` OK con 4 warnings conocidos.
+12. Checks recientes de esta tanda: `npm run test:pipeline -- tests/selection-transform` OK (21 tests), `npm run test:pipeline` OK (207 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, artifact hygiene OK (`.env`/`artifacts/` ignored, no tracked files), `bun scripts/context-index.ts` OK, `bun scripts/agent-context-audit.ts` OK con 4 warnings conocidos.
 
 ## Promocion De Memoria
 

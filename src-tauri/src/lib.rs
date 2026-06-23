@@ -2,6 +2,7 @@ mod desktop_control;
 mod fixvox_cloud;
 mod native_capture;
 mod runtime_transcription;
+pub mod selection_capture;
 
 pub fn run() {
     tauri::Builder::default()

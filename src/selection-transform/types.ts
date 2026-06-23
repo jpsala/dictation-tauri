@@ -4,6 +4,37 @@ import type { DeliveryEvidence } from "../pipeline/types";
 
 export type SelectionContextSource = "fixture" | "host_capture" | "none";
 
+export const selectionCaptureStatuses = [
+  "ok",
+  "unsupported_platform",
+  "no_foreground_target",
+  "unsupported_target",
+  "no_selection",
+  "timeout",
+  "failed",
+] as const;
+
+export type SelectionCaptureStatus = (typeof selectionCaptureStatuses)[number];
+
+export type HostSelectionCaptureRoute = {
+  owner: "tauri_host";
+  primaryStrategy: "windows_ui_automation";
+  mutatesClipboard: false;
+  sendsKeyboardShortcut: false;
+  touchesFocus: false;
+  persistsSelection: false;
+  allowsClipboardRoundtrip: false;
+};
+
+export type SelectionCaptureOutcome = {
+  status: SelectionCaptureStatus;
+  selection?: SelectionContext;
+  targetSnapshot?: DesktopTargetSnapshot;
+  redacted: boolean;
+  truncated: boolean;
+  reason?: string;
+};
+
 export type SelectionContext = {
   selectionId: string;
   selectedText?: string;

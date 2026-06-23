@@ -1,7 +1,10 @@
 export type {
   FixtureTransformPresetId,
+  HostSelectionCaptureRoute,
   LatestResult,
   LatestResultSource,
+  SelectionCaptureOutcome,
+  SelectionCaptureStatus,
   SelectionContext,
   SelectionContextInput,
   SelectionContextSource,
@@ -12,6 +15,7 @@ export type {
   SelectionTransformRequest,
   SelectionTransformResult,
 } from "./types";
+export { selectionCaptureStatuses } from "./types";
 export {
   hasSelectedText,
   normalizeSelectedText,
@@ -19,6 +23,11 @@ export {
   redactTargetSnapshot,
 } from "./context";
 export { classifySelectionRoute } from "./routing";
+export {
+  hostSelectionCaptureCommand,
+  hostSelectionCaptureRoute,
+  routeSelectionCaptureOutcome,
+} from "./host-capture-boundary";
 export {
   isSupportedFixturePreset,
   runFixtureSelectionTransform,

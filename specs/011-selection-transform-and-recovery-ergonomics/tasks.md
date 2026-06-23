@@ -137,7 +137,7 @@
 **Purpose**: Only after fixture selection contracts are green, decide a minimal host-owned selection capture route.
 
 - [x] T036 [US1] Decide real Windows selection capture route and failure behavior before adding dependencies/capabilities
-- [ ] T037 [US1] Add no-side-effect Rust/TS boundary tests or compile checks for selected route
+- [x] T037 [US1] Add no-side-effect Rust/TS boundary tests or compile checks for selected route
 - [ ] T038 [US1] Implement minimal host-owned selection capture only if approved by the preceding decision
 - [ ] T039 [US1] With explicit local approval, run one manual selection capture smoke and record redacted evidence in `quickstart.md`
 
