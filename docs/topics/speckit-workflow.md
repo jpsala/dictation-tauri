@@ -38,22 +38,26 @@ No usar SpecKit como memoria general, diario, knowledge base ni backlog universa
 5. Completar research, data model, quickstart y contracts si aplican.
 6. Generar `tasks.md` con tareas pequenas, verificables, con paths exactos y checkpoints.
 7. Analizar consistencia entre spec, plan y tasks antes de implementar.
-8. Implementar una task/checkpoint por tanda.
+8. Implementar un comportamiento/checkpoint por tanda; agrupar varias tasks acopladas cuando acelere sin cruzar gates.
 9. Verificar con comandos documentados en `docs/DEVELOPMENT.md` o `quickstart.md`.
-10. Marcar la task completada y commitear atomico cuando aplique.
+10. Marcar las tasks completadas del checkpoint y commitear atomico cuando aplique.
 11. Actualizar docs estables si cambia una decision durable.
 
 ## Small Batches
 
-Regla: una task SpecKit o comportamiento verificable por tanda.
+Regla actual: optimizar por checkpoint verificable, no por microtask. Una tanda puede ser una task SpecKit, varias tasks acopladas, un comportamiento observable o un checkpoint declarado en `tasks.md`.
 
+- Preferir batches de checkpoint cuando 2-5 tasks comparten el mismo comportamiento, archivos y checks.
 - No ejecutar `tasks.md` completo en modo automatico salvo pedido explicito de JP.
 - Antes de implementar, nombrar la tanda siguiente y su criterio de verificacion.
 - No avanzar a la siguiente tanda si la actual no tiene checks verdes o estado documentado.
-- No esconder refactors dentro de features.
+- Separar siempre: decisiones nuevas, manual smokes, provider calls, side effects reales de escritorio, paste automation, selection real, historial durable y cambios de seguridad/capabilities que no pertenezcan al checkpoint aprobado.
+- No esconder refactors dentro de features; permitir refactor chico solo si desbloquea el checkpoint y queda cubierto por los mismos checks.
 - No mezclar UI durable con decisiones de producto pendientes.
-- Si la task generada es grande, dividirla antes de implementar.
+- Si una task/checkpoint se vuelve amplio, ambiguo o cruza gates, dividirlo antes de implementar.
 - Cada tanda cerrada debe poder revertirse con un solo commit.
+
+Patron recomendado para avanzar mas rapido: `seleccionar checkpoint -> implementar tasks acopladas -> correr checks enfocados -> correr checks de cierre -> marcar todas las tasks del checkpoint -> commit atomico`.
 
 ## Gates Recomendados
 
@@ -72,7 +76,7 @@ constitution -> specify -> clarify -> checklist -> plan -> tasks -> analyze -> i
 Durante `implement`, repetir:
 
 ```text
-seleccionar tanda -> implementar -> verificar -> actualizar tasks/docs -> decidir siguiente tanda
+seleccionar checkpoint -> implementar tasks acopladas -> verificar -> actualizar tasks/docs -> decidir siguiente checkpoint
 ```
 
 ## Spec Actual

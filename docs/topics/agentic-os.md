@@ -98,9 +98,10 @@ rg -l "status:\s*active" docs/tracks -g "*.md" -g "!archive/**"
 
 ## Small Batches
 
-Los agentes deben trabajar en tandas chicas. Una tanda valida es:
+Los agentes deben trabajar en tandas chicas orientadas a terminar antes. Una tanda valida es:
 
 - una task SpecKit;
+- varias tasks SpecKit acopladas si forman un unico comportamiento/checkpoint verificable;
 - un comportamiento observable;
 - un checkpoint declarado en `tasks.md`;
 - una sincronizacion documental acotada.
@@ -108,12 +109,12 @@ Los agentes deben trabajar en tandas chicas. Una tanda valida es:
 Cada tanda debe tener:
 
 1. fuente de verdad previa: spec, plan, task, decision o topic;
-2. alcance chico y revisable;
+2. alcance revisable, idealmente de 2-5 tasks cuando esas tasks comparten comportamiento y checks;
 3. check de cierre explicito;
 4. `tasks.md` marcado si aplica;
 5. commit atomico reversible.
 
-Si una tanda empieza a mezclar responsabilidades, se divide antes de seguir.
+Separar siempre lo que cruce gates o side effects reales: decisiones nuevas, provider calls, smokes manuales, paste automation, selection real, historial durable y cambios amplios de seguridad/capabilities. Si una tanda empieza a mezclar responsabilidades no relacionadas o vuelve dificil revertir, se divide antes de seguir.
 
 ## Handoff Con `siguiente`
 

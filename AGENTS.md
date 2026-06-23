@@ -26,9 +26,9 @@ La discusion inicial y las decisiones durables del sistema deben quedar integrad
 - Modo personal/dev permisivo: se pueden leer `.env`, variables locales, logs, audio, transcripciones, bases locales y artifacts de referencia cuando ayuden.
 - No imprimir secretos ni commitear `.env`/tokens salvo pedido explicito y acotado de JP.
 - No revertir cambios de usuario sin pedido explicito.
-- Trabajar en Small Batches: una task SpecKit, un comportamiento o un checkpoint verificable por tanda. Cada tanda debe ser chica, revisable, testeada con checks relevantes y reversible con un commit atomico. No mezclar plan/spec/docs con implementacion si pueden separarse limpiamente.
+- Trabajar en Small Batches orientados a checkpoints: una tanda puede agrupar varias tasks SpecKit acopladas si entrega un comportamiento/checkpoint verificable y reversible. Evitar microbatches cuando ralenticen el avance; separar siempre decisiones/gates, side effects reales, provider calls, smoke manual, paste/selection real e historial durable. Cada tanda debe ser revisable, testeada con checks relevantes y reversible con un commit atomico.
 - Mantener la documentacion liviana: promover decisiones durables a docs estables y evitar transcribir sesiones.
-- Para features grandes, usar SpecKit o actualizar la spec activa antes de implementar cambios durables; ejecutar `tasks.md` por lotes chicos verificables, no todo en bloque salvo pedido explicito.
+- Para features grandes, usar SpecKit o actualizar la spec activa antes de implementar cambios durables; ejecutar `tasks.md` por checkpoints verificables, agrupando 2-5 tasks cuando sean parte del mismo comportamiento y no crucen gates/manual side effects.
 - Para trabajos vivos o retomables, usar `docs/tracks/`. Para listar trabajos activos, buscar `status: active` en esa carpeta.
 - Cada track debe tener frontmatter con `status`, `started`, `updated` y `priority`; usar `docs/tracks/TEMPLATE.md` como base.
 - Las tracks archivadas deben tener `status: archived` y vivir en `docs/tracks/archive/`.
