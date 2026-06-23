@@ -37,7 +37,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `007-usable-dictation-loop` | complete and committed (`78438e7`): Rust host Groq multipart path implemented behind explicit gate; provider smoke passed with redacted evidence | `specs/007-usable-dictation-loop/tasks.md` |
 | `008-real-provider-ui-gate` | complete and committed (`d0cfac7` + fixes): UI separates `Transcribe with provider` from provider-free `Check host boundary`; manual Tauri real-provider validation passed | `specs/008-real-provider-ui-gate/tasks.md` |
 | `009-fixvox-cloud-runtime-port` | complete through T023: managed STT/postprocess passed; delivery/hotkey next spec decided | `specs/009-fixvox-cloud-runtime-port/tasks.md` |
-| `010-desktop-dictation-control-delivery` | safe scope complete through Phase 8 plus Phase 7 T043-T045: Rust-owned `Ctrl+Shift+F9` hotkey boundary implemented; T046 manual smoke still gated | `specs/010-desktop-dictation-control-delivery/tasks.md` |
+| `010-desktop-dictation-control-delivery` | complete incl. T046: Rust-owned `Ctrl+Shift+F9` hotkey smoke passed locally with redacted ignored artifact evidence | `specs/010-desktop-dictation-control-delivery/tasks.md` |
 | `011-selection-transform-and-recovery-ergonomics` | active: fixture-first selection routing/transforms and safe paste-last recovery implemented; T036/T037 chose and compile-guarded host-owned non-mutating Windows UI Automation first route, real capture still gated | `specs/011-selection-transform-and-recovery-ergonomics/tasks.md` |
 
 ## Tracks Activas
@@ -95,7 +95,7 @@ bun scripts/check-skills-junction.ts
 
 `011` seleccion/recovery esta abierto con alcance seguro avanzado:
 
-1. `010` safe scope sigue cerrado; Phase 7 T043-T045 quedaron implementados como checkpoint ampliado: shortcut fijo `Ctrl+Shift+F9`, ruta Rust-owned Tauri v2 global shortcut, renderer solo escucha evento `desktop-control://global-hotkey`, sin JS hotkey registration ni permisos frontend global-shortcut. T046 smoke manual sigue gated.
+1. `010` quedo cerrado completo: shortcut fijo `Ctrl+Shift+F9`, ruta Rust-owned Tauri v2 global shortcut, renderer solo escucha evento `desktop-control://global-hotkey`, sin JS hotkey registration ni permisos frontend global-shortcut. T046 smoke manual paso con evidencia redacted en `specs/010-desktop-dictation-control-delivery/quickstart.md`.
 2. `011` se creo como siguiente spec post-010: `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/selection-transform-and-recovery.md`, `quickstart.md`, `tasks.md`.
 3. Foundation/US1/US2 `011` quedaron implementados provider-free: `src/selection-transform/*` con `SelectionContext`, routing direct-vs-transform, presets fixture `rewrite`/`shorten`/`bulletize` y latest-result helpers ephemerales; tests en `tests/selection-transform/*`.
 4. US3/US4 safe recovery quedo implementado/refinado en `src/App.tsx`: boton `Paste last (safe)` solo con latest result exitoso, helper `applySafePasteLastRecovery`, evidencia `uncertain`, review visible y sin teclas/foco/clipboard/paste observado.
@@ -104,9 +104,9 @@ bun scripts/check-skills-junction.ts
 7. Ultimo refinement no-gated de `011`: `latestResultFromPipelineSummary` y `latestResultFromSelectionTransform` impiden que runs fallidos/cancelados/vacios se vuelvan reusables y mantienen latest-result en memoria/tipo, sin historial durable.
 8. Modo de trabajo actualizado por JP: evitar microbatches; ejecutar batches de checkpoint mas amplios cuando sean verificables y reversibles.
 9. `011` T036/T037 quedaron diseñados/compile-guarded sin captura real: ruta futura host-owned non-mutating Windows UI Automation first; failure behavior modelado (`unsupported_target`, `no_selection`, `timeout`, etc.); clipboard roundtrip/`Ctrl+C` diferido a decision separada.
-10. Proximo checkpoint recomendado: pedir aprobacion explicita antes de `011` T038 real selection capture o antes de `010` T046 manual hotkey smoke local.
+10. Proximo checkpoint recomendado hacia usable v0: pedir aprobacion explicita antes de un smoke E2E real de dictado con provider/hotkey o antes de `011` T038 real selection capture.
 11. Guardrails vigentes: no selection real, no paste automation, no durable history, no provider calls por default, no `paste_observed` sin observador verificado.
-12. Checks recientes de esta tanda: `npm run test:pipeline -- tests/selection-transform` OK (21 tests), `npm run test:pipeline` OK (207 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, artifact hygiene OK (`.env`/`artifacts/` ignored, no tracked files), `bun scripts/context-index.ts` OK, `bun scripts/agent-context-audit.ts` OK con 4 warnings conocidos.
+12. Checks recientes: antes del smoke `010 T046`, `npm run test:pipeline -- tests/desktop-control` OK (48 tests) y `cd src-tauri && cargo check` OK; smoke `Ctrl+Shift+F9` genero artifact ignorado `capture-native-1782219726497.wav` sin provider/seleccion/paste automation. Checks previos de `011`: `npm run test:pipeline` OK (207 tests), `npm run build` OK, context index/audit OK con 4 warnings conocidos.
 
 ## Promocion De Memoria
 

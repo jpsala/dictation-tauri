@@ -68,6 +68,32 @@ git status --short --ignored artifacts .env
 git ls-files artifacts .env
 ```
 
+## Manual Evidence
+
+### 2026-06-23: `Ctrl+Shift+F9` smoke passed
+
+User approval: JP approved the gated hotkey smoke for `010 T046`.
+
+Command shape:
+
+```powershell
+npm run test:pipeline -- tests/desktop-control
+cd src-tauri && cargo check
+powershell -NoProfile -ExecutionPolicy Bypass -File artifacts/desktop-control/hotkey-smoke.ps1
+```
+
+Redacted result:
+
+- Shortcut: `Ctrl+Shift+F9`.
+- Tauri window readiness: confirmed before sending keys.
+- First hotkey started native capture; second hotkey stopped it.
+- New ignored audio artifact: `artifacts/microphone-capture/audio/capture-native-1782219726497.wav` (`961964` bytes).
+- Redacted smoke result: `artifacts/desktop-control/hotkey-smoke-20260623-100146.json`.
+- Redacted logs: `artifacts/desktop-control/tauri-hotkey-smoke-20260623-100146.out.log` and `.err.log`.
+- No provider call, no selection capture, no paste automation, no transcript content, and no paste observation claim.
+
+Gotcha: `WScript.Shell.SendKeys('^+{F9}')` was inconclusive in the scripted smoke; low-level Windows key events after confirming the Tauri window produced the passing artifact.
+
 ## Non-Goals During Quickstart
 
 - No selected-text capture or replace-selection.

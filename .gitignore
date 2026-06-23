@@ -25,6 +25,7 @@ target-codex-check/
 *.temp
 artifacts/synthetic-audio-stt/
 artifacts/microphone-capture/
+artifacts/desktop-control/
 
 # OS/editor noise
 .DS_Store
