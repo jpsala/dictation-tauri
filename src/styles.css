@@ -1,6 +1,6 @@
 :root {
   color: oklch(0.21 0.018 235);
-  background: oklch(1 0 0);
+  background: transparent;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -12,10 +12,21 @@
   box-sizing: border-box;
 }
 
+html,
+#root {
+  margin: 0;
+  min-width: 164px;
+  min-height: 64px;
+  background: transparent;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
+  min-width: 164px;
+  min-height: 64px;
+  background: transparent;
+  overflow: hidden;
 }
 
 button,
@@ -27,30 +38,40 @@ select {
 
 .app-shell {
   display: grid;
-  min-height: 100vh;
+  width: 100vw;
+  min-width: 164px;
+  min-height: 64px;
+  height: 100vh;
   place-items: center;
-  padding: 32px;
-  background: oklch(0.97 0.004 230);
+  padding: 0;
+  background: transparent;
 }
 
 .voice-panel {
-  width: min(100%, 680px);
-  border: 1px solid oklch(0.86 0.012 235);
-  border-radius: 8px;
-  background: oklch(0.995 0 0);
-  padding: 24px;
+  position: relative;
+  width: 164px;
+  height: 64px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
 }
 
 .voice-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .eyebrow {
-  margin: 0 0 10px;
-  color: oklch(0.45 0.02 235);
+  margin: 0 0 2px;
+  color: oklch(0.78 0.018 235);
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0;
@@ -59,8 +80,8 @@ select {
 
 h1 {
   margin: 0;
-  color: oklch(0.21 0.018 235);
-  font-size: 2rem;
+  color: oklch(0.99 0.004 235);
+  font-size: 1.1rem;
   font-weight: 720;
   line-height: 1.15;
   letter-spacing: 0;
@@ -68,11 +89,11 @@ h1 {
 
 .status-chip {
   flex: 0 0 auto;
-  border: 1px solid oklch(0.86 0.012 235);
-  border-radius: 4px;
-  background: oklch(0.97 0.004 230);
-  color: oklch(0.21 0.018 235);
-  padding: 6px 8px;
+  border: 1px solid oklch(1 0 0 / 12%);
+  border-radius: 999px;
+  background: oklch(1 0 0 / 8%);
+  color: oklch(0.93 0.006 235);
+  padding: 4px 8px;
   font-size: 0.78rem;
   font-weight: 700;
   line-height: 1.25;
@@ -294,25 +315,361 @@ h1 {
   color: oklch(0.4 0.09 70);
 }
 
+.voice-dock {
+  position: relative;
+  display: grid;
+  width: 164px;
+  height: 64px;
+  place-items: center;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: oklch(0.995 0 0);
+  padding: 0;
+  overflow: visible;
+}
+
+.voice-dock__main {
+  position: relative;
+  display: grid;
+  width: 164px;
+  height: 64px;
+  place-items: center;
+  min-width: 0;
+}
+
+.voice-dock__orb {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  z-index: 2;
+  display: grid;
+  width: 78px;
+  min-width: 78px;
+  height: 24px;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: transparent;
+  font-size: 0;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.voice-dock__orb:disabled {
+  cursor: default;
+  opacity: 0.86;
+}
+
+.voice-dock__orb:focus-visible,
+.voice-dock__action:focus-visible,
+.debug-details summary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgb(248 113 113 / 24%);
+}
+
+.voice-dock__status {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  z-index: 3;
+  display: grid;
+  width: 78px;
+  height: 24px;
+  min-width: 0;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.voice-dock__row,
+.voice-dock__detail,
+.voice-dock__preview {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.voice-dock__chip,
+.voice-dock__hotkey {
+  border-radius: 4px;
+  padding: 4px 7px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.voice-dock__vu {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3.5px;
+  height: 24px;
+  min-width: 48px;
+  margin: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.voice-dock__vu-dot {
+  width: var(--dot-width, 5px);
+  height: var(--dot-height, 6px);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255), rgb(176 190 209 / 96%));
+  opacity: var(--dot-opacity, 0.72);
+  box-shadow:
+    0 0 0 0.5px rgb(255 255 255 / 44%),
+    0 1px 1px rgb(0 0 0 / 58%),
+    0 -1px 1px rgb(255 255 255 / 24%);
+  transform-origin: center bottom;
+  transform: translateY(var(--dot-offset, 0));
+  transition:
+    height 100ms ease-out,
+    opacity 100ms ease-out,
+    transform 100ms ease-out,
+    background 120ms ease,
+    box-shadow 120ms ease;
+  will-change: height, opacity, transform;
+  backface-visibility: hidden;
+}
+
+.voice-dock__companion {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 150px;
+  min-height: 18px;
+  padding: 3px 8px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 999px;
+  background: rgb(15 23 42 / 74%);
+  color: rgb(226 232 240 / 94%);
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  box-shadow: 0 8px 18px rgb(0 0 0 / 18%);
+  backdrop-filter: blur(8px);
+}
+
+.voice-dock__companion-pulse {
+  width: 4px;
+  height: 4px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.9;
+}
+
+.voice-dock__companion--processing {
+  border-color: rgb(125 211 252 / 24%);
+  color: rgb(186 230 253 / 96%);
+}
+
+.voice-dock__companion--ready {
+  border-color: rgb(52 211 153 / 24%);
+  color: rgb(187 247 208 / 96%);
+}
+
+.voice-dock__companion--warning {
+  border-color: rgb(251 191 36 / 24%);
+  color: rgb(254 243 199 / 96%);
+}
+
+.voice-dock__companion--failed {
+  border-color: rgb(248 113 113 / 26%);
+  color: rgb(254 202 202 / 96%);
+}
+
+.voice-dock__actions {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 76px;
+  padding: 0;
+  pointer-events: none;
+}
+
+.voice-dock__action {
+  position: relative;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  min-height: 26px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  color: transparent;
+  font-size: 0;
+  font-weight: 700;
+  cursor: pointer;
+  filter: drop-shadow(0 1px 3px rgb(15 23 42 / 22%));
+  pointer-events: auto;
+}
+
+.voice-dock__action::before {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: currentColor;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.voice-dock__action[data-command="stop_submit"]::before,
+.voice-dock__action[data-command="copy"]::before {
+  content: "✓";
+}
+
+.voice-dock__action[data-command="cancel"]::before {
+  content: "×";
+}
+
+.voice-dock__action[data-command="retry"]::before {
+  content: "↻";
+}
+
+.voice-dock__action[data-command="paste_last_safe"]::before {
+  content: "↵";
+}
+
+.voice-dock__action--primary {
+  background: transparent;
+  color: rgb(52 211 153 / 96%);
+}
+
+.voice-dock__action--secondary {
+  background: transparent;
+  color: rgb(203 213 225 / 96%);
+}
+
+.voice-dock__action--ghost {
+  background: transparent;
+  color: rgb(248 113 113 / 96%);
+}
+
+.voice-dock__recovery {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  display: none;
+}
+
+.voice-dock__recovery strong {
+  display: block;
+  font-size: 0.68rem;
+}
+
+.voice-dock__recovery p {
+  margin: 2px 0 0;
+  color: oklch(0.92 0.008 235);
+  font-size: 0.68rem;
+  line-height: 1.2;
+}
+
+.voice-dock--recording .voice-dock__orb,
+.voice-dock--arming .voice-dock__orb {
+  background: transparent;
+  box-shadow: none;
+}
+
+.voice-dock--arming .voice-dock__vu-dot {
+  animation: voice-dock-dot-arming 460ms ease-in-out infinite;
+  animation-delay: var(--dot-delay);
+  box-shadow:
+    0 0 0 0.5px rgb(255 255 255 / 34%),
+    0 1px 1px rgb(0 0 0 / 44%),
+    0 0 6px rgb(251 191 36 / 22%);
+}
+
+.voice-dock--recording .voice-dock__vu-dot {
+  animation: voice-dock-dot-recording 780ms ease-in-out infinite;
+  animation-delay: var(--dot-delay);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 98%), rgb(187 247 208 / 92%));
+  box-shadow:
+    0 0 5px rgb(255 255 255 / 24%),
+    0 1px 1px rgb(0 0 0 / 40%),
+    0 0 12px rgb(52 211 153 / 26%);
+}
+
+.voice-dock--processing .voice-dock__vu-dot {
+  animation: voice-dock-dot-processing 720ms ease-in-out infinite;
+  animation-delay: var(--dot-delay);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 98%), rgb(203 213 225 / 90%));
+  box-shadow:
+    0 0 0 0.5px rgb(255 255 255 / 34%),
+    0 1px 1px rgb(0 0 0 / 46%),
+    0 0 7px rgb(255 255 255 / 24%),
+    0 0 12px rgb(251 191 36 / 16%);
+}
+
+.voice-dock--failed .voice-dock__vu-dot {
+  background:
+    linear-gradient(180deg, rgb(254 226 226 / 98%), rgb(248 113 113 / 88%));
+}
+
+.voice-dock--uncertain .voice-dock__vu-dot,
+.voice-dock--cancelled .voice-dock__vu-dot {
+  background:
+    linear-gradient(180deg, rgb(254 243 199 / 98%), rgb(251 191 36 / 88%));
+}
+
+@keyframes voice-dock-dot-arming {
+  0%, 100% { transform: translateY(0) scaleY(0.95); }
+  50% { transform: translateY(-1px) scaleY(1.08); }
+}
+
+@keyframes voice-dock-dot-recording {
+  0%, 100% { transform: translateY(var(--dot-offset, 0)) scaleY(0.98); }
+  50% { transform: translateY(var(--dot-offset, 0)) scaleY(1.04); }
+}
+
+@keyframes voice-dock-dot-processing {
+  0%, 100% { transform: translateY(0); opacity: 0.62; }
+  50% { transform: translateY(-1px); opacity: 0.92; }
+}
+
+.voice-dock--idle .voice-dock__actions,
+.voice-dock--processing .voice-dock__actions {
+  display: none;
+}
+
+.debug-details {
+  display: none;
+}
+
+.debug-details summary {
+  color: oklch(0.72 0.012 235);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .button {
+  .button,
+  .voice-dock__vu-dot {
     transition: none;
   }
 }
 
 @media (max-width: 560px) {
-  .app-shell {
-    padding: 18px;
-  }
-
-  .voice-panel {
-    padding: 22px;
-  }
-
-  .voice-header {
-    flex-direction: column;
-  }
-
   .status-grid {
     grid-template-columns: 1fr;
   }

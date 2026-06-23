@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { FakeCaptureGateway } from "./capture/fake-gateway";
 import type { CaptureGateway } from "./capture/gateway";
@@ -14,8 +14,11 @@ import {
 import { DesktopDictationController } from "./desktop-control/controller";
 import type { DesktopRecoveryAction } from "./desktop-control";
 import {
+  captureTauriDesktopDeliveryTarget,
   createCopyDeliveryGateway,
+  createTauriSavedTargetDeliveryGateway,
   type DeliveryEvidence as DesktopDeliveryEvidence,
+  type TauriDesktopDeliveryTarget,
 } from "./delivery";
 import { createHostClientTranscriptionAdapter } from "./host-runtime/pipeline-adapter";
 import {
@@ -34,12 +37,28 @@ import {
   listenForTauriGlobalHotkey,
   tauriGlobalHotkeyShortcut,
 } from "./desktop-control/tauri-host-control";
+import {
+  createInitialDictationKeyState,
+  dictationKeyDecisionToControlAction,
+  markDictationKeyStarted,
+  resetDictationKeyState,
+  resolveDictationKeyEvent,
+} from "./desktop-control/dictation-key";
 import { latestResultFromPipelineSummary } from "./selection-transform";
 import { PipelineService } from "./pipeline/service";
 import type {
   DeliveryEvidence as PipelineDeliveryEvidence,
   SimulatedRunSummary,
 } from "./pipeline/types";
+import {
+  createVoiceDockState,
+  VoiceDock,
+  type DockCommand,
+} from "./voice-dock";
+import type {
+  DesktopDictationSession,
+  IdleDesktopDictationState,
+} from "./desktop-control/types";
 
 type CaptureUiState = {
   state: CaptureState;
@@ -352,6 +371,165 @@ function describeDeliveryEvidence(
   }
 }
 
+function createDockInputFromUi(input: {
+  capture: CaptureUiState;
+  pipelineUi: PipelineUiState;
+  deliveryEvidence?: PipelineDeliveryEvidence;
+  transcriptReview?: TranscriptReview;
+  recoveryAction?: DesktopRecoveryAction;
+}): DesktopDictationSession | IdleDesktopDictationState {
+  const sessionBase = {
+    sessionId: input.pipelineUi.summary?.runId ?? "dock-ui-session",
+    controlSource: "app_button" as const,
+  };
+
+  if (input.pipelineUi.status === "running") {
+    return { ...sessionBase, state: "transcribing" };
+  }
+
+  if (input.pipelineUi.status === "done") {
+    return {
+      ...sessionBase,
+      state:
+        input.deliveryEvidence?.status === "failed" && !input.transcriptReview?.text
+          ? "done"
+          : "reviewing",
+      delivery: mapPipelineEvidenceToDesktopEvidence(
+        input.deliveryEvidence,
+        input.transcriptReview?.text,
+      ),
+    };
+  }
+
+  if (input.pipelineUi.status === "error") {
+    return {
+      ...sessionBase,
+      state: "error",
+      error: { message: input.pipelineUi.message, code: "pipeline-error" },
+      recoveryAction: input.recoveryAction,
+      delivery: mapPipelineEvidenceToDesktopEvidence(
+        input.deliveryEvidence,
+        input.transcriptReview?.text,
+      ),
+    };
+  }
+
+  if (input.pipelineUi.status === "cancelled") {
+    return { ...sessionBase, state: "cancelled" };
+  }
+
+  switch (input.capture.state) {
+    case "requesting_permission":
+      return { ...sessionBase, state: "arming" };
+    case "recording":
+      return { ...sessionBase, state: "listening" };
+    case "stopping":
+      return { ...sessionBase, state: "stopping" };
+    case "failed":
+    case "permission_needed":
+      return {
+        ...sessionBase,
+        state: "error",
+        error: { message: input.capture.message, code: input.capture.state },
+        recoveryAction: input.recoveryAction,
+      };
+    case "cancelled":
+      return { ...sessionBase, state: "cancelled" };
+    case "captured":
+      return { ...sessionBase, state: "postprocessing" };
+    case "idle":
+      return { state: "idle" };
+  }
+}
+
+function mapPipelineEvidenceToDesktopEvidence(
+  evidence: PipelineDeliveryEvidence | undefined,
+  fallbackOutput: string | undefined,
+): DesktopDeliveryEvidence | undefined {
+  if (!evidence) {
+    return fallbackOutput
+      ? {
+          status: "available",
+          output: fallbackOutput,
+          strategy: "review_only",
+          message: "Transcript is available locally. Delivery has not been observed.",
+        }
+      : undefined;
+  }
+
+  const output = evidence.output ?? fallbackOutput;
+  const status =
+    output && (evidence.status === "uncertain" || evidence.status === "failed")
+      ? "available"
+      : evidence.status;
+
+  return {
+    status,
+    output,
+    strategy:
+      status === "copied"
+        ? "copy"
+        : status === "paste_sent" || status === "paste_observed"
+          ? "paste_send"
+          : "review_only",
+    message:
+      status === "available" && output
+        ? "Transcript is available locally. Delivery has not been observed."
+        : describeDeliveryEvidence(evidence) ??
+          evidence.reason ??
+          "Delivery evidence is available.",
+    reason: status === evidence.status ? evidence.reason : undefined,
+  };
+}
+
+function createDockVuBands(
+  captureState: CaptureState,
+  pipelineStatus: PipelineUiState["status"],
+  liveBands: number[],
+): number[] {
+  if (captureState === "recording") {
+    return liveBands;
+  }
+
+  if (captureState === "requesting_permission" || pipelineStatus === "running") {
+    return [0.22, 0.36, 0.5, 0.64, 0.5, 0.36, 0.22];
+  }
+
+  return [0, 0, 0, 0, 0, 0, 0];
+}
+
+type CaptureLevelGateway = CaptureGateway & {
+  getCaptureLevel?: () => Promise<{
+    active: boolean;
+    vuLevel: number;
+    vuBands: number[];
+  }>;
+};
+
+async function getGatewayCaptureLevel(gateway: CaptureGateway) {
+  const getCaptureLevel = (gateway as CaptureLevelGateway).getCaptureLevel;
+  if (!getCaptureLevel) {
+    return undefined;
+  }
+
+  try {
+    const level = await getCaptureLevel.call(gateway);
+    return level.active ? level : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function createSyntheticDockVu(tick: number) {
+  const bands = Array.from({ length: 7 }, (_, index) => {
+    const wave = Math.sin((tick + index * 1.7) / 2.6);
+    return Math.max(0.08, Math.min(0.88, 0.35 + wave * 0.3));
+  });
+  const level = bands.reduce((sum, band) => sum + band, 0) / bands.length;
+
+  return { level, bands };
+}
+
 export function App() {
   const captureRuntime = useMemo(() => createCaptureGatewayRuntime(), []);
   const hostRuntime = useMemo(
@@ -363,14 +541,32 @@ export function App() {
     [],
   );
   const gateway = captureRuntime.gateway;
+  const savedDeliveryTargetRef = useRef<TauriDesktopDeliveryTarget | undefined>(undefined);
+  const desktopDelivery = useMemo(
+    () =>
+      isTauri()
+        ? createTauriSavedTargetDeliveryGateway({
+            invoke,
+            getTarget: () => savedDeliveryTargetRef.current,
+          })
+        : undefined,
+    [],
+  );
   const desktopSession = useMemo(() => {
     const controller = new DesktopDictationController({
       capture: createCaptureGatewayControllerAdapter(gateway),
-      runtime: createHostRuntimeControllerAdapter(hostRuntime.client),
+      runtime: createHostRuntimeControllerAdapter(
+        hostRuntime.client,
+        isTauri() ? { mode: "real", allowProviderCall: true } : undefined,
+      ),
+      delivery: desktopDelivery,
+      allowDesktopDeliverySideEffects: isTauri(),
     });
 
     return createAppSessionControllerFacade(controller);
-  }, [gateway, hostRuntime.client]);
+  }, [desktopDelivery, gateway, hostRuntime.client]);
+  const dictationKeyStateRef = useRef(createInitialDictationKeyState());
+  const deferredStopEventIdRef = useRef<string | undefined>(undefined);
   const copyDelivery = useMemo(
     () =>
       createCopyDeliveryGateway({
@@ -399,6 +595,10 @@ export function App() {
   );
   const [desktopRecoveryAction, setDesktopRecoveryAction] =
     useState<DesktopRecoveryAction>();
+  const [dockVu, setDockVu] = useState({
+    level: 0,
+    bands: [0, 0, 0, 0, 0, 0, 0],
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -415,12 +615,58 @@ export function App() {
     };
   }, [hostRuntime.client]);
 
+  useEffect(() => {
+    if (capture.state !== "recording" && capture.state !== "requesting_permission") {
+      setDockVu({ level: 0, bands: [0, 0, 0, 0, 0, 0, 0] });
+      return;
+    }
+
+    let disposed = false;
+    let tick = 0;
+
+    const updateVu = async () => {
+      const nativeLevel = await getGatewayCaptureLevel(gateway);
+      if (disposed) {
+        return;
+      }
+
+      if (nativeLevel) {
+        setDockVu({
+          level: nativeLevel.vuLevel,
+          bands: nativeLevel.vuBands,
+        });
+        return;
+      }
+
+      tick += 1;
+      setDockVu(createSyntheticDockVu(tick));
+    };
+
+    void updateVu();
+    const interval = window.setInterval(() => void updateVu(), 80);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+    };
+  }, [capture.state, gateway]);
+
   async function refreshHostReadiness() {
     setHostReadinessUi(describeHostReadiness());
     setHostReadinessUi(await loadHostReadinessUi(hostRuntime.client));
   }
 
+  async function rememberDeliveryTarget() {
+    if (!isTauri()) {
+      savedDeliveryTargetRef.current = undefined;
+      return;
+    }
+
+    savedDeliveryTargetRef.current = await captureTauriDesktopDeliveryTarget(invoke);
+  }
+
   async function startCapture() {
+    await rememberDeliveryTarget();
     setDesktopRecoveryAction(undefined);
     setPipelineUi({
       status: "idle",
@@ -454,7 +700,9 @@ export function App() {
     });
     setPipelineUi({
       status: "running",
-      message: "Checking the safe host boundary without a provider call.",
+      message: isTauri()
+        ? "Submitting captured audio for transcription."
+        : "Checking the safe host boundary without a provider call.",
     });
 
     const session = await desktopSession.stop();
@@ -678,65 +926,200 @@ export function App() {
           : pipelineUi.status === "cancelled"
             ? "cancelled"
             : "idle";
+  const voiceDockState = createVoiceDockState(
+    createDockInputFromUi({
+      capture,
+      pipelineUi,
+      deliveryEvidence,
+      transcriptReview,
+      recoveryAction: desktopRecoveryAction,
+    }),
+    {
+      canPasteLastSafe: canCopyTranscript,
+      vuLevel: capture.state === "recording" ? dockVu.level : pipelineUi.status === "running" ? 0.42 : 0,
+      vuBands: createDockVuBands(capture.state, pipelineUi.status, dockVu.bands),
+    },
+  );
+  const voiceDockHotkey = isTauri()
+    ? tauriGlobalHotkeyShortcut
+    : "Dock button";
+
+  function handleVoiceDockCommand(command: DockCommand) {
+    switch (command) {
+      case "start":
+        void startCapture();
+        break;
+      case "stop":
+      case "stop_submit":
+        void stopCapture();
+        break;
+      case "cancel":
+        void cancelCapture();
+        break;
+      case "retry":
+        void startCapture();
+        break;
+      case "copy":
+        void copyTranscriptFallback();
+        break;
+      case "paste_last_safe":
+        markSafePasteLastRecovery();
+        break;
+    }
+  }
+
+  function applyDesktopControlSessionToUi(
+    session: DesktopDictationSession,
+    failureMessage: string,
+  ) {
+    setDesktopRecoveryAction(session.recoveryAction);
+
+    if (session.state === "listening") {
+      setPipelineUi({
+        status: "idle",
+        message: "Capture an artifact before checking the safe host boundary.",
+      });
+      setCapture({
+        state: "recording",
+        message: captureRuntime.listeningMessage,
+      });
+      return;
+    }
+
+    const result = getAppSessionCaptureResult(session);
+    const summary = getAppSessionSummary(session);
+
+    setCapture({
+      state: result?.ok ? "captured" : session.state === "cancelled" ? "cancelled" : "failed",
+      message: result?.ok
+        ? captureRuntime.capturedMessage
+        : session.error?.message ?? failureMessage,
+      result,
+    });
+
+    if (summary?.terminalState === "done") {
+      setPipelineUi({
+        status: "done",
+        message:
+          describeDeliveryEvidence(summary.deliveryEvidence) ??
+          (summary.transcript
+            ? "Transcript is available from the captured run."
+            : "Captured run completed without transcript text."),
+        summary,
+      });
+      return;
+    }
+
+    if (session.state === "cancelled" || summary?.terminalState === "cancelled") {
+      setPipelineUi({
+        status: "cancelled",
+        message: "Captured run was cancelled before completion.",
+        summary,
+      });
+      return;
+    }
+
+    setPipelineUi({
+      status: "error",
+      message: session.error?.message ?? summary?.error?.message ?? "Captured run failed.",
+      summary,
+    });
+  }
 
   useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
-    void listenForTauriGlobalHotkey(async () => {
-      const session = await desktopSession.toggle({ source: "global_hotkey" });
-      setDesktopRecoveryAction(session.recoveryAction);
+    void listenForTauriGlobalHotkey(async (event) => {
+      const resolution = resolveDictationKeyEvent(
+        dictationKeyStateRef.current,
+        event,
+      );
+      dictationKeyStateRef.current = resolution.state;
 
-      if (session.state === "listening") {
-        setPipelineUi({
-          status: "idle",
-          message: "Capture an artifact before checking the safe host boundary.",
-        });
+      if (resolution.decision.action === "defer_stop_until_started") {
+        deferredStopEventIdRef.current = event.eventId ?? event.receivedAt;
+        return;
+      }
+
+      const controlAction = dictationKeyDecisionToControlAction(resolution.decision);
+      if (!controlAction) {
+        return;
+      }
+
+      if (controlAction === "start") {
+        await rememberDeliveryTarget();
         setCapture({
-          state: "recording",
-          message: captureRuntime.listeningMessage,
+          state: "requesting_permission",
+          message: captureRuntime.permissionMessage,
         });
-        return;
       }
 
-      const result = getAppSessionCaptureResult(session);
-      const summary = getAppSessionSummary(session);
+      if (controlAction === "stop") {
+        setCapture({
+          state: "stopping",
+          message: captureRuntime.stoppingMessage,
+        });
+        setPipelineUi({
+          status: "running",
+          message: isTauri()
+            ? "Submitting captured audio for transcription."
+            : "Checking the safe host boundary without a provider call.",
+        });
+      }
 
-      setCapture({
-        state: result?.ok ? "captured" : session.state === "cancelled" ? "cancelled" : "failed",
-        message: result?.ok
-          ? captureRuntime.capturedMessage
-          : session.error?.message ?? "Hotkey toggle did not produce a captured artifact.",
-        result,
+      const session = await desktopSession.handle(controlAction, {
+        source: "global_hotkey",
+        id: event.eventId,
+        receivedAt: event.receivedAt,
       });
 
-      if (summary?.terminalState === "done") {
-        setPipelineUi({
-          status: "done",
-          message:
-            describeDeliveryEvidence(summary.deliveryEvidence) ??
-            (summary.transcript
-              ? "Transcript is available from the captured run."
-              : "Captured run completed without transcript text."),
-          summary,
-        });
+      if (controlAction === "start" && session.state === "listening") {
+        dictationKeyStateRef.current = markDictationKeyStarted(
+          dictationKeyStateRef.current,
+          session.sessionId,
+        );
+      }
+
+      applyDesktopControlSessionToUi(
+        session,
+        "Dictation key did not produce a captured artifact.",
+      );
+
+      if (controlAction === "start" && session.state !== "listening") {
+        dictationKeyStateRef.current = resetDictationKeyState(
+          dictationKeyStateRef.current,
+        );
+        deferredStopEventIdRef.current = undefined;
         return;
       }
 
-      if (session.state === "cancelled" || summary?.terminalState === "cancelled") {
-        setPipelineUi({
-          status: "cancelled",
-          message: "Captured run was cancelled before completion.",
-          summary,
-        });
+      if (controlAction !== "start") {
+        dictationKeyStateRef.current = resetDictationKeyState(
+          dictationKeyStateRef.current,
+        );
+        deferredStopEventIdRef.current = undefined;
         return;
       }
 
-      setPipelineUi({
-        status: "error",
-        message: session.error?.message ?? summary?.error?.message ?? "Captured run failed.",
-        summary,
+      const deferredStopEventId = deferredStopEventIdRef.current;
+      if (!deferredStopEventId || session.state !== "listening") {
+        return;
+      }
+
+      deferredStopEventIdRef.current = undefined;
+      const stopped = await desktopSession.handle("stop", {
+        source: "global_hotkey",
+        id: `${deferredStopEventId}:deferred-stop`,
+        receivedAt: event.receivedAt,
       });
+      dictationKeyStateRef.current = resetDictationKeyState(
+        dictationKeyStateRef.current,
+      );
+      applyDesktopControlSessionToUi(
+        stopped,
+        "Dictation key release did not produce a captured artifact.",
+      );
     }).then((nextUnlisten) => {
       if (disposed) {
         nextUnlisten?.();
@@ -750,7 +1133,7 @@ export function App() {
       disposed = true;
       unlisten?.();
     };
-  }, [captureRuntime.capturedMessage, captureRuntime.listeningMessage, desktopSession]);
+  }, [desktopSession]);
 
   return (
     <main className="app-shell" data-testid="capture-surface">
@@ -767,6 +1150,16 @@ export function App() {
             {captureStateLabels[capture.state]}
           </span>
         </div>
+
+        <VoiceDock
+          state={voiceDockState}
+          hotkeyLabel={voiceDockHotkey}
+          transcriptPreview={transcriptReview?.text}
+          onCommand={handleVoiceDockCommand}
+        />
+
+        <details className="debug-details">
+          <summary>Developer evidence</summary>
 
         <div className="capture-readout" aria-live="polite">
           <span className={`state-dot state-dot--${capture.state}`} />
@@ -965,6 +1358,7 @@ export function App() {
             {recoveryAction}
           </p>
         ) : null}
+        </details>
       </section>
     </main>
   );

@@ -25,6 +25,14 @@ export type AppSessionControllerFacade = {
   cancel(): Promise<DesktopDictationSession>;
   retry(): Promise<DesktopDictationSession>;
   toggle(options?: { source?: DesktopControlSource }): Promise<DesktopDictationSession>;
+  handle(
+    action: DesktopControlAction,
+    options?: {
+      source?: DesktopControlSource;
+      id?: string;
+      receivedAt?: string;
+    },
+  ): Promise<DesktopDictationSession>;
 };
 
 export type AppDesktopRuntimeResult = DesktopRuntimeResult & {
@@ -56,6 +64,15 @@ export function createAppSessionControllerFacade(
           source: toggleOptions.source ?? options.source,
         }),
       ),
+    handle: (action, handleOptions = {}) =>
+      controller.handleControl(
+        createAppControlEvent(action, {
+          ...options,
+          source: handleOptions.source ?? options.source,
+          id: handleOptions.id,
+          receivedAt: handleOptions.receivedAt,
+        }),
+      ),
   };
 }
 
@@ -65,12 +82,14 @@ export function createAppControlEvent(
     source?: DesktopControlSource;
     now?: () => string;
     createEventId?: (action: DesktopControlAction) => string;
+    id?: string;
+    receivedAt?: string;
   } = {},
 ): DesktopControlEvent {
-  const receivedAt = options.now?.() ?? new Date().toISOString();
+  const receivedAt = options.receivedAt ?? options.now?.() ?? new Date().toISOString();
 
   return createDesktopControlEvent({
-    id: options.createEventId?.(action),
+    id: options.id ?? options.createEventId?.(action),
     source: options.source ?? "app_button",
     action,
     receivedAt,

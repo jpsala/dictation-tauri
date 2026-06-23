@@ -6,6 +6,13 @@ import type {
   CaptureResult,
 } from "./types";
 
+export type NativeCaptureLevel = {
+  active: boolean;
+  vuLevel: number;
+  vuBands: number[];
+  sampleCount: number;
+};
+
 export class NativeTauriCaptureGateway implements CaptureGateway {
   async getPermissionState(): Promise<CapturePermissionStatus> {
     return "unknown";
@@ -13,6 +20,10 @@ export class NativeTauriCaptureGateway implements CaptureGateway {
 
   async startCapture(): Promise<CaptureMetadata> {
     return invoke<CaptureMetadata>("start_native_microphone_capture");
+  }
+
+  async getCaptureLevel(): Promise<NativeCaptureLevel> {
+    return invoke<NativeCaptureLevel>("get_native_microphone_capture_level");
   }
 
   async stopCapture(): Promise<CaptureResult> {

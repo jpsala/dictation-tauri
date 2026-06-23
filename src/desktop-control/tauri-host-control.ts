@@ -1,45 +1,50 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import {
-  createDesktopControlEvent,
-  type DesktopControlEvent,
-} from "./types";
+import type { DictationKeyEvent } from "./dictation-key";
 
 export const tauriGlobalHotkeyShortcut = "Ctrl+Shift+F9";
 export const tauriGlobalHotkeyEventName = "desktop-control://global-hotkey";
 
 export type TauriGlobalHotkeyPayload = {
   source?: "global_hotkey";
-  action?: "toggle";
+  action?: "pressed" | "released" | "toggle";
   shortcut?: string;
   receivedAt?: string;
 };
 
 export type TauriGlobalHotkeyListenerOptions = {
   now?: () => string;
-  createEventId?: (receivedAt: string) => string;
+  createEventId?: (
+    receivedAt: string,
+    action: Extract<TauriGlobalHotkeyPayload["action"], "pressed" | "released">,
+  ) => string;
 };
 
 export type TauriGlobalHotkeyHandler = (
-  event: DesktopControlEvent,
+  event: DictationKeyEvent,
 ) => void | Promise<void>;
 
-export function createDesktopControlEventFromTauriHotkey(
+export function createDictationKeyEventFromTauriHotkey(
   payload: TauriGlobalHotkeyPayload | undefined,
   options: TauriGlobalHotkeyListenerOptions = {},
-): DesktopControlEvent | undefined {
+): DictationKeyEvent | undefined {
   if (payload?.shortcut !== tauriGlobalHotkeyShortcut) {
+    return undefined;
+  }
+
+  if (payload.action !== "pressed" && payload.action !== "released") {
     return undefined;
   }
 
   const receivedAt = payload.receivedAt ?? options.now?.() ?? new Date().toISOString();
 
-  return createDesktopControlEvent({
-    id: options.createEventId?.(receivedAt),
+  return {
+    eventId: options.createEventId?.(receivedAt, payload.action),
     source: "global_hotkey",
-    action: "toggle",
+    kind: payload.action,
+    shortcut: tauriGlobalHotkeyShortcut,
     receivedAt,
-  });
+  };
 }
 
 export async function listenForTauriGlobalHotkey(
@@ -53,16 +58,16 @@ export async function listenForTauriGlobalHotkey(
   return listen<TauriGlobalHotkeyPayload>(
     tauriGlobalHotkeyEventName,
     (event) => {
-      const controlEvent = createDesktopControlEventFromTauriHotkey(
+      const dictationKeyEvent = createDictationKeyEventFromTauriHotkey(
         event.payload,
         options,
       );
 
-      if (!controlEvent) {
+      if (!dictationKeyEvent) {
         return;
       }
 
-      void handler(controlEvent);
+      void handler(dictationKeyEvent);
     },
   );
 }

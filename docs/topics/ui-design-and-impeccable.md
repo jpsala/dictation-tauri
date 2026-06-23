@@ -18,6 +18,7 @@ primary_refs:
   - docs/skills/impeccable/SKILL.md
   - docs/topics/product-direction.md
   - docs/topics/dictation-workflow.md
+  - docs/topics/fixvox-dock-and-hotkeys-reference.md
 ---
 
 # UI Design E Impeccable
@@ -55,9 +56,10 @@ Contexto inicial creado:
 
 - Producto operativo, no landing page.
 - Claridad de estado por encima de decoracion.
-- Feedback visible para `idle`, `listening`, `transcribing`, `processing`, `delivering`, `completed`, `failed` y `cancelled`.
+- Feedback visible para `idle`, `arming`, `listening`, `transcribing`, `processing`, `delivering`, `completed`, `failed` y `cancelled`.
 - Recovery claro cuando paste/delivery no sea confiable.
 - Ventanas compactas, escaneables y usables en escritorio.
+- Para voice dock y dictation key, usar `docs/topics/fixvox-dock-and-hotkeys-reference.md` como referencia de producto: dock flotante compacto, VU/dots, chips de estado, companion de recovery y semantica hold/tap.
 - Evitar UI generica de "AI SaaS".
 - Accesibilidad: contraste, foco visible, reduced motion, textos que no desborden.
 

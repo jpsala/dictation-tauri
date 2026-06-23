@@ -2,7 +2,7 @@
 
 Estado vivo del proyecto. Mantener corto.
 
-Ultima actualizacion manual: 2026-06-23 (batch policy update).
+Ultima actualizacion manual: 2026-06-23 (Fixvox dock/hotkeys spec 012).
 
 ## Regla
 
@@ -38,7 +38,8 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `008-real-provider-ui-gate` | complete and committed (`d0cfac7` + fixes): UI separates `Transcribe with provider` from provider-free `Check host boundary`; manual Tauri real-provider validation passed | `specs/008-real-provider-ui-gate/tasks.md` |
 | `009-fixvox-cloud-runtime-port` | complete through T023 plus managed STT smoke on fresh hotkey WAV passed 2026-06-23 | `specs/009-fixvox-cloud-runtime-port/tasks.md` |
 | `010-desktop-dictation-control-delivery` | complete incl. T046 and E2E: `Ctrl+Shift+F9` -> fresh WAV -> Fixvox managed STT -> review visible -> copy fallback changed clipboard | `specs/010-desktop-dictation-control-delivery/tasks.md` |
-| `011-selection-transform-and-recovery-ergonomics` | active: fixture-first selection routing/transforms and safe paste-last recovery implemented; T036/T037 chose and compile-guarded host-owned non-mutating Windows UI Automation first route, real capture still gated | `specs/011-selection-transform-and-recovery-ergonomics/tasks.md` |
+| `011-selection-transform-and-recovery-ergonomics` | active but paused behind real-selection gate: fixture-first selection routing/transforms and safe paste-last recovery implemented; real capture still gated | `specs/011-selection-transform-and-recovery-ergonomics/tasks.md` |
+| `012-fixvox-dock-dictation-key` | active: Checkpoint D+ paste-sent batch complete for dev dock path incl. live mic VU, real host STT, saved-target `paste_sent`; tray/Alt+Space gated | `specs/012-fixvox-dock-dictation-key/tasks.md` |
 
 ## Tracks Activas
 
@@ -61,7 +62,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 - Tauri/Rust posee side effects desktop cuando entren: microfono, hotkeys, tray, foco, clipboard, ventanas, permisos y secretos.
 - Delivery se modela por evidencia/certeza; no prometer paste observado sin verificacion real.
 - Post-MVP3: `005-runtime-transcription-delivery` cubre foundation runtime y script Groq gated; `007`/`008` cierran app UI -> Tauri host -> Groq STT real con gesto explicito, artifacts ignorados y evidencia honesta.
-- UI durable requiere `PRODUCT.md` y `DESIGN.md`.
+- UI durable requiere `PRODUCT.md` y `DESIGN.md`; para voice dock/hotkeys, `docs/topics/fixvox-dock-and-hotkeys-reference.md` es referencia fuerte porque JP quiere respetar la ergonomia Fixvox de dock compacto, VU/dots, recovery y dictation key hold/tap.
 - Small Batches ahora optimizan por checkpoint verificable: agrupar 2-5 tasks acopladas cuando aceleran un unico comportamiento; separar siempre gates, manual smokes, provider calls, side effects reales, paste/selection real e historial durable.
 - Post-010: `011` arranca seleccion fixture-first; T036/T037 definen y compile-guardan captura real futura como host-owned Windows UI Automation no-mutating first, con clipboard roundtrip separado/gated; no leer seleccion real, no paste automation y no historial durable hasta aprobacion explicita.
 - `paste-last` seguro es solo evidencia/UI `uncertain`: no envia teclas, no toca foco/clipboard y nunca reclama `paste_observed`.
@@ -105,9 +106,18 @@ bun scripts/check-skills-junction.ts
 8. Modo de trabajo actualizado por JP: evitar microbatches; ejecutar batches de checkpoint mas amplios cuando sean verificables y reversibles.
 9. `011` T036/T037 quedaron diseñados/compile-guarded sin captura real: ruta futura host-owned non-mutating Windows UI Automation first; failure behavior modelado (`unsupported_target`, `no_selection`, `timeout`, etc.); clipboard roundtrip/`Ctrl+C` diferido a decision separada.
 10. E2E usable v0 paso con aprobacion explicita `E2E con copy real`: `Ctrl+Shift+F9` -> nuevo WAV -> Fixvox managed STT -> transcript review visible -> `Copy transcript` mutó clipboard a texto no vacio. Evidencia redacted en `specs/010-desktop-dictation-control-delivery/quickstart.md` y `specs/009-fixvox-cloud-runtime-port/quickstart.md`.
-11. Proximo checkpoint recomendado: avanzar `011` T038/T039 captura real de selección si se prioriza seleccion, o preparar cierre/commit documental del E2E si no se hizo.
-12. Guardrails vigentes: no selection real, no paste automation, no durable history, no provider calls por default, no `paste_observed` sin observador verificado.
-13. Checks recientes: `npm run test:pipeline -- tests/desktop-control` OK (50 tests), `cd src-tauri && cargo check` OK, `npm run runtime-transcription:check` OK. Hotkey smoke genero `capture-native-1782226487236.wav`; managed STT Fixvox sobre ese WAV OK (`708ms`, report ignored). Full UI E2E genero `capture-native-1782226670693.wav`, review visible y clipboard non-empty (`23` chars), sin transcript content en docs/chat.
+11. JP pidio respetar bien la estetica/funcionalidad/hotkeys de Fixvox (`C:\dev\fixvox`): antes de rediseñar dock o hotkeys abrir `docs/topics/fixvox-dock-and-hotkeys-reference.md` y contrastar con `C:/dev/fixvox/src/app/views/voice-dock/` + `src/app/backend/hotkeys.ts`.
+12. `012-fixvox-dock-dictation-key` quedo creado para avanzar usabilidad en pocos checkpoints grandes: A contratos/estado, B dock React compacto, C dictation-key press/release sobre Tauri actual, D floating dock/recovery, y Alt+Space como decision gated.
+13. `012` Checkpoint A quedo implementado: `src/voice-dock/*` deriva semantica visual provider-free, `src/desktop-control/dictation-key.ts` resuelve hold/tap/latched/cancel sin Tauri ni side effects, y `tests/voice-dock/*` + `tests/desktop-control/dictation-key.test.ts` cubren contratos/guardrails.
+14. `012` Checkpoint B quedo implementado: `VoiceDock.tsx` es superficie primaria compacta, `src/App.tsx` deja evidencia/dev tools detras de `Developer evidence`, `src/styles.css` agrega dock oscuro compacto con VU/dots y reduced-motion, y `tests/voice-dock/voice-dock-ui.test.tsx` + visual smoke cubren estado/copy/recovery sin `paste_observed`.
+15. `012` Checkpoint C quedo completo: Rust emite payloads `pressed`/`released` para `Ctrl+Shift+F9`, el renderer los mapea a `DictationKeyEvent`, `App.tsx` resuelve hold/tap/deferred release via `DesktopDictationController`, y T017 paso con smoke manual Tauri aprobado/redacted; evidencia en `specs/012-fixvox-dock-dictation-key/quickstart.md`.
+16. `012` Checkpoint D quedo completo para la ruta dev dock: `npm run tauri:dev` abre `Dictation Dock` transparente `164x64` always-on-top con 7 dots estilo Fixvox, controles laterales al grabar y chip compacto de estado/recovery; tray queda despues.
+17. Dock smoke computer-use paso side-by-side contra Fixvox: `Ctrl+Shift+F9` tap/hold inicio/detuvo captura por ruta Tauri real y genero WAVs ignorados; se corrigio feedback de voz agregando VU RMS real desde Rust (`get_native_microphone_capture_level`), polling renderer y scaling visual amplificado para barras verdes visibles.
+18. Dock stop explicito ahora usa host STT real en Tauri y llego a chip compacto `Transcript ready` con WAV fresco; tambien se normalizo evidencia `uncertain` con transcript disponible a `review/available` para no mostrar `Check target`/`Needs attention` cuando hay texto. Browser/dev tests siguen provider-free.
+19. Primer paste/insert real gated quedo implementado y smokeado: Tauri guarda target foreground antes de grabar, al stop enfoca target, escribe clipboard, envia `Ctrl+V`, restaura clipboard y reporta solo `paste_sent`; smoke controlado con Notepad cambio archivo 0->10 bytes y restauro sentinel, sin `paste_observed`, sin selection/replace, sin Alt+Space.
+20. Closeout `012` T024-T028 quedo hecho para el alcance safe shortcut/dev dock/saved-target `paste_sent`; Alt+Space, tray/background, selection/replace y observer/verificacion real quedan future/gated.
+21. Proximo recomendado: completar observer/verification o target heuristics antes de llamar al paste “verificado”; alternativa si JP prioriza app usable: tray/background como siguiente spec/checkpoint.
+22. Checks recientes: `npm run test:pipeline` OK (49 files / 230 tests), `npm run visual:check` OK (8 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, `bun scripts/context-index.ts && bun scripts/agent-context-audit.ts` OK con 4 warnings conocidos. `cd src-tauri && cargo test desktop_control` no fue usado como gate: falla en este entorno con `STATUS_ENTRYPOINT_NOT_FOUND`.
 
 ## Promocion De Memoria
 

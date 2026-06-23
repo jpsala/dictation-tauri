@@ -14,6 +14,7 @@ triggers:
 primary_refs:
   - docs/topics/dictation-workflow.md
   - docs/topics/automation-and-reference-fixtures.md
+  - docs/topics/fixvox-dock-and-hotkeys-reference.md
   - docs/tracks/mvp-and-reference-resources.md
 ---
 
@@ -72,7 +73,7 @@ Later:
 
 - Quick Chat.
 - Assistant Mode persistente.
-- `Alt+Q`.
+- `Alt+Q` debe respetar el modelo Fixvox de picker rapido sobre contexto actual cuando se implemente.
 - Hotkeys de presets.
 
 ## Preguntas Abiertas Reducidas

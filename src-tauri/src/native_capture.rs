@@ -62,6 +62,15 @@ pub struct CaptureError {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CaptureLevel {
+    active: bool,
+    vu_level: f32,
+    vu_bands: Vec<f32>,
+    sample_count: usize,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CaptureResult {
     ok: bool,
     metadata: CaptureMetadata,
@@ -145,6 +154,26 @@ pub fn start_native_microphone_capture() -> Result<CaptureMetadata, String> {
     });
 
     Ok(create_metadata(capture_id, "granted", started.device_label))
+}
+
+#[tauri::command]
+pub fn get_native_microphone_capture_level() -> CaptureLevel {
+    let state = ACTIVE_CAPTURE.get_or_init(|| Mutex::new(None));
+    let active = match state.lock() {
+        Ok(guard) => guard,
+        Err(_) => return inactive_capture_level(),
+    };
+
+    let Some(active) = active.as_ref() else {
+        return inactive_capture_level();
+    };
+
+    let samples = match active.samples.lock() {
+        Ok(guard) => guard,
+        Err(_) => return inactive_capture_level(),
+    };
+
+    create_capture_level(&samples)
 }
 
 #[tauri::command]
@@ -393,6 +422,71 @@ fn write_wav_artifact(
         sensitivity: "real-user-audio",
         policy: "gitignored-local",
     })
+}
+
+fn create_capture_level(samples: &[i16]) -> CaptureLevel {
+    const WINDOW_SIZE: usize = 2048;
+    const BAND_COUNT: usize = 7;
+
+    let sample_count = samples.len();
+    if sample_count == 0 {
+        return inactive_capture_level();
+    }
+
+    let start = sample_count.saturating_sub(WINDOW_SIZE);
+    let window = &samples[start..];
+    let vu_level = rms_level(window);
+    let chunk_size = (window.len() / BAND_COUNT).max(1);
+    let mut vu_bands = Vec::with_capacity(BAND_COUNT);
+
+    for index in 0..BAND_COUNT {
+        let band_start = index * chunk_size;
+        let band_end = if index == BAND_COUNT - 1 {
+            window.len()
+        } else {
+            ((index + 1) * chunk_size).min(window.len())
+        };
+        let chunk = if band_start < window.len() {
+            &window[band_start..band_end]
+        } else {
+            &[]
+        };
+        vu_bands.push(rms_level(chunk));
+    }
+
+    CaptureLevel {
+        active: true,
+        vu_level,
+        vu_bands,
+        sample_count,
+    }
+}
+
+fn inactive_capture_level() -> CaptureLevel {
+    CaptureLevel {
+        active: false,
+        vu_level: 0.0,
+        vu_bands: vec![0.0; 7],
+        sample_count: 0,
+    }
+}
+
+fn rms_level(samples: &[i16]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+
+    let mean_square = samples
+        .iter()
+        .map(|sample| {
+            let normalized = *sample as f32 / i16::MAX as f32;
+            normalized * normalized
+        })
+        .sum::<f32>()
+        / samples.len() as f32;
+    let rms = mean_square.sqrt();
+
+    ((rms.sqrt() * 3.4) - 0.03).clamp(0.0, 1.0)
 }
 
 fn create_metadata(

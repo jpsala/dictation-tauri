@@ -1,0 +1,175 @@
+# Tasks: Fixvox-Like Voice Dock And Dictation Key
+
+**Input**: Design documents from `specs/012-fixvox-dock-dictation-key/`
+
+**Prerequisites**: `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/voice-dock-and-dictation-key.md`, `quickstart.md`
+
+**Tests**: Required for every implementation checkpoint. Default tests must remain provider-free and must not register real hotkeys, access clipboard/focus APIs, send paste keys, call providers, read selected text, or require microphone hardware.
+
+**Organization**: Intentionally fewer, larger checkpoint tasks to avoid dragging this out. Execute one checkpoint at a time; each checkpoint should be reviewable, testable, and reversible with one commit.
+
+## Phase 1: Spec Setup And Guardrails
+
+**Purpose**: Lock the minimum path and references before implementation.
+
+- [x] T001 Create `specs/012-fixvox-dock-dictation-key/spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/voice-dock-and-dictation-key.md`, `quickstart.md`, and `tasks.md`.
+- [x] T002 Link durable Fixvox dock/hotkey reference from `PRODUCT.md`, `DESIGN.md`, `docs/topics/*`, `docs/TOPICS.md`, and `docs/WORKING_MEMORY.md`.
+- [x] T003 Run `bun scripts/context-index.ts` and `bun scripts/agent-context-audit.ts` after spec/docs creation.
+
+**Checkpoint**: Specs exist and future sessions know Fixvox dock/hotkeys are the UX reference.
+
+---
+
+## Phase 2: Checkpoint A - Contracts And State Machines (RED/GREEN)
+
+**Goal**: Prove dock visual semantics and dictation-key hold/tap behavior without Tauri side effects.
+
+**Independent Test**:
+
+```powershell
+npm run test:pipeline -- tests/voice-dock tests/desktop-control/dictation-key.test.ts
+```
+
+- [x] T004 [P] Add provider-free dock visual semantics tests in `tests/voice-dock/dock-visual-semantics.test.ts` covering idle, arming/recording, processing, failed, cancelled, and uncertain recovery.
+- [x] T005 [P] Add provider-free dictation-key tests in `tests/desktop-control/dictation-key.test.ts` covering long hold, short tap latch, second press stop, release-before-start race, duplicate event ignore, and Escape cancel.
+- [x] T006 Add side-effect guard coverage proving new `src/voice-dock/*` and `src/desktop-control/dictation-key.ts` do not import Tauri, clipboard/focus, providers, or hotkey registration.
+- [x] T007 Implement `src/voice-dock/types.ts`, `src/voice-dock/visual-semantics.ts`, and `src/voice-dock/index.ts` from the contract.
+- [x] T008 Implement `src/desktop-control/dictation-key.ts` as the renderer-safe hold/tap resolver that emits existing controller actions.
+- [x] T009 Verify Checkpoint A with focused tests and `npm run test:pipeline -- tests/desktop-control` if desktop-control contracts changed.
+
+**Checkpoint A Done When**: Dock/key behavior is green in tests with no real desktop side effects.
+
+---
+
+## Phase 3: Checkpoint B - Compact Dock UI In React (RED/GREEN)
+
+**Goal**: Replace the large test-panel feeling with a compact Fixvox-like dock surface wired to existing app state.
+
+**Independent Test**:
+
+```powershell
+npm run test:pipeline -- tests/voice-dock tests/desktop-control/app-delivery.test.ts
+npm run visual:check
+```
+
+- [x] T010 Add dock UI render tests in `tests/voice-dock/voice-dock-ui.test.tsx` or the existing App test seam, asserting compact controls, state chip/copy, VU/dots affordance, recovery actions, and no `paste_observed` wording.
+- [x] T011 Implement `src/voice-dock/VoiceDock.tsx` and dock styles in `src/styles.css`, adapting Fixvox ergonomics while preserving `DESIGN.md` accessibility and reduced-motion expectations.
+- [x] T012 Wire `src/App.tsx` to render the dock as the primary usable surface while preserving any necessary dev/debug evidence behind compact details or secondary sections.
+- [x] T013 Verify Checkpoint B with focused UI tests, `npm run visual:check`, and `npm run build`.
+
+**Checkpoint B Done When**: The app visually behaves like a compact dock in safe/dev mode and review/copy recovery still works.
+
+---
+
+## Phase 4: Checkpoint C - Tauri Dictation Key Press/Release Integration (RED/GREEN + Gated Smoke)
+
+**Goal**: Drive the existing real dictation loop through the new dictation-key semantics, starting with the current safe shortcut before Alt+Space.
+
+**Independent Test**:
+
+```powershell
+npm run test:pipeline -- tests/desktop-control/dictation-key.test.ts tests/desktop-control/app-hotkey-toggle.test.ts tests/desktop-control/desktop-control-events.test.ts
+cd src-tauri && cargo check
+```
+
+- [x] T014 Extend `src-tauri/src/desktop_control.rs` tests and payloads to model `pressed` and `released` events for the current safe shortcut, preserving cfg guards and compile safety.
+- [x] T015 Update `src/desktop-control/tauri-host-control.ts` and related tests so Tauri payloads map to `DictationKeyEvent`/controller actions instead of toggle-only assumptions.
+- [x] T016 Wire `src/App.tsx` or `src/desktop-control/app-session.ts` so key decisions route through `DesktopDictationController` without deriving state from UI booleans.
+- [x] T017 With explicit local approval, run one manual Tauri smoke using the current safe shortcut and record redacted evidence in `quickstart.md`.
+
+**Checkpoint C Done When**: Current shortcut supports Fixvox-like hold/tap semantics through the real controller path, or a documented blocker identifies why the safe shortcut remains toggle-only temporarily.
+
+**Checkpoint C Status**: Done 2026-06-23 with safe checks green and redacted manual Tauri smoke evidence in `quickstart.md`; Alt+Space remains gated.
+
+---
+
+## Phase 5: Checkpoint D - Floating Dock And Recovery Polish (GREEN)
+
+**Goal**: Make the dock usable as a desktop utility surface rather than just a full-size product window.
+
+**Independent Test**:
+
+```powershell
+npm run test:pipeline -- tests/voice-dock tests/desktop-control
+npm run build
+cd src-tauri && cargo check
+npm run visual:check
+```
+
+- [x] T018 Decide and implement the least-risk Tauri window path in `src-tauri/src/lib.rs`, `src-tauri/tauri.conf.json`, and/or renderer startup: compact main-window mode first or separate floating dock window if safe.
+- [x] T019 Add/reuse recovery actions for copy, retry, record-again, and paste-last safe from the dock without adding paste automation or durable history.
+- [x] T020 Run a visual/manual dock smoke and record redacted evidence in `quickstart.md` without raw transcript content.
+
+**Checkpoint D Done When**: JP can use a compact dock-like surface for the existing dictation loop, with honest recovery, without relying on the old large test panel.
+
+**Checkpoint D Status**: Done 2026-06-23 for the dev dock path: transparent Fixvox-like 7-dot dock, live mic VU, recording controls, compact status/recovery chip, real host STT on explicit stop, and manual hotkey smoke evidence in `quickstart.md`; tray remains future work.
+
+### Post-D Gated Paste-Sent Batch
+
+**Status**: Done 2026-06-23 with explicit approval for controlled smoke.
+
+- Implemented saved-target insert-at-cursor delivery for Tauri dev: capture foreground target before recording, focus it after STT, write clipboard temporarily, send `Ctrl+V`, restore previous clipboard.
+- Evidence remains honest: status is only `paste_sent`; no `paste_observed` without a verified observer.
+- Controlled Notepad smoke changed the scratch target from 0 to 10 bytes and restored a clipboard sentinel; raw transcript was not recorded.
+- Still out of scope: selection/replace, Alt+Space, tray/background, durable history, and verified paste observer.
+
+---
+
+## Phase 6: Gated Alt+Space Decision (Optional But Important)
+
+**Goal**: Decide whether to converge to Fixvox's `Alt+Space` default now or leave it as documented future work.
+
+- [ ] T021 Inspect Tauri/global-shortcut behavior for `Alt+Space` in a gated local spike; do not make it default before evidence.
+- [ ] T022 If `Alt+Space` is unreliable, document a Rust-owned native-hook/fallback design or keep configurable fallback key; do not add AutoHotkey.
+- [ ] T023 If `Alt+Space` is reliable, update docs/defaults/tests and run an explicit manual smoke with redacted evidence.
+
+**Checkpoint**: Alt+Space status is decided honestly and does not block the usable dock.
+
+---
+
+## Phase 7: Closeout
+
+- [x] T024 Run default safe checks: `npm run test:pipeline`, `npm run build`, `cd src-tauri && cargo check`.
+- [x] T025 Run `npm run visual:check` if dock UI changed in the batch.
+- [x] T026 Run artifact hygiene checks: `git status --short --ignored artifacts .env` and `git ls-files artifacts .env`.
+- [x] T027 Update `docs/WORKING_MEMORY.md`, this `tasks.md`, and any relevant topics with final behavior and gates.
+- [x] T028 Run `bun scripts/context-index.ts` and `bun scripts/agent-context-audit.ts`.
+
+**Final Checkpoint**: Done 2026-06-23 for the safe shortcut/dev dock/saved-target `paste_sent` scope. Alt+Space, tray/background, selection/replace, and verified paste observer remain future/gated work.
+
+---
+
+## Dependencies & Execution Order
+
+- Phase 1 is complete before implementation.
+- Phase 2 blocks Phases 3-5 because UI and Tauri integration need stable contracts.
+- Phase 3 can start after Phase 2 and should land before real Tauri hotkey integration.
+- Phase 4 depends on Phase 2 and should integrate with Phase 3's UI state.
+- Phase 5 depends on Phase 3 and Phase 4.
+- Phase 6 is optional/gated and must not block the usable dock.
+- Phase 7 closes whichever scope was implemented.
+
+## Parallel Opportunities
+
+```text
+# Safe explorers/reviewers
+- Review Fixvox dock skins and summarize only the UI details needed for Checkpoint B.
+- Review Tauri global-shortcut release event support and Alt+Space limitations read-only.
+- Review accessibility/reduced-motion expectations for the dock.
+
+# Safe workers after ownership is clear
+- Worker A: tests/voice-dock/* only.
+- Worker B: src/voice-dock/* only after tests are written.
+- Worker C: tests/desktop-control/dictation-key.test.ts + src/desktop-control/dictation-key.ts only.
+- Worker D: visual smoke tests only.
+
+# Reserved to orchestrator
+- specs/012-fixvox-dock-dictation-key/*, docs/WORKING_MEMORY.md, PRODUCT.md, DESIGN.md, src/App.tsx, src/styles.css, src-tauri/src/*, tauri.conf.json, package scripts, git commits, manual smokes.
+```
+
+## Notes
+
+- The first implementation target is usable dock + hold/tap semantics, not a full Fixvox clone.
+- Keep current `Ctrl+Shift+F9` as fallback until Alt+Space is proven.
+- Selected-text capture, verified paste observation, Quick Chat, Assistant Mode, result history, or `Alt+Q` remain out of this spec's first landing.
+- If any checkpoint starts mixing unrelated gates or risky side effects, stop and split the checkpoint before coding.

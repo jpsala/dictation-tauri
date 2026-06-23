@@ -29,6 +29,11 @@ describe("App desktop session controller seam", () => {
     await facade.start();
     await facade.stop();
     await facade.cancel();
+    await facade.handle("start", {
+      source: "global_hotkey",
+      id: "dictation-key-press",
+      receivedAt: "2026-06-22T11:00:01.000Z",
+    });
 
     expect(handleControl).toHaveBeenNthCalledWith(1, {
       id: "app-start",
@@ -47,6 +52,12 @@ describe("App desktop session controller seam", () => {
       source: "app_button",
       action: "cancel",
       receivedAt: "2026-06-22T11:00:00.000Z",
+    });
+    expect(handleControl).toHaveBeenNthCalledWith(4, {
+      id: "dictation-key-press",
+      source: "global_hotkey",
+      action: "start",
+      receivedAt: "2026-06-22T11:00:01.000Z",
     });
   });
 

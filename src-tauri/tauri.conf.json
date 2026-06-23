@@ -13,13 +13,17 @@
     "windows": [
       {
         "label": "main",
-        "title": "Dictation Tauri",
+        "title": "Dictation Dock",
         "url": "index.html",
-        "width": 900,
-        "height": 620,
-        "minWidth": 360,
-        "minHeight": 320,
-        "resizable": true,
+        "width": 164,
+        "height": 64,
+        "minWidth": 164,
+        "minHeight": 64,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
         "visible": true
       }
     ],

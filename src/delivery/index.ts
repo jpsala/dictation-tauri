@@ -34,3 +34,11 @@ export type {
   CopyDeliveryWriter,
   PasteSendDeliveryGatewayOptions,
 } from "./adapters";
+export {
+  captureTauriDesktopDeliveryTarget,
+  createTauriSavedTargetDeliveryGateway,
+} from "./tauri-desktop-delivery";
+export type {
+  TauriDesktopDeliveryTarget,
+  TauriInvoke,
+} from "./tauri-desktop-delivery";

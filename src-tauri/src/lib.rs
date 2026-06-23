@@ -1,4 +1,5 @@
 mod desktop_control;
+mod desktop_delivery;
 mod fixvox_cloud;
 mod native_capture;
 mod runtime_transcription;
@@ -12,10 +13,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             native_capture::start_native_microphone_capture,
+            native_capture::get_native_microphone_capture_level,
             native_capture::stop_native_microphone_capture,
             native_capture::cancel_native_microphone_capture,
             runtime_transcription::get_runtime_transcription_readiness,
             runtime_transcription::transcribe_captured_audio,
+            desktop_delivery::capture_desktop_delivery_target,
+            desktop_delivery::deliver_text_to_desktop_target,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri app");

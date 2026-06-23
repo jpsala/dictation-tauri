@@ -4,8 +4,8 @@ import {
   createAppSessionControllerFacade,
 } from "../../src/desktop-control/app-session";
 
-describe("App global hotkey controller seam", () => {
-  it("routes global hotkey toggle through the controller instead of deriving start/stop from UI state", async () => {
+describe("App global hotkey dictation-key seam", () => {
+  it("routes global hotkey press/release decisions through explicit controller actions", async () => {
     const handleControl = vi
       .fn()
       .mockResolvedValueOnce({
@@ -29,30 +29,32 @@ describe("App global hotkey controller seam", () => {
       },
     );
 
-    await facade.toggle({ source: "global_hotkey" });
-    await facade.toggle({ source: "global_hotkey" });
+    await facade.handle("start", { source: "global_hotkey" });
+    await facade.handle("stop", { source: "global_hotkey" });
 
     expect(handleControl).toHaveBeenNthCalledWith(1, {
-      id: "app-toggle",
+      id: "app-start",
       source: "global_hotkey",
-      action: "toggle",
+      action: "start",
       receivedAt: "2026-06-23T14:40:00.000Z",
     });
     expect(handleControl).toHaveBeenNthCalledWith(2, {
-      id: "app-toggle",
+      id: "app-stop",
       source: "global_hotkey",
-      action: "toggle",
+      action: "stop",
       receivedAt: "2026-06-23T14:40:00.000Z",
     });
   });
 
-  it("keeps the App hotkey listener on the controller toggle path", () => {
+  it("keeps the App hotkey listener on the dictation-key resolver path", () => {
     const source = readFileSync("src/App.tsx", "utf8");
     const listenerStart = source.indexOf("void listenForTauriGlobalHotkey");
-    const listenerBlock = source.slice(listenerStart, listenerStart + 600);
+    const listenerBlock = source.slice(listenerStart, listenerStart + 1600);
 
-    expect(listenerBlock).toContain("desktopSession.toggle");
+    expect(listenerBlock).toContain("resolveDictationKeyEvent");
+    expect(listenerBlock).toContain("desktopSession.handle");
     expect(listenerBlock).toContain('source: "global_hotkey"');
+    expect(listenerBlock).not.toContain("desktopSession.toggle");
     expect(listenerBlock).not.toContain("canStart");
     expect(listenerBlock).not.toContain("canStop");
   });

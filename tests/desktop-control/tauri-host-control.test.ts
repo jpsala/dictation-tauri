@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  createDesktopControlEventFromTauriHotkey,
+  createDictationKeyEventFromTauriHotkey,
   tauriGlobalHotkeyEventName,
   tauriGlobalHotkeyShortcut,
 } from "../../src/desktop-control/tauri-host-control";
@@ -19,33 +19,62 @@ const forbiddenHotkeyBoundaryMarkers = [
 ] as const;
 
 describe("Tauri host-owned global hotkey boundary", () => {
-  it("maps the fixed Rust-owned hotkey payload to a toggle control event", () => {
+  it("maps fixed Rust-owned pressed and released payloads to dictation key events", () => {
     expect(
-      createDesktopControlEventFromTauriHotkey(
+      createDictationKeyEventFromTauriHotkey(
         {
           source: "global_hotkey",
-          action: "toggle",
+          action: "pressed",
           shortcut: tauriGlobalHotkeyShortcut,
           receivedAt: "2026-06-23T12:10:00.000Z",
         },
         {
-          createEventId: (receivedAt) => `global-hotkey:${receivedAt}`,
+          createEventId: (receivedAt, action) => `global-hotkey:${action}:${receivedAt}`,
         },
       ),
     ).toEqual({
-      id: "global-hotkey:2026-06-23T12:10:00.000Z",
+      eventId: "global-hotkey:pressed:2026-06-23T12:10:00.000Z",
       source: "global_hotkey",
-      action: "toggle",
+      kind: "pressed",
+      shortcut: tauriGlobalHotkeyShortcut,
       receivedAt: "2026-06-23T12:10:00.000Z",
+    });
+
+    expect(
+      createDictationKeyEventFromTauriHotkey(
+        {
+          source: "global_hotkey",
+          action: "released",
+          shortcut: tauriGlobalHotkeyShortcut,
+          receivedAt: "2026-06-23T12:10:00.100Z",
+        },
+        {
+          createEventId: (receivedAt, action) => `global-hotkey:${action}:${receivedAt}`,
+        },
+      ),
+    ).toEqual({
+      eventId: "global-hotkey:released:2026-06-23T12:10:00.100Z",
+      source: "global_hotkey",
+      kind: "released",
+      shortcut: tauriGlobalHotkeyShortcut,
+      receivedAt: "2026-06-23T12:10:00.100Z",
     });
   });
 
-  it("ignores unexpected host shortcut payloads", () => {
+  it("ignores unexpected host shortcut payloads and legacy toggle payloads", () => {
     expect(
-      createDesktopControlEventFromTauriHotkey({
+      createDictationKeyEventFromTauriHotkey({
+        source: "global_hotkey",
+        action: "pressed",
+        shortcut: "Ctrl+Alt+Delete",
+      }),
+    ).toBeUndefined();
+
+    expect(
+      createDictationKeyEventFromTauriHotkey({
         source: "global_hotkey",
         action: "toggle",
-        shortcut: "Ctrl+Alt+Delete",
+        shortcut: tauriGlobalHotkeyShortcut,
       }),
     ).toBeUndefined();
   });
@@ -67,7 +96,8 @@ describe("Tauri host-owned global hotkey boundary", () => {
     expect(source).toContain("Ctrl+Shift+F9");
     expect(source).toContain(tauriGlobalHotkeyEventName);
     expect(source).toContain("global_hotkey");
-    expect(source).toContain("toggle");
+    expect(source).toContain("pressed");
+    expect(source).toContain("released");
     expect(source).not.toContain("paste_observed");
   });
 });

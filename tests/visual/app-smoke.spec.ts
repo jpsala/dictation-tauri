@@ -1,71 +1,41 @@
 import { expect, test } from "@playwright/test";
 
-test("renders the MVP 3 fake capture surface", async ({ page }) => {
+test("renders the Fixvox-like seven-dot dock as the primary fake capture surface", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByTestId("capture-surface")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Dictation Tauri" }),
-  ).toBeVisible();
-  await expect(page.getByText("MVP 3 capture")).toBeVisible();
-  await expect(page.getByTestId("capture-state")).toHaveText("Idle");
-  await expect(page.getByText("Fake capture")).toBeVisible();
-  await expect(page.getByText("Browser unavailable host")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Transcribe with provider" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Paste last (safe)" })).toBeDisabled();
+  await expect(page.getByTestId("voice-dock")).toBeVisible();
+  await expect(page.getByTestId("voice-dock-state-chip")).toHaveText("Ready");
+  await expect(page.getByTestId("voice-dock-vu-dot")).toHaveCount(7);
+  await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
   await expect(page.getByText("paste observed", { exact: false })).toHaveCount(0);
-  await expect(page.getByTestId("host-readiness-state")).toHaveText(
-    "Unavailable",
-  );
-  await expect(page.getByTestId("host-readiness-message")).toHaveText(
-    "Host runtime transcription boundary is unavailable.",
-  );
 });
 
-test("runs a fake start and stop capture flow", async ({ page }) => {
+test("runs a fake start and stop capture flow from the dock", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Start capture" }).click();
-  await expect(page.getByTestId("capture-state")).toHaveText("Listening");
-  await expect(
-    page.getByText("Listening through the fake capture gateway."),
-  ).toBeVisible();
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByTestId("voice-dock-state-chip")).toHaveText("Recording");
 
-  await page.getByRole("button", { name: "Stop capture" }).click();
-  await expect(page.getByTestId("capture-state")).toHaveText("Captured");
-  await expect(page.getByTestId("capture-artifact")).toHaveText(
-    "artifacts/microphone-capture/audio/capture-001.webm",
-  );
-  await expect(page.getByTestId("pipeline-state")).toHaveText("Setup needed");
-  await expect(page.getByTestId("pipeline-message")).toHaveText(
-    "Host runtime transcription boundary is unavailable.",
-  );
-  await expect(page.getByRole("button", { name: "Transcribe with provider" })).toBeDisabled();
+  await page.getByRole("button", { name: "Stop & review" }).click();
+  await expect(page.getByTestId("voice-dock-state-chip")).toHaveText("Needs attention");
+  await expect(page.getByText("paste observed", { exact: false })).toHaveCount(0);
 });
 
-test("checks the safe host boundary without a provider call", async ({
-  page,
-}) => {
+test("keeps developer/provider controls hidden from the compact dock", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Start capture" }).click();
-  await page.getByRole("button", { name: "Stop capture" }).click();
-  await page.getByRole("button", { name: "Check host boundary" }).click();
-
-  await expect(page.getByTestId("pipeline-state")).toHaveText("Setup needed");
-  await expect(page.getByTestId("pipeline-message")).toHaveText(
-    "Host runtime transcription boundary is unavailable.",
-  );
+  await expect(page.getByText("Developer evidence")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Transcribe with provider" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Paste last (safe)" })).toBeHidden();
 });
 
-test("runs a fake cancellation flow", async ({ page }) => {
+test("runs a fake cancellation flow from the dock", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Start capture" }).click();
+  await page.getByRole("button", { name: "Start" }).click();
   await page.getByRole("button", { name: "Cancel" }).click();
 
-  await expect(page.getByTestId("capture-state")).toHaveText("Cancelled");
-  await expect(
-    page.getByText("Capture cancelled before transcription."),
-  ).toBeVisible();
+  await expect(page.getByTestId("voice-dock-state-chip")).toHaveText("Cancelled");
+  await expect(page.getByRole("button", { name: "Record again" })).toBeVisible();
 });

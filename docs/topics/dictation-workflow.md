@@ -14,6 +14,7 @@ primary_refs:
   - docs/topics/product-direction.md
   - docs/topics/privacy-and-dictation-data.md
   - docs/topics/automation-and-reference-fixtures.md
+  - docs/topics/fixvox-dock-and-hotkeys-reference.md
 ---
 
 # Workflow De Dictado
@@ -64,6 +65,7 @@ Nombres de UI:
 
 ## Decision Inicial
 
+- La experiencia usable objetivo debe respetar la ergonomia probada de Fixvox para dock/hotkeys: una `Dictation key` visible con hold/tap, dock flotante compacto, feedback vivo de grabacion y recovery honesto. Ver `docs/topics/fixvox-dock-and-hotkeys-reference.md`.
 - MVP 1 debe correr con pipeline simulado y adapter mock.
 - MVP 2 debe correr con audio sintetico y STT real sobre fixtures controlados; tambien puede usar audio local real si acelera desarrollo.
 - MVP 3 agrega la frontera de microfono y stop-submit sobre captura fake/WebView testable; la grabacion real queda como check manual aprobado.

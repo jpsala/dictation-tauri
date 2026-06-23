@@ -55,6 +55,7 @@ export type DesktopDictationControllerOptions = {
   capture: DesktopCaptureGateway;
   runtime: DesktopRuntimeGateway;
   delivery?: DesktopDeliveryGateway;
+  allowDesktopDeliverySideEffects?: boolean;
   createSessionId?: () => string;
   now?: () => string;
 };
@@ -70,6 +71,7 @@ export class DesktopDictationController
   private readonly capture: DesktopCaptureGateway;
   private readonly runtime: DesktopRuntimeGateway;
   private readonly delivery: DesktopDeliveryGateway;
+  private readonly allowDesktopDeliverySideEffects: boolean;
   private readonly createSessionId: () => string;
   private readonly now: () => string;
 
@@ -77,6 +79,7 @@ export class DesktopDictationController
     this.capture = options.capture;
     this.runtime = options.runtime;
     this.delivery = options.delivery ?? createReviewOnlyDeliveryGateway();
+    this.allowDesktopDeliverySideEffects = options.allowDesktopDeliverySideEffects ?? false;
     this.createSessionId = options.createSessionId ?? createDefaultSessionId;
     this.now = options.now ?? (() => new Date().toISOString());
   }
@@ -258,8 +261,8 @@ export class DesktopDictationController
     const request = {
       sessionId: session.sessionId,
       text,
-      strategy: "review_only" as const,
-      allowDesktopSideEffects: false,
+      strategy: this.allowDesktopDeliverySideEffects ? "paste_send" as const : "review_only" as const,
+      allowDesktopSideEffects: this.allowDesktopDeliverySideEffects,
       targetSnapshot: event.targetSnapshot,
     };
     let delivery: DeliveryEvidence;

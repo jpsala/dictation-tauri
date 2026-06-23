@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-23T14:59:34.100Z
+Generated: 2026-06-23T19:01:01.107Z
 
 ## Topics
 
@@ -15,6 +15,7 @@ Generated: 2026-06-23T14:59:34.100Z
 - active: [docs-knowledge-system](../topics/docs-knowledge-system.md) - documentacion, docs, topics, indice, contexto liviano, tracks, context bloat, contaminacion de contexto
 - active: [fixvox-capability-map](../topics/fixvox-capability-map.md) - Fixvox, Fixbox, electro-bun, capacidades Fixvox, alcance producto, mapa de producto, que copiamos, que implementamos
 - active: [fixvox-cloud-runtime-port](../topics/fixvox-cloud-runtime-port.md) - Fixvox cloud, Fixbox backend, managed runtime, proxy compartido, reemplazar Bun por Rust, Rust Tauri port, cloud infrastructure, X-Device-Id
+- active: [fixvox-dock-and-hotkeys-reference](../topics/fixvox-dock-and-hotkeys-reference.md) - Fixvox dock, dock, voice dock, hotkeys Fixvox, Alt+Space, push to talk, dictation key, paste last, Alt+Q
 - reference: [local-codex-skills](../topics/local-codex-skills.md) - skills locales, local skills, slash commands, docs/skills, .agents/skills, sigamos, cerrar sesion, continuar sesion, continuar sesion con gol, continuar con gol, siguiente, realinear os, evaluar skills, pasar a skills, promover a skill, que se puede pasar a skills, skill o topic, metadata mínima, metadata minima, modelo hibrido
 - active: [os-quality](../topics/os-quality.md) - perfect os, proyecto perfecto, dejar en condiciones, calidad agentica, optimizar contexto, docs livianos, docs indexados, comandos os, os help
 - active: [privacy-and-dictation-data](../topics/privacy-and-dictation-data.md) - privacidad, audio, transcripciones, dictado, logs, storage, modelos
@@ -44,6 +45,7 @@ Generated: 2026-06-23T14:59:34.100Z
 - [009-fixvox-cloud-runtime-port](../../specs/009-fixvox-cloud-runtime-port/)
 - [010-desktop-dictation-control-delivery](../../specs/010-desktop-dictation-control-delivery/)
 - [011-selection-transform-and-recovery-ergonomics](../../specs/011-selection-transform-and-recovery-ergonomics/)
+- [012-fixvox-dock-dictation-key](../../specs/012-fixvox-dock-dictation-key/)
 
 ## Skills
 

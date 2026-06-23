@@ -33,7 +33,8 @@ The voice is direct and factual. Prefer concrete labels such as "Listening", "Tr
 - Busy recording dashboards that make dictation feel like audio engineering.
 - Chat-first assistant UI as the main surface for MVP 0-3.
 - Clipboard-manager UI patterns from CopyQ Tauri unless a Dictation Tauri spec explicitly needs them.
-- Fixvox architecture or Electrobun/Bun UI assumptions copied directly into this app.
+- Fixvox architecture or Electrobun/Bun implementation assumptions copied directly into this app.
+- Ignoring the proven Fixvox dock/hotkey ergonomics JP finds useful; dock and dictation-key work should adapt that experience deliberately.
 - Hidden failure states, optimistic paste claims, or UI that implies delivery was observed when only a send/copy action happened.
 
 ## Design Principles
@@ -45,7 +46,7 @@ The voice is direct and factual. Prefer concrete labels such as "Listening", "Tr
    If delivery cannot be proven, the app should say so and give the user a clear copy or retry path.
 
 3. Compact desktop ergonomics first.
-   Surfaces should be small, scannable, keyboard-friendly, and suitable for repeated use while another app has the user's attention.
+   Surfaces should be small, scannable, keyboard-friendly, and suitable for repeated use while another app has the user's attention. For the voice dock and dictation key, Fixvox is the primary product reference: compact floating launcher, live recording feedback, honest processing/recovery, and hold/tap hotkey semantics.
 
 4. Automatable before manual.
    Early flows must be testable through fixtures, mock adapters, synthetic audio, and visual checks before they depend on real microphone sessions.

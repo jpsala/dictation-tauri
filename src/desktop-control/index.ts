@@ -40,6 +40,14 @@ export type {
   TauriGlobalHotkeyListenerOptions,
   TauriGlobalHotkeyPayload,
 } from "./tauri-host-control";
+export type {
+  DictationKeyDecision,
+  DictationKeyEvent,
+  DictationKeyEventKind,
+  DictationKeyResolverOptions,
+  DictationKeyResolution,
+  DictationKeyState,
+} from "./dictation-key";
 
 export {
   createAppControlEvent,
@@ -70,11 +78,19 @@ export {
 } from "./fake-host-control";
 
 export {
-  createDesktopControlEventFromTauriHotkey,
+  createDictationKeyEventFromTauriHotkey,
   listenForTauriGlobalHotkey,
   tauriGlobalHotkeyEventName,
   tauriGlobalHotkeyShortcut,
 } from "./tauri-host-control";
+
+export {
+  createInitialDictationKeyState,
+  dictationKeyDecisionToControlAction,
+  markDictationKeyStarted,
+  resetDictationKeyState,
+  resolveDictationKeyEvent,
+} from "./dictation-key";
 
 export {
   activeDesktopDictationStates,

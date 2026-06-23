@@ -10,6 +10,7 @@ import {
   createPasteSendDeliveryGateway,
   createReviewOnlyDeliveryGateway,
 } from "../../src/delivery/adapters";
+import { createTauriSavedTargetDeliveryGateway } from "../../src/delivery/tauri-desktop-delivery";
 import { createDeliveryRequest } from "./desktop-control-fixtures";
 
 describe("desktop delivery evidence foundation", () => {
@@ -172,6 +173,57 @@ describe("desktop delivery evidence foundation", () => {
     ).resolves.toMatchObject({
       status: "failed",
       reason: "Paste failed with Authorization: Bearer [REDACTED]",
+    });
+  });
+
+  it("sends Tauri saved-target paste as paste_sent without claiming observation", async () => {
+    const gateway = createTauriSavedTargetDeliveryGateway({
+      invoke: async () => ({
+        status: "paste_sent",
+        reason: "Paste command was sent to the saved foreground target without observation.",
+        target: {
+          frameHwnd: "123",
+          windowTitle: "Scratchpad",
+          windowClass: "Notepad",
+          processId: 1,
+          inputLike: true,
+          reason: "foreground target captured before dictation",
+        },
+      }),
+      getTarget: () => ({
+        frameHwnd: "123",
+        windowTitle: "Scratchpad",
+        windowClass: "Notepad",
+        processId: 1,
+        inputLike: true,
+        reason: "foreground target captured before dictation",
+      }),
+    });
+
+    await expect(
+      gateway.deliver(createDeliveryRequest({ strategy: "paste_send", allowDesktopSideEffects: true })),
+    ).resolves.toMatchObject({
+      status: "paste_sent",
+      strategy: "paste_send",
+      reason: "Paste command was sent to the saved foreground target without observation.",
+    });
+  });
+
+  it("falls back when Tauri paste has no saved target", async () => {
+    const gateway = createTauriSavedTargetDeliveryGateway({
+      invoke: async () => {
+        throw new Error("should not invoke without target");
+      },
+      getTarget: () => undefined,
+    });
+
+    await expect(
+      gateway.deliver(createDeliveryRequest({ strategy: "paste_send", allowDesktopSideEffects: true })),
+    ).resolves.toMatchObject({
+      status: "failed",
+      strategy: "paste_send",
+      output: "desktop control transcript",
+      reason: "No saved editable target is available for paste delivery.",
     });
   });
 
