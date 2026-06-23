@@ -684,14 +684,59 @@ export function App() {
     let unlisten: (() => void) | undefined;
 
     void listenForTauriGlobalHotkey(async () => {
-      if (canStop) {
-        await stopCapture();
+      const session = await desktopSession.toggle({ source: "global_hotkey" });
+      setDesktopRecoveryAction(session.recoveryAction);
+
+      if (session.state === "listening") {
+        setPipelineUi({
+          status: "idle",
+          message: "Capture an artifact before checking the safe host boundary.",
+        });
+        setCapture({
+          state: "recording",
+          message: captureRuntime.listeningMessage,
+        });
         return;
       }
 
-      if (canStart) {
-        await startCapture();
+      const result = getAppSessionCaptureResult(session);
+      const summary = getAppSessionSummary(session);
+
+      setCapture({
+        state: result?.ok ? "captured" : session.state === "cancelled" ? "cancelled" : "failed",
+        message: result?.ok
+          ? captureRuntime.capturedMessage
+          : session.error?.message ?? "Hotkey toggle did not produce a captured artifact.",
+        result,
+      });
+
+      if (summary?.terminalState === "done") {
+        setPipelineUi({
+          status: "done",
+          message:
+            describeDeliveryEvidence(summary.deliveryEvidence) ??
+            (summary.transcript
+              ? "Transcript is available from the captured run."
+              : "Captured run completed without transcript text."),
+          summary,
+        });
+        return;
       }
+
+      if (session.state === "cancelled" || summary?.terminalState === "cancelled") {
+        setPipelineUi({
+          status: "cancelled",
+          message: "Captured run was cancelled before completion.",
+          summary,
+        });
+        return;
+      }
+
+      setPipelineUi({
+        status: "error",
+        message: session.error?.message ?? summary?.error?.message ?? "Captured run failed.",
+        summary,
+      });
     }).then((nextUnlisten) => {
       if (disposed) {
         nextUnlisten?.();
@@ -705,7 +750,7 @@ export function App() {
       disposed = true;
       unlisten?.();
     };
-  }, [canStart, canStop, capture.state]);
+  }, [captureRuntime.capturedMessage, captureRuntime.listeningMessage, desktopSession]);
 
   return (
     <main className="app-shell" data-testid="capture-surface">

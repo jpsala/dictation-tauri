@@ -24,6 +24,7 @@ export type AppSessionControllerFacade = {
   stop(): Promise<DesktopDictationSession>;
   cancel(): Promise<DesktopDictationSession>;
   retry(): Promise<DesktopDictationSession>;
+  toggle(options?: { source?: DesktopControlSource }): Promise<DesktopDictationSession>;
 };
 
 export type AppDesktopRuntimeResult = DesktopRuntimeResult & {
@@ -48,6 +49,13 @@ export function createAppSessionControllerFacade(
     stop: () => controller.handleControl(createAppControlEvent("stop", options)),
     cancel: () => controller.handleControl(createAppControlEvent("cancel", options)),
     retry: () => controller.handleControl(createAppControlEvent("retry", options)),
+    toggle: (toggleOptions = {}) =>
+      controller.handleControl(
+        createAppControlEvent("toggle", {
+          ...options,
+          source: toggleOptions.source ?? options.source,
+        }),
+      ),
   };
 }
 

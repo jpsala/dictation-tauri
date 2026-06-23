@@ -94,9 +94,19 @@ Redacted result:
 
 Gotcha: `WScript.Shell.SendKeys('^+{F9}')` was inconclusive in the scripted smoke; low-level Windows key events after confirming the Tauri window produced the passing artifact.
 
-### 2026-06-23: subsequent hotkey smoke reattempt was inconclusive
+### 2026-06-23: hotkey handoff debugged and re-smoked
 
-After JP approved a real E2E/provider smoke, `scripts/desktop-hotkey-smoke.ps1 -AllowDesktopSideEffects` was run twice. Both runs launched Tauri and confirmed window readiness but produced no new WAV artifact. A temporary diagnostic run showed Rust received two `Ctrl+Shift+F9` events, so the gap is after host event emission or within the renderer/session/capture handoff. Do not record this as an E2E pass; keep the earlier `capture-native-1782219726497.wav` pass as the last known-good hotkey artifact until the handoff is debugged.
+After JP approved debugging the hotkey gap, the renderer path was changed to route host hotkeys through the controller-owned `toggle` action instead of deriving start/stop from React `canStart`/`canStop` booleans. The versioned smoke script also waits longer after Tauri window readiness before sending the first key so the renderer listener can attach.
+
+Evidence:
+
+```powershell
+npm run test:pipeline -- tests/desktop-control
+cd src-tauri && cargo check
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-hotkey-smoke.ps1 -AllowDesktopSideEffects -InitialDelaySeconds 12
+```
+
+Redacted result: `artifact_created`; new ignored WAV `artifacts/microphone-capture/audio/capture-native-1782225491086.wav` (`973484` bytes); redacted smoke result `artifacts/desktop-control/hotkey-smoke-20260623-113754.json`. No provider call, no selection capture, no paste automation, no transcript content.
 
 ## Non-Goals During Quickstart
 

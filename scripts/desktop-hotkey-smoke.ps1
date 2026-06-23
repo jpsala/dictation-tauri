@@ -1,5 +1,6 @@
 param(
-  [switch]$AllowDesktopSideEffects
+  [switch]$AllowDesktopSideEffects,
+  [int]$InitialDelaySeconds = 10
 )
 
 $ErrorActionPreference = 'Stop'
@@ -89,7 +90,7 @@ try {
     Write-Host 'Tauri window readiness was not confirmed before timeout; sending hotkeys anyway for gated smoke.'
   }
 
-  Start-Sleep -Seconds 3
+  Start-Sleep -Seconds $InitialDelaySeconds
   Send-CtrlShiftF9
   $firstHotkeyAt = Get-Date
   Start-Sleep -Seconds 5
