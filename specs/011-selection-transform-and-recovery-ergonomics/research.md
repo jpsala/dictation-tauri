@@ -50,3 +50,33 @@
 **Decision**: The optional real hotkey spike is tracked in `010` because it controls dictation start/stop. Real selection capture is not part of that spike and remains future gated work from 011.
 
 **Rationale**: Mixing hotkey registration, selected-text capture, transform routing, and recovery UI would violate Small Batch discipline.
+
+## Decision: Minimal Windows selection capture route
+
+**Decision**: The first real Windows selection capture route, if later approved, should be host-owned and non-mutating by default: a Tauri/Rust command attempts Windows UI Automation against the current foreground/focused text control and returns a typed `SelectionCaptureOutcome`. It must not be callable from default tests, must not run on app startup, and must not use clipboard roundtrips, paste keys, provider calls, or durable storage in the initial implementation.
+
+**Rationale**: Selected text is sensitive and Windows does not provide a universal selected-text API for all applications. UI Automation can retrieve selected text from cooperating text controls without mutating the user's clipboard, while failures are expected and can be mapped honestly to direct dictation or review-only recovery. Keeping this in Rust/Tauri preserves the existing desktop side-effect boundary from 010.
+
+**Failure behavior**:
+
+- `unsupported_platform`: non-Windows or unavailable host adapter; route to direct dictation.
+- `no_foreground_target`: no eligible foreground/focused target; route to direct dictation.
+- `unsupported_target`: target exposes no usable UI Automation text selection pattern; show recovery and keep direct dictation available.
+- `no_selection`: target is usable but has no non-empty selection; direct dictation remains the default route.
+- `timeout`: capture exceeds a short bounded timeout; do not retry indefinitely.
+- Target metadata that looks secret-like or too detailed is redacted in evidence; redaction is metadata, not a separate success claim.
+
+**Guardrails for later implementation**:
+
+- Host result shape follows `SelectionCaptureOutcome`, with explicit status/reason and redacted target evidence.
+- Captured text may flow into an in-memory `SelectionContext` for the active transform only; do not log or persist raw selection.
+- Limit captured text length before crossing to the renderer and mark truncation in evidence.
+- Clipboard roundtrip (`Ctrl+C`, read/restore clipboard) is not part of this route; it requires a separate explicit decision because it mutates clipboard/focus and may send keys.
+- Replace-selection/paste automation remains out of scope; captured selection only enables transform/review routing.
+
+**Alternatives considered**:
+
+- Clipboard roundtrip first: rejected for T036 because it mutates clipboard and typically requires sending copy keys to the foreground app.
+- Third-party capture library first: deferred until boundary tests exist; useful only if it preserves non-mutating defaults and exposes deterministic failure statuses.
+- Screenshot/OCR selection detection: rejected for now due privacy risk, fragility, and false positives.
+- App-specific adapters: deferred until a concrete target app requires higher reliability.

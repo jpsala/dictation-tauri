@@ -73,3 +73,20 @@ npm run tauri:dev
 ```
 
 Evidence from gated checks must be redacted and must not include secrets, real transcripts, raw selected text, or provider payloads.
+
+## Future Windows Selection Capture Route
+
+The selected T036 design route is host-owned and non-mutating by default:
+
+1. User action/hotkey asks the Tauri host to capture selection for the current foreground target.
+2. Rust/Tauri attempts Windows UI Automation selected-text capture with a short timeout.
+3. On success, host returns an in-memory `SelectionContext` with `source: "host_capture"`, redacted target evidence, and truncation metadata if needed.
+4. On `unsupported_target`, `no_selection`, `timeout`, or any failure, the app falls back to direct dictation or review-only recovery.
+
+Not included in this route without a later explicit approval:
+
+- clipboard roundtrip capture;
+- synthetic `Ctrl+C`;
+- focus changes;
+- paste or replace-selection automation;
+- durable selected-text/result history.

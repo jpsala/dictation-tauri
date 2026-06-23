@@ -25,6 +25,38 @@ Rules:
 - `host_capture` requires a later gated host adapter.
 - Empty/whitespace text is equivalent to no selection.
 
+## Future Host Selection Capture Boundary
+
+Real Windows selection capture, if approved, is host-owned and returns an outcome before creating a `SelectionContext`:
+
+```ts
+export type SelectionCaptureStatus =
+  | "ok"
+  | "unsupported_platform"
+  | "no_foreground_target"
+  | "unsupported_target"
+  | "no_selection"
+  | "timeout"
+  | "failed";
+
+export type SelectionCaptureOutcome = {
+  status: SelectionCaptureStatus;
+  selection?: SelectionContext;
+  targetSnapshot?: DesktopTargetSnapshot;
+  redacted: boolean;
+  truncated: boolean;
+  reason?: string;
+};
+```
+
+Rules:
+
+- The first Windows route attempts non-mutating UI Automation selection capture from the foreground/focused text control.
+- Capture is invoked only by explicit user action/hotkey flow, never on app startup or in default tests.
+- Clipboard roundtrips, synthetic `Ctrl+C`, focus changes, paste keys, and replace-selection are excluded from this boundary.
+- Failure statuses are expected and must route to direct dictation or review-only recovery without claiming selection was captured.
+- Raw selected text may cross to the renderer only as active in-memory session data; never write it to docs, logs, durable history, or artifacts.
+
 ## Transform Request
 
 ```ts
