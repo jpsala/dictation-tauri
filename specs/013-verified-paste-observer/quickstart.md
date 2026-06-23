@@ -38,4 +38,9 @@ Manual steps:
 
 ## Evidence Log
 
-- Pending: no gated native observer smoke has been run yet.
+- 2026-06-23 controlled fallback smoke with `VITE_ENABLE_NATIVE_PASTE_OBSERVER=1`:
+  - Command: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-dock.ps1 -Mode Fallback -RecordSeconds 4 -SpeakText '[REDACTED_SYNTHETIC_SPEECH]'`.
+  - Report: `artifacts/microphone-capture/reports/dock-smoke-Fallback-20260623-201528.json`.
+  - Result: fresh WAV created, scratch Notepad target changed to non-empty redacted content, clipboard sentinel restored.
+  - Follow-up probe: Win32 child text probe against the scratch Notepad matched the saved redacted content (`readableTextSurfaces=12`, `win32ProbeMatchedSavedContent=true`).
+  - Limitation: this session does not expose a computer-use/UI-inspection tool that can read the dock's React evidence state, so `paste_observed` was not independently captured from the app UI/log. Treat as observer-readiness evidence, not final verified `paste_observed` closeout.
