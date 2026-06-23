@@ -4,6 +4,7 @@ import {
   deriveObservedPasteEvidence,
   derivePasteObserverErrorEvidence,
   type DesktopPasteObserver,
+  type PasteObservation,
 } from "./observation";
 import type { DeliveryRequest, DesktopDeliveryGateway } from "./types";
 
@@ -23,6 +24,39 @@ type NativeDeliveryResult = {
   reason: string;
   target: TauriDesktopDeliveryTarget;
 };
+
+type NativePasteObservationResult = PasteObservation;
+
+export type TauriNativePasteObserverOptions = {
+  timeoutMs?: number;
+};
+
+export type NativePasteObserverEnv = {
+  VITE_ENABLE_NATIVE_PASTE_OBSERVER?: string | boolean;
+};
+
+export function isTauriNativePasteObserverEnabled(
+  env: NativePasteObserverEnv = import.meta.env as NativePasteObserverEnv,
+): boolean {
+  return env.VITE_ENABLE_NATIVE_PASTE_OBSERVER === true ||
+    env.VITE_ENABLE_NATIVE_PASTE_OBSERVER === "1" ||
+    env.VITE_ENABLE_NATIVE_PASTE_OBSERVER === "true";
+}
+
+export function createTauriNativePasteObserver(input: {
+  invoke: TauriInvoke;
+  options?: TauriNativePasteObserverOptions;
+}): DesktopPasteObserver<TauriDesktopDeliveryTarget> {
+  return {
+    observe(observationInput) {
+      return input.invoke<NativePasteObservationResult>("observe_desktop_paste", {
+        text: observationInput.text,
+        target: observationInput.target,
+        timeoutMs: input.options?.timeoutMs,
+      });
+    },
+  };
+}
 
 export async function captureTauriDesktopDeliveryTarget(
   invoke: TauriInvoke,

@@ -19,6 +19,24 @@ pub struct DesktopDeliveryResult {
     target: DesktopDeliveryTarget,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopTargetSnapshot {
+    captured_at: String,
+    app_label: String,
+    window_label: String,
+    confidence: &'static str,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopPasteObservationResult {
+    status: &'static str,
+    confidence: &'static str,
+    reason: String,
+    target_after: DesktopTargetSnapshot,
+}
+
 #[tauri::command]
 pub fn capture_desktop_delivery_target() -> Result<DesktopDeliveryTarget, String> {
     platform::capture_desktop_delivery_target()
@@ -32,12 +50,28 @@ pub fn deliver_text_to_desktop_target(
     platform::deliver_text_to_desktop_target(text, target)
 }
 
+#[tauri::command]
+pub fn observe_desktop_paste(
+    text: String,
+    target: DesktopDeliveryTarget,
+    timeout_ms: Option<u64>,
+) -> Result<DesktopPasteObservationResult, String> {
+    platform::observe_desktop_paste(text, target, timeout_ms)
+}
+
 #[cfg(windows)]
 mod platform {
-    use super::{DesktopDeliveryResult, DesktopDeliveryTarget};
-    use std::{ffi::c_void, ptr, thread, time::Duration};
+    use super::{
+        DesktopDeliveryResult, DesktopDeliveryTarget, DesktopPasteObservationResult,
+        DesktopTargetSnapshot,
+    };
+    use std::{
+        ffi::c_void,
+        ptr, thread,
+        time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    };
     use windows_sys::Win32::{
-        Foundation::HWND,
+        Foundation::{BOOL, HWND, LPARAM},
         System::{
             DataExchange::{
                 CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable,
@@ -48,13 +82,14 @@ mod platform {
         },
         UI::{
             Input::KeyboardAndMouse::{
-                SendInput, SetFocus, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
-                KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_ESCAPE, VK_MENU, VK_V,
+                SendInput, SetFocus, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+                VIRTUAL_KEY, VK_CONTROL, VK_ESCAPE, VK_MENU, VK_V,
             },
             WindowsAndMessaging::{
-                BringWindowToTop, GetClassNameW, GetForegroundWindow, GetWindowTextLengthW,
-                GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-                SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW,
+                BringWindowToTop, EnumChildWindows, GetClassNameW, GetForegroundWindow,
+                GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
+                IsWindowVisible, SendMessageTimeoutW, SetForegroundWindow, ShowWindow,
+                SMTO_ABORTIFHUNG, SW_RESTORE, SW_SHOW, WM_GETTEXT, WM_GETTEXTLENGTH,
             },
         },
     };
@@ -133,6 +168,71 @@ mod platform {
         })
     }
 
+    pub fn observe_desktop_paste(
+        text: String,
+        target: DesktopDeliveryTarget,
+        timeout_ms: Option<u64>,
+    ) -> Result<DesktopPasteObservationResult, String> {
+        if text.trim().is_empty() {
+            return Ok(create_observation(
+                "unsupported",
+                "none",
+                "Paste observation was skipped because the transcript text was empty.",
+                &target,
+            ));
+        }
+        if !target.input_like {
+            return Ok(create_observation(
+                "unsupported",
+                "none",
+                "Saved target is not eligible for paste observation.",
+                &target,
+            ));
+        }
+
+        let hwnd = parse_hwnd(&target.frame_hwnd)?;
+        let expected = normalize_observed_text(&text);
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.unwrap_or(900).min(5_000));
+        let mut saw_readable_text = false;
+
+        loop {
+            let readable_texts = read_window_text_surfaces(hwnd);
+            saw_readable_text |= !readable_texts.is_empty();
+
+            if readable_texts
+                .iter()
+                .map(|value| normalize_observed_text(value))
+                .any(|value| value.contains(&expected))
+            {
+                return Ok(create_observation(
+                    "observed",
+                    "high",
+                    "Native Windows observer confirmed the saved target contains the inserted text.",
+                    &target,
+                ));
+            }
+
+            if Instant::now() >= deadline {
+                let (status, confidence, reason) = if saw_readable_text {
+                    (
+                        "mismatch",
+                        "high",
+                        "Native Windows observer read the saved target but did not confirm the inserted text.",
+                    )
+                } else {
+                    (
+                        "unsupported",
+                        "none",
+                        "Saved target did not expose a readable Windows text surface for observation.",
+                    )
+                };
+                return Ok(create_observation(status, confidence, reason, &target));
+            }
+
+            thread::sleep(Duration::from_millis(80));
+        }
+    }
+
     fn parse_hwnd(value: &str) -> Result<HWND, String> {
         value
             .parse::<isize>()
@@ -156,7 +256,8 @@ mod platform {
             } else {
                 GetWindowThreadProcessId(foreground_hwnd, ptr::null_mut())
             };
-            let attached_target = target_thread_id != 0 && target_thread_id != current_thread_id
+            let attached_target = target_thread_id != 0
+                && target_thread_id != current_thread_id
                 && AttachThreadInput(current_thread_id, target_thread_id, 1) != 0;
             let attached_foreground = foreground_thread_id != 0
                 && foreground_thread_id != current_thread_id
@@ -245,9 +346,97 @@ mod platform {
         String::from_utf16_lossy(&buffer[..copied as usize])
     }
 
+    fn read_window_text_surfaces(hwnd: HWND) -> Vec<String> {
+        let mut hwnds = Vec::new();
+        unsafe {
+            EnumChildWindows(
+                hwnd,
+                Some(enum_child_window),
+                &mut hwnds as *mut Vec<HWND> as LPARAM,
+            );
+        }
+
+        hwnds
+            .into_iter()
+            .filter_map(read_window_control_text)
+            .filter(|value| !value.trim().is_empty())
+            .collect()
+    }
+
+    unsafe extern "system" fn enum_child_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let hwnds = &mut *(lparam as *mut Vec<HWND>);
+        hwnds.push(hwnd);
+        1
+    }
+
+    fn read_window_control_text(hwnd: HWND) -> Option<String> {
+        let length = send_message_timeout(hwnd, WM_GETTEXTLENGTH, 0, 0)? as usize;
+        if length == 0 || length > 1_000_000 {
+            return None;
+        }
+
+        let mut buffer = vec![0u16; length + 1];
+        let copied =
+            send_message_timeout(hwnd, WM_GETTEXT, buffer.len(), buffer.as_mut_ptr() as isize)?
+                as usize;
+        if copied == 0 {
+            return None;
+        }
+
+        Some(String::from_utf16_lossy(&buffer[..copied]))
+    }
+
+    fn send_message_timeout(hwnd: HWND, msg: u32, wparam: usize, lparam: isize) -> Option<isize> {
+        let mut result = 0usize;
+        let sent = unsafe {
+            SendMessageTimeoutW(hwnd, msg, wparam, lparam, SMTO_ABORTIFHUNG, 80, &mut result)
+        };
+        if sent == 0 {
+            None
+        } else {
+            Some(result as isize)
+        }
+    }
+
+    fn normalize_observed_text(value: &str) -> String {
+        value
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    }
+
+    fn create_observation(
+        status: &'static str,
+        confidence: &'static str,
+        reason: &str,
+        target: &DesktopDeliveryTarget,
+    ) -> DesktopPasteObservationResult {
+        DesktopPasteObservationResult {
+            status,
+            confidence,
+            reason: reason.to_string(),
+            target_after: DesktopTargetSnapshot {
+                captured_at: current_timestamp_millis(),
+                app_label: target.window_class.clone(),
+                window_label: target.window_title.clone(),
+                confidence,
+            },
+        }
+    }
+
+    fn current_timestamp_millis() -> String {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_millis().to_string())
+            .unwrap_or_else(|_| "0".to_string())
+    }
+
     fn read_clipboard_text() -> Option<String> {
         unsafe {
-            if IsClipboardFormatAvailable(CF_UNICODETEXT_FORMAT) == 0 || OpenClipboard(ptr::null_mut()) == 0 {
+            if IsClipboardFormatAvailable(CF_UNICODETEXT_FORMAT) == 0
+                || OpenClipboard(ptr::null_mut()) == 0
+            {
                 return None;
             }
             let handle = GetClipboardData(CF_UNICODETEXT_FORMAT);
@@ -262,7 +451,10 @@ mod platform {
             }
             let size = GlobalSize(handle) / 2;
             let slice = std::slice::from_raw_parts(ptr, size);
-            let nul = slice.iter().position(|value| *value == 0).unwrap_or(slice.len());
+            let nul = slice
+                .iter()
+                .position(|value| *value == 0)
+                .unwrap_or(slice.len());
             let text = String::from_utf16_lossy(&slice[..nul]);
             GlobalUnlock(handle);
             CloseClipboard();
@@ -305,7 +497,10 @@ mod platform {
 
 #[cfg(not(windows))]
 mod platform {
-    use super::{DesktopDeliveryResult, DesktopDeliveryTarget};
+    use super::{
+        DesktopDeliveryResult, DesktopDeliveryTarget, DesktopPasteObservationResult,
+        DesktopTargetSnapshot,
+    };
 
     pub fn capture_desktop_delivery_target() -> Result<DesktopDeliveryTarget, String> {
         Err("Desktop target capture is only available on Windows.".to_string())
@@ -319,5 +514,23 @@ mod platform {
             "Desktop delivery is only available on Windows for target {}.",
             target.frame_hwnd
         ))
+    }
+
+    pub fn observe_desktop_paste(
+        _text: String,
+        target: DesktopDeliveryTarget,
+        _timeout_ms: Option<u64>,
+    ) -> Result<DesktopPasteObservationResult, String> {
+        Ok(DesktopPasteObservationResult {
+            status: "unsupported",
+            confidence: "none",
+            reason: "Native paste observation is only available on Windows.".to_string(),
+            target_after: DesktopTargetSnapshot {
+                captured_at: "0".to_string(),
+                app_label: target.window_class,
+                window_label: target.window_title,
+                confidence: "none",
+            },
+        })
     }
 }

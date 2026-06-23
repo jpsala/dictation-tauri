@@ -2,7 +2,7 @@
 
 **Feature Branch**: `013-verified-paste-observer`  
 **Created**: 2026-06-23  
-**Status**: Draft  
+**Status**: Active - native observer implemented behind gate; manual smoke pending  
 **Input**: Continuation after `012-fixvox-dock-dictation-key` safe dock + saved-target `paste_sent` landed.
 
 ## User Story
@@ -15,15 +15,15 @@ As JP, when dictation inserts text into another desktop app, I need the app to d
 
 - Provider-free TypeScript contracts for a desktop paste observer.
 - Evidence promotion rules that allow `paste_observed` only from a verified, high-confidence observer.
-- Tauri delivery gateway seam that can consume an observer later while preserving current `paste_sent` behavior when no observer exists.
-- Documentation of the next native observer/heuristics path before any real smoke.
+- Tauri delivery gateway seam that can consume an observer while preserving current `paste_sent` behavior when no observer is configured.
+- Gated native Windows observer command that checks saved-target readable text surfaces without returning raw target contents.
 
-### Out For First Batch
+### Out For Default Checks
 
-- No real Windows UI Automation observer yet.
-- No new clipboard/focus/paste side effects in default checks.
+- No observer enabled unless `VITE_ENABLE_NATIVE_PASTE_OBSERVER=1` (or `true`).
+- No new clipboard/focus/paste side effects beyond the existing gated paste-send path.
 - No selection replacement.
-- No claim of `paste_observed` in manual evidence until a native observer proves it.
+- No claim of `paste_observed` in manual evidence until the gated native observer proves it in a controlled smoke.
 
 ## Acceptance Criteria
 
@@ -32,3 +32,5 @@ As JP, when dictation inserts text into another desktop app, I need the app to d
 3. Fake low-confidence, timeout, mismatch, unsupported, or throwing observers do not promote evidence and preserve transcript recovery.
 4. The existing Tauri saved-target gateway keeps current behavior when no observer is configured.
 5. Safe checks remain provider-free and do not require desktop side effects.
+6. With the native observer gate disabled, Tauri desktop delivery behavior is unchanged.
+7. With the native observer gate enabled, only high-confidence native confirmation can promote evidence to `paste_observed`; unsupported/mismatch/timeout remain recoverable `paste_sent`.

@@ -20,6 +20,7 @@ pub fn run() {
             runtime_transcription::transcribe_captured_audio,
             desktop_delivery::capture_desktop_delivery_target,
             desktop_delivery::deliver_text_to_desktop_target,
+            desktop_delivery::observe_desktop_paste,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri app");

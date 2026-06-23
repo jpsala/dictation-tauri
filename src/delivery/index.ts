@@ -49,9 +49,13 @@ export type {
 } from "./adapters";
 export {
   captureTauriDesktopDeliveryTarget,
+  createTauriNativePasteObserver,
   createTauriSavedTargetDeliveryGateway,
+  isTauriNativePasteObserverEnabled,
 } from "./tauri-desktop-delivery";
 export type {
+  NativePasteObserverEnv,
   TauriDesktopDeliveryTarget,
   TauriInvoke,
+  TauriNativePasteObserverOptions,
 } from "./tauri-desktop-delivery";

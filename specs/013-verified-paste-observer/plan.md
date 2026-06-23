@@ -4,7 +4,7 @@
 
 ## Summary
 
-Add the safe evidence seam that the native observer can plug into later. The first checkpoint is TypeScript-only and provider-free: model paste observations, centralize promotion/downgrade rules, and wire the existing Tauri saved-target gateway to accept an optional observer while defaulting to today's honest `paste_sent`.
+Add the safe evidence seam and gated native observer needed to promote delivery from `paste_sent` to `paste_observed` honestly. Checkpoint A is TypeScript-only and provider-free; Checkpoint B adds a Windows Rust observer behind an explicit renderer gate while defaulting to today's honest `paste_sent`.
 
 ## Technical Context
 
@@ -20,21 +20,24 @@ Add the safe evidence seam that the native observer can plug into later. The fir
 4. Wire optional observer support into `createTauriSavedTargetDeliveryGateway` without changing default behavior.
 5. Verify with focused tests and `npm run build`.
 
-## Future Checkpoint B - Native Windows Observer (Gated)
+## Checkpoint B - Native Windows Observer (Gated)
 
-Design a host-owned observer that can inspect a saved target after paste without reading or storing sensitive target contents. Candidate routes:
+Implemented host-owned observer path:
 
-- Windows UI Automation text pattern/range if available.
-- App-specific file/content probe only for controlled fixtures like Notepad smoke.
-- Timeout/mismatch reasons surfaced as recoverable `paste_sent`/`uncertain`, never false success.
+- `src-tauri/src/desktop_delivery.rs` exposes `observe_desktop_paste`.
+- The command polls readable Win32 text surfaces for the saved target after paste-send and returns only observation status, confidence, reason, and target snapshot metadata.
+- Raw observed target contents are not returned to the renderer or stored in evidence.
+- `src/delivery/tauri-desktop-delivery.ts` exposes `createTauriNativePasteObserver` and enables it only when `VITE_ENABLE_NATIVE_PASTE_OBSERVER=1` (or `true`).
+- Timeout/mismatch/unsupported reasons remain recoverable `paste_sent`/`uncertain`, never false success.
 
-Manual smoke requires explicit approval because it touches real foreground targets, clipboard/focus, and keystrokes.
+Manual smoke still requires explicit approval because it touches real foreground targets, clipboard/focus, keystrokes, and target observation.
 
 ## Checks
 
 ```powershell
-npm run test:pipeline -- tests/desktop-control/delivery-observation.test.ts tests/desktop-control/delivery-evidence.test.ts
+npm run test:pipeline -- tests/desktop-control/delivery-observation.test.ts tests/desktop-control/native-paste-observer.test.ts tests/desktop-control/desktop-delivery-rust.test.ts
 npm run build
+cd src-tauri && cargo check
 ```
 
 ## Privacy / Security

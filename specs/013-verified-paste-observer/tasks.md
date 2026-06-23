@@ -12,12 +12,16 @@
 - [x] T004 Export observer contracts from `src/delivery/index.ts`.
 - [x] T005 Run focused tests and `npm run build`.
 
-## Phase 2: Future Gated Native Observer
+## Phase 2: Gated Native Windows Observer
 
-- [ ] T006 Design Windows host observer strategy with UI Automation/file-fixture fallback and no raw target text storage.
-- [ ] T007 Implement native observer behind explicit gate.
+- [x] T006 Design Windows host observer strategy: a Rust-owned `observe_desktop_paste` command polls readable Win32 text surfaces on the saved target, returns only status/confidence/reason/snapshot metadata, and never returns raw target contents.
+- [x] T007 Implement native observer behind explicit `VITE_ENABLE_NATIVE_PASTE_OBSERVER=1` renderer gate; default delivery still has no observer and remains `paste_sent`.
 - [ ] T008 Run controlled manual smoke only after explicit approval and record redacted evidence.
 
 ## Checkpoint A Done When
 
 The app has a safe seam for verified observers, default behavior remains honest `paste_sent`, and no default check performs real desktop side effects.
+
+## Native Observer Checkpoint Done When
+
+With `VITE_ENABLE_NATIVE_PASTE_OBSERVER=1`, a controlled Windows target can promote `paste_sent` to `paste_observed` only when the native observer confirms high-confidence insertion. Without the gate, behavior stays unchanged.

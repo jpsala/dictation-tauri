@@ -16,7 +16,9 @@ import type { DesktopRecoveryAction } from "./desktop-control";
 import {
   captureTauriDesktopDeliveryTarget,
   createCopyDeliveryGateway,
+  createTauriNativePasteObserver,
   createTauriSavedTargetDeliveryGateway,
+  isTauriNativePasteObserverEnabled,
   type DeliveryEvidence as DesktopDeliveryEvidence,
   type TauriDesktopDeliveryTarget,
 } from "./delivery";
@@ -542,15 +544,23 @@ export function App() {
   );
   const gateway = captureRuntime.gateway;
   const savedDeliveryTargetRef = useRef<TauriDesktopDeliveryTarget | undefined>(undefined);
+  const nativePasteObserver = useMemo(
+    () =>
+      isTauri() && isTauriNativePasteObserverEnabled()
+        ? createTauriNativePasteObserver({ invoke })
+        : undefined,
+    [],
+  );
   const desktopDelivery = useMemo(
     () =>
       isTauri()
         ? createTauriSavedTargetDeliveryGateway({
             invoke,
             getTarget: () => savedDeliveryTargetRef.current,
+            observer: nativePasteObserver,
           })
         : undefined,
-    [],
+    [nativePasteObserver],
   );
   const desktopSession = useMemo(() => {
     const controller = new DesktopDictationController({
