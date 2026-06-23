@@ -16,9 +16,9 @@ function Stop-DevDockProcesses {
 
   $portOwners = Get-NetTCPConnection -LocalPort 1420 -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty OwningProcess -Unique
-  foreach ($pid in $portOwners) {
-    if ($pid -and $pid -ne $PID) {
-      Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+  foreach ($ownerPid in $portOwners) {
+    if ($ownerPid -and $ownerPid -ne $PID) {
+      Stop-Process -Id $ownerPid -Force -ErrorAction SilentlyContinue
     }
   }
 
