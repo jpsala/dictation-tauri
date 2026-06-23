@@ -51,6 +51,12 @@ if (-not $dictation -and -not $Status) {
     $dictation = Get-Process -Name dictation-tauri -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($dictation) { break }
   }
+
+  if ($dictation) {
+    # The process can exist before the WebView listener and native hotkeys are ready.
+    # Keep smoke tests from racing dock startup after a cold restart.
+    Start-Sleep -Seconds 15
+  }
 }
 
 Get-Process -Name dictation-tauri,node -ErrorAction SilentlyContinue |

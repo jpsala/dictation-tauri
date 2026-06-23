@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopDeliveryTarget {
     frame_hwnd: String,
@@ -49,7 +49,7 @@ mod platform {
         UI::{
             Input::KeyboardAndMouse::{
                 SendInput, SetFocus, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
-                KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_V,
+                KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_ESCAPE, VK_MENU, VK_V,
             },
             WindowsAndMessaging::{
                 BringWindowToTop, GetClassNameW, GetForegroundWindow, GetWindowTextLengthW,
@@ -112,6 +112,8 @@ mod platform {
         let paste_result = (|| {
             focus_window(hwnd);
             thread::sleep(Duration::from_millis(80));
+            dismiss_transient_menu_before_paste()?;
+            thread::sleep(Duration::from_millis(60));
             send_ctrl_v()?;
             thread::sleep(Duration::from_millis(160));
             Ok::<(), String>(())
@@ -174,13 +176,30 @@ mod platform {
         }
     }
 
+    fn dismiss_transient_menu_before_paste() -> Result<(), String> {
+        send_keyboard_inputs(
+            &mut [
+                key_input(VK_MENU, true),
+                key_input(VK_ESCAPE, false),
+                key_input(VK_ESCAPE, true),
+            ],
+            "Transient menu could not be dismissed before paste.",
+        )
+    }
+
     fn send_ctrl_v() -> Result<(), String> {
-        let mut inputs = [
-            key_input(VK_CONTROL, false),
-            key_input(VK_V, false),
-            key_input(VK_V, true),
-            key_input(VK_CONTROL, true),
-        ];
+        send_keyboard_inputs(
+            &mut [
+                key_input(VK_CONTROL, false),
+                key_input(VK_V, false),
+                key_input(VK_V, true),
+                key_input(VK_CONTROL, true),
+            ],
+            "Paste shortcut could not be sent.",
+        )
+    }
+
+    fn send_keyboard_inputs(inputs: &mut [INPUT], error_message: &str) -> Result<(), String> {
         let sent = unsafe {
             SendInput(
                 inputs.len() as u32,
@@ -191,7 +210,7 @@ mod platform {
         if sent == inputs.len() as u32 {
             Ok(())
         } else {
-            Err("Paste shortcut could not be sent.".to_string())
+            Err(error_message.to_string())
         }
     }
 

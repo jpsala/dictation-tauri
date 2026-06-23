@@ -1048,7 +1048,9 @@ export function App() {
       }
 
       if (controlAction === "start") {
-        await rememberDeliveryTarget();
+        savedDeliveryTargetRef.current = event.targetSnapshot?.inputLike
+          ? event.targetSnapshot
+          : await captureTauriDesktopDeliveryTarget(invoke);
         setCapture({
           state: "requesting_permission",
           message: captureRuntime.permissionMessage,

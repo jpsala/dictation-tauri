@@ -1,5 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type { TauriDesktopDeliveryTarget } from "../delivery/tauri-desktop-delivery";
 import type { DictationKeyEvent } from "./dictation-key";
 
 export const tauriPrimaryDictationKeyShortcut = "Alt+Space";
@@ -16,6 +17,7 @@ export type TauriGlobalHotkeyPayload = {
   action?: "pressed" | "released" | "toggle";
   shortcut?: string;
   receivedAt?: string;
+  targetSnapshot?: TauriDesktopDeliveryTarget;
 };
 
 export type TauriGlobalHotkeyListenerOptions = {
@@ -50,6 +52,7 @@ export function createDictationKeyEventFromTauriHotkey(
     kind: payload.action,
     shortcut: payload.shortcut,
     receivedAt,
+    ...(payload.targetSnapshot ? { targetSnapshot: payload.targetSnapshot } : {}),
   };
 }
 

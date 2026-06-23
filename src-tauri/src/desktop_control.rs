@@ -10,6 +10,8 @@ pub struct DesktopControlHotkeyPayload {
     pub source: &'static str,
     pub action: &'static str,
     pub shortcut: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_snapshot: Option<crate::desktop_delivery::DesktopDeliveryTarget>,
 }
 
 pub fn desktop_control_primary_hotkey_pressed_payload() -> DesktopControlHotkeyPayload {
@@ -36,6 +38,7 @@ fn desktop_control_hotkey_payload(
         source: "global_hotkey",
         action,
         shortcut,
+        target_snapshot: None,
     }
 }
 
@@ -78,7 +81,11 @@ pub fn register_desktop_control_hotkey<R: tauri::Runtime>(
                     None
                 };
 
-                if let Some(payload) = payload {
+                if let Some(mut payload) = payload {
+                    if event.state == ShortcutState::Pressed {
+                        payload.target_snapshot =
+                            crate::desktop_delivery::capture_desktop_delivery_target().ok();
+                    }
                     let _ = app.emit(DESKTOP_CONTROL_HOTKEY_EVENT, payload);
                 }
             })
@@ -107,6 +114,7 @@ mod tests {
                 source: "global_hotkey",
                 action: "pressed",
                 shortcut: "Alt+Space",
+                target_snapshot: None,
             }
         );
 
@@ -116,6 +124,7 @@ mod tests {
                 source: "global_hotkey",
                 action: "released",
                 shortcut: "Alt+Space",
+                target_snapshot: None,
             }
         );
 
@@ -125,6 +134,7 @@ mod tests {
                 source: "global_hotkey",
                 action: "pressed",
                 shortcut: "Ctrl+Shift+F9",
+                target_snapshot: None,
             }
         );
 
@@ -134,6 +144,7 @@ mod tests {
                 source: "global_hotkey",
                 action: "released",
                 shortcut: "Ctrl+Shift+F9",
+                target_snapshot: None,
             }
         );
     }

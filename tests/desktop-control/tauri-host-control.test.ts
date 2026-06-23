@@ -31,6 +31,14 @@ describe("Tauri host-owned global hotkey boundary", () => {
           action: "pressed",
           shortcut: tauriPrimaryDictationKeyShortcut,
           receivedAt: "2026-06-23T12:09:59.000Z",
+          targetSnapshot: {
+            frameHwnd: "1234",
+            windowTitle: "Smoke target",
+            windowClass: "Notepad",
+            processId: 42,
+            inputLike: true,
+            reason: "foreground target captured by native hotkey handler",
+          },
         },
         {
           createEventId: (receivedAt, action) => `global-hotkey:${action}:${receivedAt}`,
@@ -42,6 +50,14 @@ describe("Tauri host-owned global hotkey boundary", () => {
       kind: "pressed",
       shortcut: tauriPrimaryDictationKeyShortcut,
       receivedAt: "2026-06-23T12:09:59.000Z",
+      targetSnapshot: {
+        frameHwnd: "1234",
+        windowTitle: "Smoke target",
+        windowClass: "Notepad",
+        processId: 42,
+        inputLike: true,
+        reason: "foreground target captured by native hotkey handler",
+      },
     });
   });
 
