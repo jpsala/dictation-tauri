@@ -70,3 +70,32 @@ Redacted result:
 - Raw provider payload stored: false.
 
 Scope note: the same session attempted to create a fresh WAV through the versioned hotkey smoke first. Rust logged/received two `Ctrl+Shift+F9` events in the diagnostic run, but no new audio artifact was produced, so the provider smoke intentionally used the last known-good real hotkey WAV instead of overstating E2E success.
+
+### 2026-06-23: managed STT passed on fresh hotkey WAV and app E2E
+
+User approval: JP selected `E2E con copy real`, explicitly allowing provider/cloud calls plus local desktop/clipboard side effects for this smoke.
+
+Command shape:
+
+```powershell
+npm run test:pipeline -- tests/desktop-control
+cd src-tauri && cargo check
+npm run runtime-transcription:check
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-hotkey-smoke.ps1 -AllowDesktopSideEffects -InitialDelaySeconds 12
+bun scripts/fixvox-managed-smoke.ts --allow-provider-call --audio artifacts/microphone-capture/audio/capture-native-1782226487236.wav
+powershell -NoProfile -ExecutionPolicy Bypass -File artifacts/desktop-control/e2e-review-copy-smoke.ps1 -AllowDesktopSideEffects -AllowProviderCall -InitialDelaySeconds 12
+```
+
+Redacted result:
+
+- Fresh hotkey WAV for script-managed STT: `artifacts/microphone-capture/audio/capture-native-1782226487236.wav` (`960044` bytes).
+- Provider path: `fixvox-cloud` managed STT.
+- Model: `whisper-large-v3`.
+- Status: `ok`.
+- Latency: `708ms`.
+- Request id/metadata present: yes, redacted.
+- Transcript length: `1`; transcript text not pasted into docs/chat.
+- Transcript artifact: `artifacts/microphone-capture/transcripts/fixvox-managed-smoke-2026-06-23T14-55-40-606Z.txt` (ignored).
+- Redacted report: `artifacts/microphone-capture/reports/fixvox-managed-smoke-2026-06-23T14-55-40-606Z.json` (ignored).
+- Full app E2E also passed: hotkey produced `artifacts/microphone-capture/audio/capture-native-1782226670693.wav`, app transcript review became visible, and `Copy transcript` changed clipboard to non-empty text. Report: `artifacts/desktop-control/e2e-review-copy-20260623-115733.json` (ignored).
+- Raw provider payload stored: false; no transcript content stored in redacted reports.

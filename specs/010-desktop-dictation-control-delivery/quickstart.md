@@ -108,6 +108,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-hotkey-smoke
 
 Redacted result: `artifact_created`; new ignored WAV `artifacts/microphone-capture/audio/capture-native-1782225491086.wav` (`973484` bytes); redacted smoke result `artifacts/desktop-control/hotkey-smoke-20260623-113754.json`. No provider call, no selection capture, no paste automation, no transcript content.
 
+### 2026-06-23: hotkey -> managed STT -> review/copy E2E passed
+
+User approval: JP selected `E2E con copy real`, explicitly allowing desktop side effects, provider/cloud calls, and clipboard mutation for this local smoke. Paste automation and selection capture remained out of scope.
+
+Evidence:
+
+```powershell
+npm run test:pipeline -- tests/desktop-control
+cd src-tauri && cargo check
+npm run runtime-transcription:check
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-hotkey-smoke.ps1 -AllowDesktopSideEffects -InitialDelaySeconds 12
+bun scripts/fixvox-managed-smoke.ts --allow-provider-call --audio artifacts/microphone-capture/audio/capture-native-1782226487236.wav
+powershell -NoProfile -ExecutionPolicy Bypass -File artifacts/desktop-control/e2e-review-copy-smoke.ps1 -AllowDesktopSideEffects -AllowProviderCall -InitialDelaySeconds 12
+```
+
+Redacted result:
+
+- Provider-free prechecks passed: desktop-control tests, `cargo check`, and runtime artifact check.
+- Fresh hotkey smoke produced ignored WAV `artifacts/microphone-capture/audio/capture-native-1782226487236.wav` (`960044` bytes); managed STT script passed against it with Fixvox cloud, `whisper-large-v3`, latency `708ms`, transcript artifact ignored, report `artifacts/microphone-capture/reports/fixvox-managed-smoke-2026-06-23T14-55-40-606Z.json` ignored, raw provider payload not stored.
+- Full UI E2E produced ignored WAV `artifacts/microphone-capture/audio/capture-native-1782226670693.wav` (`971564` bytes), app transcript review became visible, and `Copy transcript` changed the clipboard to non-empty text (`23` chars) through the app copy fallback.
+- Redacted E2E report: `artifacts/desktop-control/e2e-review-copy-20260623-115733.json`.
+- No selection capture, no paste automation, no paste observation claim, no transcript content, and no raw provider payload were stored in the report.
+
 ## Non-Goals During Quickstart
 
 - No selected-text capture or replace-selection.

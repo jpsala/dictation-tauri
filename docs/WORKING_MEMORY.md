@@ -36,8 +36,8 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `006-host-runtime-transcription-boundary` | complete: TS host boundary, provider-free UI guardrails, Tauri invoke client and safe unavailable Tauri stub | `specs/006-host-runtime-transcription-boundary/tasks.md` |
 | `007-usable-dictation-loop` | complete and committed (`78438e7`): Rust host Groq multipart path implemented behind explicit gate; provider smoke passed with redacted evidence | `specs/007-usable-dictation-loop/tasks.md` |
 | `008-real-provider-ui-gate` | complete and committed (`d0cfac7` + fixes): UI separates `Transcribe with provider` from provider-free `Check host boundary`; manual Tauri real-provider validation passed | `specs/008-real-provider-ui-gate/tasks.md` |
-| `009-fixvox-cloud-runtime-port` | complete through T023 plus latest managed STT smoke on prior hotkey WAV passed 2026-06-23 | `specs/009-fixvox-cloud-runtime-port/tasks.md` |
-| `010-desktop-dictation-control-delivery` | complete incl. T046: `Ctrl+Shift+F9` hotkey handoff fixed to controller `toggle`; latest smoke produced new WAV artifact | `specs/010-desktop-dictation-control-delivery/tasks.md` |
+| `009-fixvox-cloud-runtime-port` | complete through T023 plus managed STT smoke on fresh hotkey WAV passed 2026-06-23 | `specs/009-fixvox-cloud-runtime-port/tasks.md` |
+| `010-desktop-dictation-control-delivery` | complete incl. T046 and E2E: `Ctrl+Shift+F9` -> fresh WAV -> Fixvox managed STT -> review visible -> copy fallback changed clipboard | `specs/010-desktop-dictation-control-delivery/tasks.md` |
 | `011-selection-transform-and-recovery-ergonomics` | active: fixture-first selection routing/transforms and safe paste-last recovery implemented; T036/T037 chose and compile-guarded host-owned non-mutating Windows UI Automation first route, real capture still gated | `specs/011-selection-transform-and-recovery-ergonomics/tasks.md` |
 
 ## Tracks Activas
@@ -104,9 +104,10 @@ bun scripts/check-skills-junction.ts
 7. Ultimo refinement no-gated de `011`: `latestResultFromPipelineSummary` y `latestResultFromSelectionTransform` impiden que runs fallidos/cancelados/vacios se vuelvan reusables y mantienen latest-result en memoria/tipo, sin historial durable.
 8. Modo de trabajo actualizado por JP: evitar microbatches; ejecutar batches de checkpoint mas amplios cuando sean verificables y reversibles.
 9. `011` T036/T037 quedaron diseñados/compile-guarded sin captura real: ruta futura host-owned non-mutating Windows UI Automation first; failure behavior modelado (`unsupported_target`, `no_selection`, `timeout`, etc.); clipboard roundtrip/`Ctrl+C` diferido a decision separada.
-10. Proximo checkpoint recomendado hacia usable v0: correr un E2E completo hotkey -> nuevo WAV -> managed STT -> review/copy con aprobacion explicita de provider/cloud, o avanzar `011` T038 real selection capture si se prioriza seleccion.
-11. Guardrails vigentes: no selection real, no paste automation, no durable history, no provider calls por default, no `paste_observed` sin observador verificado.
-12. Checks recientes: hotkey handoff debug con tests nuevos OK; `npm run test:pipeline -- tests/desktop-control` OK (50 tests), `cd src-tauri && cargo check` OK. `scripts/desktop-hotkey-smoke.ps1 -AllowDesktopSideEffects -InitialDelaySeconds 12` genero nuevo WAV ignorado `capture-native-1782225491086.wav`. Provider managed STT previo con approval `go` OK sobre `capture-native-1782219726497.wav`.
+10. E2E usable v0 paso con aprobacion explicita `E2E con copy real`: `Ctrl+Shift+F9` -> nuevo WAV -> Fixvox managed STT -> transcript review visible -> `Copy transcript` mutó clipboard a texto no vacio. Evidencia redacted en `specs/010-desktop-dictation-control-delivery/quickstart.md` y `specs/009-fixvox-cloud-runtime-port/quickstart.md`.
+11. Proximo checkpoint recomendado: avanzar `011` T038/T039 captura real de selección si se prioriza seleccion, o preparar cierre/commit documental del E2E si no se hizo.
+12. Guardrails vigentes: no selection real, no paste automation, no durable history, no provider calls por default, no `paste_observed` sin observador verificado.
+13. Checks recientes: `npm run test:pipeline -- tests/desktop-control` OK (50 tests), `cd src-tauri && cargo check` OK, `npm run runtime-transcription:check` OK. Hotkey smoke genero `capture-native-1782226487236.wav`; managed STT Fixvox sobre ese WAV OK (`708ms`, report ignored). Full UI E2E genero `capture-native-1782226670693.wav`, review visible y clipboard non-empty (`23` chars), sin transcript content en docs/chat.
 
 ## Promocion De Memoria
 
