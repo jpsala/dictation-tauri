@@ -34,16 +34,22 @@ bun scripts/agent-context-audit.ts
 Run the app as the current testable desktop surface and keep it running during dock work:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/dev-dock.ps1
+npm run dev:desktop
 ```
 
-Use this after any Rust/Tauri/hotkey/window change, or whenever the dock is not visible:
+Use this recovery helper after any Rust/Tauri/hotkey/window change, or whenever the dock is not visible/stale:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/dev-dock.ps1 -Restart
+npm run dev:desktop:restart
 ```
 
-Renderer/CSS/TypeScript changes hot-refresh through Vite. Rust, Tauri config, global-shortcut, native capture, desktop delivery, and window-shape changes require `-Restart`. Treat the dev dock as a standing surface: before and after a manual smoke, confirm a `dictation-tauri` process with `Dictation Dock` title is running.
+Check the current desktop dev surface with:
+
+```powershell
+npm run dev:desktop:status
+```
+
+`dev:desktop` is the canonical Tauri dev command (`tauri dev`, like Fixvox's npm-script entrypoints). `dev:desktop:restart` wraps the Windows cleanup helper (`scripts/dev-dock.ps1`) to kill stale `dictation-tauri`/port-1420/Vite processes before relaunching. Renderer/CSS/TypeScript changes hot-refresh through Vite. Rust, Tauri config, global-shortcut, native capture, desktop delivery, and window-shape changes require a restart. Treat the dev dock as a standing surface: before and after a manual smoke, confirm a `dictation-tauri` process with `Dictation Dock` title is running.
 
 Current behavior:
 
@@ -101,7 +107,7 @@ Target daily-use behavior after this spec lands:
 These require explicit local approval because they use real desktop side effects:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/dev-dock.ps1 -Restart
+npm run dev:desktop:restart
 powershell -ExecutionPolicy Bypass -File scripts/smoke-dock.ps1 -Mode AltSpace -RecordSeconds 6
 powershell -ExecutionPolicy Bypass -File scripts/smoke-dock.ps1 -Mode Fallback -RecordSeconds 6
 # Manual smoke A: primary dictation key Alt+Space hold/tap -> fresh WAV -> review/recovery -> optional copy fallback
@@ -128,7 +134,7 @@ Evidence rules:
 - Approval: JP asked to keep dev always running, use computer use, and run a complete smoke.
 - Initial failure: dock showed `Needs attention` because the repo had no local `.env` and the Tauri path required managed Fixvox identity before falling back. Dev restart also left a stale Vite process on port `1420`, so the dock process could be stale.
 - Fix: copied only gitignored local dev keys from `C:/dev/fixvox/.env` into `C:/dev/dictation/.env` without printing secrets, added Rust fallback from managed Fixvox setup failure to direct Groq BYOK when configured, and hardened `scripts/dev-dock.ps1 -Restart` to kill stale `dictation-tauri` plus port-1420/Vite processes before relaunch.
-- Dev surface: clean `scripts/dev-dock.ps1 -Restart` launched and left `dictation-tauri` running with `Dictation Dock` window title; logs are under ignored `artifacts/microphone-capture/reports/tauri-dev-live*.log`.
+- Dev surface: clean `npm run dev:desktop:restart` launched and left `dictation-tauri` running with `Dictation Dock` window title; logs are under ignored `artifacts/microphone-capture/reports/tauri-dev-live*.log`.
 - Follow-up fix: native hotkey payloads now carry the foreground delivery target captured synchronously in the Rust shortcut handler, and Windows paste delivery dismisses a transient Alt+Space system menu before sending Ctrl+V. This avoids racing the renderer target capture and prevents Alt+Space menu focus from swallowing paste.
 - Primary key smoke: `scripts/smoke-dock.ps1 -Mode AltSpace -RecordSeconds 6` sent `Alt+Space` twice, created fresh WAV `capture-native-1782248488074.wav` / `capture-native-1782248980021.wav`, restored clipboard sentinel, and changed the controlled target from empty to non-empty (`34`/`270` bytes redacted).
 - Fallback key smoke: `scripts/smoke-dock.ps1 -Mode Fallback -RecordSeconds 6` sent `Ctrl+Shift+F9` twice, created fresh WAV `capture-native-1782248836922.wav` / `capture-native-1782249026565.wav`, restored clipboard sentinel, and changed the controlled target from empty to non-empty (`147`/`222` bytes redacted).

@@ -23,6 +23,9 @@
     "skills:toggle": "powershell -ExecutionPolicy Bypass -File scripts/toggle-skills-link.ps1 toggle",
     "skills:check": "bun scripts/check-skills-junction.ts",
     "visual:check": "playwright test --workers=1",
+    "dev:desktop": "tauri dev",
+    "dev:desktop:restart": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-dock.ps1 -Restart",
+    "dev:desktop:status": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-dock.ps1 -Status",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"

@@ -126,7 +126,7 @@ Antes de cambiar dock/hotkeys:
 
 ## Estado Actual En Dictation Tauri
 
-- La UI actual corre como `Dictation Dock` transparente always-on-top de `164x64` en `npm run tauri:dev`, con 7 dots estilo Fixvox, controles laterales al grabar y chip compacto de estado/recovery.
+- La UI actual corre como `Dictation Dock` transparente always-on-top de `164x64` en `npm run dev:desktop` (`tauri dev`), con 7 dots estilo Fixvox, controles laterales al grabar y chip compacto de estado/recovery.
 - El hotkey primario en codigo Tauri ahora es `Alt+Space` con la misma semantica hold/tap estilo Fixvox mediante eventos `pressed`/`released`; `Ctrl+Shift+F9` sigue registrado como fallback tecnico.
 - El dock tiene feedback vivo de voz: Rust/Tauri expone RMS/VU bands (`get_native_microphone_capture_level`) y el renderer las usa para barras visibles durante recording.
 - El stop explicito en Tauri usa host STT real y puede llegar a `Transcript ready` sin abrir panel grande.
