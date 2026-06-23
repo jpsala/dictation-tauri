@@ -79,7 +79,7 @@ Command shape:
 ```powershell
 npm run test:pipeline -- tests/desktop-control
 cd src-tauri && cargo check
-powershell -NoProfile -ExecutionPolicy Bypass -File artifacts/desktop-control/hotkey-smoke.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-hotkey-smoke.ps1 -AllowDesktopSideEffects
 ```
 
 Redacted result:
