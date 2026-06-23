@@ -119,11 +119,11 @@ npm run visual:check
 
 **Goal**: Decide whether to converge to Fixvox's `Alt+Space` default now or leave it as documented future work.
 
-- [ ] T021 Inspect Tauri/global-shortcut behavior for `Alt+Space` in a gated local spike; do not make it default before evidence.
+- [x] T021 Inspect Tauri/global-shortcut behavior for `Alt+Space` in a gated local spike; do not make it default before evidence.
 - [ ] T022 If `Alt+Space` is unreliable, document a Rust-owned native-hook/fallback design or keep configurable fallback key; do not add AutoHotkey.
 - [ ] T023 If `Alt+Space` is reliable, update docs/defaults/tests and run an explicit manual smoke with redacted evidence.
 
-**Checkpoint**: Alt+Space status is decided honestly and does not block the usable dock.
+**Checkpoint**: Code path enabled 2026-06-23: Rust/Tauri registers `Alt+Space` as primary and keeps `Ctrl+Shift+F9` fallback, renderer accepts both. Manual Windows smoke is still pending before declaring `Alt+Space` proven/reliable.
 
 ---
 

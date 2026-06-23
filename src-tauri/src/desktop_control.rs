@@ -1,6 +1,7 @@
 use serde::Serialize;
 
-pub const DESKTOP_CONTROL_HOTKEY: &str = "Ctrl+Shift+F9";
+pub const DESKTOP_CONTROL_PRIMARY_HOTKEY: &str = "Alt+Space";
+pub const DESKTOP_CONTROL_FALLBACK_HOTKEY: &str = "Ctrl+Shift+F9";
 pub const DESKTOP_CONTROL_HOTKEY_EVENT: &str = "desktop-control://global-hotkey";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -11,19 +12,30 @@ pub struct DesktopControlHotkeyPayload {
     pub shortcut: &'static str,
 }
 
-pub fn desktop_control_hotkey_pressed_payload() -> DesktopControlHotkeyPayload {
-    desktop_control_hotkey_payload("pressed")
+pub fn desktop_control_primary_hotkey_pressed_payload() -> DesktopControlHotkeyPayload {
+    desktop_control_hotkey_payload("pressed", DESKTOP_CONTROL_PRIMARY_HOTKEY)
 }
 
-pub fn desktop_control_hotkey_released_payload() -> DesktopControlHotkeyPayload {
-    desktop_control_hotkey_payload("released")
+pub fn desktop_control_primary_hotkey_released_payload() -> DesktopControlHotkeyPayload {
+    desktop_control_hotkey_payload("released", DESKTOP_CONTROL_PRIMARY_HOTKEY)
 }
 
-fn desktop_control_hotkey_payload(action: &'static str) -> DesktopControlHotkeyPayload {
+pub fn desktop_control_fallback_hotkey_pressed_payload() -> DesktopControlHotkeyPayload {
+    desktop_control_hotkey_payload("pressed", DESKTOP_CONTROL_FALLBACK_HOTKEY)
+}
+
+pub fn desktop_control_fallback_hotkey_released_payload() -> DesktopControlHotkeyPayload {
+    desktop_control_hotkey_payload("released", DESKTOP_CONTROL_FALLBACK_HOTKEY)
+}
+
+fn desktop_control_hotkey_payload(
+    action: &'static str,
+    shortcut: &'static str,
+) -> DesktopControlHotkeyPayload {
     DesktopControlHotkeyPayload {
         source: "global_hotkey",
         action,
-        shortcut: DESKTOP_CONTROL_HOTKEY,
+        shortcut,
     }
 }
 
@@ -36,16 +48,32 @@ pub fn register_desktop_control_hotkey<R: tauri::Runtime>(
 
     app.plugin(
         tauri_plugin_global_shortcut::Builder::new()
-            .with_shortcuts([DESKTOP_CONTROL_HOTKEY])?
+            .with_shortcuts([DESKTOP_CONTROL_PRIMARY_HOTKEY, DESKTOP_CONTROL_FALLBACK_HOTKEY])?
             .with_handler(|app, shortcut, event| {
-                if !shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::F9) {
+                let matched_shortcut = if shortcut.matches(Modifiers::ALT, Code::Space) {
+                    Some(DESKTOP_CONTROL_PRIMARY_HOTKEY)
+                } else if shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::F9) {
+                    Some(DESKTOP_CONTROL_FALLBACK_HOTKEY)
+                } else {
+                    None
+                };
+
+                let Some(matched_shortcut) = matched_shortcut else {
                     return;
-                }
+                };
 
                 let payload = if event.state == ShortcutState::Pressed {
-                    Some(desktop_control_hotkey_pressed_payload())
+                    if matched_shortcut == DESKTOP_CONTROL_PRIMARY_HOTKEY {
+                        Some(desktop_control_primary_hotkey_pressed_payload())
+                    } else {
+                        Some(desktop_control_fallback_hotkey_pressed_payload())
+                    }
                 } else if event.state == ShortcutState::Released {
-                    Some(desktop_control_hotkey_released_payload())
+                    if matched_shortcut == DESKTOP_CONTROL_PRIMARY_HOTKEY {
+                        Some(desktop_control_primary_hotkey_released_payload())
+                    } else {
+                        Some(desktop_control_fallback_hotkey_released_payload())
+                    }
                 } else {
                     None
                 };
@@ -72,9 +100,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn payload_stays_fixed_to_pressed_and_released_hotkey() {
+    fn payloads_include_primary_alt_space_and_fallback_hotkeys() {
         assert_eq!(
-            desktop_control_hotkey_pressed_payload(),
+            desktop_control_primary_hotkey_pressed_payload(),
+            DesktopControlHotkeyPayload {
+                source: "global_hotkey",
+                action: "pressed",
+                shortcut: "Alt+Space",
+            }
+        );
+
+        assert_eq!(
+            desktop_control_primary_hotkey_released_payload(),
+            DesktopControlHotkeyPayload {
+                source: "global_hotkey",
+                action: "released",
+                shortcut: "Alt+Space",
+            }
+        );
+
+        assert_eq!(
+            desktop_control_fallback_hotkey_pressed_payload(),
             DesktopControlHotkeyPayload {
                 source: "global_hotkey",
                 action: "pressed",
@@ -83,7 +129,7 @@ mod tests {
         );
 
         assert_eq!(
-            desktop_control_hotkey_released_payload(),
+            desktop_control_fallback_hotkey_released_payload(),
             DesktopControlHotkeyPayload {
                 source: "global_hotkey",
                 action: "released",

@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   createDictationKeyEventFromTauriHotkey,
+  tauriFallbackDictationKeyShortcut,
   tauriGlobalHotkeyEventName,
   tauriGlobalHotkeyShortcut,
+  tauriPrimaryDictationKeyShortcut,
 } from "../../src/desktop-control/tauri-host-control";
 
 const forbiddenHotkeyBoundaryMarkers = [
@@ -19,13 +21,37 @@ const forbiddenHotkeyBoundaryMarkers = [
 ] as const;
 
 describe("Tauri host-owned global hotkey boundary", () => {
-  it("maps fixed Rust-owned pressed and released payloads to dictation key events", () => {
+  it("maps Rust-owned primary Alt+Space pressed payloads to dictation key events", () => {
+    expect(tauriGlobalHotkeyShortcut).toBe(tauriPrimaryDictationKeyShortcut);
+
     expect(
       createDictationKeyEventFromTauriHotkey(
         {
           source: "global_hotkey",
           action: "pressed",
-          shortcut: tauriGlobalHotkeyShortcut,
+          shortcut: tauriPrimaryDictationKeyShortcut,
+          receivedAt: "2026-06-23T12:09:59.000Z",
+        },
+        {
+          createEventId: (receivedAt, action) => `global-hotkey:${action}:${receivedAt}`,
+        },
+      ),
+    ).toEqual({
+      eventId: "global-hotkey:pressed:2026-06-23T12:09:59.000Z",
+      source: "global_hotkey",
+      kind: "pressed",
+      shortcut: tauriPrimaryDictationKeyShortcut,
+      receivedAt: "2026-06-23T12:09:59.000Z",
+    });
+  });
+
+  it("maps fallback Ctrl+Shift+F9 pressed and released payloads to dictation key events", () => {
+    expect(
+      createDictationKeyEventFromTauriHotkey(
+        {
+          source: "global_hotkey",
+          action: "pressed",
+          shortcut: tauriFallbackDictationKeyShortcut,
           receivedAt: "2026-06-23T12:10:00.000Z",
         },
         {
@@ -36,7 +62,7 @@ describe("Tauri host-owned global hotkey boundary", () => {
       eventId: "global-hotkey:pressed:2026-06-23T12:10:00.000Z",
       source: "global_hotkey",
       kind: "pressed",
-      shortcut: tauriGlobalHotkeyShortcut,
+      shortcut: tauriFallbackDictationKeyShortcut,
       receivedAt: "2026-06-23T12:10:00.000Z",
     });
 
@@ -45,7 +71,7 @@ describe("Tauri host-owned global hotkey boundary", () => {
         {
           source: "global_hotkey",
           action: "released",
-          shortcut: tauriGlobalHotkeyShortcut,
+          shortcut: tauriFallbackDictationKeyShortcut,
           receivedAt: "2026-06-23T12:10:00.100Z",
         },
         {
@@ -56,7 +82,7 @@ describe("Tauri host-owned global hotkey boundary", () => {
       eventId: "global-hotkey:released:2026-06-23T12:10:00.100Z",
       source: "global_hotkey",
       kind: "released",
-      shortcut: tauriGlobalHotkeyShortcut,
+      shortcut: tauriFallbackDictationKeyShortcut,
       receivedAt: "2026-06-23T12:10:00.100Z",
     });
   });
@@ -74,7 +100,7 @@ describe("Tauri host-owned global hotkey boundary", () => {
       createDictationKeyEventFromTauriHotkey({
         source: "global_hotkey",
         action: "toggle",
-        shortcut: tauriGlobalHotkeyShortcut,
+        shortcut: tauriFallbackDictationKeyShortcut,
       }),
     ).toBeUndefined();
   });
@@ -90,10 +116,13 @@ describe("Tauri host-owned global hotkey boundary", () => {
     }
   });
 
-  it("keeps Rust hotkey registration scoped to the approved fixed shortcut and event", () => {
+  it("keeps Rust hotkey registration scoped to the primary dictation key, fallback shortcut, and event", () => {
     const source = readFileSync("src-tauri/src/desktop_control.rs", "utf8");
 
+    expect(source).toContain("Alt+Space");
     expect(source).toContain("Ctrl+Shift+F9");
+    expect(source).toContain("Modifiers::ALT");
+    expect(source).toContain("Code::Space");
     expect(source).toContain(tauriGlobalHotkeyEventName);
     expect(source).toContain("global_hotkey");
     expect(source).toContain("pressed");

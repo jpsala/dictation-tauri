@@ -2,7 +2,13 @@ import { isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { DictationKeyEvent } from "./dictation-key";
 
-export const tauriGlobalHotkeyShortcut = "Ctrl+Shift+F9";
+export const tauriPrimaryDictationKeyShortcut = "Alt+Space";
+export const tauriFallbackDictationKeyShortcut = "Ctrl+Shift+F9";
+export const tauriSupportedDictationKeyShortcuts = [
+  tauriPrimaryDictationKeyShortcut,
+  tauriFallbackDictationKeyShortcut,
+] as const;
+export const tauriGlobalHotkeyShortcut = tauriPrimaryDictationKeyShortcut;
 export const tauriGlobalHotkeyEventName = "desktop-control://global-hotkey";
 
 export type TauriGlobalHotkeyPayload = {
@@ -28,7 +34,7 @@ export function createDictationKeyEventFromTauriHotkey(
   payload: TauriGlobalHotkeyPayload | undefined,
   options: TauriGlobalHotkeyListenerOptions = {},
 ): DictationKeyEvent | undefined {
-  if (payload?.shortcut !== tauriGlobalHotkeyShortcut) {
+  if (!payload?.shortcut || !isSupportedDictationKeyShortcut(payload.shortcut)) {
     return undefined;
   }
 
@@ -42,9 +48,17 @@ export function createDictationKeyEventFromTauriHotkey(
     eventId: options.createEventId?.(receivedAt, payload.action),
     source: "global_hotkey",
     kind: payload.action,
-    shortcut: tauriGlobalHotkeyShortcut,
+    shortcut: payload.shortcut,
     receivedAt,
   };
+}
+
+function isSupportedDictationKeyShortcut(
+  shortcut: string,
+): shortcut is (typeof tauriSupportedDictationKeyShortcuts)[number] {
+  return tauriSupportedDictationKeyShortcuts.includes(
+    shortcut as (typeof tauriSupportedDictationKeyShortcuts)[number],
+  );
 }
 
 export async function listenForTauriGlobalHotkey(

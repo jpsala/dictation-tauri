@@ -127,7 +127,7 @@ Antes de cambiar dock/hotkeys:
 ## Estado Actual En Dictation Tauri
 
 - La UI actual corre como `Dictation Dock` transparente always-on-top de `164x64` en `npm run tauri:dev`, con 7 dots estilo Fixvox, controles laterales al grabar y chip compacto de estado/recovery.
-- El hotkey actual `Ctrl+Shift+F9` ya tiene ruta validada para semantica hold/tap estilo Fixvox mediante eventos `pressed`/`released`; sigue siendo baseline tecnico, no norte UX final.
+- El hotkey primario en codigo Tauri ahora es `Alt+Space` con la misma semantica hold/tap estilo Fixvox mediante eventos `pressed`/`released`; `Ctrl+Shift+F9` sigue registrado como fallback tecnico.
 - El dock tiene feedback vivo de voz: Rust/Tauri expone RMS/VU bands (`get_native_microphone_capture_level`) y el renderer las usa para barras visibles durante recording.
 - El stop explicito en Tauri usa host STT real y puede llegar a `Transcript ready` sin abrir panel grande.
 - Primer delivery real gated: se guarda el target foreground antes de grabar, luego se enfoca ese target, se escribe clipboard temporal, se envia `Ctrl+V`, se restaura clipboard y se reporta solo `paste_sent`.
@@ -139,4 +139,4 @@ Antes de cambiar dock/hotkeys:
 - No hay companion/recovery overlay separado; el estado actual usa chip compacto dentro del dock.
 - No hay observer/verificacion real de insercion; `paste_sent` no debe presentarse como paste observado.
 - No hay seleccion/replace real en este flujo; solo insert-at-cursor gated.
-- Alt+Space sigue gated; `Ctrl+Shift+F9` es fallback tecnico.
+- Alt+Space esta code-enabled via Tauri global-shortcut, pero sigue pendiente el smoke manual Windows antes de declararlo probado; `Ctrl+Shift+F9` es fallback tecnico.

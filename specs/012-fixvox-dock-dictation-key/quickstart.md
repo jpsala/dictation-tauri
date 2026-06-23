@@ -43,7 +43,7 @@ Current behavior:
 - Idle is a Fixvox-like transparent 7-dot dock (`164x64`) with no titlebar, panel chrome, header text, or visible developer controls.
 - Uses Vite dev URL `http://127.0.0.1:1420`, so renderer/CSS changes hot-refresh while the dev app is running.
 - Keeps the window visible and `alwaysOnTop` for iterative manual testing.
-- The dock remains safe by default: no selected-text capture, no paste automation, no durable history, no `paste_observed` claim.
+- The dock remains safe by default: no selected-text capture, no durable history, no `paste_observed` claim. Paste delivery remains gated/honest as `paste_sent` until a verifier exists.
 - Developer evidence and provider controls are hidden from the compact dock surface.
 - Active recording reveals side controls; terminal/recovery states show a compact status chip such as `Needs attention` without paste or selection side effects.
 
@@ -94,8 +94,8 @@ These require explicit local approval because they use real desktop side effects
 
 ```powershell
 npm run tauri:dev
-# Manual smoke A: current safe dictation key Ctrl+Shift+F9 hold/tap -> fresh WAV -> review/recovery -> optional copy fallback
-# Manual smoke B: optional Alt+Space compatibility check
+# Manual smoke A: primary dictation key Alt+Space hold/tap -> fresh WAV -> review/recovery -> optional copy fallback
+# Manual smoke B: fallback dictation key Ctrl+Shift+F9 hold/tap -> fresh WAV -> review/recovery -> optional copy fallback
 ```
 
 Evidence rules:
@@ -115,14 +115,16 @@ Evidence rules:
 
 ## Alt+Space Decision Gate
 
-`Alt+Space` is the desired Fixvox-like default, but Windows reserves it.
+`Alt+Space` is the desired Fixvox-like default, and the first Rust-owned Tauri path is now code-enabled: `tauri-plugin-global-shortcut` registers `Alt+Space` plus fallback `Ctrl+Shift+F9`, emits the same `pressed`/`released` event contract, and the renderer accepts both shortcuts through the existing hold/tap resolver.
 
-Before making it default, prove one of these:
+Status 2026-06-23:
 
-1. Tauri/global-shortcut can register and emit reliable press/release without opening the system menu; or
-2. a Rust-owned native hook/fallback is designed, reviewed, and compile-guarded without AutoHotkey.
+- Code/default: `Alt+Space` is now the primary displayed dictation key in the Tauri dock.
+- Fallback: `Ctrl+Shift+F9` remains registered for recovery if `Alt+Space` is taken or unreliable on a machine.
+- Safe checks: provider-free hotkey adapter tests, full Vitest suite, build, visual check, and `cargo check` passed.
+- Manual smoke: still required before calling `Alt+Space` fully proven on Windows. Smoke must verify no system-menu leak, press/release reliability, fresh WAV creation, and honest delivery state.
 
-If neither is true, keep the same hold/tap semantics on a configurable fallback key and document Alt+Space as future work.
+If manual smoke shows `Alt+Space` is unreliable, keep the fallback and design a Rust-owned native hook/fallback without AutoHotkey.
 
 ## Out Of Scope For First Landing
 
