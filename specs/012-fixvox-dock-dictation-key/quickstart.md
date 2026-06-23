@@ -31,11 +31,19 @@ bun scripts/agent-context-audit.ts
 
 ## Live Dev Dock
 
-Run the app as the current testable desktop surface:
+Run the app as the current testable desktop surface and keep it running during dock work:
 
 ```powershell
-npm run tauri:dev
+powershell -ExecutionPolicy Bypass -File scripts/dev-dock.ps1
 ```
+
+Use this after any Rust/Tauri/hotkey/window change, or whenever the dock is not visible:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/dev-dock.ps1 -Restart
+```
+
+Renderer/CSS/TypeScript changes hot-refresh through Vite. Rust, Tauri config, global-shortcut, native capture, desktop delivery, and window-shape changes require `-Restart`. Treat the dev dock as a standing surface: before and after a manual smoke, confirm a `dictation-tauri` process with `Dictation Dock` title is running.
 
 Current behavior:
 
@@ -93,7 +101,9 @@ Target daily-use behavior after this spec lands:
 These require explicit local approval because they use real desktop side effects:
 
 ```powershell
-npm run tauri:dev
+powershell -ExecutionPolicy Bypass -File scripts/dev-dock.ps1 -Restart
+powershell -ExecutionPolicy Bypass -File scripts/smoke-dock.ps1 -Mode AltSpace -RecordSeconds 6
+powershell -ExecutionPolicy Bypass -File scripts/smoke-dock.ps1 -Mode Fallback -RecordSeconds 6
 # Manual smoke A: primary dictation key Alt+Space hold/tap -> fresh WAV -> review/recovery -> optional copy fallback
 # Manual smoke B: fallback dictation key Ctrl+Shift+F9 hold/tap -> fresh WAV -> review/recovery -> optional copy fallback
 ```
@@ -112,6 +122,15 @@ Evidence rules:
 - Result: JP reported the smoke passed.
 - Artifact evidence: fresh native WAV was created at ignored path `artifacts/microphone-capture/audio/capture-native-1782234499663.wav` (481,964 bytes).
 - Provider/selection/paste: no selected text, no paste automation, no `paste_observed`, no Alt+Space. No raw transcript or secret was recorded in docs/chat.
+
+### Computer-Use Smoke - 2026-06-23
+
+- Approval: JP asked to keep dev always running, use computer use, and run a complete smoke.
+- Dev surface: `scripts/dev-dock.ps1 -Restart` launched and left `dictation-tauri` running with `Dictation Dock` window title; logs are under ignored `artifacts/microphone-capture/reports/tauri-dev-live*.log`.
+- Primary key smoke: `scripts/smoke-dock.ps1 -Mode AltSpace` sent `Alt+Space` twice to a controlled Notepad target. Fresh WAV `artifacts/microphone-capture/audio/capture-native-1782244864606.wav` was created; later synthetic-speech retry created `capture-native-1782244995911.wav`.
+- Fallback key smoke: `scripts/smoke-dock.ps1 -Mode Fallback` sent `Ctrl+Shift+F9` twice. Fresh WAV `capture-native-1782244919294.wav` was created; later synthetic-speech retry created `capture-native-1782245110176.wav`.
+- Clipboard/target: scratch Notepad files remained empty and clipboard sentinel was restored, so this smoke proves hotkey-to-capture and honest recovery but not successful insertion. No `paste_observed` claim was made.
+- Guardrails: reports and scratch targets are ignored artifacts; raw transcript/target content was not copied into docs/chat.
 
 ## Alt+Space Decision Gate
 
