@@ -40,6 +40,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `010-desktop-dictation-control-delivery` | complete incl. T046 and E2E: `Ctrl+Shift+F9` -> fresh WAV -> Fixvox managed STT -> review visible -> copy fallback changed clipboard | `specs/010-desktop-dictation-control-delivery/tasks.md` |
 | `011-selection-transform-and-recovery-ergonomics` | active but paused behind real-selection gate: fixture-first selection routing/transforms and safe paste-last recovery implemented; real capture still gated | `specs/011-selection-transform-and-recovery-ergonomics/tasks.md` |
 | `012-fixvox-dock-dictation-key` | active: Checkpoint D+ paste-sent batch complete for dev dock path incl. live mic VU, real host STT, saved-target `paste_sent`; tray/Alt+Space gated | `specs/012-fixvox-dock-dictation-key/tasks.md` |
+| `013-verified-paste-observer` | active: Checkpoint A provider-free observer/evidence seam complete; native verifier still gated | `specs/013-verified-paste-observer/tasks.md` |
 
 ## Tracks Activas
 
@@ -116,8 +117,9 @@ bun scripts/check-skills-junction.ts
 18. Dock stop explicito ahora usa host STT real en Tauri y llego a chip compacto `Transcript ready` con WAV fresco; tambien se normalizo evidencia `uncertain` con transcript disponible a `review/available` para no mostrar `Check target`/`Needs attention` cuando hay texto. Browser/dev tests siguen provider-free.
 19. Primer paste/insert real gated quedo implementado y smokeado: Tauri guarda target foreground antes de grabar, al stop enfoca target, escribe clipboard, envia `Ctrl+V`, restaura clipboard y reporta solo `paste_sent`; smoke controlado con Notepad cambio archivo 0->10 bytes y restauro sentinel, sin `paste_observed`, sin selection/replace, sin Alt+Space.
 20. Closeout `012` T024-T028 quedo hecho para el alcance safe shortcut/dev dock/saved-target `paste_sent`; Alt+Space, tray/background, selection/replace y observer/verificacion real quedan future/gated.
-21. Proximo recomendado: completar observer/verification o target heuristics antes de llamar al paste “verificado”; alternativa si JP prioriza app usable: tray/background como siguiente spec/checkpoint.
-22. Checks recientes: `npm run test:pipeline` OK (49 files / 230 tests), `npm run visual:check` OK (8 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, `bun scripts/context-index.ts && bun scripts/agent-context-audit.ts` OK con 4 warnings conocidos. `cd src-tauri && cargo test desktop_control` no fue usado como gate: falla en este entorno con `STATUS_ENTRYPOINT_NOT_FOUND`.
+21. `013-verified-paste-observer` arranco por la ruta recomendada de observer/verification: se agrego seam provider-free (`src/delivery/observation.ts`) que solo promueve a `paste_observed` con observer high-confidence explicito, mantiene `paste_sent`/`uncertain` en otros casos y permite inyectar observer opcional en `createTauriSavedTargetDeliveryGateway` sin cambiar default.
+22. Proximo recomendado: disenar/implementar native observer Windows gated (UI Automation o fixture controlado) o target heuristics antes de llamar al paste “verificado”; alternativa si JP prioriza app usable: tray/background como siguiente spec/checkpoint.
+23. Checks recientes: `npm run test:pipeline` OK (50 files / 240 tests), `npm run build` OK. Previos: `npm run visual:check` OK (8 tests), `cd src-tauri && cargo check` OK, `bun scripts/context-index.ts && bun scripts/agent-context-audit.ts` OK con 4 warnings conocidos. `cd src-tauri && cargo test desktop_control` no fue usado como gate: falla en este entorno con `STATUS_ENTRYPOINT_NOT_FOUND`.
 
 ## Promocion De Memoria
 

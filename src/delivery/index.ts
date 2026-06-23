@@ -25,6 +25,19 @@ export type {
   DeliveryEvidenceOptions,
 } from "./evidence";
 export {
+  deriveObservedPasteEvidence,
+  derivePasteObserverErrorEvidence,
+  isVerifiedPasteObservation,
+  pasteObservationStatuses,
+} from "./observation";
+export type {
+  DesktopPasteObserver,
+  ObservedPasteEvidenceOptions,
+  PasteObservation,
+  PasteObservationInput,
+  PasteObservationStatus,
+} from "./observation";
+export {
   createCopyDeliveryGateway,
   createPasteSendDeliveryGateway,
   createReviewOnlyDeliveryGateway,
