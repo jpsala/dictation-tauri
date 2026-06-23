@@ -35,6 +35,11 @@ export type {
   DesktopFailureRecovery,
   DesktopFailureRecoveryInput,
 } from "./recovery";
+export type {
+  TauriGlobalHotkeyHandler,
+  TauriGlobalHotkeyListenerOptions,
+  TauriGlobalHotkeyPayload,
+} from "./tauri-host-control";
 
 export {
   createAppControlEvent,
@@ -63,6 +68,13 @@ export {
   createFakeHostControlEventSource,
   createFakeHostControlReadiness,
 } from "./fake-host-control";
+
+export {
+  createDesktopControlEventFromTauriHotkey,
+  listenForTauriGlobalHotkey,
+  tauriGlobalHotkeyEventName,
+  tauriGlobalHotkeyShortcut,
+} from "./tauri-host-control";
 
 export {
   activeDesktopDictationStates,

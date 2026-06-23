@@ -30,6 +30,10 @@ import {
   type RuntimeRecoveryAction,
 } from "./model-gateway/runtime-transcription";
 import { createCapturedAudioPipelineRequest } from "./pipeline/ports";
+import {
+  listenForTauriGlobalHotkey,
+  tauriGlobalHotkeyShortcut,
+} from "./desktop-control/tauri-host-control";
 import { latestResultFromPipelineSummary } from "./selection-transform";
 import { PipelineService } from "./pipeline/service";
 import type {
@@ -675,6 +679,34 @@ export function App() {
             ? "cancelled"
             : "idle";
 
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    void listenForTauriGlobalHotkey(async () => {
+      if (canStop) {
+        await stopCapture();
+        return;
+      }
+
+      if (canStart) {
+        await startCapture();
+      }
+    }).then((nextUnlisten) => {
+      if (disposed) {
+        nextUnlisten?.();
+        return;
+      }
+
+      unlisten = nextUnlisten;
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [canStart, canStop, capture.state]);
+
   return (
     <main className="app-shell" data-testid="capture-surface">
       <section className="voice-panel" aria-labelledby="voice-title">
@@ -822,6 +854,10 @@ export function App() {
           <div>
             <dt>Delivery</dt>
             <dd>{deliveryEvidence?.status ?? "Not available"}</dd>
+          </div>
+          <div>
+            <dt>Hotkey</dt>
+            <dd>{isTauri() ? tauriGlobalHotkeyShortcut : "Unavailable in browser"}</dd>
           </div>
         </dl>
 

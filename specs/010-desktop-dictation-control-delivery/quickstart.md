@@ -41,11 +41,20 @@ Only after explicit approval and after provider-free tests pass:
 
 ```powershell
 npm run tauri:dev
-# Future Phase 7 route decision: use one Rust-owned Tauri v2 global shortcut,
-# fixed as Ctrl+Shift+F9, emitting source=global_hotkey/action=toggle.
-# Do not add JS hotkey registration or frontend global-shortcut permissions for this slice.
-# Optionally submit one ignored captured WAV through managed Fixvox cloud if approved.
+# Phase 7 implemented route: Rust-owned Tauri v2 global shortcut,
+# fixed as Ctrl+Shift+F9, emits desktop-control://global-hotkey
+# with source=global_hotkey/action=toggle.
+# The renderer only listens to this host event and maps it to the existing safe toggle flow.
+# No JS hotkey registration, no frontend global-shortcut permissions, no paste automation.
+# No extra capability permission is required because the renderer does not call plugin commands.
 ```
+
+Expected manual smoke shape:
+
+1. Launch `npm run tauri:dev` locally.
+2. Press `Ctrl+Shift+F9` once and verify capture starts/listens.
+3. Press `Ctrl+Shift+F9` again and verify capture stops into review or safe setup-needed state.
+4. Record only redacted evidence; do not include raw transcript/window titles/secrets.
 
 Manual evidence rules:
 

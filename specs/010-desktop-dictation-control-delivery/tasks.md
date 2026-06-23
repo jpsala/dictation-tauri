@@ -138,9 +138,9 @@
 **Purpose**: Only after Phases 1-6 are green, optionally validate one host-owned real control path locally.
 
 - [x] T042 [US3] Decide exact fixed shortcut and implementation route before adding dependencies or capabilities
-- [ ] T043 [US3] Add no-side-effect Rust/TS tests or compile checks for the selected host control boundary
-- [ ] T044 [US3] Implement minimal host-owned desktop control path in `src-tauri/src/desktop_control.rs` only if approved by the preceding decision
-- [ ] T045 [US3] Update `src-tauri/src/lib.rs`, `src-tauri/Cargo.toml`, and `src-tauri/capabilities/` only for the minimal approved route
+- [x] T043 [US3] Add no-side-effect Rust/TS tests or compile checks for the selected host control boundary
+- [x] T044 [US3] Implement minimal host-owned desktop control path in `src-tauri/src/desktop_control.rs` only if approved by the preceding decision
+- [x] T045 [US3] Update `src-tauri/src/lib.rs`, `src-tauri/Cargo.toml`, and `src-tauri/capabilities/` only for the minimal approved route
 - [ ] T046 [US3] With explicit local approval, run one manual hotkey smoke and record redacted evidence in `specs/010-desktop-dictation-control-delivery/quickstart.md`
 
 **Checkpoint**: Real desktop control is optional, gated, minimal, and redacted.
