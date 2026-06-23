@@ -40,3 +40,33 @@ npm run tauri:dev
 Then confirm readiness says managed cloud is ready, capture WAV, and use `Transcribe with provider`.
 
 Do not paste full secrets, full device id, audio, transcript payloads, or provider bodies into docs/chat.
+
+## Manual Evidence
+
+### 2026-06-23: managed STT smoke passed from hotkey WAV
+
+User approval: JP answered `go` after the assistant identified the next checkpoint as a real provider/cloud smoke.
+
+Command shape:
+
+```powershell
+npm run test:pipeline -- tests/desktop-control
+cd src-tauri && cargo check
+npm run runtime-transcription:check
+bun scripts/fixvox-managed-smoke.ts --allow-provider-call --audio artifacts/microphone-capture/audio/capture-native-1782219726497.wav
+```
+
+Redacted result:
+
+- Input audio: prior ignored hotkey-capture artifact `artifacts/microphone-capture/audio/capture-native-1782219726497.wav`.
+- Provider path: `fixvox-cloud` managed STT.
+- Model: `whisper-large-v3`.
+- Status: `ok`.
+- Latency: `683ms`.
+- Request id/metadata present: yes, redacted.
+- Transcript length: `10`; transcript text not pasted into docs/chat.
+- Transcript artifact: `artifacts/microphone-capture/transcripts/fixvox-managed-smoke-2026-06-23T14-23-02-368Z.txt` (ignored).
+- Redacted report: `artifacts/microphone-capture/reports/fixvox-managed-smoke-2026-06-23T14-23-02-368Z.json` (ignored).
+- Raw provider payload stored: false.
+
+Scope note: the same session attempted to create a fresh WAV through the versioned hotkey smoke first. Rust logged/received two `Ctrl+Shift+F9` events in the diagnostic run, but no new audio artifact was produced, so the provider smoke intentionally used the last known-good real hotkey WAV instead of overstating E2E success.

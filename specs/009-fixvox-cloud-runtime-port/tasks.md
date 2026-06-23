@@ -39,6 +39,7 @@
 - [x] T019 Run default safe checks.
 - [x] T020 With JP approval, run one real managed cloud transcription smoke and record redacted evidence.
   - Evidence: `bun scripts/fixvox-managed-smoke.ts --allow-provider-call` returned `ok: true` via `fixvox-cloud` (`whisper-large-v3`), request id/metadata present, transcript length 14, raw provider payload not stored; redacted local report at `artifacts/microphone-capture/reports/fixvox-managed-smoke-2026-06-21T20-47-42-890Z.json` (ignored).
+  - Additional evidence 2026-06-23: with JP approval, `bun scripts/fixvox-managed-smoke.ts --allow-provider-call --audio artifacts/microphone-capture/audio/capture-native-1782219726497.wav` returned `ok: true` via `fixvox-cloud` (`whisper-large-v3`), latency `683ms`, request id/metadata present, transcript length 10, raw provider payload not stored; redacted report at `artifacts/microphone-capture/reports/fixvox-managed-smoke-2026-06-23T14-23-02-368Z.json` (ignored).
 
 ## Phase 6: Follow-up Candidates
 

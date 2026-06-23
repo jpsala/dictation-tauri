@@ -94,6 +94,10 @@ Redacted result:
 
 Gotcha: `WScript.Shell.SendKeys('^+{F9}')` was inconclusive in the scripted smoke; low-level Windows key events after confirming the Tauri window produced the passing artifact.
 
+### 2026-06-23: subsequent hotkey smoke reattempt was inconclusive
+
+After JP approved a real E2E/provider smoke, `scripts/desktop-hotkey-smoke.ps1 -AllowDesktopSideEffects` was run twice. Both runs launched Tauri and confirmed window readiness but produced no new WAV artifact. A temporary diagnostic run showed Rust received two `Ctrl+Shift+F9` events, so the gap is after host event emission or within the renderer/session/capture handoff. Do not record this as an E2E pass; keep the earlier `capture-native-1782219726497.wav` pass as the last known-good hotkey artifact until the handoff is debugged.
+
 ## Non-Goals During Quickstart
 
 - No selected-text capture or replace-selection.

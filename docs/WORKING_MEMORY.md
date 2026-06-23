@@ -36,8 +36,8 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `006-host-runtime-transcription-boundary` | complete: TS host boundary, provider-free UI guardrails, Tauri invoke client and safe unavailable Tauri stub | `specs/006-host-runtime-transcription-boundary/tasks.md` |
 | `007-usable-dictation-loop` | complete and committed (`78438e7`): Rust host Groq multipart path implemented behind explicit gate; provider smoke passed with redacted evidence | `specs/007-usable-dictation-loop/tasks.md` |
 | `008-real-provider-ui-gate` | complete and committed (`d0cfac7` + fixes): UI separates `Transcribe with provider` from provider-free `Check host boundary`; manual Tauri real-provider validation passed | `specs/008-real-provider-ui-gate/tasks.md` |
-| `009-fixvox-cloud-runtime-port` | complete through T023: managed STT/postprocess passed; delivery/hotkey next spec decided | `specs/009-fixvox-cloud-runtime-port/tasks.md` |
-| `010-desktop-dictation-control-delivery` | complete incl. T046: Rust-owned `Ctrl+Shift+F9` hotkey smoke passed locally with redacted ignored artifact evidence | `specs/010-desktop-dictation-control-delivery/tasks.md` |
+| `009-fixvox-cloud-runtime-port` | complete through T023 plus latest managed STT smoke on prior hotkey WAV passed 2026-06-23 | `specs/009-fixvox-cloud-runtime-port/tasks.md` |
+| `010-desktop-dictation-control-delivery` | complete incl. T046: first `Ctrl+Shift+F9` hotkey smoke passed; later reattempt emitted Rust events but produced no new WAV, so handoff debug is next | `specs/010-desktop-dictation-control-delivery/tasks.md` |
 | `011-selection-transform-and-recovery-ergonomics` | active: fixture-first selection routing/transforms and safe paste-last recovery implemented; T036/T037 chose and compile-guarded host-owned non-mutating Windows UI Automation first route, real capture still gated | `specs/011-selection-transform-and-recovery-ergonomics/tasks.md` |
 
 ## Tracks Activas
@@ -104,9 +104,9 @@ bun scripts/check-skills-junction.ts
 7. Ultimo refinement no-gated de `011`: `latestResultFromPipelineSummary` y `latestResultFromSelectionTransform` impiden que runs fallidos/cancelados/vacios se vuelvan reusables y mantienen latest-result en memoria/tipo, sin historial durable.
 8. Modo de trabajo actualizado por JP: evitar microbatches; ejecutar batches de checkpoint mas amplios cuando sean verificables y reversibles.
 9. `011` T036/T037 quedaron diseñados/compile-guarded sin captura real: ruta futura host-owned non-mutating Windows UI Automation first; failure behavior modelado (`unsupported_target`, `no_selection`, `timeout`, etc.); clipboard roundtrip/`Ctrl+C` diferido a decision separada.
-10. Proximo checkpoint recomendado hacia usable v0: pedir aprobacion explicita antes de un smoke E2E real de dictado con provider/hotkey o antes de `011` T038 real selection capture.
+10. Proximo checkpoint recomendado hacia usable v0: debuggear el gap hotkey-event -> renderer/session/capture porque el reintento E2E emitio eventos Rust pero no genero WAV; provider managed STT sobre el ultimo WAV hotkey bueno si paso. Pedir aprobacion explicita antes de otro provider/cloud call o antes de `011` T038 real selection capture.
 11. Guardrails vigentes: no selection real, no paste automation, no durable history, no provider calls por default, no `paste_observed` sin observador verificado.
-12. Checks recientes: antes del smoke `010 T046`, `npm run test:pipeline -- tests/desktop-control` OK (48 tests) y `cd src-tauri && cargo check` OK; smoke `Ctrl+Shift+F9` genero artifact ignorado `capture-native-1782219726497.wav` sin provider/seleccion/paste automation. Checks previos de `011`: `npm run test:pipeline` OK (207 tests), `npm run build` OK, context index/audit OK con 4 warnings conocidos.
+12. Checks recientes: `npm run test:pipeline -- tests/desktop-control` OK (48 tests), `cd src-tauri && cargo check` OK, `npm run runtime-transcription:check` OK. Con approval `go`, `bun scripts/fixvox-managed-smoke.ts --allow-provider-call --audio artifacts/microphone-capture/audio/capture-native-1782219726497.wav` OK via Fixvox managed STT; transcript/report ignorados y redacted. Reintento hotkey nuevo no produjo WAV aunque Rust recibio eventos.
 
 ## Promocion De Memoria
 
