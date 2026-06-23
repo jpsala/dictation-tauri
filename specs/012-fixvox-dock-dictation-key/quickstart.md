@@ -126,11 +126,13 @@ Evidence rules:
 ### Computer-Use Smoke - 2026-06-23
 
 - Approval: JP asked to keep dev always running, use computer use, and run a complete smoke.
-- Dev surface: `scripts/dev-dock.ps1 -Restart` launched and left `dictation-tauri` running with `Dictation Dock` window title; logs are under ignored `artifacts/microphone-capture/reports/tauri-dev-live*.log`.
-- Primary key smoke: `scripts/smoke-dock.ps1 -Mode AltSpace` sent `Alt+Space` twice to a controlled Notepad target. Fresh WAV `artifacts/microphone-capture/audio/capture-native-1782244864606.wav` was created; later synthetic-speech retry created `capture-native-1782244995911.wav`.
-- Fallback key smoke: `scripts/smoke-dock.ps1 -Mode Fallback` sent `Ctrl+Shift+F9` twice. Fresh WAV `capture-native-1782244919294.wav` was created; later synthetic-speech retry created `capture-native-1782245110176.wav`.
-- Clipboard/target: scratch Notepad files remained empty and clipboard sentinel was restored, so this smoke proves hotkey-to-capture and honest recovery but not successful insertion. No `paste_observed` claim was made.
-- Guardrails: reports and scratch targets are ignored artifacts; raw transcript/target content was not copied into docs/chat.
+- Initial failure: dock showed `Needs attention` because the repo had no local `.env` and the Tauri path required managed Fixvox identity before falling back. Dev restart also left a stale Vite process on port `1420`, so the dock process could be stale.
+- Fix: copied only gitignored local dev keys from `C:/dev/fixvox/.env` into `C:/dev/dictation/.env` without printing secrets, added Rust fallback from managed Fixvox setup failure to direct Groq BYOK when configured, and hardened `scripts/dev-dock.ps1 -Restart` to kill stale `dictation-tauri` plus port-1420/Vite processes before relaunch.
+- Dev surface: clean `scripts/dev-dock.ps1 -Restart` launched and left `dictation-tauri` running with `Dictation Dock` window title; logs are under ignored `artifacts/microphone-capture/reports/tauri-dev-live*.log`.
+- Fallback key smoke: `scripts/smoke-dock.ps1 -Mode Fallback -RecordSeconds 6` sent `Ctrl+Shift+F9` twice to a controlled Notepad target, created fresh WAV `capture-native-1782247153935.wav`, restored clipboard sentinel, and changed the target from empty to non-empty (`34` bytes redacted).
+- Primary key smoke: `scripts/smoke-dock.ps1 -Mode AltSpace -RecordSeconds 6` sent `Alt+Space` twice, created fresh WAV `capture-native-1782247201829.wav`, restored clipboard sentinel, and changed the target from empty to non-empty (`34` bytes redacted).
+- Evidence model: this is successful insert-at-cursor smoke with `paste_sent` semantics, not `paste_observed`; the non-empty controlled file is smoke evidence, but there is still no general verified observer.
+- Guardrails: reports and scratch targets are ignored artifacts; raw transcript/target content and secrets were not copied into docs/chat.
 
 ## Alt+Space Decision Gate
 
