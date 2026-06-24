@@ -2,7 +2,7 @@
 
 Estado vivo del proyecto. Mantener corto.
 
-Ultima actualizacion manual: 2026-06-23 (Fixvox dock/hotkeys spec 012).
+Ultima actualizacion manual: 2026-06-24 (Fixvox dock parity Lote 1 follow-up saved).
 
 ## Regla
 
