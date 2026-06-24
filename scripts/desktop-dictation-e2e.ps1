@@ -7,6 +7,8 @@ param(
   [int]$InitialDelaySeconds = 12,
   [int]$RecordingSeconds = 7,
   [int]$DeliveryTimeoutSeconds = 180,
+  [ValidateSet('CtrlShiftF9','AltSpace')]
+  [string]$DictationKey = 'CtrlShiftF9',
   [switch]$SkipSpeechSynthesis
 )
 
@@ -59,7 +61,13 @@ using System.Text;
 public static class DictationE2EWin32 {
   [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern bool SetFocus(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
 }
 "@
@@ -76,6 +84,51 @@ function Get-ForegroundTitle() {
   $sb = New-Object System.Text.StringBuilder 512
   [void][DictationE2EWin32]::GetWindowText($hwnd, $sb, $sb.Capacity)
   return [ordered]@{ hwnd = $hwnd.ToInt64(); title = $sb.ToString() }
+}
+
+function Focus-WindowWithAttach([IntPtr]$Hwnd) {
+  $SW_RESTORE = 9
+  [void][DictationE2EWin32]::ShowWindow($Hwnd, $SW_RESTORE)
+  $foreground = [DictationE2EWin32]::GetForegroundWindow()
+  [uint32]$targetPid = 0
+  [uint32]$foregroundPid = 0
+  $currentThread = [DictationE2EWin32]::GetCurrentThreadId()
+  $targetThread = [DictationE2EWin32]::GetWindowThreadProcessId($Hwnd, [ref]$targetPid)
+  $foregroundThread = if ($foreground -ne [IntPtr]::Zero) { [DictationE2EWin32]::GetWindowThreadProcessId($foreground, [ref]$foregroundPid) } else { 0 }
+  $attachedTarget = $false
+  $attachedForeground = $false
+  try {
+    if ($targetThread -ne 0 -and $targetThread -ne $currentThread) {
+      $attachedTarget = [DictationE2EWin32]::AttachThreadInput($currentThread, $targetThread, $true)
+    }
+    if ($foregroundThread -ne 0 -and $foregroundThread -ne $currentThread -and $foregroundThread -ne $targetThread) {
+      $attachedForeground = [DictationE2EWin32]::AttachThreadInput($currentThread, $foregroundThread, $true)
+    }
+    [void][DictationE2EWin32]::BringWindowToTop($Hwnd)
+    [void][DictationE2EWin32]::SetForegroundWindow($Hwnd)
+    [void][DictationE2EWin32]::SetFocus($Hwnd)
+  } finally {
+    if ($attachedForeground) { [void][DictationE2EWin32]::AttachThreadInput($currentThread, $foregroundThread, $false) }
+    if ($attachedTarget) { [void][DictationE2EWin32]::AttachThreadInput($currentThread, $targetThread, $false) }
+  }
+}
+
+function Send-AltSpace() {
+  $KEYEVENTF_KEYUP = 0x0002
+  $VK_MENU = 0x12
+  $VK_SPACE = 0x20
+  [DictationE2EWin32]::keybd_event($VK_MENU, 0, 0, [UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 80
+  [DictationE2EWin32]::keybd_event($VK_SPACE, 0, 0, [UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 120
+  [DictationE2EWin32]::keybd_event($VK_SPACE, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 80
+  [DictationE2EWin32]::keybd_event($VK_MENU, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
+}
+
+function Send-DictationKey() {
+  if ($DictationKey -eq 'AltSpace') { Send-AltSpace; return }
+  Send-CtrlShiftF9
 }
 
 function Send-CtrlShiftF9() {
@@ -228,7 +281,14 @@ function Write-State {
     }
   }
 })
-`$form.Add_Shown({ `$box.Focus(); Write-State })
+`$form.Add_Shown({
+  `$form.TopMost = `$true
+  `$form.Activate()
+  `$box.Focus()
+  Start-Sleep -Milliseconds 250
+  `$form.TopMost = `$false
+  Write-State
+})
 [System.Windows.Forms.Application]::Run(`$form)
 "@
 
@@ -242,6 +302,7 @@ $report = [ordered]@{
     providerCall = [bool]$AllowProviderCall
     clipboardMutation = [bool]$AllowClipboardMutation
   }
+  dictationKey = $DictationKey
   spokenPhrase = [ordered]@{
     # This is a synthetic non-secret test fixture phrase; raw transcript output is kept only in ignored artifacts.
     text = $SpokenPhrase
@@ -281,6 +342,12 @@ try {
   Set-Clipboard -Value $sentinel
   $report.clipboard = [ordered]@{ sentinelSet = $true; sentinelLength = $sentinel.Length }
 
+  if ($DictationKey -eq 'CtrlShiftF9') {
+    $env:DICTATION_TAURI_DICTATION_KEY = 'Ctrl+Shift+F9'
+  } else {
+    Remove-Item Env:DICTATION_TAURI_DICTATION_KEY -ErrorAction SilentlyContinue
+  }
+
   $tauriProc = Start-Process -FilePath 'npm.cmd' `
     -ArgumentList @('run','tauri:dev') `
     -WorkingDirectory $repo `
@@ -306,17 +373,27 @@ try {
   Start-Sleep -Milliseconds 500
   $report.foregroundBeforeStart = Get-ForegroundTitle
   if ($report.foregroundBeforeStart.hwnd -ne $targetWindow.MainWindowHandle.ToInt64()) {
-    $report.warnings += 'Plain SetForegroundWindow did not move focus to the target fixture; using cua-driver bring_to_front so the app can save the correct delivery target.'
-    $report.cuaBringTargetToFront = Invoke-CuaTool 'bring_to_front' @{ pid = [int]$targetWindow.Id; window_id = [int]$targetWindow.MainWindowHandle }
+    $report.warnings += 'Plain SetForegroundWindow did not move focus to the target fixture; trying AttachThreadInput foreground recovery.'
+    Focus-WindowWithAttach ([IntPtr]$targetWindow.MainWindowHandle)
     Start-Sleep -Milliseconds 500
     $report.foregroundBeforeStart = Get-ForegroundTitle
+  }
+  if ($report.foregroundBeforeStart.hwnd -ne $targetWindow.MainWindowHandle.ToInt64()) {
+    $report.warnings += 'AttachThreadInput did not move focus; trying cua-driver bring_to_front as last resort.'
+    try {
+      $report.cuaBringTargetToFront = Invoke-CuaTool 'bring_to_front' @{ pid = [int]$targetWindow.Id; window_id = [int]$targetWindow.MainWindowHandle }
+      Start-Sleep -Milliseconds 500
+      $report.foregroundBeforeStart = Get-ForegroundTitle
+    } catch {
+      $report.warnings += "cua-driver bring_to_front failed: $($_.Exception.Message)"
+    }
   }
   Add-Check 'target foreground before dictation start' ($report.foregroundBeforeStart.hwnd -eq $targetWindow.MainWindowHandle.ToInt64()) $report.foregroundBeforeStart
 
   $desktopTreeBefore = Invoke-CuaTool 'get_accessibility_tree'
   Add-Check 'cua sees target and dictation windows' ((($desktopTreeBefore | ConvertTo-Json -Depth 10) -like "*Dictation E2E Target $RunId*") -and (($desktopTreeBefore | ConvertTo-Json -Depth 10) -like '*Dictation Dock*')) $null
 
-  Send-CtrlShiftF9
+  Send-DictationKey
   $report.firstHotkeyAt = (Get-Date).ToString('o')
   Start-Sleep -Seconds 1
 
@@ -328,7 +405,7 @@ try {
   }
 
   if ($RecordingSeconds -gt 0) { Start-Sleep -Seconds $RecordingSeconds }
-  Send-CtrlShiftF9
+  Send-DictationKey
   $report.secondHotkeyAt = (Get-Date).ToString('o')
 
   $deliveryDeadline = (Get-Date).AddSeconds($DeliveryTimeoutSeconds)
