@@ -139,7 +139,7 @@
 - [x] T036 [US1] Decide real Windows selection capture route and failure behavior before adding dependencies/capabilities
 - [x] T037 [US1] Add no-side-effect Rust/TS boundary tests or compile checks for selected route
 - [x] T038 [US1] Implement minimal host-owned selection capture command boundary only if approved by the preceding decision
-- [ ] T039 [US1] With explicit local approval, run one manual selection capture smoke and record redacted evidence in `quickstart.md`
+- [x] T039 [US1] With explicit local approval, run one manual selection capture smoke and record redacted evidence in `quickstart.md`
 
 **Checkpoint**: Real selection capture remains optional, gated, minimal, and redacted.
 
@@ -194,7 +194,8 @@ specs/011-selection-transform-and-recovery-ergonomics/*, docs/WORKING_MEMORY.md,
 
 ### Notes
 
-- 2026-06-24: T038 implemented the explicit Tauri command boundary `capture_selection_context`, registered in `src-tauri/src/lib.rs`. It returns typed redacted outcomes and target metadata without invoking from the renderer by default. Later hardening redacted target labels/classes before returning metadata across the Tauri boundary. Lote 4 added best-effort Windows UI Automation `TextPattern.GetSelection()` selected-text read without clipboard/keyboard/focus mutation; T039 remains open until a real product IPC smoke records redacted evidence.
+- 2026-06-24: T038 implemented the explicit Tauri command boundary `capture_selection_context`, registered in `src-tauri/src/lib.rs`. It returns typed redacted outcomes and target metadata without invoking from the renderer by default. Later hardening redacted target labels/classes before returning metadata across the Tauri boundary. Lote 4 added best-effort Windows UI Automation `TextPattern.GetSelection()` selected-text read without clipboard/keyboard/focus mutation.
+- 2026-06-24: T039 passed with explicit local approval using a controlled WPF target with synthetic selected text and product IPC through the Tauri WebView. Evidence: `artifacts/desktop-control/selection-capture-smoke/20260624-T039-uia-selection-smoke-retry/report.json`; report is redacted and records length/hash only, not raw selected text.
 - Do not add real selection capture, paste automation, focus APIs, or clipboard mutation in the same batch as selection contracts.
 - Do not implement Quick Chat, Assistant Mode, `Alt+Q`, durable history, preset settings, or full tray/background in 011 first slices.
 - If a task touches `src/App.tsx`, keep the batch small and run focused UI/visual checks.

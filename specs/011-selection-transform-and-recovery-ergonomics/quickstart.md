@@ -68,11 +68,25 @@ These require explicit approval before running:
 
 ```powershell
 npm run tauri:dev
-# future: real selection capture smoke
 # future: real paste/replace-selection smoke
 ```
 
 Evidence from gated checks must be redacted and must not include secrets, real transcripts, raw selected text, or provider payloads.
+
+### T039 UIA Selected-Text Product IPC Smoke - 2026-06-24
+
+- Approval: JP selected `T039 selected-text smoke`, explicitly opening the real selected-text smoke gate for a controlled local target.
+- Harness added: `npm run selection-capture:smoke -- -AllowSelectedTextCapture ...`, backed by `scripts/selection-capture-smoke.ps1` and `scripts/cdp-evaluate.mjs`.
+- Command used:
+
+```powershell
+npm run selection-capture:smoke -- -AllowSelectedTextCapture -RunId 20260624-T039-uia-selection-smoke-retry -RemoteDebugPort 9343 -InitialDelaySeconds 3
+```
+
+- Result: passed. Evidence: `artifacts/desktop-control/selection-capture-smoke/20260624-T039-uia-selection-smoke-retry/report.json`.
+- Validated path: Tauri `Dictation Dock` launched, WebView2 CDP reached the product IPC page, a controlled WPF fixture held synthetic selected text in the foreground, and `window.__TAURI_INTERNALS__.invoke('capture_selection_context')` returned `status: ok`.
+- Evidence details: selected-text length matched fixture length (`38`), `source: host_capture`, `confidence: medium`, `truncated: false`, target labels were `[redacted]`, and the report records only length/hash plus booleans (`selectedTextRecordedInReport: false`).
+- Guardrails: no raw selected text printed in docs, no clipboard mutation, no keyboard shortcut capture fallback, no focus mutation by the capture command, no paste/replace-selection, no provider call, no `paste_observed` claim.
 
 ## Future Windows Selection Capture Route
 
