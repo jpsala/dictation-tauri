@@ -17,6 +17,12 @@ export type DockCommand =
   | "copy"
   | "paste_last_safe";
 
+export type DockActivePreset = {
+  presetName: string;
+  presetId?: string | null;
+  appKey?: string | null;
+};
+
 export type DockRecoveryState = {
   kind: "copy" | "retry" | "record_again" | "setup" | "uncertain";
   title: string;
@@ -42,10 +48,15 @@ export type VoiceDockState = {
   vuLevel: number;
   vuBands: number[];
   recovery?: DockRecoveryState;
+  activePreset?: DockActivePreset;
+  assistantModeEnabled: boolean;
 };
 
 export type DockVisualOptions = {
   vuLevel?: number;
   vuBands?: readonly number[];
   canPasteLastSafe?: boolean;
+  showEnterSubmitButton?: boolean;
+  activePreset?: DockActivePreset;
+  assistantModeEnabled?: boolean;
 };

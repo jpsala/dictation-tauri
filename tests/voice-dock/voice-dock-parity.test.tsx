@@ -66,12 +66,34 @@ describe("VoiceDock Fixvox Skin4 parity contract", () => {
     expect((html.match(/data-testid="voice-dock-vu-dot"/g) ?? []).length).toBe(7);
     expect((html.match(/voice-dock__vu-dot--recording/g) ?? []).length).toBe(7);
     expect(html).toContain('class="voice-dock__actions"');
+    expect(html).toContain('data-command="stop"');
     expect(html).toContain('data-command="stop_submit"');
     expect(html).toContain('data-command="cancel"');
     expect(html).toContain("Stop &amp; review");
+    expect(html).toContain("Stop &amp; submit");
     expect(html).toContain("Cancel");
     expect(html).not.toContain('data-command="copy"');
     expect(html).not.toContain('data-command="paste_last_safe"');
+    expectNoDeveloperLeakage(html);
+    expectNoPasteObservedWording(html);
+  });
+
+  it("renders Fixvox-style preset and assistant indicators as compact visual metadata", () => {
+    const html = renderDock(
+      createVoiceDockState(
+        session({ state: "listening" }),
+        {
+          activePreset: { presetName: "Rewrite", appKey: "global", presetId: "rewrite" },
+          assistantModeEnabled: true,
+        },
+      ),
+    );
+
+    expect(html).toContain('data-testid="voice-dock-preset-badge"');
+    expect(html).toContain("Rewrite");
+    expect(html).toContain("Active preset: Rewrite (global)");
+    expect(html).toContain('data-testid="voice-dock-assistant-indicator"');
+    expect(html).toContain("Assistant mode available");
     expectNoDeveloperLeakage(html);
     expectNoPasteObservedWording(html);
   });

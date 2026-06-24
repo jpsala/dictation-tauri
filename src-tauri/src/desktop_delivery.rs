@@ -28,8 +28,9 @@ pub fn capture_desktop_delivery_target() -> Result<DesktopDeliveryTarget, String
 pub fn deliver_text_to_desktop_target(
     text: String,
     target: DesktopDeliveryTarget,
+    press_enter_after_paste: Option<bool>,
 ) -> Result<DesktopDeliveryResult, String> {
-    platform::deliver_text_to_desktop_target(text, target)
+    platform::deliver_text_to_desktop_target(text, target, press_enter_after_paste.unwrap_or(false))
 }
 
 #[cfg(windows)]
@@ -48,8 +49,8 @@ mod platform {
         },
         UI::{
             Input::KeyboardAndMouse::{
-                SendInput, SetFocus, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
-                KEYEVENTF_KEYUP, VIRTUAL_KEY, VK_CONTROL, VK_V,
+                SendInput, SetFocus, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+                VIRTUAL_KEY, VK_CONTROL, VK_RETURN, VK_V,
             },
             WindowsAndMessaging::{
                 BringWindowToTop, GetClassNameW, GetForegroundWindow, GetWindowTextLengthW,
@@ -97,6 +98,7 @@ mod platform {
     pub fn deliver_text_to_desktop_target(
         text: String,
         target: DesktopDeliveryTarget,
+        press_enter_after_paste: bool,
     ) -> Result<DesktopDeliveryResult, String> {
         if text.trim().is_empty() {
             return Err("Cannot deliver empty text.".to_string());
@@ -113,6 +115,10 @@ mod platform {
             focus_window(hwnd);
             thread::sleep(Duration::from_millis(80));
             send_ctrl_v()?;
+            if press_enter_after_paste {
+                thread::sleep(Duration::from_millis(80));
+                send_enter()?;
+            }
             thread::sleep(Duration::from_millis(160));
             Ok::<(), String>(())
         })();
@@ -125,8 +131,13 @@ mod platform {
 
         Ok(DesktopDeliveryResult {
             status: "paste_sent",
-            reason: "Paste command was sent to the saved foreground target without observation."
-                .to_string(),
+            reason: if press_enter_after_paste {
+                "Paste and Enter commands were sent to the saved foreground target without observation."
+                    .to_string()
+            } else {
+                "Paste command was sent to the saved foreground target without observation."
+                    .to_string()
+            },
             target,
         })
     }
@@ -154,7 +165,8 @@ mod platform {
             } else {
                 GetWindowThreadProcessId(foreground_hwnd, ptr::null_mut())
             };
-            let attached_target = target_thread_id != 0 && target_thread_id != current_thread_id
+            let attached_target = target_thread_id != 0
+                && target_thread_id != current_thread_id
                 && AttachThreadInput(current_thread_id, target_thread_id, 1) != 0;
             let attached_foreground = foreground_thread_id != 0
                 && foreground_thread_id != current_thread_id
@@ -195,6 +207,22 @@ mod platform {
         }
     }
 
+    fn send_enter() -> Result<(), String> {
+        let mut inputs = [key_input(VK_RETURN, false), key_input(VK_RETURN, true)];
+        let sent = unsafe {
+            SendInput(
+                inputs.len() as u32,
+                inputs.as_mut_ptr(),
+                std::mem::size_of::<INPUT>() as i32,
+            )
+        };
+        if sent == inputs.len() as u32 {
+            Ok(())
+        } else {
+            Err("Enter key could not be sent after paste.".to_string())
+        }
+    }
+
     fn key_input(key: VIRTUAL_KEY, key_up: bool) -> INPUT {
         INPUT {
             r#type: INPUT_KEYBOARD,
@@ -228,7 +256,9 @@ mod platform {
 
     fn read_clipboard_text() -> Option<String> {
         unsafe {
-            if IsClipboardFormatAvailable(CF_UNICODETEXT_FORMAT) == 0 || OpenClipboard(ptr::null_mut()) == 0 {
+            if IsClipboardFormatAvailable(CF_UNICODETEXT_FORMAT) == 0
+                || OpenClipboard(ptr::null_mut()) == 0
+            {
                 return None;
             }
             let handle = GetClipboardData(CF_UNICODETEXT_FORMAT);
@@ -243,7 +273,10 @@ mod platform {
             }
             let size = GlobalSize(handle) / 2;
             let slice = std::slice::from_raw_parts(ptr, size);
-            let nul = slice.iter().position(|value| *value == 0).unwrap_or(slice.len());
+            let nul = slice
+                .iter()
+                .position(|value| *value == 0)
+                .unwrap_or(slice.len());
             let text = String::from_utf16_lossy(&slice[..nul]);
             GlobalUnlock(handle);
             CloseClipboard();
@@ -295,6 +328,7 @@ mod platform {
     pub fn deliver_text_to_desktop_target(
         _text: String,
         target: DesktopDeliveryTarget,
+        _press_enter_after_paste: bool,
     ) -> Result<DesktopDeliveryResult, String> {
         Err(format!(
             "Desktop delivery is only available on Windows for target {}.",

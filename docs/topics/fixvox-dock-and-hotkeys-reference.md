@@ -145,13 +145,14 @@ Trabajo cerrado: `specs/012-fixvox-dock-dictation-key/tasks.md` Phase 8 / Checkp
 - T032/T033 movieron fidelidad de shell a Rust/Tauri: `src-tauri/src/dock_shell.rs` configura el dock al setup, `tauri.conf.json` arranca hidden/`focus:false`/`skipTaskbar:true`, calcula posicion bottom-center en work area del monitor y en Windows usa HWND con `WS_EX_NOACTIVATE`, `WS_EX_TOOLWINDOW`, sin `WS_EX_APPWINDOW`, `SWP_NOACTIVATE` y `SWP_SHOWWINDOW`. Smoke CUA/Win32 verifico rect `164x64` y foreground preservado; evidencia en `artifacts/desktop-control/dock-shell-smoke/20260624-114946/report.json`.
 - T034 corrio side-by-side contra Fixvox ya activo: `artifacts/desktop-control/dock-parity-smoke/20260624-124835/summary.json` + crops. Idle/recording quedaron cercanos en geometria, transparencia, 7 dots, VU, controles laterales y shell no-activate/toolWindow. Deviations detectadas: Dictation no tiene enter-submit azul separado, hit-region idle nativa, resize state-aware de processing/error, ni context menu/preset/assistant indicators.
 - T035 corrio smoke real post-parity con `scripts/desktop-dictation-e2e.ps1` run id `20260624-T035-post-parity`: `Ctrl+Shift+F9` -> speech fixture -> live VU/fresh WAV -> managed STT -> saved-target `paste_sent` -> clipboard sentinel restore. Evidence redacted: `artifacts/desktop-control/dictation-e2e/20260624-T035-post-parity/report.json`.
-- T036 cerro docs finales: Checkpoint E queda completo y las desviaciones de paridad se aceptan como follow-ups/gates futuros, no como bloqueantes.
+- T036 cerro docs finales: Checkpoint E quedo completo y las desviaciones de paridad se aceptaron como follow-ups/gates futuros, no como bloqueantes.
+- Lote 1 follow-up cerro las desviaciones dock-specific mas importantes: controles separados verde `Stop & review`, azul `Stop & submit` y rojo `Cancel`; `Stop & submit` pide paste-then-Enter pero mantiene evidencia `paste_sent`; visual-only preset badge e indicador assistant; `update_dock_shell_state` en Rust/Tauri; idle rounded hit-region con `CreateRoundRectRgn`/`SetWindowRgn`; resize state-aware con `SetWindowPos(... SWP_NOACTIVATE ...)`. Smoke CUA uso `Dictation Dock` real y contexto controlado tipo Notepad; evidencia en `artifacts/desktop-control/dock-lote1-smoke/20260624-renderer-native/report.json`.
 
 ## Gaps Actuales En Dictation Tauri
 
 - No hay tray ni lifecycle background/app instalada.
-- No hay companion/recovery overlay separado; el estado actual usa chip compacto dentro del dock.
+- No hay companion/recovery overlay separado; el estado actual usa chip compacto dentro del dock y resize nativo para estados review/error/cancelled.
 - No hay observer/verificacion real de insercion; `paste_sent` no debe presentarse como paste observado.
 - No hay seleccion/replace real en este flujo; solo insert-at-cursor gated.
 - Alt+Space sigue gated; `Ctrl+Shift+F9` es fallback tecnico.
-- Desviaciones aceptadas como follow-ups post-Checkpoint E: enter-submit azul separado, hit-region idle nativa/rounded hit-test, resize state-aware de processing/error, context menu, preset badge e indicadores de assistant.
+- Context menu sigue pendiente como superficie real; preset badge e indicador assistant son visual-only y no activan motor de presets/assistant real.

@@ -36,7 +36,23 @@ export function VoiceDock({
       data-skin="fixvox-skin4"
       role="toolbar"
       aria-label="Voice dock"
+      data-context-menu="available"
     >
+      {state.activePreset ? (
+        <PresetBadge preset={state.activePreset} />
+      ) : null}
+
+      {state.assistantModeEnabled ? (
+        <div
+          className="voice-dock__assistant-indicator"
+          data-testid="voice-dock-assistant-indicator"
+          title="Assistant mode is available for this context"
+          aria-label="Assistant mode available"
+        >
+          ✦
+        </div>
+      ) : null}
+
       <div className="voice-dock__main">
         <button
           type="button"
@@ -267,16 +283,17 @@ function createCompanionChip(state: VoiceDockState): CompanionChip | undefined {
   }
 }
 
-function getActionSide(command: DockCommand): "left" | "right" {
+function getActionSide(command: DockCommand): "left" | "center" | "right" {
   switch (command) {
-    case "stop_submit":
+    case "stop":
     case "copy":
       return "left";
+    case "stop_submit":
+      return "center";
     case "cancel":
     case "retry":
     case "paste_last_safe":
     case "start":
-    case "stop":
       return "right";
   }
 }
@@ -284,9 +301,15 @@ function getActionSide(command: DockCommand): "left" | "right" {
 function createDockActions(state: VoiceDockState): DockAction[] {
   return [
     {
-      command: "stop_submit",
+      command: "stop",
       label: "Stop & review",
       variant: "primary",
+      visible: state.canStop,
+    },
+    {
+      command: "stop_submit",
+      label: "Stop & submit",
+      variant: "secondary",
       visible: state.canStopSubmit,
     },
     {
@@ -314,4 +337,22 @@ function createDockActions(state: VoiceDockState): DockAction[] {
       visible: state.canPasteLastSafe,
     },
   ];
+}
+
+function PresetBadge({ preset }: { preset: NonNullable<VoiceDockState["activePreset"]> }) {
+  const title = preset.appKey
+    ? `Active preset: ${preset.presetName} (${preset.appKey}). Right-click to change or disable.`
+    : `Active preset: ${preset.presetName}. Right-click to change or disable.`;
+
+  return (
+    <div
+      className="voice-dock__preset-badge"
+      data-testid="voice-dock-preset-badge"
+      title={title}
+      aria-label={title}
+    >
+      <span className="voice-dock__preset-dot" aria-hidden="true" />
+      <span className="voice-dock__preset-name">{preset.presetName}</span>
+    </div>
+  );
 }

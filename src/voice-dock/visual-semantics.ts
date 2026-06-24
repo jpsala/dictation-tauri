@@ -28,6 +28,7 @@ export function createVoiceDockState(
   const canStop = phase === "arming" || phase === "recording";
   const canCancel = canStop;
   const canStart = phase === "idle" || phase === "review" || phase === "failed" || phase === "cancelled";
+  const canStopSubmit = canStop && options.showEnterSubmitButton !== false;
   const recovery = createRecoveryState(input, phase, {
     canCopy,
     canPasteLastSafe,
@@ -44,13 +45,15 @@ export function createVoiceDockState(
     canStart,
     canStop,
     canCancel,
-    canStopSubmit: canStop,
+    canStopSubmit,
     canCopy,
     canRetry,
     canPasteLastSafe,
     vuLevel: phase === "idle" ? 0 : clampLevel(options.vuLevel ?? 0),
     vuBands: phase === "idle" ? emptyVuBands() : sanitizeVuBands(options.vuBands),
     recovery,
+    activePreset: phase === "processing" ? undefined : options.activePreset,
+    assistantModeEnabled: options.assistantModeEnabled === true,
   };
 }
 

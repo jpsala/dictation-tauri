@@ -177,19 +177,23 @@ describe("desktop delivery evidence foundation", () => {
   });
 
   it("sends Tauri saved-target paste as paste_sent without claiming observation", async () => {
+    const invokeCalls: Record<string, unknown>[] = [];
     const gateway = createTauriSavedTargetDeliveryGateway({
-      invoke: async () => ({
-        status: "paste_sent",
-        reason: "Paste command was sent to the saved foreground target without observation.",
-        target: {
-          frameHwnd: "123",
-          windowTitle: "Scratchpad",
-          windowClass: "Notepad",
-          processId: 1,
-          inputLike: true,
-          reason: "foreground target captured before dictation",
-        },
-      }),
+      invoke: async (_command, args) => {
+        invokeCalls.push(args ?? {});
+        return {
+          status: "paste_sent",
+          reason: "Paste command was sent to the saved foreground target without observation.",
+          target: {
+            frameHwnd: "123",
+            windowTitle: "Scratchpad",
+            windowClass: "Notepad",
+            processId: 1,
+            inputLike: true,
+            reason: "foreground target captured before dictation",
+          },
+        };
+      },
       getTarget: () => ({
         frameHwnd: "123",
         windowTitle: "Scratchpad",
@@ -207,6 +211,46 @@ describe("desktop delivery evidence foundation", () => {
       strategy: "paste_send",
       reason: "Paste command was sent to the saved foreground target without observation.",
     });
+    expect(invokeCalls[0]).toMatchObject({ pressEnterAfterPaste: false });
+  });
+
+  it("can request paste-then-enter through Tauri while keeping evidence as paste_sent", async () => {
+    const invokeCalls: Record<string, unknown>[] = [];
+    const gateway = createTauriSavedTargetDeliveryGateway({
+      invoke: async (_command, args) => {
+        invokeCalls.push(args ?? {});
+        return {
+          status: "paste_sent",
+          reason: "Paste and Enter commands were sent to the saved foreground target without observation.",
+          target: {
+            frameHwnd: "123",
+            windowTitle: "Scratchpad",
+            windowClass: "Notepad",
+            processId: 1,
+            inputLike: true,
+            reason: "foreground target captured before dictation",
+          },
+        };
+      },
+      getTarget: () => ({
+        frameHwnd: "123",
+        windowTitle: "Scratchpad",
+        windowClass: "Notepad",
+        processId: 1,
+        inputLike: true,
+        reason: "foreground target captured before dictation",
+      }),
+      getPressEnterAfterPaste: () => true,
+    });
+
+    await expect(
+      gateway.deliver(createDeliveryRequest({ strategy: "paste_send", allowDesktopSideEffects: true })),
+    ).resolves.toMatchObject({
+      status: "paste_sent",
+      strategy: "paste_send",
+      reason: "Paste and Enter commands were sent to the saved foreground target without observation.",
+    });
+    expect(invokeCalls[0]).toMatchObject({ pressEnterAfterPaste: true });
   });
 
   it("falls back when Tauri paste has no saved target", async () => {

@@ -33,6 +33,7 @@ export async function captureTauriDesktopDeliveryTarget(
 export function createTauriSavedTargetDeliveryGateway(input: {
   invoke: TauriInvoke;
   getTarget: () => TauriDesktopDeliveryTarget | undefined;
+  getPressEnterAfterPaste?: () => boolean;
 }): DesktopDeliveryGateway {
   return {
     async deliver(request: DeliveryRequest) {
@@ -47,7 +48,11 @@ export function createTauriSavedTargetDeliveryGateway(input: {
       try {
         const result = await input.invoke<NativeDeliveryResult>(
           "deliver_text_to_desktop_target",
-          { text: request.text, target },
+          {
+            text: request.text,
+            target,
+            pressEnterAfterPaste: input.getPressEnterAfterPaste?.() === true,
+          },
         );
 
         return deriveDeliveryEvidence(request, {

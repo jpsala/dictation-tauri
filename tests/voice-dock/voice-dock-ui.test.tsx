@@ -84,11 +84,31 @@ describe("VoiceDock UI", () => {
     expect(html).toContain("Recording");
     expect(html).toContain("Release or stop when finished.");
     expectAction(html, "Stop &amp; review");
+    expectAction(html, "Stop &amp; submit");
     expectAction(html, "Cancel");
     expectNoAction(html, "Start");
     expect(html).toContain('role="meter"');
     expect(html).toContain('aria-label="Voice activity 72 percent"');
     expect(countNeedles(html, 'data-testid="voice-dock-vu-dot"')).toBe(7);
+  });
+
+  it("renders visual-only preset and assistant indicators when provided", () => {
+    const { html } = renderDock(
+      createVoiceDockState(
+        session({ state: "listening" }),
+        {
+          activePreset: { presetName: "Rewrite", appKey: "global" },
+          assistantModeEnabled: true,
+        },
+      ),
+    );
+
+    expect(html).toContain('data-context-menu="available"');
+    expect(html).toContain('data-testid="voice-dock-preset-badge"');
+    expect(html).toContain("Rewrite");
+    expect(html).toContain("Right-click to change or disable");
+    expect(html).toContain('data-testid="voice-dock-assistant-indicator"');
+    expect(html).toContain("Assistant mode available");
   });
 
   it("renders review state copy and safe recovery actions without overclaiming insertion", () => {

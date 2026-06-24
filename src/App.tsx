@@ -542,12 +542,14 @@ export function App() {
   );
   const gateway = captureRuntime.gateway;
   const savedDeliveryTargetRef = useRef<TauriDesktopDeliveryTarget | undefined>(undefined);
+  const pressEnterAfterPasteRef = useRef(false);
   const desktopDelivery = useMemo(
     () =>
       isTauri()
         ? createTauriSavedTargetDeliveryGateway({
             invoke,
             getTarget: () => savedDeliveryTargetRef.current,
+            getPressEnterAfterPaste: () => pressEnterAfterPasteRef.current,
           })
         : undefined,
     [],
@@ -944,14 +946,29 @@ export function App() {
     ? tauriGlobalHotkeyShortcut
     : "Dock button";
 
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
+    void invoke("update_dock_shell_state", { state: voiceDockState.phase }).catch(() => {
+      // Dock shell updates are best-effort; renderer state remains the source of truth.
+    });
+  }, [voiceDockState.phase]);
+
   function handleVoiceDockCommand(command: DockCommand) {
     switch (command) {
       case "start":
         void startCapture();
         break;
       case "stop":
-      case "stop_submit":
         void stopCapture();
+        break;
+      case "stop_submit":
+        pressEnterAfterPasteRef.current = true;
+        void stopCapture().finally(() => {
+          pressEnterAfterPasteRef.current = false;
+        });
         break;
       case "cancel":
         void cancelCapture();

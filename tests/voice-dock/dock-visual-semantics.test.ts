@@ -45,6 +45,7 @@ describe("voice dock visual semantics", () => {
       canStart: false,
       canStop: true,
       canCancel: true,
+      canStopSubmit: true,
       vuLevel: 0.3,
       vuBands: [0.1, 0.8, 0, 0, 0, 0, 0],
     });
@@ -61,9 +62,45 @@ describe("voice dock visual semantics", () => {
       busy: false,
       canStop: true,
       canCancel: true,
+      canStopSubmit: true,
       vuLevel: 1,
       vuBands: [0, 0.25, 1, 0, 0, 0, 0],
     });
+  });
+
+  it("can hide enter-submit while preserving the green stop and cancel controls", () => {
+    expect(
+      createVoiceDockState(session({ state: "listening" }), {
+        showEnterSubmitButton: false,
+      }),
+    ).toMatchObject({
+      phase: "recording",
+      canStop: true,
+      canCancel: true,
+      canStopSubmit: false,
+    });
+  });
+
+  it("carries preset and assistant indicators as visual-only metadata", () => {
+    expect(
+      createVoiceDockState(
+        session({ state: "listening" }),
+        {
+          activePreset: { presetName: "Rewrite", appKey: "global", presetId: "rewrite" },
+          assistantModeEnabled: true,
+        },
+      ),
+    ).toMatchObject({
+      activePreset: { presetName: "Rewrite", appKey: "global", presetId: "rewrite" },
+      assistantModeEnabled: true,
+    });
+
+    expect(
+      createVoiceDockState(
+        session({ state: "transcribing" }),
+        { activePreset: { presetName: "Rewrite" } },
+      ).activePreset,
+    ).toBeUndefined();
   });
 
   it("renders processing from stopping/transcribing/postprocessing/delivering without claiming paste observation", () => {

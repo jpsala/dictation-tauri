@@ -169,6 +169,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-dictation-e2
 - Accepted follow-ups: JP chose to accept remaining deviations as follow-ups rather than continue this batch: blue enter-submit affordance, native idle hit-region/rounded hit-test, state-aware processing/error resize, context menu, preset badge, and assistant indicators.
 - Still gated: Alt+Space, tray/background lifecycle, selected-text capture, replace-selection, observer-backed `paste_observed`, real app targets beyond controlled fixtures.
 
+### Lote 1 Follow-Up Dock Parity - 2026-06-24
+
+- Scope: first large post-Checkpoint-E batch to close the accepted dock follow-ups without opening Alt+Space, selection, replace-selection, or paste observer gates.
+- Renderer changes: recording now exposes separate Fixvox-style controls: green `Stop & review`, blue `Stop & submit`, and red `Cancel`. `Stop & submit` requests paste-then-Enter semantics while still reporting only `paste_sent` evidence.
+- Visual metadata: `VoiceDockState` supports visual-only `activePreset` and `assistantModeEnabled`; the dock renders a compact green preset badge and assistant indicator when provided. No preset engine, assistant mode, selected text, or replace-selection is activated by this batch.
+- Native shell changes: `update_dock_shell_state` lets the renderer report phase changes to Rust. Windows uses `SetWindowPos(... SWP_NOACTIVATE ...)` for state-aware sizing and `CreateRoundRectRgn`/`SetWindowRgn` for the idle rounded hit-region. Idle remains `164x64`; recording uses full hit region for side controls; review/uncertain/failed/cancelled expand to `260x90`.
+- Computer-use feedback: smoke used `npm run tauri:dev` against the real `Dictation Dock` with a controlled Notepad-style desktop context, not a browser. Evidence: `artifacts/desktop-control/dock-lote1-smoke/20260624-renderer-native/report.json` shows recording controls, cancelled/recovery resize `260x90`, and `exStyle=0x8000198` (`NOACTIVATE`/`TOOLWINDOW`, no app-window bit).
+- Checks passed: `npm run test:pipeline` (50 files / 239 tests), `npm run build`, `cd src-tauri && cargo check`, and `npm run visual:check` (8 tests).
+- Guardrails: no raw transcript, no `paste_observed`, no Alt+Space, no selected text, no replace-selection.
+
 ### Gated Paste-Sent Smoke - 2026-06-23
 
 - Scope: first insert-at-cursor delivery batch, explicitly approved for controlled smoke only.
