@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-23T19:01:01.107Z
+Generated: 2026-06-24T16:34:40.966Z
 
 ## Topics
 
@@ -18,6 +18,7 @@ Generated: 2026-06-23T19:01:01.107Z
 - active: [fixvox-dock-and-hotkeys-reference](../topics/fixvox-dock-and-hotkeys-reference.md) - Fixvox dock, dock, voice dock, hotkeys Fixvox, Alt+Space, push to talk, dictation key, paste last, Alt+Q
 - reference: [local-codex-skills](../topics/local-codex-skills.md) - skills locales, local skills, slash commands, docs/skills, .agents/skills, sigamos, cerrar sesion, continuar sesion, continuar sesion con gol, continuar con gol, siguiente, realinear os, evaluar skills, pasar a skills, promover a skill, que se puede pasar a skills, skill o topic, metadata mínima, metadata minima, modelo hibrido
 - active: [os-quality](../topics/os-quality.md) - perfect os, proyecto perfecto, dejar en condiciones, calidad agentica, optimizar contexto, docs livianos, docs indexados, comandos os, os help
+- active: [pi-agentic-os](../topics/pi-agentic-os.md) - pi, pi agentic os, computer use, cua-driver, background computer use, ask_user, /aos-gol
 - active: [privacy-and-dictation-data](../topics/privacy-and-dictation-data.md) - privacidad, audio, transcripciones, dictado, logs, storage, modelos
 - active: [product-direction](../topics/product-direction.md) - producto, MVP, alcance, direccion, no human interaction, automatizacion
 - draft: [selection-and-assistant-actions](../topics/selection-and-assistant-actions.md) - texto seleccionado, seleccion, assistant mode, asistente, quick chat, alt-q, presets, hotkeys

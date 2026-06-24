@@ -4,6 +4,18 @@ Registro corto de decisiones durables.
 
 ## Aprobadas
 
+### 2026-06-24 - Permiso persistente para side effects locales controlados
+
+Estado: accepted
+
+Decision: JP autoriza a Pi/agentes en este repo y maquina dev a ejecutar autonomamente side effects locales controlados para implementar y verificar tareas: abrir/cerrar apps de prueba, usar CUA/computer-use, lanzar Vite/Tauri/Fixvox local, usar microfono o fixtures de audio, llamar provider real con `.env` local, mutar clipboard temporalmente con restauracion, enviar hotkeys/clicks a fixtures/sandboxes, crear artifacts ignorados y limpiar procesos.
+
+Limites: no autoriza login/cuentas, compras, envios externos, publicaciones, deploy/push, instalar drivers, habilitar autostart/Scheduled Tasks/RunLevel Highest, abrir tunnels/VNC, borrar datos reales, tocar documentos personales ni operar apps reales no preparadas como target. `Alt+Space`, lectura/captura de seleccion real, replace-selection, observer de paste real o cambios productivos siguen requiriendo task/spec explicita y evidencia honesta; pedir confirmacion si el alcance sale de sandbox/local dev.
+
+Motivo: CUA MCP persistente ya permite validar UI/desktop real; este permiso reduce interrupciones para que Pi implemente, testee y haga smokes locales con evidencia externa sin pedir aprobacion por cada mic/provider/clipboard/hotkey controlado.
+
+Guardrails: no imprimir secretos ni raw transcripts en docs/chat; mantener artifacts bajo rutas ignoradas; restaurar clipboard cuando se mute; cerrar procesos/ventanas al finalizar; reportar solo evidencia redacted/hash/longitud/tokens; nunca reclamar `paste_observed` sin observer verificado.
+
 ### 2026-06-22 - Iniciar post-MVP con seleccion fixture-first y recuperacion efimera
 
 Estado: accepted

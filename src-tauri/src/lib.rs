@@ -1,5 +1,6 @@
 mod desktop_control;
 mod desktop_delivery;
+mod dock_shell;
 mod fixvox_cloud;
 mod native_capture;
 mod runtime_transcription;
@@ -8,6 +9,7 @@ pub mod selection_capture;
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            dock_shell::configure_dock_window(app.handle())?;
             desktop_control::register_desktop_control_hotkey(app.handle())?;
             Ok(())
         })

@@ -14,6 +14,7 @@
     "microphone-capture:dry-run": "bun scripts/microphone-capture.ts --mode capture-dry-run --dry-run",
     "runtime-transcription:check": "bun scripts/runtime-transcription.ts --mode artifact-check --dry-run",
     "runtime-transcription:groq:dry-run": "bun scripts/runtime-transcription.ts --mode groq-dry-run --dry-run",
+    "desktop-control:e2e": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-dictation-e2e.ps1",
     "context:index": "bun scripts/context-index.ts",
     "context:audit": "bun scripts/agent-context-audit.ts",
     "context:refresh": "bun scripts/context-refresh.ts",

@@ -124,6 +124,14 @@ Antes de cambiar dock/hotkeys:
 5. Verificar UI visualmente si cambia el dock.
 6. Documentar cualquier desviacion deliberada de Fixvox.
 
+## Decision Update 2026-06-24
+
+JP pidio que el dock quede lo mas igual posible al dock de Fixvox. Esto sube el criterio de "inspirado en Fixvox" a "paridad visual/ergonomica cercana" para el dock, especialmente la variante `DockSkin4.svelte`.
+
+La direccion tecnica preferida es usar Rust/Tauri y APIs de Windows cuando eso permita estar mas cerca de Fixvox que una solucion solo-renderer: no-activate, always-on-top, transparencia, region/hit-test redondeada, posicion por monitor/DPI, preservacion de foco/target y futuras rutas nativas para hotkeys. La UI puede seguir siendo React/CSS si alcanza fidelidad, pero el shell de ventana debe ser host-owned.
+
+Trabajo cerrado: `specs/012-fixvox-dock-dictation-key/tasks.md` Phase 8 / Checkpoint E quedo completo el 2026-06-24 para paridad cercana Skin4 + smoke real post-parity. JP acepto las desviaciones restantes como follow-ups, no como bloqueantes de cierre.
+
 ## Estado Actual En Dictation Tauri
 
 - La UI actual corre como `Dictation Dock` transparente always-on-top de `164x64` en `npm run tauri:dev`, con 7 dots estilo Fixvox, controles laterales al grabar y chip compacto de estado/recovery.
@@ -132,6 +140,12 @@ Antes de cambiar dock/hotkeys:
 - El stop explicito en Tauri usa host STT real y puede llegar a `Transcript ready` sin abrir panel grande.
 - Primer delivery real gated: se guarda el target foreground antes de grabar, luego se enfoca ese target, se escribe clipboard temporal, se envia `Ctrl+V`, se restaura clipboard y se reporta solo `paste_sent`.
 - Paste-last seguro sigue existiendo como recovery/UI sin reclamar observacion; no hay `paste_observed` hasta tener verificador real.
+- `012` Phase 8 / Checkpoint E avanzo T030: `tests/voice-dock/voice-dock-parity.test.tsx` cubre contrato provider-free de paridad Skin4 antes de tocar visual/native shell (idle `164x64`, 7 dots, dot gap/size, recording controls, processing chip, reduced motion, sin `paste_observed` y sin panel dev/provider). CUA MCP persistente smokeo el dock en Vite/browser con Start -> Recording -> Stop -> recovery provider-free; evidencia ignorada en `artifacts/desktop-control/cua-visual-smoke/20260624-110253/report.json`.
+- T031 cerro el refinamiento renderer-only contra constantes Skin4: core `66x28`, controles laterales `31px`, gap Skin4 alrededor del core, companion chip compacto de dos lineas, constantes de dots nombradas en `VoiceDock.tsx`, hover/focus y reduced-motion mas cercanos a `DockSkin4.svelte`. Checks provider-free/build/visual pasaron.
+- T032/T033 movieron fidelidad de shell a Rust/Tauri: `src-tauri/src/dock_shell.rs` configura el dock al setup, `tauri.conf.json` arranca hidden/`focus:false`/`skipTaskbar:true`, calcula posicion bottom-center en work area del monitor y en Windows usa HWND con `WS_EX_NOACTIVATE`, `WS_EX_TOOLWINDOW`, sin `WS_EX_APPWINDOW`, `SWP_NOACTIVATE` y `SWP_SHOWWINDOW`. Smoke CUA/Win32 verifico rect `164x64` y foreground preservado; evidencia en `artifacts/desktop-control/dock-shell-smoke/20260624-114946/report.json`.
+- T034 corrio side-by-side contra Fixvox ya activo: `artifacts/desktop-control/dock-parity-smoke/20260624-124835/summary.json` + crops. Idle/recording quedaron cercanos en geometria, transparencia, 7 dots, VU, controles laterales y shell no-activate/toolWindow. Deviations detectadas: Dictation no tiene enter-submit azul separado, hit-region idle nativa, resize state-aware de processing/error, ni context menu/preset/assistant indicators.
+- T035 corrio smoke real post-parity con `scripts/desktop-dictation-e2e.ps1` run id `20260624-T035-post-parity`: `Ctrl+Shift+F9` -> speech fixture -> live VU/fresh WAV -> managed STT -> saved-target `paste_sent` -> clipboard sentinel restore. Evidence redacted: `artifacts/desktop-control/dictation-e2e/20260624-T035-post-parity/report.json`.
+- T036 cerro docs finales: Checkpoint E queda completo y las desviaciones de paridad se aceptan como follow-ups/gates futuros, no como bloqueantes.
 
 ## Gaps Actuales En Dictation Tauri
 
@@ -140,3 +154,4 @@ Antes de cambiar dock/hotkeys:
 - No hay observer/verificacion real de insercion; `paste_sent` no debe presentarse como paste observado.
 - No hay seleccion/replace real en este flujo; solo insert-at-cursor gated.
 - Alt+Space sigue gated; `Ctrl+Shift+F9` es fallback tecnico.
+- Desviaciones aceptadas como follow-ups post-Checkpoint E: enter-submit azul separado, hit-region idle nativa/rounded hit-test, resize state-aware de processing/error, context menu, preset badge e indicadores de assistant.

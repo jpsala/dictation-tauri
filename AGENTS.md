@@ -24,6 +24,7 @@ La discusion inicial y las decisiones durables del sistema deben quedar integrad
 
 - Respetar el stack, comandos y convenciones ya existentes.
 - Modo personal/dev permisivo: se pueden leer `.env`, variables locales, logs, audio, transcripciones, bases locales y artifacts de referencia cuando ayuden.
+- Permiso persistente 2026-06-24: para este repo/dev machine se pueden ejecutar side effects locales controlados sin pedir aprobacion por cada smoke (CUA/computer-use, apps sandbox, Vite/Tauri/Fixvox local, mic/audio fixtures, provider real con `.env`, clipboard temporal restaurado, hotkeys/clicks, artifacts ignorados y cleanup). Siguen requiriendo confirmacion: login/cuentas, pagos/envios/publicaciones/deploy/push, installs/autostart/tunnels, borrar datos reales, apps/documentos personales, `Alt+Space`, seleccion real, replace-selection y observer `paste_observed`.
 - No imprimir secretos ni commitear `.env`/tokens salvo pedido explicito y acotado de JP.
 - No revertir cambios de usuario sin pedido explicito.
 - Trabajar en Small Batches orientados a checkpoints: una tanda puede agrupar varias tasks SpecKit acopladas si entrega un comportamiento/checkpoint verificable y reversible. Evitar microbatches cuando ralenticen el avance; separar siempre decisiones/gates, side effects reales, provider calls, smoke manual, paste/selection real e historial durable. Cada tanda debe ser revisable, testeada con checks relevantes y reversible con un commit atomico.
@@ -71,5 +72,5 @@ Este repo incluye la skill local `impeccable` en `docs/skills/impeccable` para t
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/006-host-runtime-transcription-boundary/plan.md
+at specs/012-fixvox-dock-dictation-key/plan.md
 <!-- SPECKIT END -->

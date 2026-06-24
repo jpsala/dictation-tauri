@@ -12,6 +12,8 @@ type TauriConfig = {
       minWidth?: number;
       minHeight?: number;
       alwaysOnTop?: boolean;
+      focus?: boolean;
+      skipTaskbar?: boolean;
       visible?: boolean;
       resizable?: boolean;
     }>;
@@ -19,7 +21,7 @@ type TauriConfig = {
 };
 
 describe("Tauri dev dock window config", () => {
-  it("keeps the main dev surface compact, visible, refreshable, and above normal windows", () => {
+  it("keeps the main dev surface compact, hidden-until-native-show, refreshable, and above normal windows", () => {
     const config = JSON.parse(
       readFileSync("src-tauri/tauri.conf.json", "utf8"),
     ) as TauriConfig;
@@ -28,7 +30,9 @@ describe("Tauri dev dock window config", () => {
     expect(config.build.devUrl).toBe("http://127.0.0.1:1420");
     expect(main).toMatchObject({
       title: "Dictation Dock",
-      visible: true,
+      visible: false,
+      focus: false,
+      skipTaskbar: true,
       resizable: false,
       decorations: false,
       transparent: true,

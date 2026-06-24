@@ -66,6 +66,109 @@ Current behavior:
 - Result: compact chip reached `Transcript ready`; no raw transcript was copied into docs/chat.
 - Guardrails: no selected text, no paste automation, no `paste_observed`, no durable history.
 
+### Checkpoint E Parity Target - 2026-06-24
+
+JP clarified the next dock goal: make Dictation Tauri's dock as equal to Fixvox's dock as possible, and prefer Rust/Windows API ownership where native behavior gives better fidelity than renderer-only work.
+
+Primary reference files:
+
+- `C:/dev/fixvox/src/app/views/voice-dock/DockSkin4.svelte`
+- `C:/dev/fixvox/src/app/backend/voice-dock-window.ts`
+- `C:/dev/fixvox/src/app/views/voice-dock/dock-visual-semantics.ts`
+
+Parity checklist:
+
+- Idle window: transparent `164x64`, always-on-top, no titlebar/chrome, no visible WebView background, seven-dot central pill, dot gap close to `3.5px`, dot width `5px`, idle dot height `6px`, subtle white/gray gradient and shadow.
+- Recording: side controls reveal around the central dots, green finish/check affordance, optional blue enter-submit affordance, red cancel affordance, central seven dots become live VU bars with boosted RMS/bands.
+- Processing: compact status chip above/near dock with pulse, no large app panel, seven dots use processing animation/heights.
+- Error/recovery: compact chip or companion-style affordance; copy/retry/recover actions remain honest and do not claim `paste_observed`.
+- Native shell: no focus stealing while idle/recording, target app remains the interaction target until explicit delivery, monitor/DPI-safe positioning, rounded/hit-test behavior close to Fixvox where feasible.
+- Guardrails: no raw transcripts/secrets/selected text in evidence, no durable history, no selection/replace until separately gated, no `paste_observed` without observer.
+
+Computer-use/manual smoke loop:
+
+1. Launch Fixvox dock and Dictation Dock side-by-side.
+2. Capture/observe idle geometry and dot rendering.
+3. Start recording in both and compare controls, VU movement, colors, and focus behavior.
+4. Stop recording and compare processing/recovery chips.
+5. Iterate code until visual/behavioral parity is close enough for JP review.
+6. Record only redacted observations or ignored screenshots/artifacts.
+
+### T030 Provider-Free Parity Test And CUA MCP Smoke - 2026-06-24
+
+- Added provider-free parity contract coverage in `tests/voice-dock/voice-dock-parity.test.tsx` before touching visual/native shell code.
+- Covered idle seven-dot `164x64` contract, dot sizes/gaps, recording side controls, processing companion chip, reduced-motion CSS, no `paste_observed` wording, and no developer/provider panel leakage.
+- Checks passed: `npm run test:pipeline -- tests/voice-dock`, `npm run test:pipeline -- tests/voice-dock tests/desktop-control`, and `npm run visual:check`.
+- Persistent CUA MCP smoke passed against `npm run dev` at `http://127.0.0.1:1420`: health OK, idle text visible, Start invoked through UIA, recording showed `Stop & review`/`Cancel` and live voice-activity label, Stop returned to provider-free recovery (`Needs attention`/`Retry`).
+- Evidence: ignored artifact report at `artifacts/desktop-control/cua-visual-smoke/20260624-110253/report.json`.
+- Guardrails: no provider call, no microphone permission, no selection/clipboard/paste side effects, no raw transcript.
+
+### T031 Renderer Skin4 Refinement - 2026-06-24
+
+- Scope: renderer-only parity pass before Tauri/Rust shell changes.
+- Changes: `VoiceDock.tsx` now names the Skin4 dot constants, exposes `data-skin="fixvox-skin4"`, keeps primary action routing explicit, and renders compact two-line companion chips for processing/review/recovery states.
+- CSS moved closer to `DockSkin4.svelte`: central `66x28` seven-dot core, `31px` side controls with `70px` center gap around the core, `3.5px` dot gap, Skin4-like hover/drop-shadow behavior, pulsing compact status chip, and reduced-motion disabling of dot/chip animations.
+- Checks passed: `npm run test:pipeline -- tests/voice-dock`, `npm run test:pipeline -- tests/voice-dock tests/desktop-control`, `npm run build`, and `npm run visual:check`.
+- Guardrails: provider-free only; no native shell changes, no real hotkeys beyond existing tests, no clipboard/focus/paste/selection side effects, no `paste_observed` wording.
+
+### T032/T033 Rust-Owned Dock Shell - 2026-06-24
+
+- Scope: native shell fidelity pass after renderer Skin4 refinement.
+- Changes: new `src-tauri/src/dock_shell.rs` owns setup for the `main`/`Dictation Dock` window; `tauri.conf.json` now starts the window hidden, `focus: false`, `skipTaskbar: true`, no chrome, transparent, always-on-top.
+- Runtime behavior: setup sizes the dock to `164x64`, calculates monitor work-area bottom-center position with margin, sets skip-taskbar/always-on-top, and shows the window without activation on Windows.
+- Windows path: compile-guarded `SetWindowLongPtrW`/`SetWindowPos` adds `WS_EX_NOACTIVATE` and `WS_EX_TOOLWINDOW`, removes `WS_EX_APPWINDOW`, and uses `SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED`.
+- Coverage: pure Rust tests cover bottom-center geometry, offset monitor clamp, tiny work-area clamp, and Windows extended-style bit math. In this environment `cd src-tauri && cargo test dock_shell` is still blocked by known `STATUS_ENTRYPOINT_NOT_FOUND`; `cd src-tauri && cargo check` passed.
+- CUA/Win32 smoke: launched `npm run tauri:dev`, observed `Dictation Dock` on-screen, collected HWND style/bounds, and closed the app. Evidence: `artifacts/desktop-control/dock-shell-smoke/20260624-114946/report.json` with rect `164x64`, foreground still terminal, `noActivate=true`, `toolWindow=true`, `appWindow=false`.
+- Checks passed: `npm run test:pipeline -- tests/voice-dock tests/desktop-control`, `npm run build`, retry of `npm run visual:check` (first visual run had two webServer navigation timeouts then retry passed all 8).
+- Guardrails: no provider call, no microphone, no clipboard/focus delivery, no selected text, no paste automation, no `paste_observed` claim.
+
+### T034 Side-By-Side Fixvox Parity Smoke - 2026-06-24
+
+- Scope: computer-use/manual side-by-side smoke against the already-running Fixvox `Voice Dock` and a fresh Dictation Tauri `Dictation Dock`.
+- Evidence: ignored artifact directory `artifacts/desktop-control/dock-parity-smoke/20260624-124835/` with `summary.json`, per-stage JSON reports, and cropped screenshots for idle, recording, cancel/recovery, Dictation fixture stop, and Fixvox fixture stop.
+- Idle result: both windows were transparent `164x64`, seven-dot central pills, no titlebar/chrome, foreground stayed in terminal, and Win32 styles matched the target class: `noActivate=true`, `toolWindow=true`, `appWindow=false`.
+- Recording result: both docks preserved foreground and kept `164x64`; both showed side controls and live VU bars. Dictation showed green finish + red cancel; Fixvox additionally showed the blue enter-submit affordance.
+- Recovery/stop result: Dictation cancel showed a compact `Cancelled` chip; Dictation stop against an ephemeral `Dock Parity Scratch Target` reached compact `Transcript ready` while preserving fixture foreground. The fixture recorded only output length/hash (`target-result.json`), not raw text. Fixvox stop returned to idle too quickly to capture a visible processing chip in this run.
+- Deviations for JP review: no separate blue enter-submit button yet, no native idle hit-region narrowing/rounded hit-test yet, no state-aware native resize to larger processing/error companion sizes, no context menu/preset/assistant indicators yet.
+- Guardrails: no selected text, no personal app target, no raw transcript in docs/chat, no `paste_observed` claim. Dictation/Fixvox were closed/left as appropriate; Dictation dev process and fixture were cleaned up.
+
+### Computer-Use Real Dictation E2E - 2026-06-24
+
+- Scope: reusable end-to-end harness for the real desktop dictation path with controlled local side effects.
+- Harness: `scripts/desktop-dictation-e2e.ps1`; package alias: `npm run desktop-control:e2e -- <flags>`.
+- Command used:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-dictation-e2e.ps1 -AllowDesktopSideEffects -AllowProviderCall -AllowClipboardMutation -RecordingSeconds 2 -InitialDelaySeconds 12 -DeliveryTimeoutSeconds 180
+```
+
+- Result: passed. Report: `artifacts/desktop-control/dictation-e2e/20260624-104246/report.json`.
+- Validated path: Cua health/autostart -> Tauri `Dictation Dock` -> editable target fixture foreground -> `Ctrl+Shift+F9` start -> Windows speech synthesis fixture phrase -> `Ctrl+Shift+F9` stop -> fresh WAV -> configured real provider -> `paste_sent` to target -> clipboard sentinel restored -> cleanup.
+- Evidence: target received 29 chars; token check matched `dictation`, `fixture`, `green`, `apple`; fresh WAV `artifacts/microphone-capture/audio/capture-native-1782308585886.wav`; normalized target hash recorded in report. Raw target text stays only in ignored artifact output, not docs/chat.
+- Gotchas captured in the harness: launch target after dock so saved target is correct; keep live target output under `%TEMP%` because Vite can crash with `EBUSY` if it watches frequently-written artifact files.
+
+### T035 Post-Parity Real Dictation Smoke - 2026-06-24
+
+- Scope: gated real dictation smoke after Checkpoint E parity changes, using controlled local desktop side effects and provider call.
+- Command used:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-dictation-e2e.ps1 -AllowDesktopSideEffects -AllowProviderCall -AllowClipboardMutation -RecordingSeconds 2 -InitialDelaySeconds 12 -DeliveryTimeoutSeconds 180 -RunId 20260624-T035-post-parity
+```
+
+- Result: passed. Report: `artifacts/desktop-control/dictation-e2e/20260624-T035-post-parity/report.json`.
+- Validated path: Cua health -> Tauri `Dictation Dock` -> editable target fixture foreground -> `Ctrl+Shift+F9` start -> Windows speech synthesis fixture -> `Ctrl+Shift+F9` stop -> live VU/fresh WAV -> configured managed STT -> target `paste_sent` -> clipboard sentinel restored -> cleanup.
+- Evidence: fresh WAV `artifacts/microphone-capture/audio/capture-native-1782317452217.wav`; target length `29`; token check matched `dictation`, `fixture`, `green`, `apple`; normalized target hash recorded in report.
+- Guardrails: no selected text, no personal app target, no raw transcript in docs/chat, no `paste_observed` claim; raw target text remains only in ignored artifacts.
+
+### Checkpoint E Final Status - 2026-06-24
+
+- Status: done. T030-T036 closed the Rust-native Fixvox dock parity checkpoint.
+- Verification: provider-free parity tests/build/visual/cargo checks from T030-T033 remained the safe gate; side-by-side Fixvox smoke T034 passed for close idle/recording/recovery parity; T035 real dictation E2E passed post-parity.
+- Native shell documented: `Dictation Dock` is transparent `164x64`, no chrome, always-on-top, skip-taskbar, `WS_EX_NOACTIVATE`, `WS_EX_TOOLWINDOW`, no `WS_EX_APPWINDOW`, and foreground-preserving in smoke evidence.
+- Accepted follow-ups: JP chose to accept remaining deviations as follow-ups rather than continue this batch: blue enter-submit affordance, native idle hit-region/rounded hit-test, state-aware processing/error resize, context menu, preset badge, and assistant indicators.
+- Still gated: Alt+Space, tray/background lifecycle, selected-text capture, replace-selection, observer-backed `paste_observed`, real app targets beyond controlled fixtures.
+
 ### Gated Paste-Sent Smoke - 2026-06-23
 
 - Scope: first insert-at-cursor delivery batch, explicitly approved for controlled smoke only.

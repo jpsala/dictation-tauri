@@ -25,23 +25,33 @@ export function VoiceDock({
   const actions = createDockActions(state);
   const visibleActions = actions.filter((action) => action.visible);
   const companion = createCompanionChip(state);
+  const primaryAction = getPrimaryActionCommand(state);
+  const primaryActionLabel = getPrimaryActionLabel(state);
 
   return (
     <section
       className={`voice-dock voice-dock--${state.phase}`}
       data-testid="voice-dock"
       data-phase={state.phase}
+      data-skin="fixvox-skin4"
+      role="toolbar"
       aria-label="Voice dock"
     >
       <div className="voice-dock__main">
         <button
           type="button"
           className="voice-dock__orb"
-          onClick={() => onCommand(state.canStart ? "start" : state.canStopSubmit ? "stop_submit" : "cancel")}
-          aria-label={getPrimaryActionLabel(state)}
-          disabled={!state.canStart && !state.canStopSubmit && !state.canCancel}
+          data-command={primaryAction ?? undefined}
+          onClick={() => {
+            if (primaryAction) {
+              onCommand(primaryAction);
+            }
+          }}
+          aria-label={primaryActionLabel}
+          title={primaryActionLabel}
+          disabled={!primaryAction}
         >
-          {getPrimaryActionLabel(state)}
+          {primaryActionLabel}
         </button>
 
         <div className="voice-dock__status" role="status" aria-live="polite">
@@ -93,7 +103,12 @@ export function VoiceDock({
           aria-live="polite"
         >
           <span className="voice-dock__companion-pulse" aria-hidden="true" />
-          <span>{companion.label}</span>
+          <span className="voice-dock__companion-copy">
+            <span className="voice-dock__companion-main">{companion.label}</span>
+            {companion.detail ? (
+              <span className="voice-dock__companion-sub">{companion.detail}</span>
+            ) : null}
+          </span>
         </div>
       ) : null}
 
@@ -105,6 +120,9 @@ export function VoiceDock({
               type="button"
               className={`voice-dock__action voice-dock__action--${action.variant}`}
               data-command={action.command}
+              data-side={getActionSide(action.command)}
+              aria-label={action.label}
+              title={action.label}
               disabled={action.disabled}
               onClick={() => onCommand(action.command)}
             >
@@ -146,6 +164,22 @@ function getPrimaryActionLabel(state: VoiceDockState): string {
   return "Cancel";
 }
 
+function getPrimaryActionCommand(state: VoiceDockState): DockCommand | undefined {
+  if (state.canStart) {
+    return state.phase === "cancelled" ? "retry" : "start";
+  }
+
+  if (state.canStopSubmit) {
+    return "stop_submit";
+  }
+
+  if (state.canCancel) {
+    return "cancel";
+  }
+
+  return undefined;
+}
+
 type DotVisual = {
   width: number;
   height: number;
@@ -153,12 +187,15 @@ type DotVisual = {
   offset: number;
 };
 
-const idleDotHeights = [6, 6, 6, 6, 6, 6, 6] as const;
-const armingDotHeights = [8, 8, 9, 9, 9, 8, 8] as const;
-const processingDotHeights = [7, 8, 8, 9, 8, 8, 7] as const;
-const recordingBaseDotSizes = [6, 6, 6, 6, 6, 6, 6] as const;
-const recordingRangeDotSizes = [15, 15, 15, 15, 15, 15, 15] as const;
-const recordingOpacityWeights = [0.1, 0.12, 0.11, 0.14, 0.11, 0.12, 0.1] as const;
+const skin4Dots = {
+  idleHeights: [6, 6, 6, 6, 6, 6, 6],
+  armingHeights: [8, 8, 9, 9, 9, 8, 8],
+  processingHeights: [7, 8, 8, 9, 8, 8, 7],
+  recordingBaseHeights: [6, 6, 6, 6, 6, 6, 6],
+  recordingRangeHeights: [15, 15, 15, 15, 15, 15, 15],
+  recordingOpacityWeights: [0.1, 0.12, 0.11, 0.14, 0.11, 0.12, 0.1],
+  width: 5,
+} as const;
 
 function getDotVisual(
   state: VoiceDockState,
@@ -170,14 +207,14 @@ function getDotVisual(
     const barLevel = rawLevel > 0
       ? clamp(0.18 + Math.sqrt(rawLevel) * 0.82, 0, 1)
       : 0;
-    const base = recordingBaseDotSizes[index] ?? 6;
-    const range = recordingRangeDotSizes[index] ?? 15;
+    const base = skin4Dots.recordingBaseHeights[index] ?? 6;
+    const range = skin4Dots.recordingRangeHeights[index] ?? 15;
 
     return {
-      width: 5,
+      width: skin4Dots.width,
       height: Math.round(base + barLevel * range),
       opacity: clamp(
-        0.56 + barLevel * 0.3 + state.vuLevel * (recordingOpacityWeights[index] ?? 0.14),
+        0.56 + barLevel * 0.3 + state.vuLevel * (skin4Dots.recordingOpacityWeights[index] ?? 0.14),
         0.56,
         0.98,
       ),
@@ -186,19 +223,19 @@ function getDotVisual(
   }
 
   if (state.phase === "arming") {
-    return { width: 5, height: armingDotHeights[index] ?? 8, opacity: 0.9, offset: 0 };
+    return { width: skin4Dots.width, height: skin4Dots.armingHeights[index] ?? 8, opacity: 0.9, offset: 0 };
   }
 
   if (state.phase === "processing") {
     return {
-      width: 5,
-      height: processingDotHeights[index] ?? 8,
+      width: skin4Dots.width,
+      height: skin4Dots.processingHeights[index] ?? 8,
       opacity: 0.82,
       offset: 0,
     };
   }
 
-  return { width: 5, height: idleDotHeights[index] ?? 6, opacity: 0.72, offset: 0 };
+  return { width: skin4Dots.width, height: skin4Dots.idleHeights[index] ?? 6, opacity: 0.72, offset: 0 };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -207,25 +244,40 @@ function clamp(value: number, min: number, max: number): number {
 
 type CompanionChip = {
   label: string;
+  detail?: string;
   tone: "processing" | "ready" | "warning" | "failed";
 };
 
 function createCompanionChip(state: VoiceDockState): CompanionChip | undefined {
   switch (state.phase) {
     case "processing":
-      return { label: "Processing", tone: "processing" };
+      return { label: "Processing", detail: state.statusDetail, tone: "processing" };
     case "review":
-      return { label: "Transcript ready", tone: "ready" };
+      return { label: "Transcript ready", detail: state.statusDetail, tone: "ready" };
     case "uncertain":
-      return { label: "Check target", tone: "warning" };
+      return { label: "Check target", detail: state.statusDetail, tone: "warning" };
     case "failed":
-      return { label: "Needs attention", tone: "failed" };
+      return { label: "Needs attention", detail: state.statusDetail, tone: "failed" };
     case "cancelled":
-      return { label: "Cancelled", tone: "warning" };
+      return { label: "Cancelled", detail: state.statusDetail, tone: "warning" };
     case "idle":
     case "arming":
     case "recording":
       return undefined;
+  }
+}
+
+function getActionSide(command: DockCommand): "left" | "right" {
+  switch (command) {
+    case "stop_submit":
+    case "copy":
+      return "left";
+    case "cancel":
+    case "retry":
+    case "paste_last_safe":
+    case "start":
+    case "stop":
+      return "right";
   }
 }
 
