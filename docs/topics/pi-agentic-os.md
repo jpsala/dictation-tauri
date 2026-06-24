@@ -64,6 +64,8 @@ E2E real local 2026-06-24 en este repo:
 
 ### Computer Use Playbook Especifico Para Dictation Dock
 
+Regla operativa para desarrollo: cuando el batch toque dock, tray, companion, hotkeys, delivery desktop u observer, mantener una instancia real de la app en dev con `npm run tauri:dev` (no solo Vite/browser) para que JP pueda probarla mientras se itera. El tray y las APIs Rust/Tauri solo existen en esa instancia; si no se ve el tray, primero verificar que `dictation-tauri`/`Dictation Dock` este corriendo bajo Tauri y revisar el overflow del system tray.
+
 1. **Preparar el target antes de actuar**: cerrar procesos viejos (`dictation-tauri`, ventanas fixture), elegir `RunId`, puerto CDP libre y fixture local; nunca usar documentos/apps personales como target.
 2. **Lanzar y observar antes de inputs**: esperar `Dictation Dock`, comprobar Cua `health_report`, abrir WebView2 CDP y verificar `window.__TAURI_INTERNALS__.invoke`; registrar `get_desktop_control_hotkey_config` para saber si se esta probando `Alt+Space` o `Ctrl+Shift+F9`.
 3. **Verificar activacion real**: tras el primer hotkey, muestrear producto por CDP hasta `captureState = Listening`; solo entonces emitir speech o audio fixture. Si no llega a `Listening`, abortar con logs de estado, no seguir hablando.

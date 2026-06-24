@@ -64,6 +64,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 - Delivery se modela por evidencia/certeza; no prometer paste observado sin verificacion real.
 - Post-MVP3: `005-runtime-transcription-delivery` cubre foundation runtime y script Groq gated; `007`/`008` cierran app UI -> Tauri host -> Groq STT real con gesto explicito, artifacts ignorados y evidencia honesta.
 - UI durable requiere `PRODUCT.md` y `DESIGN.md`; para voice dock/hotkeys, `docs/topics/fixvox-dock-and-hotkeys-reference.md` es referencia fuerte porque JP quiere respetar la ergonomia Fixvox de dock compacto, VU/dots, recovery y dictation key hold/tap.
+- Para iteraciones de dock/tray/companion/hotkeys/delivery, mantener `npm run tauri:dev` instanciado siempre que sea razonable para que JP pueda probar en vivo; Vite/browser no instancia tray, menu nativo ni hotkeys globales.
 - Small Batches ahora optimizan por checkpoint verificable: agrupar 2-5 tasks acopladas cuando aceleran un unico comportamiento; separar siempre gates, manual smokes, provider calls, side effects reales, paste/selection real e historial durable.
 - Post-010: `011` arranca seleccion fixture-first; T036/T037 definen y compile-guardan captura real futura como host-owned Windows UI Automation no-mutating first, con clipboard roundtrip separado/gated; no leer seleccion real, no paste automation y no historial durable hasta aprobacion explicita.
 - `paste-last` seguro es solo evidencia/UI `uncertain`: no envia teclas, no toca foco/clipboard y nunca reclama `paste_observed`.

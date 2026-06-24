@@ -135,6 +135,7 @@ Trabajo cerrado: `specs/012-fixvox-dock-dictation-key/tasks.md` Phase 8 / Checkp
 ## Estado Actual En Dictation Tauri
 
 - La UI actual corre como `Dictation Dock` transparente always-on-top de `164x64` en `npm run tauri:dev`, con 7 dots estilo Fixvox, controles laterales al grabar y chip compacto de estado/recovery.
+- Regla dev de producto: en batches que toquen dock/tray/companion/hotkeys/delivery, mantener una instancia real `npm run tauri:dev` levantada para que JP pueda probar en vivo. No alcanza Vite/browser: el tray, menu nativo, hotkeys globales y ventanas Tauri solo existen en la instancia Tauri.
 - El hotkey actual `Ctrl+Shift+F9` ya tiene ruta validada para semantica hold/tap estilo Fixvox mediante eventos `pressed`/`released`; sigue siendo baseline tecnico, no norte UX final.
 - El dock tiene feedback vivo de voz: Rust/Tauri expone RMS/VU bands (`get_native_microphone_capture_level`) y el renderer las usa para barras visibles durante recording.
 - El stop explicito en Tauri usa host STT real y puede llegar a `Transcript ready` sin abrir panel grande.
