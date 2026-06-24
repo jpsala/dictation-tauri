@@ -3,6 +3,7 @@ mod desktop_delivery;
 mod dock_shell;
 mod fixvox_cloud;
 mod native_capture;
+mod result_history;
 mod runtime_transcription;
 pub mod selection_capture;
 mod tray;
@@ -29,6 +30,9 @@ pub fn run() {
             dock_shell::hide_dock,
             desktop_control::get_desktop_control_hotkey_config,
             selection_capture::capture_selection_context,
+            result_history::append_result_history_entry,
+            result_history::list_result_history_entries,
+            result_history::clear_result_history,
             tray::show_dock_context_menu,
         ])
         .run(tauri::generate_context!())

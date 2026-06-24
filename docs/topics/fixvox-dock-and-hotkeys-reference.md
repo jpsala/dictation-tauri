@@ -147,7 +147,8 @@ Trabajo cerrado: `specs/012-fixvox-dock-dictation-key/tasks.md` Phase 8 / Checkp
 - T035 corrio smoke real post-parity con `scripts/desktop-dictation-e2e.ps1` run id `20260624-T035-post-parity`: `Ctrl+Shift+F9` -> speech fixture -> live VU/fresh WAV -> managed STT -> saved-target `paste_sent` -> clipboard sentinel restore. Evidence redacted: `artifacts/desktop-control/dictation-e2e/20260624-T035-post-parity/report.json`.
 - T036 cerro docs finales: Checkpoint E quedo completo y las desviaciones de paridad se aceptaron como follow-ups/gates futuros, no como bloqueantes.
 - Lote 1 follow-up cerro las desviaciones dock-specific mas importantes: controles separados verde `Stop & review`, azul `Stop & submit` y rojo `Cancel`; `Stop & submit` pide paste-then-Enter pero mantiene evidencia `paste_sent`; visual-only preset badge e indicador assistant; `update_dock_shell_state` en Rust/Tauri; idle rounded hit-region con `CreateRoundRectRgn`/`SetWindowRgn`; resize state-aware con `SetWindowPos(... SWP_NOACTIVATE ...)`. Smoke CUA uso `Dictation Dock` real y contexto controlado tipo Notepad; evidencia en `artifacts/desktop-control/dock-lote1-smoke/20260624-renderer-native/report.json`.
-- Lote 2 follow-up agrego tray/background y ruta gated de Alt+Space sin cambiar el default seguro: menu de tray nativo, hide-on-close, right-click context menu del dock, comando host `desktop-control://host-command`, resolver Rust de `DICTATION_TAURI_DICTATION_KEY` y gate `DICTATION_TAURI_ALLOW_ALT_SPACE`. Alt+Space sigue sin ser default y no incluye aun hook nativo de supresion del menu del sistema. Evidencia CUA: `artifacts/desktop-control/combined-lote-smoke/20260624-tray-altspace-selection/report.json`.
+- Lote 2 follow-up agrego tray/background y ruta gated de Alt+Space sin cambiar el default seguro: menu de tray nativo, hide-on-close, right-click context menu del dock, comando host `desktop-control://host-command`, resolver Rust de `DICTATION_TAURI_DICTATION_KEY` y gate `DICTATION_TAURI_ALLOW_ALT_SPACE`. Evidencia CUA: `artifacts/desktop-control/combined-lote-smoke/20260624-tray-altspace-selection/report.json`.
+- Lote 3 follow-up avanzo los cinco frentes restantes: `Alt+Space` ahora usa backend Windows `WH_KEYBOARD_LL` cuando esta explicitamente gateado y smokeo Start/Cancel sin menu del sistema; tray/context menu agrega presets/history/settings; existe companion panel renderer para recovery/history/settings; result history local host-owned guarda ultimos 50 outputs exitosos; selection capture redakta metadata de target antes de cruzar frontera. Evidencia: `artifacts/desktop-control/combined-lote-smoke/20260624-five-fronts-altspace-companion/report.json`.
 
 ## Gaps Actuales En Dictation Tauri
 
@@ -155,6 +156,7 @@ Trabajo cerrado: `specs/012-fixvox-dock-dictation-key/tasks.md` Phase 8 / Checkp
 - No hay companion/recovery overlay separado; el estado actual usa chip compacto dentro del dock y resize nativo para estados review/error/cancelled.
 - No hay observer/verificacion real de insercion; `paste_sent` no debe presentarse como paste observado.
 - No hay seleccion/replace real en este flujo; solo insert-at-cursor gated.
-- Alt+Space sigue gated; `Ctrl+Shift+F9` es fallback tecnico por default. Falta la ruta robusta tipo Fixvox con WH_KEYBOARD_LL/supresion del menu del sistema y synthetic Alt-up antes de hacerlo UX default.
-- Context menu/tray existen como superficie inicial; falta enriquecerlos con result history, presets reales y settings.
-- Preset badge e indicador assistant son visual-only y no activan motor de presets/assistant real.
+- Alt+Space sigue gated; `Ctrl+Shift+F9` es fallback tecnico por default. La ruta `WH_KEYBOARD_LL` existe y paso smoke controlado, pero falta mas soak/manual E2E antes de hacerlo UX default.
+- Context menu/tray existen con presets/history/settings iniciales; falta settings real editable, input device, picker y result history UX completa.
+- Preset badge ya responde a menu, pero todavia no activa motor real de selection transform/assistant por default.
+- Indicador assistant sigue visual-only y no activa Quick Chat/Assistant Mode real.

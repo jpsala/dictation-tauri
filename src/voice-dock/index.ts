@@ -1,4 +1,5 @@
 export type {
+  DockActivePreset,
   DockCommand,
   DockRecoveryState,
   DockVisualOptions,

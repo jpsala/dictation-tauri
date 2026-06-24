@@ -73,7 +73,7 @@ Early post-MVP:
 
 - `011` T038 agrego el comando Tauri explicito `capture_selection_context` y lo registro en `src-tauri/src/lib.rs`.
 - La frontera sigue host-owned y no mutante: no clipboard, no teclas, no foco, no persistencia, no replace-selection y no `paste_observed`.
-- En Windows, el comando devuelve metadata de target y `no_selection` redacted por ahora; la lectura real de selected text via UI Automation y el smoke manual redacted siguen separados en T039/gate futuro.
+- En Windows, el comando devuelve metadata de target y `no_selection` redacted por ahora; la lectura real de selected text via UI Automation y el smoke manual redacted siguen separados en T039/gate futuro. Lote 3 reforzo esto redaktando tambien labels/clases de foreground target antes de cruzar la frontera Tauri.
 - El renderer no invoca `capture_selection_context` por default; solo existen contratos/routing para cuando se apruebe la captura real.
 
 Later:

@@ -110,4 +110,12 @@ describe("host selection capture boundary", () => {
       }
     }
   });
+
+  it("redacts foreground target labels before returning host selection metadata", () => {
+    const source = readFileSync("src-tauri/src/selection_capture.rs", "utf8");
+
+    expect(source).toContain("[redacted]");
+    expect(source).not.toContain("window_label: non_empty");
+    expect(source).not.toContain("app_label: non_empty");
+  });
 });

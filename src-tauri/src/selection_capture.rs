@@ -116,12 +116,20 @@ mod platform {
             };
         }
 
-        let window_label = get_window_text(hwnd);
-        let app_label = get_class_name(hwnd);
+        let has_window_label = !get_window_text(hwnd).trim().is_empty();
+        let has_app_label = !get_class_name(hwnd).trim().is_empty();
         let target_snapshot = SelectionTargetSnapshot {
             captured_at: None,
-            app_label: non_empty(app_label),
-            window_label: non_empty(window_label),
+            app_label: if has_app_label {
+                Some("[redacted]".to_string())
+            } else {
+                None
+            },
+            window_label: if has_window_label {
+                Some("[redacted]".to_string())
+            } else {
+                None
+            },
             confidence: "low",
         };
 
@@ -132,14 +140,6 @@ mod platform {
             Some(target_snapshot),
             "Host selection capture boundary is available; selected text capture remains gated.",
         )
-    }
-
-    fn non_empty(value: String) -> Option<String> {
-        if value.trim().is_empty() {
-            None
-        } else {
-            Some(value)
-        }
     }
 
     fn get_window_text(hwnd: windows_sys::Win32::Foundation::HWND) -> String {

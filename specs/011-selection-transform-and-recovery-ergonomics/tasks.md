@@ -194,7 +194,7 @@ specs/011-selection-transform-and-recovery-ergonomics/*, docs/WORKING_MEMORY.md,
 
 ### Notes
 
-- 2026-06-24: T038 implemented only the explicit Tauri command boundary `capture_selection_context`, registered in `src-tauri/src/lib.rs`. It returns typed redacted outcomes and target metadata without invoking from the renderer by default. The Windows path intentionally remains non-mutating and returns `no_selection` until a separate approved UI Automation selected-text reader/smoke is done; T039 remains open.
+- 2026-06-24: T038 implemented only the explicit Tauri command boundary `capture_selection_context`, registered in `src-tauri/src/lib.rs`. It returns typed redacted outcomes and target metadata without invoking from the renderer by default. The Windows path intentionally remains non-mutating and returns `no_selection` until a separate approved UI Automation selected-text reader/smoke is done; T039 remains open. Later hardening redacted target labels/classes before returning metadata across the Tauri boundary.
 - Do not add real selection capture, paste automation, focus APIs, or clipboard mutation in the same batch as selection contracts.
 - Do not implement Quick Chat, Assistant Mode, `Alt+Q`, durable history, preset settings, or full tray/background in 011 first slices.
 - If a task touches `src/App.tsx`, keep the batch small and run focused UI/visual checks.

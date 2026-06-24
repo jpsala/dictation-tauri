@@ -38,6 +38,7 @@ import {
   listenForTauriHostCommands,
   tauriGlobalHotkeyShortcut,
   type TauriGlobalHotkeyConfig,
+  type TauriHostCommandPayload,
 } from "./desktop-control/tauri-host-control";
 import {
   createInitialDictationKeyState,
@@ -55,6 +56,7 @@ import type {
 import {
   createVoiceDockState,
   VoiceDock,
+  type DockActivePreset,
   type DockCommand,
 } from "./voice-dock";
 import type {
@@ -80,6 +82,22 @@ type TranscriptReview = {
   model?: string;
   latencyMs?: number;
   requestId?: string;
+};
+
+type ResultHistoryEntry = {
+  schemaVersion: 1;
+  id: string;
+  runId: string;
+  source: "dictation" | "selection_transform";
+  text: string;
+  textLength: number;
+  createdAt: string;
+  deliveryEvidence?: {
+    status: string;
+    reason?: string;
+  };
+  provider?: string;
+  model?: string;
 };
 
 type CaptureGatewayRuntime = {
@@ -315,6 +333,49 @@ export function getTranscriptReview(
     latencyMs: transcriptionEvent?.data.latencyMs,
     requestId: transcriptionEvent?.data.stt?.requestId,
   };
+}
+
+function createHistoryEntryFromSummary(
+  summary: SimulatedRunSummary | undefined,
+): ResultHistoryEntry | undefined {
+  const latestResult = latestResultFromPipelineSummary(summary);
+  if (!summary || !latestResult) {
+    return undefined;
+  }
+
+  const transcription = findTranscriptionCompletedEvent(summary);
+  const deliveryEvidence = summary.deliveryEvidence?.status === "paste_observed"
+    ? undefined
+    : summary.deliveryEvidence;
+
+  return {
+    schemaVersion: 1,
+    id: `${summary.runId}:${latestResult.source}`,
+    runId: summary.runId,
+    source: latestResult.source,
+    text: latestResult.text,
+    textLength: latestResult.text.length,
+    createdAt: latestResult.createdAt ?? new Date().toISOString(),
+    deliveryEvidence: deliveryEvidence
+      ? {
+          status: deliveryEvidence.status,
+          reason: deliveryEvidence.reason,
+        }
+      : undefined,
+    provider: transcription?.data.stt?.provider,
+    model: transcription?.data.stt?.model,
+  };
+}
+
+function presetDisplayName(presetId: "rewrite" | "shorten" | "bulletize"): string {
+  switch (presetId) {
+    case "rewrite":
+      return "Rewrite";
+    case "shorten":
+      return "Shorten";
+    case "bulletize":
+      return "Bulletize";
+  }
 }
 
 function classifyTranscriptionFailure(
@@ -604,6 +665,11 @@ export function App() {
     bands: [0, 0, 0, 0, 0, 0, 0],
   });
   const [effectiveHotkeyLabel, setEffectiveHotkeyLabel] = useState(tauriGlobalHotkeyShortcut);
+  const [activePreset, setActivePreset] = useState<DockActivePreset | undefined>();
+  const [resultHistoryEntries, setResultHistoryEntries] = useState<ResultHistoryEntry[]>([]);
+  const [resultHistoryOpen, setResultHistoryOpen] = useState(false);
+  const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
+  const persistedHistoryEntryIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -618,6 +684,18 @@ export function App() {
         setEffectiveHotkeyLabel(tauriGlobalHotkeyShortcut);
       });
   }, []);
+
+  useEffect(() => {
+    const entry = createHistoryEntryFromSummary(pipelineUi.summary);
+    if (!entry || persistedHistoryEntryIdRef.current === entry.id || !isTauri()) {
+      return;
+    }
+
+    persistedHistoryEntryIdRef.current = entry.id;
+    void invoke<ResultHistoryEntry[]>("append_result_history_entry", { entry })
+      .then((entries) => setResultHistoryEntries(entries))
+      .catch(() => undefined);
+  }, [pipelineUi.summary]);
 
   useEffect(() => {
     let cancelled = false;
@@ -955,6 +1033,7 @@ export function App() {
     }),
     {
       canPasteLastSafe: canCopyTranscript,
+      activePreset,
       vuLevel: capture.state === "recording" ? dockVu.level : pipelineUi.status === "running" ? 0.42 : 0,
       vuBands: createDockVuBands(capture.state, pipelineUi.status, dockVu.bands),
     },
@@ -972,6 +1051,42 @@ export function App() {
       // Dock shell updates are best-effort; renderer state remains the source of truth.
     });
   }, [voiceDockState.phase]);
+
+  async function loadResultHistory() {
+    if (!isTauri()) {
+      setResultHistoryOpen(true);
+      return;
+    }
+
+    const entries = await invoke<ResultHistoryEntry[]>("list_result_history_entries");
+    setResultHistoryEntries(entries);
+    setResultHistoryOpen(true);
+  }
+
+  function handleHostCommandPayload(payload: Required<Pick<TauriHostCommandPayload, "command">> & Omit<TauriHostCommandPayload, "command">) {
+    switch (payload.command) {
+      case "select_preset":
+        if (payload.presetId) {
+          setActivePreset({
+            presetId: payload.presetId,
+            presetName: presetDisplayName(payload.presetId),
+            appKey: "global",
+          });
+        }
+        break;
+      case "clear_preset":
+        setActivePreset(undefined);
+        break;
+      case "show_result_history":
+        void loadResultHistory();
+        break;
+      case "open_settings":
+        setSettingsPanelOpen(true);
+        break;
+      default:
+        handleVoiceDockCommand(payload.command);
+    }
+  }
 
   function handleVoiceDockCommand(command: DockCommand) {
     switch (command) {
@@ -1064,8 +1179,8 @@ export function App() {
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
-    void listenForTauriHostCommands((command) => {
-      handleVoiceDockCommand(command);
+    void listenForTauriHostCommands((payload) => {
+      handleHostCommandPayload(payload);
     }).then((nextUnlisten) => {
       if (disposed) {
         nextUnlisten?.();
@@ -1219,6 +1334,55 @@ export function App() {
             void invoke("show_dock_context_menu").catch(() => undefined);
           }}
         />
+
+        {(resultHistoryOpen || settingsPanelOpen || voiceDockState.recovery) && (
+          <section className="dock-companion-panel" aria-label="Dock companion">
+            {voiceDockState.recovery && (
+              <div className="dock-companion-card">
+                <p className="dock-companion-kicker">Recovery</p>
+                <strong>{voiceDockState.recovery.title}</strong>
+                <p>{voiceDockState.recovery.message}</p>
+              </div>
+            )}
+            {resultHistoryOpen && (
+              <div className="dock-companion-card">
+                <p className="dock-companion-kicker">Result history</p>
+                {resultHistoryEntries.length === 0 ? (
+                  <p>No reusable results saved yet.</p>
+                ) : (
+                  <ul>
+                    {resultHistoryEntries.slice(-5).reverse().map((entry) => (
+                      <li key={entry.id}>
+                        {entry.source.replace("_", " ")} · {entry.textLength} chars · {entry.deliveryEvidence?.status ?? "available"}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setResultHistoryOpen(false)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+            {settingsPanelOpen && (
+              <div className="dock-companion-card">
+                <p className="dock-companion-kicker">Settings</p>
+                <strong>Dock settings are staged.</strong>
+                <p>Use the tray/context menu for presets while the full settings surface is built.</p>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setSettingsPanelOpen(false)}
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+          </section>
+        )}
 
         <details className="debug-details">
           <summary>Developer evidence</summary>

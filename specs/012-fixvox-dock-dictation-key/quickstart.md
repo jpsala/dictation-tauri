@@ -169,6 +169,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-dictation-e2
 - Accepted follow-ups: JP chose to accept remaining deviations as follow-ups rather than continue this batch: blue enter-submit affordance, native idle hit-region/rounded hit-test, state-aware processing/error resize, context menu, preset badge, and assistant indicators.
 - Still gated: Alt+Space, tray/background lifecycle, selected-text capture, replace-selection, observer-backed `paste_observed`, real app targets beyond controlled fixtures.
 
+### Lote 3 Five-Front Fixvox Parity Follow-Up - 2026-06-24
+
+- Scope: continued the five remaining Fixvox-parity fronts: robust Alt+Space, selection/replace foundation, enriched tray/context menu, companion/recovery, and durable history.
+- Alt+Space: Windows now has a gated native `WH_KEYBOARD_LL` backend. It is selected only when `DICTATION_TAURI_DICTATION_KEY=Alt+Space` and `DICTATION_TAURI_ALLOW_ALT_SPACE=true/1`; otherwise the default remains `Ctrl+Shift+F9`. Smoke confirmed the dock label changed to `Alt+Space` and synthetic Alt+Space started listening without system-menu interruption, then Cancel returned to recovery.
+- Tray/context menu: menu ids/events now include preset rewrite/shorten/bulletize, clear preset, result history, and settings. Renderer applies preset badge state, shows result-history/settings companion cards, and keeps Rust side effects limited to show/hide/quit.
+- Companion/recovery: first slice adds a compact renderer companion panel above the dock for recovery/history/settings. A separate Tauri companion window remains the stronger Fixvox-parity follow-up.
+- Durable history: Tauri host owns `result-history.v1.jsonl` under app data, with last-50 bounded storage, clear/list/append commands, and no `paste_observed` entries without a verified observer.
+- Selection: `capture_selection_context` redacts target labels before returning host metadata. Real UI Automation selected-text read and replace-selection remain gated follow-ups.
+- Evidence: `artifacts/desktop-control/combined-lote-smoke/20260624-five-fronts-altspace-companion/report.json` plus real dictation E2E retry `artifacts/desktop-control/dictation-e2e/20260624-five-fronts-e2e-retry/report.json`.
+- Checks passed: `npm run test:pipeline` (50 files / 242 tests), `npm run build`, `npm run visual:check` (8 tests), and `cd src-tauri && cargo check`.
+- Guardrails: no raw transcript in docs, no `paste_observed`, no real selected-text read, no replace-selection, no autostart install. One earlier E2E attempt failed because Windows foreground lock denied CUA focus; retry passed after cleanup.
+
 ### Lote 2 Tray/Hotkey/Selection Boundary Follow-Up - 2026-06-24
 
 - Scope: combined follow-up requested as items 1/2/3 after Lote 1: context menu/tray/background lifecycle, gated Alt+Space path, and 011 selection boundary.

@@ -801,6 +801,64 @@ h1 {
   display: none;
 }
 
+.dock-companion-panel {
+  position: fixed;
+  left: 50%;
+  bottom: 104px;
+  width: min(320px, calc(100vw - 28px));
+  transform: translateX(-50%);
+  display: grid;
+  gap: 8px;
+  z-index: 20;
+  pointer-events: auto;
+}
+
+.dock-companion-card {
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgb(19 24 27 / 94%), rgb(11 14 17 / 94%));
+  color: rgb(244 248 247 / 94%);
+  box-shadow: 0 14px 32px rgb(0 0 0 / 34%);
+  padding: 12px 14px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.dock-companion-card p {
+  margin: 4px 0 0;
+  color: rgb(218 228 226 / 74%);
+}
+
+.dock-companion-card ul {
+  margin: 8px 0 10px;
+  padding-left: 18px;
+  color: rgb(230 238 236 / 86%);
+}
+
+.dock-companion-card li + li {
+  margin-top: 4px;
+}
+
+.dock-companion-kicker {
+  margin: 0 0 4px !important;
+  color: rgb(116 226 164 / 82%) !important;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.secondary-button {
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 8%);
+  color: rgb(244 248 247 / 92%);
+  padding: 6px 9px;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
 .debug-details {
   display: none;
 }

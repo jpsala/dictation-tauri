@@ -1,6 +1,13 @@
 use serde::Serialize;
 use tauri_plugin_global_shortcut::{Code, Modifiers};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HotkeyBackend {
+    TauriGlobalShortcut,
+    WindowsLowLevelHook,
+}
+
 pub const DEFAULT_DESKTOP_CONTROL_HOTKEY: &str = "Ctrl+Shift+F9";
 pub const ALT_SPACE_DESKTOP_CONTROL_HOTKEY: &str = "Alt+Space";
 pub const DESKTOP_CONTROL_HOTKEY_EVENT: &str = "desktop-control://global-hotkey";
@@ -12,6 +19,7 @@ pub struct EffectiveDictationHotkey {
     pub shortcut: &'static str,
     pub modifiers: Modifiers,
     pub code: Code,
+    pub backend: HotkeyBackend,
     pub requested_shortcut: Option<&'static str>,
     pub alt_space_requested: bool,
     pub alt_space_enabled: bool,
@@ -26,6 +34,7 @@ pub struct DesktopControlHotkeyConfig {
     pub requested_shortcut: Option<&'static str>,
     pub alt_space_requested: bool,
     pub alt_space_enabled: bool,
+    pub backend: HotkeyBackend,
     pub fallback_reason: Option<&'static str>,
 }
 
@@ -55,6 +64,7 @@ pub fn desktop_control_hotkey_config(
         requested_shortcut: hotkey.requested_shortcut,
         alt_space_requested: hotkey.alt_space_requested,
         alt_space_enabled: hotkey.alt_space_enabled,
+        backend: hotkey.backend,
         fallback_reason: hotkey.fallback_reason,
     }
 }
@@ -74,14 +84,22 @@ pub fn resolve_effective_dictation_hotkey(
 ) -> EffectiveDictationHotkey {
     match requested.map(normalize_shortcut).as_deref() {
         None | Some("") | Some("ctrl+shift+f9") => default_hotkey(None),
-        Some("alt+space") if alt_space_allowed => EffectiveDictationHotkey {
+        Some("alt+space") if alt_space_allowed && cfg!(windows) => EffectiveDictationHotkey {
             shortcut: ALT_SPACE_DESKTOP_CONTROL_HOTKEY,
             modifiers: Modifiers::ALT,
             code: Code::Space,
+            backend: HotkeyBackend::WindowsLowLevelHook,
             requested_shortcut: Some(ALT_SPACE_DESKTOP_CONTROL_HOTKEY),
             alt_space_requested: true,
             alt_space_enabled: true,
             fallback_reason: None,
+        },
+        Some("alt+space") if alt_space_allowed => EffectiveDictationHotkey {
+            requested_shortcut: Some(ALT_SPACE_DESKTOP_CONTROL_HOTKEY),
+            alt_space_requested: true,
+            alt_space_enabled: false,
+            fallback_reason: Some("alt_space_native_hook_windows_only"),
+            ..default_hotkey(None)
         },
         Some("alt+space") => EffectiveDictationHotkey {
             requested_shortcut: Some(ALT_SPACE_DESKTOP_CONTROL_HOTKEY),
@@ -103,6 +121,7 @@ fn default_hotkey(requested_shortcut: Option<&'static str>) -> EffectiveDictatio
         shortcut: DEFAULT_DESKTOP_CONTROL_HOTKEY,
         modifiers: Modifiers::CONTROL | Modifiers::SHIFT,
         code: Code::F9,
+        backend: HotkeyBackend::TauriGlobalShortcut,
         requested_shortcut,
         alt_space_requested: false,
         alt_space_enabled: false,
@@ -150,6 +169,10 @@ pub fn register_desktop_control_hotkey<R: tauri::Runtime>(
 
     let hotkey = resolve_effective_dictation_hotkey_from_env();
 
+    if hotkey.backend == HotkeyBackend::WindowsLowLevelHook {
+        return native_alt_space::register_alt_space_hook(app, hotkey);
+    }
+
     app.plugin(
         tauri_plugin_global_shortcut::Builder::new()
             .with_shortcuts([hotkey.shortcut])?
@@ -183,6 +206,134 @@ pub fn register_desktop_control_hotkey<R: tauri::Runtime>(
     Ok(())
 }
 
+#[cfg(windows)]
+mod native_alt_space {
+    use super::{
+        desktop_control_hotkey_pressed_payload, desktop_control_hotkey_released_payload,
+        EffectiveDictationHotkey, DESKTOP_CONTROL_HOTKEY_EVENT,
+    };
+    use std::error::Error;
+    use std::ptr::null_mut;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{mpsc, Mutex, OnceLock};
+    use tauri::Emitter;
+    use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        keybd_event, GetAsyncKeyState, KEYEVENTF_KEYUP, VK_MENU, VK_SPACE,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, GetMessageW, SetWindowsHookExW, HC_ACTION, KBDLLHOOKSTRUCT, MSG,
+        WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    };
+
+    #[derive(Clone, Copy, Debug)]
+    enum NativeAltSpaceEvent {
+        Pressed,
+        Released,
+    }
+
+    static EVENT_SENDER: OnceLock<Mutex<Option<mpsc::Sender<NativeAltSpaceEvent>>>> =
+        OnceLock::new();
+    static SPACE_DOWN: AtomicBool = AtomicBool::new(false);
+
+    pub fn register_alt_space_hook<R: tauri::Runtime>(
+        app: &tauri::AppHandle<R>,
+        hotkey: EffectiveDictationHotkey,
+    ) -> Result<(), Box<dyn Error>> {
+        let (tx, rx) = mpsc::channel::<NativeAltSpaceEvent>();
+        let sender = EVENT_SENDER.get_or_init(|| Mutex::new(None));
+        *sender
+            .lock()
+            .map_err(|_| "alt-space hook sender poisoned")? = Some(tx);
+
+        let app_handle = app.clone();
+        std::thread::spawn(move || {
+            while let Ok(event) = rx.recv() {
+                let payload = match event {
+                    NativeAltSpaceEvent::Pressed => desktop_control_hotkey_pressed_payload(hotkey),
+                    NativeAltSpaceEvent::Released => {
+                        desktop_control_hotkey_released_payload(hotkey)
+                    }
+                };
+                let _ = app_handle.emit(DESKTOP_CONTROL_HOTKEY_EVENT, payload);
+            }
+        });
+
+        std::thread::spawn(move || unsafe {
+            let module = GetModuleHandleW(null_mut());
+            let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), module, 0);
+            if hook.is_null() {
+                return;
+            }
+
+            let mut message: MSG = std::mem::zeroed();
+            while GetMessageW(&mut message, null_mut(), 0, 0) > 0 {}
+        });
+
+        Ok(())
+    }
+
+    unsafe extern "system" fn keyboard_proc(
+        code: i32,
+        w_param: WPARAM,
+        l_param: LPARAM,
+    ) -> LRESULT {
+        if code == HC_ACTION as i32 {
+            let event = w_param as u32;
+            let is_down = event == WM_KEYDOWN || event == WM_SYSKEYDOWN;
+            let is_up = event == WM_KEYUP || event == WM_SYSKEYUP;
+            let keyboard = &*(l_param as *const KBDLLHOOKSTRUCT);
+            let is_space = keyboard.vkCode == VK_SPACE as u32;
+            let alt_down = (GetAsyncKeyState(VK_MENU as i32) & 0x8000u16 as i16) != 0;
+
+            if is_space && alt_down && is_down {
+                if !SPACE_DOWN.swap(true, Ordering::SeqCst) {
+                    send_event(NativeAltSpaceEvent::Pressed);
+                }
+                return 1;
+            }
+
+            if is_space && is_up && SPACE_DOWN.swap(false, Ordering::SeqCst) {
+                send_event(NativeAltSpaceEvent::Released);
+                synthesize_alt_up();
+                return 1;
+            }
+        }
+
+        CallNextHookEx(null_mut(), code, w_param, l_param)
+    }
+
+    fn send_event(event: NativeAltSpaceEvent) {
+        if let Some(lock) = EVENT_SENDER.get() {
+            if let Ok(guard) = lock.lock() {
+                if let Some(sender) = guard.as_ref() {
+                    let _ = sender.send(event);
+                }
+            }
+        }
+    }
+
+    fn synthesize_alt_up() {
+        unsafe {
+            keybd_event(VK_MENU as u8, 0, KEYEVENTF_KEYUP, 0);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+mod native_alt_space {
+    use super::EffectiveDictationHotkey;
+    use std::error::Error;
+
+    pub fn register_alt_space_hook<R: tauri::Runtime>(
+        _app: &tauri::AppHandle<R>,
+        _hotkey: EffectiveDictationHotkey,
+    ) -> Result<(), Box<dyn Error>> {
+        Err("Alt+Space native hook is only available on Windows".into())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,6 +345,7 @@ mod tests {
         assert_eq!(hotkey.shortcut, DEFAULT_DESKTOP_CONTROL_HOTKEY);
         assert_eq!(hotkey.modifiers, Modifiers::CONTROL | Modifiers::SHIFT);
         assert_eq!(hotkey.code, Code::F9);
+        assert_eq!(hotkey.backend, HotkeyBackend::TauriGlobalShortcut);
         assert!(!hotkey.alt_space_enabled);
         assert_eq!(hotkey.fallback_reason, None);
     }
@@ -213,6 +365,7 @@ mod tests {
         assert_eq!(enabled.shortcut, ALT_SPACE_DESKTOP_CONTROL_HOTKEY);
         assert_eq!(enabled.modifiers, Modifiers::ALT);
         assert_eq!(enabled.code, Code::Space);
+        assert_eq!(enabled.backend, HotkeyBackend::WindowsLowLevelHook);
         assert!(enabled.alt_space_enabled);
         assert_eq!(enabled.fallback_reason, None);
     }

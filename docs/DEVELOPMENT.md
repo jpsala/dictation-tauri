@@ -196,6 +196,7 @@ Pendiente de decision de producto. Hasta entonces, en modo personal/dev:
 - Se pueden leer y usar `.env`, logs, bases locales, audio, transcripciones y artifacts de referencia.
 - Se puede guardar persistencia experimental local si acelera benchmarks, diagnostico o desarrollo.
 - Antes de volverlo contrato de producto, documentar ruta, formato, ciclo de vida y politica de borrado.
+- Resultado reusable post-2026-06-24: `result-history.v1.jsonl` es persistencia host-owned experimental bajo app data Tauri, bounded a 50 entradas, con comandos list/append/clear. Guarda texto de salida exitoso como dato sensible local; no guardar `paste_observed` sin observer verificado, raw selection input, target titles, audio paths ni provider payloads.
 - `.env`/tokens no se commitean salvo pedido explicito y acotado de JP.
 - No usar `localStorage`, caches temporales o logs como fuente de verdad durable.
 

@@ -15,6 +15,12 @@ pub const MENU_START: &str = "start_dictation";
 pub const MENU_STOP: &str = "stop_dictation";
 pub const MENU_CANCEL: &str = "cancel_dictation";
 pub const MENU_PASTE_LAST_SAFE: &str = "paste_last_safe";
+pub const MENU_PRESET_REWRITE: &str = "preset_rewrite";
+pub const MENU_PRESET_SHORTEN: &str = "preset_shorten";
+pub const MENU_PRESET_BULLETIZE: &str = "preset_bulletize";
+pub const MENU_CLEAR_PRESET: &str = "clear_preset";
+pub const MENU_SHOW_RESULT_HISTORY: &str = "show_result_history";
+pub const MENU_OPEN_SETTINGS: &str = "open_settings";
 pub const MENU_QUIT: &str = "quit";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -22,6 +28,7 @@ pub const MENU_QUIT: &str = "quit";
 pub struct HostCommandPayload {
     pub source: &'static str,
     pub command: &'static str,
+    pub preset_id: Option<&'static str>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,6 +39,10 @@ pub enum HostMenuAction {
     StopDictation,
     CancelDictation,
     PasteLastSafe,
+    SelectPreset(&'static str),
+    ClearPreset,
+    ShowResultHistory,
+    OpenSettings,
     Quit,
     Unknown,
 }
@@ -44,17 +55,27 @@ pub fn resolve_host_menu_action(id: &str) -> HostMenuAction {
         MENU_STOP => HostMenuAction::StopDictation,
         MENU_CANCEL => HostMenuAction::CancelDictation,
         MENU_PASTE_LAST_SAFE => HostMenuAction::PasteLastSafe,
+        MENU_PRESET_REWRITE => HostMenuAction::SelectPreset("rewrite"),
+        MENU_PRESET_SHORTEN => HostMenuAction::SelectPreset("shorten"),
+        MENU_PRESET_BULLETIZE => HostMenuAction::SelectPreset("bulletize"),
+        MENU_CLEAR_PRESET => HostMenuAction::ClearPreset,
+        MENU_SHOW_RESULT_HISTORY => HostMenuAction::ShowResultHistory,
+        MENU_OPEN_SETTINGS => HostMenuAction::OpenSettings,
         MENU_QUIT => HostMenuAction::Quit,
         _ => HostMenuAction::Unknown,
     }
 }
 
 pub fn host_command_payload(action: HostMenuAction) -> Option<HostCommandPayload> {
-    let command = match action {
-        HostMenuAction::StartDictation => "start",
-        HostMenuAction::StopDictation => "stop",
-        HostMenuAction::CancelDictation => "cancel",
-        HostMenuAction::PasteLastSafe => "paste_last_safe",
+    let (command, preset_id) = match action {
+        HostMenuAction::StartDictation => ("start", None),
+        HostMenuAction::StopDictation => ("stop", None),
+        HostMenuAction::CancelDictation => ("cancel", None),
+        HostMenuAction::PasteLastSafe => ("paste_last_safe", None),
+        HostMenuAction::SelectPreset(preset_id) => ("select_preset", Some(preset_id)),
+        HostMenuAction::ClearPreset => ("clear_preset", None),
+        HostMenuAction::ShowResultHistory => ("show_result_history", None),
+        HostMenuAction::OpenSettings => ("open_settings", None),
         HostMenuAction::ShowDock
         | HostMenuAction::HideDock
         | HostMenuAction::Quit
@@ -64,6 +85,7 @@ pub fn host_command_payload(action: HostMenuAction) -> Option<HostCommandPayload
     Some(HostCommandPayload {
         source: "tray_or_context_menu",
         command,
+        preset_id,
     })
 }
 
@@ -117,6 +139,14 @@ fn build_host_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu:
         .text(MENU_CANCEL, "Cancel dictation")
         .separator()
         .text(MENU_PASTE_LAST_SAFE, "Paste last (safe)")
+        .text(MENU_SHOW_RESULT_HISTORY, "Result history")
+        .separator()
+        .text(MENU_PRESET_REWRITE, "Preset: Rewrite")
+        .text(MENU_PRESET_SHORTEN, "Preset: Shorten")
+        .text(MENU_PRESET_BULLETIZE, "Preset: Bulletize")
+        .text(MENU_CLEAR_PRESET, "Clear preset")
+        .separator()
+        .text(MENU_OPEN_SETTINGS, "Settings")
         .separator()
         .text(MENU_QUIT, "Quit Dictation Tauri")
         .build()
@@ -169,6 +199,22 @@ mod tests {
             resolve_host_menu_action(MENU_PASTE_LAST_SAFE),
             HostMenuAction::PasteLastSafe
         );
+        assert_eq!(
+            resolve_host_menu_action(MENU_PRESET_REWRITE),
+            HostMenuAction::SelectPreset("rewrite")
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_CLEAR_PRESET),
+            HostMenuAction::ClearPreset
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_SHOW_RESULT_HISTORY),
+            HostMenuAction::ShowResultHistory
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_OPEN_SETTINGS),
+            HostMenuAction::OpenSettings
+        );
         assert_eq!(resolve_host_menu_action(MENU_QUIT), HostMenuAction::Quit);
         assert_eq!(resolve_host_menu_action("unknown"), HostMenuAction::Unknown);
     }
@@ -180,6 +226,7 @@ mod tests {
             Some(HostCommandPayload {
                 source: "tray_or_context_menu",
                 command: "start",
+                preset_id: None,
             })
         );
         assert_eq!(
@@ -187,6 +234,15 @@ mod tests {
             Some(HostCommandPayload {
                 source: "tray_or_context_menu",
                 command: "stop",
+                preset_id: None,
+            })
+        );
+        assert_eq!(
+            host_command_payload(HostMenuAction::SelectPreset("rewrite")),
+            Some(HostCommandPayload {
+                source: "tray_or_context_menu",
+                command: "select_preset",
+                preset_id: Some("rewrite"),
             })
         );
         assert_eq!(host_command_payload(HostMenuAction::ShowDock), None);

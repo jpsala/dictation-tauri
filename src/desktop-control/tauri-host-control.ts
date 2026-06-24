@@ -23,11 +23,20 @@ export type TauriGlobalHotkeyConfig = {
   fallbackReason?: string;
 };
 
-export type TauriHostCommand = "start" | "stop" | "cancel" | "paste_last_safe";
+export type TauriHostCommand =
+  | "start"
+  | "stop"
+  | "cancel"
+  | "paste_last_safe"
+  | "select_preset"
+  | "clear_preset"
+  | "show_result_history"
+  | "open_settings";
 
 export type TauriHostCommandPayload = {
   source?: "tray_or_context_menu";
   command?: TauriHostCommand;
+  presetId?: "rewrite" | "shorten" | "bulletize";
 };
 
 export type TauriGlobalHotkeyListenerOptions = {
@@ -43,7 +52,8 @@ export type TauriGlobalHotkeyHandler = (
 ) => void | Promise<void>;
 
 export type TauriHostCommandHandler = (
-  command: TauriHostCommand,
+  payload: Required<Pick<TauriHostCommandPayload, "command">> &
+    Omit<TauriHostCommandPayload, "command">,
 ) => void | Promise<void>;
 
 export function createDictationKeyEventFromTauriHotkey(
@@ -109,7 +119,7 @@ export async function listenForTauriHostCommands(
         return;
       }
 
-      void handler(command);
+      void handler({ ...event.payload, command });
     },
   );
 }

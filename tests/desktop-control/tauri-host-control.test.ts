@@ -6,6 +6,7 @@ import {
   tauriGlobalHotkeyEventName,
   tauriGlobalHotkeyShortcut,
   tauriHostCommandEventName,
+  type TauriHostCommandPayload,
 } from "../../src/desktop-control/tauri-host-control";
 
 const forbiddenHotkeyBoundaryMarkers = [
@@ -93,12 +94,28 @@ describe("Tauri host-owned global hotkey boundary", () => {
     }
   });
 
+  it("models enriched tray/context host commands without desktop side effects", () => {
+    const presetPayload: TauriHostCommandPayload = {
+      source: "tray_or_context_menu",
+      command: "select_preset",
+      presetId: "rewrite",
+    };
+    const historyPayload: TauriHostCommandPayload = {
+      source: "tray_or_context_menu",
+      command: "show_result_history",
+    };
+
+    expect(presetPayload.presetId).toBe("rewrite");
+    expect(historyPayload.command).toBe("show_result_history");
+  });
+
   it("keeps Rust hotkey registration host-owned with a gated Alt+Space path", () => {
     const source = readFileSync("src-tauri/src/desktop_control.rs", "utf8");
 
     expect(source).toContain("Ctrl+Shift+F9");
     expect(source).toContain("Alt+Space");
     expect(source).toContain("DICTATION_TAURI_ALLOW_ALT_SPACE");
+    expect(source).toContain("WH_KEYBOARD_LL");
     expect(source).toContain(tauriGlobalHotkeyEventName);
     expect(source).toContain("global_hotkey");
     expect(source).toContain("pressed");
