@@ -1555,7 +1555,7 @@ export function App() {
           </div>
           <div>
             <dt>Hotkey</dt>
-            <dd>{isTauri() ? tauriGlobalHotkeyShortcut : "Unavailable in browser"}</dd>
+            <dd>{isTauri() ? effectiveHotkeyLabel : "Unavailable in browser"}</dd>
           </div>
         </dl>
 

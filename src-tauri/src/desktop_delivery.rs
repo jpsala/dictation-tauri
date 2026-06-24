@@ -159,21 +159,32 @@ mod platform {
     }
 
     fn did_observe_inserted_text(text: &str, before: Option<&str>, after: Option<&str>) -> bool {
-        let expected = text.trim();
-        if expected.is_empty() {
+        let expected = normalize_observer_text(text);
+        if expected.trim().is_empty() {
             return false;
         }
 
         let Some(after) = after else {
             return false;
         };
-        if !after.contains(expected) {
-            return false;
-        }
 
-        before
-            .map(|value| !value.contains(expected))
-            .unwrap_or(true)
+        let before_count = before
+            .map(|value| count_observer_occurrences(&normalize_observer_text(value), &expected))
+            .unwrap_or(0);
+        let after_count = count_observer_occurrences(&normalize_observer_text(after), &expected);
+
+        after_count > before_count
+    }
+
+    fn normalize_observer_text(value: &str) -> String {
+        value.trim().replace("\r\n", "\n").replace('\r', "\n")
+    }
+
+    fn count_observer_occurrences(haystack: &str, needle: &str) -> usize {
+        if needle.is_empty() {
+            return 0;
+        }
+        haystack.match_indices(needle).count()
     }
 
     fn read_observable_window_text(hwnd: HWND) -> Option<String> {
@@ -390,6 +401,60 @@ mod platform {
         }
 
         Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::did_observe_inserted_text;
+
+        #[test]
+        fn observer_requires_inserted_text_to_appear_after_paste() {
+            assert!(did_observe_inserted_text(
+                "fresh dictation result",
+                Some("before text"),
+                Some("before text\nfresh dictation result")
+            ));
+
+            assert!(!did_observe_inserted_text(
+                "fresh dictation result",
+                Some("before text"),
+                Some("before text")
+            ));
+            assert!(!did_observe_inserted_text(
+                "fresh dictation result",
+                Some("before text"),
+                None
+            ));
+            assert!(!did_observe_inserted_text(
+                "   ",
+                Some("before text"),
+                Some("before text")
+            ));
+        }
+
+        #[test]
+        fn observer_requires_occurrence_count_to_increase() {
+            assert!(did_observe_inserted_text(
+                "repeatable dictation result",
+                Some("repeatable dictation result"),
+                Some("repeatable dictation result\nrepeatable dictation result")
+            ));
+
+            assert!(!did_observe_inserted_text(
+                "repeatable dictation result",
+                Some("repeatable dictation result"),
+                Some("repeatable dictation result")
+            ));
+        }
+
+        #[test]
+        fn observer_normalizes_line_endings_for_bounded_text_reads() {
+            assert!(did_observe_inserted_text(
+                "line one\r\nline two",
+                Some("prefix"),
+                Some("prefix\nline one\nline two")
+            ));
+        }
     }
 }
 

@@ -214,6 +214,40 @@ describe("desktop delivery evidence foundation", () => {
     expect(invokeCalls[0]).toMatchObject({ pressEnterAfterPaste: false });
   });
 
+  it("allows a Tauri verified observer to elevate delivery to paste_observed", async () => {
+    const gateway = createTauriSavedTargetDeliveryGateway({
+      invoke: async () => ({
+        status: "paste_observed" as const,
+        reason: "Paste insertion was verified by a bounded Win32 text observer on the saved target.",
+        target: {
+          frameHwnd: "123",
+          windowTitle: "Scratchpad",
+          windowClass: "Notepad",
+          processId: 1,
+          inputLike: true,
+          reason: "foreground target captured before dictation",
+        },
+      }),
+      getTarget: () => ({
+        frameHwnd: "123",
+        windowTitle: "Scratchpad",
+        windowClass: "Notepad",
+        processId: 1,
+        inputLike: true,
+        reason: "foreground target captured before dictation",
+      }),
+    });
+
+    await expect(
+      gateway.deliver(createDeliveryRequest({ strategy: "paste_send", allowDesktopSideEffects: true })),
+    ).resolves.toMatchObject({
+      status: "paste_observed",
+      strategy: "paste_send",
+      message: "Paste insertion was observed by a verified desktop observer.",
+      reason: "Paste insertion was verified by a bounded Win32 text observer on the saved target.",
+    });
+  });
+
   it("can request paste-then-enter through Tauri while keeping evidence as paste_sent", async () => {
     const invokeCalls: Record<string, unknown>[] = [];
     const gateway = createTauriSavedTargetDeliveryGateway({

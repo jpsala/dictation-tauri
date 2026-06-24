@@ -155,7 +155,7 @@ Trabajo cerrado: `specs/012-fixvox-dock-dictation-key/tasks.md` Phase 8 / Checkp
 
 - No hay autostart/Start with Windows ni instalador/background lifecycle de app instalada; si se implementa, pedir confirmacion.
 - No hay companion/recovery overlay separado; el estado actual usa chip compacto dentro del dock y resize nativo para estados review/error/cancelled.
-- Hay observer Win32 bounded, pero no hay E2E post-cambio pasando que pruebe `paste_observed`; `paste_sent` no debe presentarse como observado salvo verificacion real del observer.
+- Hay observer Win32 bounded con hardening interno provider-free: normaliza line endings y exige aumento de ocurrencias entre lecturas Win32 antes de elevar a `paste_observed`. Un E2E controlado post-cambio paso con product UI `paste_observed` en `artifacts/desktop-control/dictation-e2e/20260624-observer-paste-observed-e2e-verified/report.json`; fuera de esa ruta verificada, `paste_sent` no debe presentarse como observado.
 - Hay selected-text read UIA best-effort con smoke T039 redacted pasado y replace foundation, pero falta flujo UX completo preset -> selection transform -> replace-selection.
 - Alt+Space es default en Windows y `Ctrl+Shift+F9` queda fallback explicito. Falta mas soak/manual E2E post-default para harden antes de llamarlo final.
 - Context menu/tray existen con presets/history/settings iniciales; falta settings real editable, input device, picker y result history UX completa.

@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-const [wsUrl, expression] = process.argv.slice(2);
+const [wsUrl, rawExpression] = process.argv.slice(2);
+const expression = rawExpression?.startsWith("base64:")
+  ? Buffer.from(rawExpression.slice("base64:".length), "base64").toString("utf8")
+  : rawExpression;
 
 if (!wsUrl || !expression) {
   console.error("Usage: node scripts/cdp-evaluate.mjs <webSocketDebuggerUrl> <expression>");

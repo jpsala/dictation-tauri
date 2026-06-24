@@ -180,6 +180,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-dictation-e2
 - Checks passed before docs update: `npm run test:pipeline` (50 files / 242 tests), `npm run build`, `npm run visual:check` (8 tests), and `cd src-tauri && cargo check`.
 - Guardrails: no raw transcript in docs, no selected text printed, no autostart install. Do not claim product `paste_observed` until a passing observer smoke proves it on a controlled target.
 
+### Observer Internal Hardening - 2026-06-24
+
+- Scope: provider-free/internal hardening before any real product `paste_observed` claim.
+- Rust observer predicate now normalizes line endings and requires the inserted text's occurrence count to increase between bounded Win32 text reads. This keeps repeated identical dictation results observable while avoiding the old all-or-nothing "before already contained output" behavior.
+- Coverage added: positive insertion, no insertion, missing `after`, empty output, repeated-text insertion, unchanged target text, and CRLF/LF normalization in `src-tauri/src/desktop_delivery.rs`; renderer evidence test proves only the Tauri verified-observer result path may elevate to `paste_observed`.
+- Verification: `npm run test:pipeline -- tests/desktop-control/delivery-evidence.test.ts` OK (13 tests), `npm run test:pipeline` OK (50 files / 243 tests), `npm run build` OK, `cd src-tauri && cargo fmt --check` OK, `cd src-tauri && cargo check` OK. `cargo test desktop_delivery::platform::tests --lib` is still blocked in this environment by known `STATUS_ENTRYPOINT_NOT_FOUND`, so the Rust tests are compile-guarded and will run when the local Tauri test harness issue is resolved.
+- Guardrail: this is not a real observer smoke and does not prove `paste_observed` on an external target; controlled E2E remains gated.
+
+### Observer Controlled E2E - 2026-06-24
+
+- Approval: JP explicitly approved a controlled observer E2E after noting the previous runs spoke before dictation was active.
+- Harness hardening: `scripts/desktop-dictation-e2e.ps1` now uses WebView2 CDP product state logs, records hotkey config, waits until the UI reaches `Listening` before speaking, reads final delivery evidence from the product UI, and supports base64-encoded CDP expressions via `scripts/cdp-evaluate.mjs` to avoid PowerShell quote corruption. Token matching is non-gating for observer-focused runs because ambient/user speech can be captured while validating paste observation.
+- Passing run: `artifacts/desktop-control/dictation-e2e/20260624-observer-paste-observed-e2e-verified/report.json`.
+- Validated path: Cua health -> Tauri dock -> product CDP ready -> `Ctrl+Shift+F9` fallback config -> target foreground -> first hotkey -> UI `Listening` before synthetic speech -> fresh WAV -> managed STT -> target received text -> product UI delivery status `paste_observed` -> clipboard sentinel restored.
+- Evidence: delivery UI reported `paste_observed`, target length `26`, fresh WAV `artifacts/microphone-capture/audio/capture-native-1782336845813.wav`, clipboard sentinel restored. Raw transcript/target text remains only in ignored artifacts and is not copied into docs.
+- Caveat: spoken fixture tokens did not match in the passing observer run, likely due ambient/user speech capture; this does not invalidate the observer proof but means this run should not be reused as a speech-recognition fixture-quality benchmark.
+
 ### Lote 3 Five-Front Fixvox Parity Follow-Up - 2026-06-24
 
 - Scope: continued the five remaining Fixvox-parity fronts: robust Alt+Space, selection/replace foundation, enriched tray/context menu, companion/recovery, and durable history.

@@ -55,10 +55,23 @@ Smoke local 2026-06-24 en este repo:
 E2E real local 2026-06-24 en este repo:
 
 - Harness versionado: `scripts/desktop-dictation-e2e.ps1` (`npm run desktop-control:e2e -- <flags>` o PowerShell directo).
-- Comando probado: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-dictation-e2e.ps1 -AllowDesktopSideEffects -AllowProviderCall -AllowClipboardMutation -RecordingSeconds 2 -InitialDelaySeconds 12 -DeliveryTimeoutSeconds 180`.
-- Flujo validado de punta a punta: Cua health/autostart -> Tauri `Dictation Dock` -> fixture target editable foreground -> `Ctrl+Shift+F9` start -> speech synthesis local de frase fixture -> `Ctrl+Shift+F9` stop -> WAV fresco -> provider real configurado -> `paste_sent` al target -> clipboard sentinel restaurado -> cleanup.
-- Evidencia ultima corrida: `artifacts/desktop-control/dictation-e2e/20260624-104246/report.json`; audio fresco `artifacts/microphone-capture/audio/capture-native-1782308585886.wav`. El texto raw del target queda en artifact ignorado; docs/report usan longitud/hash/tokens de fixture.
-- Gotchas resueltos: lanzar el target despues del dock evita guardar el dock como destino; outputs vivos del target van a `%TEMP%` y se copian al final porque Vite puede crashear con `EBUSY` si watch-ea archivos escritos dentro de `artifacts/`.
+- Comando base probado para `paste_sent`: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-dictation-e2e.ps1 -AllowDesktopSideEffects -AllowProviderCall -AllowClipboardMutation -RecordingSeconds 2 -InitialDelaySeconds 12 -DeliveryTimeoutSeconds 180`.
+- Comando observer probado para `paste_observed`: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-dictation-e2e.ps1 -AllowDesktopSideEffects -AllowProviderCall -AllowClipboardMutation -ExpectPasteObserved -DictationKey CtrlShiftF9 -RunId <id> -InitialDelaySeconds 8 -RecordingSeconds 5 -DeliveryTimeoutSeconds 180 -RemoteDebugPort <free-port>`.
+- Flujo validado de punta a punta: Cua health/autostart -> Tauri `Dictation Dock` -> CDP/WebView2 listo -> fixture target editable foreground -> hotkey start -> UI `Listening` confirmada -> speech synthesis local -> hotkey stop -> WAV fresco -> provider real configurado -> paste al target -> evidencia de delivery desde UI -> clipboard sentinel restaurado -> cleanup.
+- Evidencia `paste_sent`: `artifacts/desktop-control/dictation-e2e/20260624-104246/report.json`; audio fresco `artifacts/microphone-capture/audio/capture-native-1782308585886.wav`.
+- Evidencia `paste_observed`: `artifacts/desktop-control/dictation-e2e/20260624-observer-paste-observed-e2e-verified/report.json`; product UI `deliveryStatus = paste_observed`, target length/hash en report, fresh WAV `artifacts/microphone-capture/audio/capture-native-1782336845813.wav`, clipboard sentinel restored. El texto raw del target queda en artifact ignorado; docs/report usan longitud/hash/tokens.
+- Gotchas resueltos: lanzar el target despues del dock evita guardar el dock como destino; outputs vivos del target van a `%TEMP%` y se copian al final porque Vite puede crashear con `EBUSY` si watch-ea archivos escritos dentro de `artifacts/`; no hablar hasta confirmar UI `Listening` por CDP porque si no el speech se emite fuera de la grabacion; pasar expresiones CDP como `base64:` en `scripts/cdp-evaluate.mjs` evita corrupcion de quotes/`&&`/heredocs al cruzar PowerShell/Node/CDP; leer el estado de delivery desde la UI/product IPC es mas confiable que inferirlo por el target file; para observer-focused runs el token match de STT puede ser non-gating si hay speech ambiente, pero debe quedar advertido y no usarse como benchmark de calidad STT.
+
+### Computer Use Playbook Especifico Para Dictation Dock
+
+1. **Preparar el target antes de actuar**: cerrar procesos viejos (`dictation-tauri`, ventanas fixture), elegir `RunId`, puerto CDP libre y fixture local; nunca usar documentos/apps personales como target.
+2. **Lanzar y observar antes de inputs**: esperar `Dictation Dock`, comprobar Cua `health_report`, abrir WebView2 CDP y verificar `window.__TAURI_INTERNALS__.invoke`; registrar `get_desktop_control_hotkey_config` para saber si se esta probando `Alt+Space` o `Ctrl+Shift+F9`.
+3. **Verificar activacion real**: tras el primer hotkey, muestrear producto por CDP hasta `captureState = Listening`; solo entonces emitir speech o audio fixture. Si no llega a `Listening`, abortar con logs de estado, no seguir hablando.
+4. **Separar objetivos de smoke**: un smoke de observer prueba `paste_observed`; un smoke de STT quality prueba tokens/transcript. Si se mezclan, los tokens pueden fallar por speech ambiente aunque observer sea valido.
+5. **Guardar evidencia redacted**: report JSON bajo `artifacts/`, target raw ignorado, docs con status/longitud/hash/rutas; no pegar raw transcript ni selected text en chat/docs.
+6. **Limpiar y restaurar**: detener arbol de procesos Tauri/fixture, restaurar clipboard original/sentinel y dejar autostart deshabilitado salvo aprobacion explicita.
+7. **Preferir producto/IPC sobre clicks visuales**: para validar estado, usar CDP/product UI, Tauri invoke y archivos; usar CUA visual para foreground/window/foco o cuando el comportamiento solo existe en el desktop shell.
+8. **Si algo falla, registrar el primer estado invalido**: hotkey config, foreground antes/despues, samples de UI, fresh WAV, delivery status, stderr/stdout de Tauri. No reintentar a ciegas.
 
 ## Uso Practico En Dictation Tauri
 

@@ -188,6 +188,19 @@ Evidence rules: record screenshots/observations only under ignored artifacts or 
 
 ---
 
+## Phase 9: Observer Hardening Follow-Up
+
+**Goal**: Harden the internal bounded observer before any product claim of `paste_observed` in a real E2E.
+
+- [x] T037 Add internal Rust observer tests for no-observation, positive observation, repeated-text insertion, unchanged target text, missing `after`, empty text, and Windows line-ending normalization.
+- [x] T038 Refine the observer predicate to require an increased normalized occurrence count instead of only "after contains output and before did not".
+- [x] T039 Add renderer evidence coverage proving only the Tauri verified-observer path may elevate to `paste_observed`.
+- [x] T040 Run focused/full provider-free checks and `cargo check`; keep real observer smoke gated for a later explicit E2E.
+
+**Status**: Done 2026-06-24. Internal/provider-free hardening passed first, then a controlled observer E2E passed with product UI delivery status `paste_observed` in `artifacts/desktop-control/dictation-e2e/20260624-observer-paste-observed-e2e-verified/report.json`. The harness now waits for UI `Listening` before speaking and logs product delivery evidence via CDP. Caveat: fixture token matching was non-gating in the observer run because ambient/user speech can be captured; use separate STT-quality smokes for transcript-content assertions.
+
+---
+
 ## Dependencies & Execution Order
 
 - Phase 1 is complete before implementation.

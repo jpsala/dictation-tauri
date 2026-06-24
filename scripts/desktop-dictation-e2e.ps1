@@ -9,7 +9,9 @@ param(
   [int]$DeliveryTimeoutSeconds = 180,
   [ValidateSet('CtrlShiftF9','AltSpace')]
   [string]$DictationKey = 'CtrlShiftF9',
-  [switch]$SkipSpeechSynthesis
+  [switch]$SkipSpeechSynthesis,
+  [switch]$ExpectPasteObserved,
+  [int]$RemoteDebugPort = 9342
 )
 
 $ErrorActionPreference = 'Stop'
@@ -180,6 +182,84 @@ function Wait-ForTauriWindow([int]$TimeoutSeconds = 70) {
   throw 'dictation-tauri window was not available before timeout.'
 }
 
+function Wait-ForCdpPage([int]$Port, [int]$TimeoutSeconds = 60) {
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $pages = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/json/list" -TimeoutSec 2
+      $page = $pages | Where-Object { $_.url -eq 'http://127.0.0.1:1420/' } | Select-Object -First 1
+      if ($page) { return $page }
+    } catch {
+      # wait for WebView2 remote debugging endpoint
+    }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "Tauri WebView CDP page was not available on port $Port before timeout."
+}
+
+function Invoke-CdpJson([string]$WebSocketUrl, [string]$Expression) {
+  $encodedExpression = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Expression))
+  $raw = node (Join-Path $repo 'scripts/cdp-evaluate.mjs') $WebSocketUrl "base64:$encodedExpression"
+  if ($LASTEXITCODE -ne 0) { throw 'CDP evaluation failed.' }
+  return ($raw | ConvertFrom-Json)
+}
+
+function Wait-ForTauriInvoke([string]$WebSocketUrl, [int]$TimeoutSeconds = 30) {
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $lastProbe = $null
+  $expression = 'JSON.stringify({ready: (typeof window.__TAURI_INTERNALS__ !== "undefined" && typeof window.__TAURI_INTERNALS__.invoke === "function"), href: location.href, title: document.title, bodyText: document.body ? document.body.innerText.substring(0, 120) : null})'
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $lastProbe = Invoke-CdpJson $WebSocketUrl $expression
+      if ($lastProbe.ready -eq $true) { return $lastProbe }
+    } catch {
+      $lastProbe = @{ error = $_.Exception.Message }
+    }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "Tauri invoke internals were not available before timeout. Last probe: $($lastProbe | ConvertTo-Json -Depth 4 -Compress)"
+}
+
+function Get-ProductUiState([string]$WebSocketUrl) {
+  $expression = @'
+(() => {
+  const evidence = document.querySelector('[aria-label="Capture evidence"]');
+  const rows = Array.from(evidence?.querySelectorAll('div') ?? []);
+  const rowText = (label) => {
+    const row = rows.find((candidate) => candidate.querySelector('dt')?.textContent?.trim() === label);
+    return row?.querySelector('dd')?.textContent?.trim() ?? null;
+  };
+  return JSON.stringify({
+    captureState: document.querySelector('[data-testid="capture-state"]')?.textContent?.trim() ?? null,
+    captureMessage: document.querySelector('.capture-readout p')?.textContent?.trim() ?? null,
+    pipelineState: document.querySelector('[data-testid="pipeline-state"]')?.textContent?.trim() ?? null,
+    pipelineMessage: document.querySelector('[data-testid="pipeline-message"]')?.textContent?.trim() ?? null,
+    deliveryStatus: rowText('Delivery'),
+    hotkey: rowText('Hotkey')
+  });
+})()
+'@
+  return Invoke-CdpJson $WebSocketUrl $expression
+}
+
+function Wait-ForDictationActivated([string]$WebSocketUrl, [int]$TimeoutSeconds = 12) {
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $samples = @()
+  while ((Get-Date) -lt $deadline) {
+    $state = Get-ProductUiState $WebSocketUrl
+    $samples += $state
+    if ($state.captureState -eq 'Listening') {
+      return [ordered]@{ activated = $true; final = $state; samples = $samples }
+    }
+    if ($state.captureState -eq 'Failed' -or $state.pipelineState -eq 'Setup needed') {
+      return [ordered]@{ activated = $false; final = $state; samples = $samples }
+    }
+    Start-Sleep -Milliseconds 500
+  }
+  $final = if ($samples.Count -gt 0) { $samples[-1] } else { $null }
+  return [ordered]@{ activated = $false; final = $final; samples = $samples }
+}
+
 function Speak-TestPhrase([string]$Phrase) {
   Add-Type -AssemblyName System.Speech
   $speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer
@@ -303,6 +383,7 @@ $report = [ordered]@{
     clipboardMutation = [bool]$AllowClipboardMutation
   }
   dictationKey = $DictationKey
+  expectPasteObserved = [bool]$ExpectPasteObserved
   spokenPhrase = [ordered]@{
     # This is a synthetic non-secret test fixture phrase; raw transcript output is kept only in ignored artifacts.
     text = $SpokenPhrase
@@ -347,6 +428,7 @@ try {
   } else {
     Remove-Item Env:DICTATION_TAURI_DICTATION_KEY -ErrorAction SilentlyContinue
   }
+  $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$RemoteDebugPort"
 
   $tauriProc = Start-Process -FilePath 'npm.cmd' `
     -ArgumentList @('run','tauri:dev') `
@@ -357,6 +439,16 @@ try {
   $tauriWindow = Wait-ForTauriWindow 80
   $report.tauri = [ordered]@{ pid = $tauriWindow.Id; hwnd = $tauriWindow.MainWindowHandle.ToInt64(); title = $tauriWindow.MainWindowTitle }
   Add-Check 'tauri dictation dock launched' ($tauriWindow.MainWindowHandle -ne 0) $report.tauri
+
+  $cdpPage = Wait-ForCdpPage $RemoteDebugPort 80
+  $report.cdp = [ordered]@{ port = $RemoteDebugPort; pageUrl = $cdpPage.url; title = $cdpPage.title }
+  Add-Check 'tauri product page available through WebView2 CDP' ($null -ne $cdpPage.webSocketDebuggerUrl) $report.cdp
+
+  $report.tauriInvokeProbe = Wait-ForTauriInvoke $cdpPage.webSocketDebuggerUrl 40
+  Add-Check 'tauri invoke internals available through CDP' ($report.tauriInvokeProbe.ready -eq $true) $report.tauriInvokeProbe
+  $report.hotkeyConfig = Invoke-CdpJson $cdpPage.webSocketDebuggerUrl "window.__TAURI_INTERNALS__.invoke('get_desktop_control_hotkey_config').then(o=>JSON.stringify(o))"
+  Add-Check 'product reports expected dictation key' ($report.hotkeyConfig.shortcut -eq $(if ($DictationKey -eq 'AltSpace') { 'Alt+Space' } else { 'Ctrl+Shift+F9' })) $report.hotkeyConfig
+  $report.uiBeforeTarget = Get-ProductUiState $cdpPage.webSocketDebuggerUrl
 
   Start-Sleep -Seconds $InitialDelaySeconds
 
@@ -395,7 +487,10 @@ try {
 
   Send-DictationKey
   $report.firstHotkeyAt = (Get-Date).ToString('o')
-  Start-Sleep -Seconds 1
+  $report.foregroundAfterFirstHotkey = Get-ForegroundTitle
+  $activation = Wait-ForDictationActivated $cdpPage.webSocketDebuggerUrl 14
+  $report.activationAfterFirstHotkey = $activation
+  Add-Check 'dictation activated before synthetic speech' ([bool]$activation.activated) $activation
 
   if (-not $SkipSpeechSynthesis) {
     Speak-TestPhrase $SpokenPhrase
@@ -421,7 +516,14 @@ try {
 
   Add-Check 'target received pasted text' ($deliveredText.Trim().Length -gt 0) @{ length = $deliveredText.Trim().Length }
   $tokenCheck = Test-ExpectedTokens $deliveredText $SpokenPhrase
-  Add-Check 'target text matches synthetic spoken fixture tokens' ([bool]$tokenCheck.pass) $tokenCheck
+  Add-Check 'target text matches synthetic spoken fixture tokens' ([bool]$tokenCheck.pass) $tokenCheck ([bool]$ExpectPasteObserved)
+  if (-not [bool]$tokenCheck.pass) {
+    $report.warnings += 'Target text did not match the synthetic spoken fixture tokens; observer-focused runs keep this non-gating because ambient speech can be captured while validating paste observation.'
+  }
+
+  $report.deliveryUi = Get-ProductUiState $cdpPage.webSocketDebuggerUrl
+  Add-Check 'delivery evidence is available in product UI' (-not [string]::IsNullOrWhiteSpace([string]$report.deliveryUi.deliveryStatus)) $report.deliveryUi
+  Add-Check 'delivery evidence reached paste_observed when requested' ($report.deliveryUi.deliveryStatus -eq 'paste_observed') $report.deliveryUi (-not $ExpectPasteObserved)
 
   $newAudio = @(Get-ChildItem -Path $audioRoot -Filter '*.wav' -File -ErrorAction SilentlyContinue |
     Where-Object { $_.LastWriteTime -ge $startedAt } |
