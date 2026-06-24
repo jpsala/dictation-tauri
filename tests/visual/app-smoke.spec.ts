@@ -36,6 +36,7 @@ test("runs a fake cancellation flow from the dock", async ({ page }) => {
   await page.getByRole("button", { name: "Start" }).click();
   await page.getByRole("button", { name: "Cancel" }).click();
 
-  await expect(page.getByTestId("voice-dock-state-chip")).toHaveText("Cancelled");
-  await expect(page.getByRole("button", { name: "Record again" })).toBeVisible();
+  await expect(page.getByTestId("voice-dock-state-chip")).toHaveText("Ready");
+  await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
+  await expect(page.getByText("Dictation cancelled", { exact: false })).toHaveCount(0);
 });

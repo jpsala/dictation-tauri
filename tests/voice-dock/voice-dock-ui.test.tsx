@@ -136,7 +136,7 @@ describe("VoiceDock UI", () => {
     expectNoAction(html, "Retry");
   });
 
-  it("renders failed and cancelled recovery actions as explicit compact controls", () => {
+  it("renders failed recovery actions and lets cancellation settle quietly", () => {
     const failed = renderDock(
       createVoiceDockState(
         session({
@@ -161,12 +161,13 @@ describe("VoiceDock UI", () => {
 
     const cancelled = renderDock(createVoiceDockState(session({ state: "cancelled" }))).html;
 
-    expect(cancelled).toContain('data-phase="cancelled"');
-    expect(cancelled).toContain("Cancelled");
-    expect(cancelled).toContain("Dictation cancelled");
-    expect(cancelled).toContain("Nothing was inserted. Start again when ready.");
-    expectAction(cancelled, "Record again");
-    expectAction(cancelled, "Retry");
+    expect(cancelled).toContain('data-phase="idle"');
+    expect(cancelled).toContain("Ready");
+    expect(cancelled).not.toContain("Dictation cancelled");
+    expect(cancelled).not.toContain("Nothing was inserted. Start again when ready.");
+    expectAction(cancelled, "Start");
+    expectNoAction(cancelled, "Record again");
+    expectNoAction(cancelled, "Retry");
   });
 
   it("renders uncertain delivery as copy-first recovery and never says paste was observed", () => {

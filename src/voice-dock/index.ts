@@ -1,6 +1,7 @@
 export type {
   DockActivePreset,
   DockCommand,
+  DockDragEvent,
   DockRecoveryState,
   DockVisualOptions,
   VoiceDockPhase,

@@ -363,14 +363,18 @@ h1 {
   color: transparent;
   font-size: 0;
   font-weight: 700;
-  cursor: pointer;
+  cursor: grab;
   box-shadow: none;
   user-select: none;
   transition: filter 140ms ease;
 }
 
+.voice-dock__orb:active {
+  cursor: grabbing;
+}
+
 .voice-dock__orb:disabled {
-  cursor: default;
+  cursor: grab;
   opacity: 0.86;
 }
 

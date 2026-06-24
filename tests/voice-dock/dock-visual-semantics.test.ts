@@ -172,7 +172,7 @@ describe("voice dock visual semantics", () => {
     }
   });
 
-  it("renders failed, cancelled, and uncertain recovery honestly", () => {
+  it("renders failed and uncertain recovery honestly while cancellation settles to idle", () => {
     expect(
       createVoiceDockState(
         session({
@@ -197,13 +197,11 @@ describe("voice dock visual semantics", () => {
     });
 
     expect(createVoiceDockState(session({ state: "cancelled" }))).toMatchObject({
-      phase: "cancelled",
-      statusText: "Cancelled",
-      canRetry: true,
-      recovery: {
-        kind: "record_again",
-        primaryAction: "retry",
-      },
+      phase: "idle",
+      statusText: "Ready",
+      canStart: true,
+      canRetry: false,
+      recovery: undefined,
     });
 
     const uncertain = createVoiceDockState(

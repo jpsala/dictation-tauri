@@ -52,6 +52,14 @@ export type VoiceDockState = {
   assistantModeEnabled: boolean;
 };
 
+export type DockDragEvent = {
+  pointerId: number;
+  startScreenX: number;
+  startScreenY: number;
+  screenX: number;
+  screenY: number;
+};
+
 export type DockVisualOptions = {
   vuLevel?: number;
   vuBands?: readonly number[];

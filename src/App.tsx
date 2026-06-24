@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { FakeCaptureGateway } from "./capture/fake-gateway";
@@ -65,6 +66,7 @@ import {
   type DockActivePreset,
   type DockCommand,
   type DockCompanionCommandPayload,
+  type DockDragEvent,
   type DockCompanionPresetId,
   type DockCompanionSnapshot,
 } from "./voice-dock";
@@ -849,6 +851,13 @@ export function App() {
   );
   const gateway = captureRuntime.gateway;
   const savedDeliveryTargetRef = useRef<TauriDesktopDeliveryTarget | undefined>(undefined);
+  const dockDragRef = useRef<{
+    startScreenX: number;
+    startScreenY: number;
+    startWindowX: number;
+    startWindowY: number;
+    scale: number;
+  } | undefined>(undefined);
   const pressEnterAfterPasteRef = useRef(false);
   const desktopDelivery = useMemo(
     () =>
@@ -1382,19 +1391,58 @@ export function App() {
     }
   }
 
-  async function handleDockDragStart() {
+  async function handleDockDragStart(event: DockDragEvent) {
     if (!isTauri()) {
       return;
     }
 
     try {
-      await getCurrentWindow().startDragging();
-    } finally {
-      void invoke("save_dock_shell_position").catch(() => undefined);
-      window.setTimeout(() => {
-        void invoke("save_dock_shell_position").catch(() => undefined);
-      }, 250);
+      const windowPosition = await getCurrentWindow().outerPosition();
+      dockDragRef.current = {
+        startScreenX: event.startScreenX,
+        startScreenY: event.startScreenY,
+        startWindowX: windowPosition.x,
+        startWindowY: windowPosition.y,
+        scale: window.devicePixelRatio || 1,
+      };
+      await moveDockToDragPosition(event);
+    } catch {
+      dockDragRef.current = undefined;
     }
+  }
+
+  async function handleDockDragMove(event: DockDragEvent) {
+    if (!isTauri()) {
+      return;
+    }
+
+    await moveDockToDragPosition(event);
+  }
+
+  async function handleDockDragEnd(event: DockDragEvent) {
+    if (!isTauri()) {
+      return;
+    }
+
+    await moveDockToDragPosition(event);
+    dockDragRef.current = undefined;
+    void invoke("save_dock_shell_position").catch(() => undefined);
+  }
+
+  async function moveDockToDragPosition(event: DockDragEvent) {
+    const drag = dockDragRef.current;
+    if (!drag) {
+      return;
+    }
+
+    const nextX = Math.round(
+      drag.startWindowX + (event.screenX - drag.startScreenX) * drag.scale,
+    );
+    const nextY = Math.round(
+      drag.startWindowY + (event.screenY - drag.startScreenY) * drag.scale,
+    );
+
+    await getCurrentWindow().setPosition(new PhysicalPosition(nextX, nextY));
   }
 
   function handleVoiceDockCommand(command: DockCommand) {
@@ -1663,6 +1711,8 @@ export function App() {
           transcriptPreview={transcriptReview?.text}
           onCommand={handleVoiceDockCommand}
           onDockDragStart={handleDockDragStart}
+          onDockDragMove={handleDockDragMove}
+          onDockDragEnd={handleDockDragEnd}
           onContextMenuRequest={() => {
             if (!isTauri()) {
               return;

@@ -89,7 +89,7 @@ function mapDockPhase(input: DockInputState): VoiceDockPhase {
     case "error":
       return "failed";
     case "cancelled":
-      return "cancelled";
+      return "idle";
     case "done":
       return deliveryWasInserted(input.delivery)
         ? "idle"

@@ -238,6 +238,18 @@ Evidence rules: record screenshots/observations only under ignored artifacts or 
 
 ---
 
+## Phase 13: JP Feedback - Dock Move And Post-Cancel Feedback
+
+**Goal**: Fix the visible gaps JP reported in the live dock: the dock still looked unlike Fixvox after cancellation, and dragging the dock did not work reliably.
+
+- [x] T051 Change cancellation visual semantics to settle back to quiet idle, matching Fixvox-style non-sticky cancellation feedback and removing the large recovery companion after explicit cancel.
+- [x] T052 Replace delayed native `startDragging()` with renderer-side drag deltas and `setPosition(PhysicalPosition)` so dragging the orb moves the Tauri dock reliably after a small threshold.
+- [x] T053 Update visual/provider-free tests and run a live Tauri/CUA drag smoke.
+
+**Status**: Done 2026-06-24. Cancellation now returns the dock to `Ready` with no `Dictation cancelled` recovery card. The dock orb uses a grab cursor and manual Tauri window positioning while dragging; CUA drag smoke moved the live `Dictation Dock` window from the orb and `save_dock_shell_position` remains called on drag end. Checks passed: focused voice-dock/desktop-control, full `npm run test:pipeline`, `npm run build`, `npm run visual:check`, and `cd src-tauri && cargo check`.
+
+---
+
 ## Dependencies & Execution Order
 
 - Phase 1 is complete before implementation.

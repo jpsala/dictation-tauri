@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import type { DockCommand, VoiceDockState } from "./types";
+import type { DockCommand, DockDragEvent, VoiceDockState } from "./types";
 
 export type VoiceDockProps = {
   state: VoiceDockState;
@@ -8,7 +8,9 @@ export type VoiceDockProps = {
   transcriptPreview?: string;
   onCommand: (command: DockCommand) => void;
   onContextMenuRequest?: () => void;
-  onDockDragStart?: () => void | Promise<void>;
+  onDockDragStart?: (event: DockDragEvent) => void | Promise<void>;
+  onDockDragMove?: (event: DockDragEvent) => void | Promise<void>;
+  onDockDragEnd?: (event: DockDragEvent) => void | Promise<void>;
 };
 
 type DockAction = {
@@ -26,6 +28,8 @@ export function VoiceDock({
   onCommand,
   onContextMenuRequest,
   onDockDragStart,
+  onDockDragMove,
+  onDockDragEnd,
 }: VoiceDockProps) {
   const dragStateRef = useRef<{
     pointerId: number;
@@ -62,31 +66,49 @@ export function VoiceDock({
       window.removeEventListener("pointercancel", onPointerUp, true);
     };
 
+    const createDragEvent = (nextEvent: PointerEvent): DockDragEvent => ({
+      pointerId,
+      startScreenX,
+      startScreenY,
+      screenX: nextEvent.screenX,
+      screenY: nextEvent.screenY,
+    });
+
     const onPointerUp = (nextEvent: PointerEvent) => {
       if (nextEvent.pointerId !== pointerId) {
         return;
       }
 
+      const dragState = dragStateRef.current;
       cleanup();
       dragStateRef.current = undefined;
+
+      if (dragState?.moved) {
+        void onDockDragEnd?.(createDragEvent(nextEvent));
+      }
     };
 
     const onPointerMove = (nextEvent: PointerEvent) => {
       const dragState = dragStateRef.current;
-      if (!dragState || nextEvent.pointerId !== pointerId || dragState.moved) {
+      if (!dragState || nextEvent.pointerId !== pointerId) {
         return;
       }
 
       const dx = nextEvent.screenX - startScreenX;
       const dy = nextEvent.screenY - startScreenY;
-      if (Math.abs(dx) <= 3 && Math.abs(dy) <= 3) {
+      if (!dragState.moved && Math.abs(dx) <= 3 && Math.abs(dy) <= 3) {
         return;
       }
 
-      dragState.moved = true;
-      suppressNextClickRef.current = true;
-      cleanup();
-      void onDockDragStart();
+      const dragEvent = createDragEvent(nextEvent);
+      if (!dragState.moved) {
+        dragState.moved = true;
+        suppressNextClickRef.current = true;
+        void onDockDragStart(dragEvent);
+        return;
+      }
+
+      void onDockDragMove?.(dragEvent);
     };
 
     window.addEventListener("pointermove", onPointerMove, true);
