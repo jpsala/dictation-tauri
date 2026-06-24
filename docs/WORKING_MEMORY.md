@@ -39,8 +39,9 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `009-fixvox-cloud-runtime-port` | complete through T023 plus managed STT smoke on fresh hotkey WAV passed 2026-06-23 | `specs/009-fixvox-cloud-runtime-port/tasks.md` |
 | `010-desktop-dictation-control-delivery` | complete incl. T046 and E2E: `Ctrl+Shift+F9` -> fresh WAV -> Fixvox managed STT -> review visible -> copy fallback changed clipboard | `specs/010-desktop-dictation-control-delivery/tasks.md` |
 | `011-selection-transform-and-recovery-ergonomics` | active but paused behind real-selection gate: fixture-first selection routing/transforms and safe paste-last recovery implemented; real capture still gated | `specs/011-selection-transform-and-recovery-ergonomics/tasks.md` |
-| `012-fixvox-dock-dictation-key` | active: Checkpoint D+ paste-sent batch complete for dev dock path incl. live mic VU, real host STT, saved-target `paste_sent`; tray/Alt+Space gated | `specs/012-fixvox-dock-dictation-key/tasks.md` |
+| `012-fixvox-dock-dictation-key` | active: Checkpoint D+ paste-sent batch complete for dev dock path incl. live mic VU, real host STT, saved-target delivery; Alt+Space enabled with fallback | `specs/012-fixvox-dock-dictation-key/tasks.md` |
 | `013-verified-paste-observer` | complete for gated observer smoke: native Windows observer promoted to `paste_observed`, dock exposes machine-readable status, computer-use verified dock + Notepad target | `specs/013-verified-paste-observer/tasks.md` |
+| `014-fixvox-parity-tray-settings-hotkeys` | active: Checkpoint A tray/background lifecycle implemented in Rust; settings/hotkeys/quick-pick/postprocess/focused-input remain next | `specs/014-fixvox-parity-tray-settings-hotkeys/tasks.md` |
 
 ## Tracks Activas
 
@@ -126,8 +127,10 @@ bun scripts/check-skills-junction.ts
 27. Smoke controlado gated 2026-06-23 con fallback `Ctrl+Shift+F9`: fresh WAV, STT/paste a Notepad scratch, target no vacio y clipboard sentinel restaurado; probe Win32 posterior pudo leer/matchear el contenido redacted del target. Limitacion: no se pudo capturar automaticamente el estado React/log del dock, asi que no declarar closeout final de `paste_observed` hasta tener evidencia UI/log directa.
 28. Computer-use quedo instalado (`npm:@amaster.ai/pi-computer-use`) y probado: `computer_use_get_window_state` puede inspeccionar `Dictation Dock` y Notepad. Se agrego status machine-readable/accesible al dock (`data-delivery-status`, `Delivery status: paste_observed`) y se corrigio el controller para no rechazar evidencia verificada.
 29. Smoke final gated 2026-06-23: con `VITE_ENABLE_NATIVE_PASTE_OBSERVER=1`, `Ctrl+Shift+F9` -> fresh WAV -> STT -> paste a Notepad scratch -> observer nativo promovio a `paste_observed`; computer-use vio `Paste observed`/`Delivery status: paste_observed` en dock y texto insertado en Notepad.
-30. Proximo recomendado: si se prioriza usabilidad, tray/background lifecycle estilo Fixvox; si se prioriza robustez observer, agregar log/artifact JSON redacted del delivery status para smokes sin UIA.
-31. Checks recientes: `npm run test:pipeline` OK (52 files / 247 tests), focused observer/voice-dock/controller tests OK, `npm run build` OK, `cd src-tauri && cargo check` OK, context index/audit OK con warnings conocidos. Previos: `npm run visual:check` OK (8 tests). `cd src-tauri && cargo test desktop_control` no fue usado como gate: falla en este entorno con `STATUS_ENTRYPOINT_NOT_FOUND`.
+30. Se documento la ruta Grammarly-like en `docs/topics/grammarly-like-input-intelligence.md`: focused element via UI Automation, bounding rect, patterns `ValuePattern`/`TextPattern`, Win32 fallback, overlay/companion sin contenido crudo por default.
+31. `014` arranco como spec de paridad Fixvox para tray/settings/hotkeys/quick-pick/postprocess/focused-input. Checkpoint A quedo implementado: Tauri `tray-icon`, `src-tauri/src/tray.rs`, menu IDs estables `show_dock`/`hide_dock`/`settings`/`quit`, left-click toggle, dev restart OK.
+32. Proximo recomendado: `014` Checkpoint B settings/hotkey schema provider-free, luego quick-pick y postprocess seam.
+33. Checks recientes: `npm run test:pipeline` OK (53 files / 250 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, dev desktop restart OK, context index/audit OK con warnings conocidos. Previos: `npm run visual:check` OK (8 tests). `cd src-tauri && cargo test desktop_control` no fue usado como gate: falla en este entorno con `STATUS_ENTRYPOINT_NOT_FOUND`.
 
 ## Promocion De Memoria
 

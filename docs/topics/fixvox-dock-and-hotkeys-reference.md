@@ -135,7 +135,7 @@ Antes de cambiar dock/hotkeys:
 
 ## Gaps Actuales En Dictation Tauri
 
-- No hay tray ni lifecycle background/app instalada.
+- Tray/background dev baseline existe en Tauri: icono tray Rust con IDs estables `show_dock`, `hide_dock`, `settings`, `quit`, left-click toggle y hotkeys vivas; falta smoke visual/UX prolongado e installer/autostart.
 - No hay companion/recovery overlay separado; el estado actual usa chip compacto dentro del dock.
 - No hay observer/verificacion real de insercion; `paste_sent` no debe presentarse como paste observado.
 - No hay seleccion/replace real en este flujo; solo insert-at-cursor gated.

@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-23T23:47:29.082Z
+Generated: 2026-06-24T00:30:42.856Z
 
 ## Topics
 
@@ -16,6 +16,7 @@ Generated: 2026-06-23T23:47:29.082Z
 - active: [fixvox-capability-map](../topics/fixvox-capability-map.md) - Fixvox, Fixbox, electro-bun, capacidades Fixvox, alcance producto, mapa de producto, que copiamos, que implementamos
 - active: [fixvox-cloud-runtime-port](../topics/fixvox-cloud-runtime-port.md) - Fixvox cloud, Fixbox backend, managed runtime, proxy compartido, reemplazar Bun por Rust, Rust Tauri port, cloud infrastructure, X-Device-Id
 - active: [fixvox-dock-and-hotkeys-reference](../topics/fixvox-dock-and-hotkeys-reference.md) - Fixvox dock, dock, voice dock, hotkeys Fixvox, Alt+Space, push to talk, dictation key, paste last, Alt+Q
+- active: [grammarly-like-input-intelligence](../topics/grammarly-like-input-intelligence.md) - Grammarly, input box, focused input, UI Automation, text field detection, floating widget, overlay, TextPattern, ValuePattern
 - reference: [local-codex-skills](../topics/local-codex-skills.md) - skills locales, local skills, slash commands, docs/skills, .agents/skills, sigamos, cerrar sesion, continuar sesion, continuar sesion con gol, continuar con gol, siguiente, realinear os, evaluar skills, pasar a skills, promover a skill, que se puede pasar a skills, skill o topic, metadata mínima, metadata minima, modelo hibrido
 - active: [os-quality](../topics/os-quality.md) - perfect os, proyecto perfecto, dejar en condiciones, calidad agentica, optimizar contexto, docs livianos, docs indexados, comandos os, os help
 - active: [privacy-and-dictation-data](../topics/privacy-and-dictation-data.md) - privacidad, audio, transcripciones, dictado, logs, storage, modelos
@@ -47,6 +48,7 @@ Generated: 2026-06-23T23:47:29.082Z
 - [011-selection-transform-and-recovery-ergonomics](../../specs/011-selection-transform-and-recovery-ergonomics/)
 - [012-fixvox-dock-dictation-key](../../specs/012-fixvox-dock-dictation-key/)
 - [013-verified-paste-observer](../../specs/013-verified-paste-observer/)
+- [014-fixvox-parity-tray-settings-hotkeys](../../specs/014-fixvox-parity-tray-settings-hotkeys/)
 
 ## Skills
 

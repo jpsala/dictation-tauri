@@ -4,11 +4,13 @@ mod fixvox_cloud;
 mod native_capture;
 mod runtime_transcription;
 pub mod selection_capture;
+mod tray;
 
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             desktop_control::register_desktop_control_hotkey(app.handle())?;
+            tray::register_tray(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
