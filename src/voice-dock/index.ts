@@ -16,11 +16,14 @@ export {
 export {
   createDockCompanionSnapshot,
   createEmptyDockCompanionSnapshot,
+  dockCompanionCommandEvent,
   dockCompanionStateEvent,
 } from "./companion-state";
 export type {
+  DockCompanionCommandPayload,
   DockCompanionHistoryEntry,
   DockCompanionHistoryItem,
+  DockCompanionPresetId,
   DockCompanionSnapshot,
 } from "./companion-state";
 export { VoiceDock } from "./VoiceDock";

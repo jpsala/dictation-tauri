@@ -861,6 +861,13 @@ h1 {
   text-transform: uppercase;
 }
 
+.dock-companion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
 .secondary-button {
   border: 1px solid rgb(255 255 255 / 16%);
   border-radius: 8px;

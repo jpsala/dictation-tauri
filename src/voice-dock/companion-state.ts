@@ -5,6 +5,28 @@ import type {
 } from "./types";
 
 export const dockCompanionStateEvent = "dock-companion://state";
+export const dockCompanionCommandEvent = "dock-companion://command";
+
+export type DockCompanionPresetId = "rewrite" | "shorten" | "bulletize";
+
+export type DockCompanionCommandPayload =
+  | {
+      source: "dock_companion";
+      command: "copy" | "paste_last_safe" | "retry";
+    }
+  | {
+      source: "dock_companion";
+      command: "dismiss_result_history" | "dismiss_settings";
+    }
+  | {
+      source: "dock_companion";
+      command: "select_preset";
+      presetId: DockCompanionPresetId;
+    }
+  | {
+      source: "dock_companion";
+      command: "clear_preset";
+    };
 
 export type DockCompanionHistoryEntry = {
   id: string;

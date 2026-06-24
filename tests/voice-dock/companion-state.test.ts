@@ -3,6 +3,7 @@ import type { DesktopDictationSession } from "../../src/desktop-control/types";
 import {
   createDockCompanionSnapshot,
   createEmptyDockCompanionSnapshot,
+  dockCompanionCommandEvent,
   dockCompanionStateEvent,
 } from "../../src/voice-dock/companion-state";
 import { createVoiceDockState } from "../../src/voice-dock/visual-semantics";
@@ -101,8 +102,9 @@ describe("dock companion state", () => {
     expect(snapshot.status).toMatchObject({ phase: "idle", statusText: "Ready" });
   });
 
-  it("exposes a stable Tauri event name and empty snapshot", () => {
+  it("exposes stable Tauri event names and empty snapshot", () => {
     expect(dockCompanionStateEvent).toBe("dock-companion://state");
+    expect(dockCompanionCommandEvent).toBe("dock-companion://command");
     expect(createEmptyDockCompanionSnapshot()).toMatchObject({
       schemaVersion: 1,
       visible: false,

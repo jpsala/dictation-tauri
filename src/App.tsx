@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { emitTo, listen } from "@tauri-apps/api/event";
+import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { FakeCaptureGateway } from "./capture/fake-gateway";
 import type { CaptureGateway } from "./capture/gateway";
@@ -59,10 +59,13 @@ import {
   createDockCompanionSnapshot,
   createEmptyDockCompanionSnapshot,
   createVoiceDockState,
+  dockCompanionCommandEvent,
   dockCompanionStateEvent,
   VoiceDock,
   type DockActivePreset,
   type DockCommand,
+  type DockCompanionCommandPayload,
+  type DockCompanionPresetId,
   type DockCompanionSnapshot,
 } from "./voice-dock";
 import type {
@@ -373,7 +376,7 @@ function createHistoryEntryFromSummary(
   };
 }
 
-function presetDisplayName(presetId: "rewrite" | "shorten" | "bulletize"): string {
+function presetDisplayName(presetId: DockCompanionPresetId): string {
   switch (presetId) {
     case "rewrite":
       return "Rewrite";
@@ -608,6 +611,178 @@ function getAppSurface(): "dock" | "companion" {
     : "dock";
 }
 
+type CompanionSurfaceViewProps = {
+  snapshot: DockCompanionSnapshot;
+  onCommand?: (payload: DockCompanionCommandPayload) => void;
+  showRecoveryActions?: boolean;
+};
+
+function companionActionLabel(command: DockCommand): string {
+  switch (command) {
+    case "copy":
+      return "Copy transcript";
+    case "paste_last_safe":
+      return "Paste last (safe)";
+    case "retry":
+      return "Record again";
+    case "start":
+      return "Start";
+    case "stop":
+      return "Stop";
+    case "stop_submit":
+      return "Stop & submit";
+    case "cancel":
+      return "Cancel";
+  }
+}
+
+function companionCommandForDockCommand(
+  command: DockCommand,
+): DockCompanionCommandPayload | undefined {
+  if (command === "copy" || command === "paste_last_safe" || command === "retry") {
+    return { source: "dock_companion", command };
+  }
+
+  return undefined;
+}
+
+function CompanionCommandButton({
+  payload,
+  children,
+  onCommand,
+}: {
+  payload: DockCompanionCommandPayload;
+  children: string;
+  onCommand?: (payload: DockCompanionCommandPayload) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="secondary-button"
+      onClick={() => onCommand?.(payload)}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function CompanionSurfaceView({
+  snapshot,
+  onCommand,
+  showRecoveryActions = true,
+}: CompanionSurfaceViewProps) {
+  const recoveryActions = (showRecoveryActions ? [
+    snapshot.recovery?.primaryAction,
+    snapshot.recovery?.secondaryAction,
+  ] : [])
+    .map((command) => {
+      const payload = command ? companionCommandForDockCommand(command) : undefined;
+      return payload && command
+        ? { payload, label: companionActionLabel(command) }
+        : undefined;
+    })
+    .filter(
+      (action): action is { payload: DockCompanionCommandPayload; label: string } =>
+        Boolean(action),
+    );
+
+  return (
+    <>
+      {snapshot.recovery ? (
+        <section className="dock-companion-card dock-companion-card--standalone">
+          <p className="dock-companion-kicker">Recovery</p>
+          <strong>{snapshot.recovery.title}</strong>
+          <p>{snapshot.recovery.message}</p>
+          {recoveryActions.length > 0 ? (
+            <div className="dock-companion-actions" aria-label="Recovery actions">
+              {recoveryActions.map((action) => (
+                <CompanionCommandButton
+                  key={action.payload.command}
+                  payload={action.payload}
+                  onCommand={onCommand}
+                >
+                  {action.label}
+                </CompanionCommandButton>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {snapshot.history.open ? (
+        <section className="dock-companion-card dock-companion-card--standalone">
+          <p className="dock-companion-kicker">Result history</p>
+          {snapshot.history.items.length === 0 ? (
+            <p>No reusable results saved yet.</p>
+          ) : (
+            <ul>
+              {snapshot.history.items.map((entry) => (
+                <li key={entry.id}>
+                  {entry.label} · {entry.textLength} chars · {entry.deliveryStatus}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="dock-companion-actions" aria-label="History actions">
+            <CompanionCommandButton
+              payload={{ source: "dock_companion", command: "dismiss_result_history" }}
+              onCommand={onCommand}
+            >
+              Dismiss
+            </CompanionCommandButton>
+          </div>
+        </section>
+      ) : null}
+
+      {snapshot.settings.open ? (
+        <section className="dock-companion-card dock-companion-card--standalone">
+          <p className="dock-companion-kicker">Settings</p>
+          <strong>Dock settings are staged.</strong>
+          <p>
+            {snapshot.settings.activePreset
+              ? `Active preset: ${snapshot.settings.activePreset.presetName}. Change or clear it here.`
+              : "Select a preset for the next selection-aware action."}
+          </p>
+          <div className="dock-companion-actions" aria-label="Preset actions">
+            {(["rewrite", "shorten", "bulletize"] as const).map((presetId) => (
+              <CompanionCommandButton
+                key={presetId}
+                payload={{ source: "dock_companion", command: "select_preset", presetId }}
+                onCommand={onCommand}
+              >
+                {presetDisplayName(presetId)}
+              </CompanionCommandButton>
+            ))}
+            <CompanionCommandButton
+              payload={{ source: "dock_companion", command: "clear_preset" }}
+              onCommand={onCommand}
+            >
+              Clear preset
+            </CompanionCommandButton>
+            <CompanionCommandButton
+              payload={{ source: "dock_companion", command: "dismiss_settings" }}
+              onCommand={onCommand}
+            >
+              Dismiss
+            </CompanionCommandButton>
+          </div>
+        </section>
+      ) : null}
+
+      {!snapshot.recovery && !snapshot.history.open && !snapshot.settings.open ? (
+        <section className="dock-companion-card dock-companion-card--standalone">
+          <p className="dock-companion-kicker">Companion</p>
+          <strong>{snapshot.status.statusText}</strong>
+          <p>
+            {snapshot.status.statusDetail ??
+              "Waiting for recovery, history, or settings from the dock."}
+          </p>
+        </section>
+      ) : null}
+    </>
+  );
+}
+
 function CompanionSurface() {
   const [snapshot, setSnapshot] = useState<DockCompanionSnapshot>(() =>
     createEmptyDockCompanionSnapshot(),
@@ -640,55 +815,20 @@ function CompanionSurface() {
     };
   }, []);
 
+  const handleCompanionCommand = (payload: DockCompanionCommandPayload) => {
+    if (!isTauri()) {
+      return;
+    }
+
+    void emit(dockCompanionCommandEvent, payload).catch(() => undefined);
+  };
+
   return (
     <main className="companion-shell" aria-label="Dock companion">
-      {snapshot.recovery ? (
-        <section className="dock-companion-card dock-companion-card--standalone">
-          <p className="dock-companion-kicker">Recovery</p>
-          <strong>{snapshot.recovery.title}</strong>
-          <p>{snapshot.recovery.message}</p>
-        </section>
-      ) : null}
-
-      {snapshot.history.open ? (
-        <section className="dock-companion-card dock-companion-card--standalone">
-          <p className="dock-companion-kicker">Result history</p>
-          {snapshot.history.items.length === 0 ? (
-            <p>No reusable results saved yet.</p>
-          ) : (
-            <ul>
-              {snapshot.history.items.map((entry) => (
-                <li key={entry.id}>
-                  {entry.label} · {entry.textLength} chars · {entry.deliveryStatus}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      ) : null}
-
-      {snapshot.settings.open ? (
-        <section className="dock-companion-card dock-companion-card--standalone">
-          <p className="dock-companion-kicker">Settings</p>
-          <strong>Dock settings are staged.</strong>
-          <p>
-            {snapshot.settings.activePreset
-              ? `Active preset: ${snapshot.settings.activePreset.presetName}. Use the tray/context menu to change or clear it.`
-              : "Use the tray/context menu for presets while the full settings surface is built."}
-          </p>
-        </section>
-      ) : null}
-
-      {!snapshot.recovery && !snapshot.history.open && !snapshot.settings.open ? (
-        <section className="dock-companion-card dock-companion-card--standalone">
-          <p className="dock-companion-kicker">Companion</p>
-          <strong>{snapshot.status.statusText}</strong>
-          <p>
-            {snapshot.status.statusDetail ??
-              "Waiting for recovery, history, or settings from the dock."}
-          </p>
-        </section>
-      ) : null}
+      <CompanionSurfaceView
+        snapshot={snapshot}
+        onCommand={handleCompanionCommand}
+      />
     </main>
   );
 }
@@ -1189,15 +1329,19 @@ export function App() {
     setResultHistoryOpen(true);
   }
 
+  function selectActivePreset(presetId: DockCompanionPresetId) {
+    setActivePreset({
+      presetId,
+      presetName: presetDisplayName(presetId),
+      appKey: "global",
+    });
+  }
+
   function handleHostCommandPayload(payload: Required<Pick<TauriHostCommandPayload, "command">> & Omit<TauriHostCommandPayload, "command">) {
     switch (payload.command) {
       case "select_preset":
         if (payload.presetId) {
-          setActivePreset({
-            presetId: payload.presetId,
-            presetName: presetDisplayName(payload.presetId),
-            appKey: "global",
-          });
+          selectActivePreset(payload.presetId);
         }
         break;
       case "clear_preset":
@@ -1211,6 +1355,30 @@ export function App() {
         break;
       default:
         handleVoiceDockCommand(payload.command);
+    }
+  }
+
+  function handleCompanionCommandPayload(payload: DockCompanionCommandPayload) {
+    switch (payload.command) {
+      case "copy":
+      case "paste_last_safe":
+      case "retry":
+        handleVoiceDockCommand(payload.command);
+        break;
+      case "select_preset":
+        selectActivePreset(payload.presetId);
+        setSettingsPanelOpen(false);
+        break;
+      case "clear_preset":
+        setActivePreset(undefined);
+        setSettingsPanelOpen(false);
+        break;
+      case "dismiss_result_history":
+        setResultHistoryOpen(false);
+        break;
+      case "dismiss_settings":
+        setSettingsPanelOpen(false);
+        break;
     }
   }
 
@@ -1336,6 +1504,33 @@ export function App() {
       unlisten?.();
     };
   }, [voiceDockState.phase, pipelineUi.summary]);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    void listen<DockCompanionCommandPayload>(dockCompanionCommandEvent, (event) => {
+      if (!disposed) {
+        handleCompanionCommandPayload(event.payload);
+      }
+    }).then((nextUnlisten) => {
+      if (disposed) {
+        nextUnlisten?.();
+        return;
+      }
+
+      unlisten = nextUnlisten;
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [pipelineUi.summary]);
 
   useEffect(() => {
     let disposed = false;
@@ -1477,52 +1672,13 @@ export function App() {
           }}
         />
 
-        {(resultHistoryOpen || settingsPanelOpen || voiceDockState.recovery) && (
+        {companionSnapshot.visible && (
           <section className="dock-companion-panel" aria-label="Dock companion">
-            {voiceDockState.recovery && (
-              <div className="dock-companion-card">
-                <p className="dock-companion-kicker">Recovery</p>
-                <strong>{voiceDockState.recovery.title}</strong>
-                <p>{voiceDockState.recovery.message}</p>
-              </div>
-            )}
-            {resultHistoryOpen && (
-              <div className="dock-companion-card">
-                <p className="dock-companion-kicker">Result history</p>
-                {resultHistoryEntries.length === 0 ? (
-                  <p>No reusable results saved yet.</p>
-                ) : (
-                  <ul>
-                    {resultHistoryEntries.slice(-5).reverse().map((entry) => (
-                      <li key={entry.id}>
-                        {entry.source.replace("_", " ")} · {entry.textLength} chars · {entry.deliveryEvidence?.status ?? "available"}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => setResultHistoryOpen(false)}
-                >
-                  Dismiss
-                </button>
-              </div>
-            )}
-            {settingsPanelOpen && (
-              <div className="dock-companion-card">
-                <p className="dock-companion-kicker">Settings</p>
-                <strong>Dock settings are staged.</strong>
-                <p>Use the tray/context menu for presets while the full settings surface is built.</p>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => setSettingsPanelOpen(false)}
-                >
-                  Dismiss
-                </button>
-              </div>
-            )}
+            <CompanionSurfaceView
+              snapshot={companionSnapshot}
+              onCommand={handleCompanionCommandPayload}
+              showRecoveryActions={false}
+            />
           </section>
         )}
 

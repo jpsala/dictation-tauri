@@ -157,12 +157,12 @@ Trabajo cerrado: `specs/012-fixvox-dock-dictation-key/tasks.md` Phase 8 / Checkp
 ## Gaps Actuales En Dictation Tauri
 
 - No hay autostart/Start with Windows ni instalador/background lifecycle de app instalada; si se implementa, pedir confirmacion.
-- La ventana Tauri `dock-companion` ya renderiza recovery/history/settings sincronizados desde el dock por evento `dock-companion://state`; falta cablear acciones interactivas propias de companion (dismiss/copy/preset/settings editing) y smoke real dedicado.
+- La ventana Tauri `dock-companion` ya renderiza recovery/history/settings sincronizados desde el dock por evento `dock-companion://state` y emite acciones propias por `dock-companion://command`: copy, paste-last safe, retry, preset select/clear y dismiss de panels. Falta settings editing real y smoke real dedicado.
 - Hay observer Win32 bounded con hardening interno provider-free: normaliza line endings y exige aumento de ocurrencias entre lecturas Win32 antes de elevar a `paste_observed`. Un E2E controlado post-cambio paso con product UI `paste_observed` en `artifacts/desktop-control/dictation-e2e/20260624-observer-paste-observed-e2e-verified/report.json`; fuera de esa ruta verificada, `paste_sent` no debe presentarse como observado.
 - Hay selected-text read UIA best-effort con smoke T039 redacted pasado y replace foundation, pero falta flujo UX completo preset -> selection transform -> replace-selection.
 - Alt+Space es default en Windows y `Ctrl+Shift+F9` queda fallback explicito. Falta mas soak/manual E2E post-default para harden antes de llamarlo final.
 - Context menu/tray existen con presets/history/settings iniciales; falta settings real editable, input device, picker y result history UX completa.
-- Existe ventana Tauri `dock-companion` separada; el primer sync real ya evita el placeholder estatico y redakta history a longitud/status. Falta converger acciones y layout a la companion de Fixvox.
+- Existe ventana Tauri `dock-companion` separada; el primer sync real ya evita el placeholder estatico y redakta history a longitud/status. Las acciones basicas de recovery/history/settings ya estan cableadas por evento renderer; falta converger layout avanzado, settings editing y acciones de seleccion/assistant a la companion de Fixvox.
 - Preset badge ya responde a menu, pero todavia no activa motor real de selection transform/assistant por default.
 - Indicador assistant sigue visual-only y no activa Quick Chat/Assistant Mode real.
 - Falta smoke visual dedicado de drag/restore y comparar el feedback post-insert contra Fixvox en side-by-side real; el contrato ya esta implementado provider-free.

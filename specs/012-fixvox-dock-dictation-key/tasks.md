@@ -226,6 +226,18 @@ Evidence rules: record screenshots/observations only under ignored artifacts or 
 
 ---
 
+## Phase 12: Companion Window Actions Follow-Up
+
+**Goal**: Make the synchronized companion surface act on recovery/history/settings state instead of only displaying passive cards.
+
+- [x] T048 Add provider-free companion view coverage for recovery actions, history metadata-only rendering, settings preset actions, and no raw transcript leakage.
+- [x] T049 Add a `dock-companion://command` event contract and wire companion-window buttons back to the main dock surface for copy, paste-last safe, retry, preset select/clear, and panel dismiss actions.
+- [x] T050 Reuse the same companion action view in the main dock fallback panel and keep styling compact.
+
+**Status**: Done 2026-06-24. The companion surface now emits bounded renderer commands for existing safe actions and preset/settings panel state; it still does not expose raw transcripts/selected text and the fallback dock panel avoids duplicate recovery buttons. Checks passed: focused companion/voice-dock, full `npm run test:pipeline`, `npm run build`, `npm run visual:check`, and `cd src-tauri && cargo check`. Real replace-selection, settings editing, picker, Quick Chat, and dedicated Tauri companion smoke remain future/gated.
+
+---
+
 ## Dependencies & Execution Order
 
 - Phase 1 is complete before implementation.
