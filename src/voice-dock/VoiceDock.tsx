@@ -6,6 +6,7 @@ export type VoiceDockProps = {
   hotkeyLabel?: string;
   transcriptPreview?: string;
   onCommand: (command: DockCommand) => void;
+  onContextMenuRequest?: () => void;
 };
 
 type DockAction = {
@@ -21,6 +22,7 @@ export function VoiceDock({
   hotkeyLabel = "Ctrl+Shift+F9",
   transcriptPreview,
   onCommand,
+  onContextMenuRequest,
 }: VoiceDockProps) {
   const actions = createDockActions(state);
   const visibleActions = actions.filter((action) => action.visible);
@@ -37,6 +39,14 @@ export function VoiceDock({
       role="toolbar"
       aria-label="Voice dock"
       data-context-menu="available"
+      onContextMenu={(event) => {
+        if (!onContextMenuRequest) {
+          return;
+        }
+
+        event.preventDefault();
+        onContextMenuRequest();
+      }}
     >
       {state.activePreset ? (
         <PresetBadge preset={state.activePreset} />

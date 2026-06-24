@@ -169,6 +169,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-dictation-e2
 - Accepted follow-ups: JP chose to accept remaining deviations as follow-ups rather than continue this batch: blue enter-submit affordance, native idle hit-region/rounded hit-test, state-aware processing/error resize, context menu, preset badge, and assistant indicators.
 - Still gated: Alt+Space, tray/background lifecycle, selected-text capture, replace-selection, observer-backed `paste_observed`, real app targets beyond controlled fixtures.
 
+### Lote 2 Tray/Hotkey/Selection Boundary Follow-Up - 2026-06-24
+
+- Scope: combined follow-up requested as items 1/2/3 after Lote 1: context menu/tray/background lifecycle, gated Alt+Space path, and 011 selection boundary.
+- Tray/background: Tauri now enables the `tray-icon` feature and registers a native tray menu with show dock, hide dock, start, stop/review, cancel, paste-last-safe, and quit. Close requests hide the dock instead of quitting. Dock right-click requests a native context menu through `show_dock_context_menu`.
+- Hotkey config: Rust owns an effective dictation key resolver. Default remains `Ctrl+Shift+F9`; `Alt+Space` is available only when explicitly requested via `DICTATION_TAURI_DICTATION_KEY=Alt+Space` and enabled via `DICTATION_TAURI_ALLOW_ALT_SPACE=true/1`. Without the gate it falls back to `Ctrl+Shift+F9` with reason `alt_space_requires_explicit_gate`. This does not implement Fixvox's native WH_KEYBOARD_LL suppression yet.
+- Selection boundary: `capture_selection_context` is registered as an explicit host command for spec 011. It returns typed, redacted outcomes and target metadata; the renderer does not invoke it by default. The Windows path remains non-mutating and returns `no_selection` until a separate approved real UI Automation selected-text smoke is done.
+- Computer-use feedback: `npm run tauri:dev` launched the real `Dictation Dock`, default label stayed `Ctrl+Shift+F9`, and CUA right-click exercised the native/context menu path. Evidence: `artifacts/desktop-control/combined-lote-smoke/20260624-tray-altspace-selection/report.json`.
+- Checks passed: `npm run test:pipeline` (50 files / 240 tests), `npm run build`, `npm run visual:check` (8 tests), and `cd src-tauri && cargo check`.
+- Guardrails: no raw transcript, no `paste_observed`, no Alt+Space enabled by default, no real selected text read by default, no replace-selection, no autostart install.
+
 ### Lote 1 Follow-Up Dock Parity - 2026-06-24
 
 - Scope: first large post-Checkpoint-E batch to close the accepted dock follow-ups without opening Alt+Space, selection, replace-selection, or paste observer gates.

@@ -70,6 +70,16 @@ pub fn update_dock_shell_state(
     apply_dock_shell_state(&app, state).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub fn show_dock(app: AppHandle) -> Result<(), String> {
+    show_dock_window(&app).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn hide_dock(app: AppHandle) -> Result<(), String> {
+    hide_dock_window(&app).map_err(|error| error.to_string())
+}
+
 pub fn configure_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn Error>> {
     let window = app.get_webview_window(DOCK_WINDOW_LABEL).ok_or_else(|| {
         io::Error::new(
@@ -86,6 +96,22 @@ pub fn configure_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<d
     window.set_always_on_top(true)?;
     platform::show_dock_window_no_activate(&window, position, layout)?;
 
+    Ok(())
+}
+
+pub fn show_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn Error>> {
+    apply_dock_shell_state(app, DockShellState::Idle).map(|_| ())
+}
+
+pub fn hide_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn Error>> {
+    let window = app.get_webview_window(DOCK_WINDOW_LABEL).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "Dictation Dock window is not available",
+        )
+    })?;
+
+    window.hide()?;
     Ok(())
 }
 

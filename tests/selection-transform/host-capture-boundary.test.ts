@@ -86,6 +86,16 @@ describe("host selection capture boundary", () => {
     });
   });
 
+  it("registers a host command boundary without wiring it to default renderer flow", () => {
+    const hostSource = readFileSync("src-tauri/src/selection_capture.rs", "utf8");
+    const libSource = readFileSync("src-tauri/src/lib.rs", "utf8");
+    const appSource = readFileSync("src/App.tsx", "utf8");
+
+    expect(hostSource).toContain("pub fn capture_selection_context()");
+    expect(libSource).toContain("selection_capture::capture_selection_context");
+    expect(appSource).not.toContain("capture_selection_context");
+  });
+
   it("keeps TS and Rust boundary files free of clipboard, keyboard, and paste side effects", () => {
     const sources = [
       "src/selection-transform/host-capture-boundary.ts",

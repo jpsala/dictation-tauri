@@ -69,6 +69,13 @@ Early post-MVP:
 - Replace-selection real con copy fallback.
 - Paste last result puede empezar en memoria de proceso; persistencia local experimental queda permitida en modo personal/dev si acelera el flujo.
 
+## Update 2026-06-24
+
+- `011` T038 agrego el comando Tauri explicito `capture_selection_context` y lo registro en `src-tauri/src/lib.rs`.
+- La frontera sigue host-owned y no mutante: no clipboard, no teclas, no foco, no persistencia, no replace-selection y no `paste_observed`.
+- En Windows, el comando devuelve metadata de target y `no_selection` redacted por ahora; la lectura real de selected text via UI Automation y el smoke manual redacted siguen separados en T039/gate futuro.
+- El renderer no invoca `capture_selection_context` por default; solo existen contratos/routing para cuando se apruebe la captura real.
+
 Later:
 
 - Quick Chat.

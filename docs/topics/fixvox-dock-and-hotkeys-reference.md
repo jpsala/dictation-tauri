@@ -147,12 +147,14 @@ Trabajo cerrado: `specs/012-fixvox-dock-dictation-key/tasks.md` Phase 8 / Checkp
 - T035 corrio smoke real post-parity con `scripts/desktop-dictation-e2e.ps1` run id `20260624-T035-post-parity`: `Ctrl+Shift+F9` -> speech fixture -> live VU/fresh WAV -> managed STT -> saved-target `paste_sent` -> clipboard sentinel restore. Evidence redacted: `artifacts/desktop-control/dictation-e2e/20260624-T035-post-parity/report.json`.
 - T036 cerro docs finales: Checkpoint E quedo completo y las desviaciones de paridad se aceptaron como follow-ups/gates futuros, no como bloqueantes.
 - Lote 1 follow-up cerro las desviaciones dock-specific mas importantes: controles separados verde `Stop & review`, azul `Stop & submit` y rojo `Cancel`; `Stop & submit` pide paste-then-Enter pero mantiene evidencia `paste_sent`; visual-only preset badge e indicador assistant; `update_dock_shell_state` en Rust/Tauri; idle rounded hit-region con `CreateRoundRectRgn`/`SetWindowRgn`; resize state-aware con `SetWindowPos(... SWP_NOACTIVATE ...)`. Smoke CUA uso `Dictation Dock` real y contexto controlado tipo Notepad; evidencia en `artifacts/desktop-control/dock-lote1-smoke/20260624-renderer-native/report.json`.
+- Lote 2 follow-up agrego tray/background y ruta gated de Alt+Space sin cambiar el default seguro: menu de tray nativo, hide-on-close, right-click context menu del dock, comando host `desktop-control://host-command`, resolver Rust de `DICTATION_TAURI_DICTATION_KEY` y gate `DICTATION_TAURI_ALLOW_ALT_SPACE`. Alt+Space sigue sin ser default y no incluye aun hook nativo de supresion del menu del sistema. Evidencia CUA: `artifacts/desktop-control/combined-lote-smoke/20260624-tray-altspace-selection/report.json`.
 
 ## Gaps Actuales En Dictation Tauri
 
-- No hay tray ni lifecycle background/app instalada.
+- No hay autostart/Start with Windows ni instalador/background lifecycle de app instalada; si se implementa, pedir confirmacion.
 - No hay companion/recovery overlay separado; el estado actual usa chip compacto dentro del dock y resize nativo para estados review/error/cancelled.
 - No hay observer/verificacion real de insercion; `paste_sent` no debe presentarse como paste observado.
 - No hay seleccion/replace real en este flujo; solo insert-at-cursor gated.
-- Alt+Space sigue gated; `Ctrl+Shift+F9` es fallback tecnico.
-- Context menu sigue pendiente como superficie real; preset badge e indicador assistant son visual-only y no activan motor de presets/assistant real.
+- Alt+Space sigue gated; `Ctrl+Shift+F9` es fallback tecnico por default. Falta la ruta robusta tipo Fixvox con WH_KEYBOARD_LL/supresion del menu del sistema y synthetic Alt-up antes de hacerlo UX default.
+- Context menu/tray existen como superficie inicial; falta enriquecerlos con result history, presets reales y settings.
+- Preset badge e indicador assistant son visual-only y no activan motor de presets/assistant real.

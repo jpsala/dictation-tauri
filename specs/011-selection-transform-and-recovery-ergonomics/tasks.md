@@ -138,7 +138,7 @@
 
 - [x] T036 [US1] Decide real Windows selection capture route and failure behavior before adding dependencies/capabilities
 - [x] T037 [US1] Add no-side-effect Rust/TS boundary tests or compile checks for selected route
-- [ ] T038 [US1] Implement minimal host-owned selection capture only if approved by the preceding decision
+- [x] T038 [US1] Implement minimal host-owned selection capture command boundary only if approved by the preceding decision
 - [ ] T039 [US1] With explicit local approval, run one manual selection capture smoke and record redacted evidence in `quickstart.md`
 
 **Checkpoint**: Real selection capture remains optional, gated, minimal, and redacted.
@@ -194,6 +194,7 @@ specs/011-selection-transform-and-recovery-ergonomics/*, docs/WORKING_MEMORY.md,
 
 ### Notes
 
+- 2026-06-24: T038 implemented only the explicit Tauri command boundary `capture_selection_context`, registered in `src-tauri/src/lib.rs`. It returns typed redacted outcomes and target metadata without invoking from the renderer by default. The Windows path intentionally remains non-mutating and returns `no_selection` until a separate approved UI Automation selected-text reader/smoke is done; T039 remains open.
 - Do not add real selection capture, paste automation, focus APIs, or clipboard mutation in the same batch as selection contracts.
 - Do not implement Quick Chat, Assistant Mode, `Alt+Q`, durable history, preset settings, or full tray/background in 011 first slices.
 - If a task touches `src/App.tsx`, keep the batch small and run focused UI/visual checks.

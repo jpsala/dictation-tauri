@@ -1,0 +1,195 @@
+use serde::Serialize;
+use tauri::{
+    menu::{ContextMenu, MenuBuilder, MenuEvent},
+    tray::TrayIconBuilder,
+    AppHandle, Emitter, Manager, Runtime, WindowEvent,
+};
+
+use crate::dock_shell::{self, DOCK_WINDOW_LABEL};
+
+pub const HOST_COMMAND_EVENT: &str = "desktop-control://host-command";
+
+pub const MENU_SHOW_DOCK: &str = "show_dock";
+pub const MENU_HIDE_DOCK: &str = "hide_dock";
+pub const MENU_START: &str = "start_dictation";
+pub const MENU_STOP: &str = "stop_dictation";
+pub const MENU_CANCEL: &str = "cancel_dictation";
+pub const MENU_PASTE_LAST_SAFE: &str = "paste_last_safe";
+pub const MENU_QUIT: &str = "quit";
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostCommandPayload {
+    pub source: &'static str,
+    pub command: &'static str,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostMenuAction {
+    ShowDock,
+    HideDock,
+    StartDictation,
+    StopDictation,
+    CancelDictation,
+    PasteLastSafe,
+    Quit,
+    Unknown,
+}
+
+pub fn resolve_host_menu_action(id: &str) -> HostMenuAction {
+    match id {
+        MENU_SHOW_DOCK => HostMenuAction::ShowDock,
+        MENU_HIDE_DOCK => HostMenuAction::HideDock,
+        MENU_START => HostMenuAction::StartDictation,
+        MENU_STOP => HostMenuAction::StopDictation,
+        MENU_CANCEL => HostMenuAction::CancelDictation,
+        MENU_PASTE_LAST_SAFE => HostMenuAction::PasteLastSafe,
+        MENU_QUIT => HostMenuAction::Quit,
+        _ => HostMenuAction::Unknown,
+    }
+}
+
+pub fn host_command_payload(action: HostMenuAction) -> Option<HostCommandPayload> {
+    let command = match action {
+        HostMenuAction::StartDictation => "start",
+        HostMenuAction::StopDictation => "stop",
+        HostMenuAction::CancelDictation => "cancel",
+        HostMenuAction::PasteLastSafe => "paste_last_safe",
+        HostMenuAction::ShowDock
+        | HostMenuAction::HideDock
+        | HostMenuAction::Quit
+        | HostMenuAction::Unknown => return None,
+    };
+
+    Some(HostCommandPayload {
+        source: "tray_or_context_menu",
+        command,
+    })
+}
+
+pub fn configure_tray_and_background<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let menu = build_host_menu(app)?;
+    let mut tray = TrayIconBuilder::with_id("dictation-tauri-tray")
+        .tooltip("Dictation Tauri")
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .on_menu_event(|app, event| {
+            handle_menu_event(app, event);
+        });
+
+    if let Some(icon) = app.default_window_icon().cloned() {
+        tray = tray.icon(icon);
+    }
+
+    tray.build(app)?;
+
+    if let Some(window) = app.get_webview_window(DOCK_WINDOW_LABEL) {
+        let app_handle = app.clone();
+        window.on_window_event(move |event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = dock_shell::hide_dock_window(&app_handle);
+            }
+        });
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn show_dock_context_menu(app: AppHandle) -> Result<(), String> {
+    let window = app
+        .get_window(DOCK_WINDOW_LABEL)
+        .ok_or_else(|| "Dictation Dock window is not available".to_string())?;
+    let menu = build_host_menu(&app).map_err(|error| error.to_string())?;
+    menu.popup(window).map_err(|error| error.to_string())
+}
+
+fn build_host_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::Menu<R>> {
+    MenuBuilder::new(app)
+        .text(MENU_SHOW_DOCK, "Show dock")
+        .text(MENU_HIDE_DOCK, "Hide dock")
+        .separator()
+        .text(MENU_START, "Start dictation")
+        .text(MENU_STOP, "Stop / review")
+        .text(MENU_CANCEL, "Cancel dictation")
+        .separator()
+        .text(MENU_PASTE_LAST_SAFE, "Paste last (safe)")
+        .separator()
+        .text(MENU_QUIT, "Quit Dictation Tauri")
+        .build()
+}
+
+fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
+    match resolve_host_menu_action(event.id().as_ref()) {
+        HostMenuAction::ShowDock => {
+            let _ = dock_shell::show_dock_window(app);
+        }
+        HostMenuAction::HideDock => {
+            let _ = dock_shell::hide_dock_window(app);
+        }
+        HostMenuAction::Quit => app.exit(0),
+        action => {
+            if let Some(payload) = host_command_payload(action) {
+                let _ = app.emit(HOST_COMMAND_EVENT, payload);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_host_menu_actions_from_stable_ids() {
+        assert_eq!(
+            resolve_host_menu_action(MENU_SHOW_DOCK),
+            HostMenuAction::ShowDock
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_HIDE_DOCK),
+            HostMenuAction::HideDock
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_START),
+            HostMenuAction::StartDictation
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_STOP),
+            HostMenuAction::StopDictation
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_CANCEL),
+            HostMenuAction::CancelDictation
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_PASTE_LAST_SAFE),
+            HostMenuAction::PasteLastSafe
+        );
+        assert_eq!(resolve_host_menu_action(MENU_QUIT), HostMenuAction::Quit);
+        assert_eq!(resolve_host_menu_action("unknown"), HostMenuAction::Unknown);
+    }
+
+    #[test]
+    fn emits_only_renderer_safe_host_commands() {
+        assert_eq!(
+            host_command_payload(HostMenuAction::StartDictation),
+            Some(HostCommandPayload {
+                source: "tray_or_context_menu",
+                command: "start",
+            })
+        );
+        assert_eq!(
+            host_command_payload(HostMenuAction::StopDictation),
+            Some(HostCommandPayload {
+                source: "tray_or_context_menu",
+                command: "stop",
+            })
+        );
+        assert_eq!(host_command_payload(HostMenuAction::ShowDock), None);
+        assert_eq!(host_command_payload(HostMenuAction::Quit), None);
+    }
+}

@@ -35,7 +35,9 @@ import {
 import { createCapturedAudioPipelineRequest } from "./pipeline/ports";
 import {
   listenForTauriGlobalHotkey,
+  listenForTauriHostCommands,
   tauriGlobalHotkeyShortcut,
+  type TauriGlobalHotkeyConfig,
 } from "./desktop-control/tauri-host-control";
 import {
   createInitialDictationKeyState,
@@ -601,6 +603,21 @@ export function App() {
     level: 0,
     bands: [0, 0, 0, 0, 0, 0, 0],
   });
+  const [effectiveHotkeyLabel, setEffectiveHotkeyLabel] = useState(tauriGlobalHotkeyShortcut);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
+    void invoke<TauriGlobalHotkeyConfig>("get_desktop_control_hotkey_config")
+      .then((config) => {
+        setEffectiveHotkeyLabel(config.shortcut || tauriGlobalHotkeyShortcut);
+      })
+      .catch(() => {
+        setEffectiveHotkeyLabel(tauriGlobalHotkeyShortcut);
+      });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -943,7 +960,7 @@ export function App() {
     },
   );
   const voiceDockHotkey = isTauri()
-    ? tauriGlobalHotkeyShortcut
+    ? effectiveHotkeyLabel
     : "Dock button";
 
   useEffect(() => {
@@ -1042,6 +1059,27 @@ export function App() {
       summary,
     });
   }
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    void listenForTauriHostCommands((command) => {
+      handleVoiceDockCommand(command);
+    }).then((nextUnlisten) => {
+      if (disposed) {
+        nextUnlisten?.();
+        return;
+      }
+
+      unlisten = nextUnlisten;
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [voiceDockState.phase, pipelineUi.summary]);
 
   useEffect(() => {
     let disposed = false;
@@ -1173,6 +1211,13 @@ export function App() {
           hotkeyLabel={voiceDockHotkey}
           transcriptPreview={transcriptReview?.text}
           onCommand={handleVoiceDockCommand}
+          onContextMenuRequest={() => {
+            if (!isTauri()) {
+              return;
+            }
+
+            void invoke("show_dock_context_menu").catch(() => undefined);
+          }}
         />
 
         <details className="debug-details">

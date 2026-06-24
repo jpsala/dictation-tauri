@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   createDictationKeyEventFromTauriHotkey,
+  tauriDefaultGlobalHotkeyShortcut,
   tauriGlobalHotkeyEventName,
   tauriGlobalHotkeyShortcut,
+  tauriHostCommandEventName,
 } from "../../src/desktop-control/tauri-host-control";
 
 const forbiddenHotkeyBoundaryMarkers = [
@@ -19,7 +21,7 @@ const forbiddenHotkeyBoundaryMarkers = [
 ] as const;
 
 describe("Tauri host-owned global hotkey boundary", () => {
-  it("maps fixed Rust-owned pressed and released payloads to dictation key events", () => {
+  it("maps Rust-owned pressed and released payloads to dictation key events", () => {
     expect(
       createDictationKeyEventFromTauriHotkey(
         {
@@ -66,7 +68,6 @@ describe("Tauri host-owned global hotkey boundary", () => {
       createDictationKeyEventFromTauriHotkey({
         source: "global_hotkey",
         action: "pressed",
-        shortcut: "Ctrl+Alt+Delete",
       }),
     ).toBeUndefined();
 
@@ -82,7 +83,9 @@ describe("Tauri host-owned global hotkey boundary", () => {
   it("keeps the renderer adapter listen-only with no shortcut registration or paste side effects", () => {
     const source = readFileSync("src/desktop-control/tauri-host-control.ts", "utf8");
 
+    expect(tauriDefaultGlobalHotkeyShortcut).toBe("Ctrl+Shift+F9");
     expect(tauriGlobalHotkeyEventName).toBe("desktop-control://global-hotkey");
+    expect(tauriHostCommandEventName).toBe("desktop-control://host-command");
     for (const marker of forbiddenHotkeyBoundaryMarkers) {
       expect(source, `tauri-host-control.ts must not contain ${marker}`).not.toContain(
         marker,
@@ -90,10 +93,12 @@ describe("Tauri host-owned global hotkey boundary", () => {
     }
   });
 
-  it("keeps Rust hotkey registration scoped to the approved fixed shortcut and event", () => {
+  it("keeps Rust hotkey registration host-owned with a gated Alt+Space path", () => {
     const source = readFileSync("src-tauri/src/desktop_control.rs", "utf8");
 
     expect(source).toContain("Ctrl+Shift+F9");
+    expect(source).toContain("Alt+Space");
+    expect(source).toContain("DICTATION_TAURI_ALLOW_ALT_SPACE");
     expect(source).toContain(tauriGlobalHotkeyEventName);
     expect(source).toContain("global_hotkey");
     expect(source).toContain("pressed");
