@@ -5,10 +5,16 @@ describe("Tauri tray background lifecycle", () => {
   it("enables the Tauri tray feature and registers a Rust tray", () => {
     const cargo = readFileSync("src-tauri/Cargo.toml", "utf8");
     const lib = readFileSync("src-tauri/src/lib.rs", "utf8");
+    const tauriConfig = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
 
     expect(cargo).toContain('features = ["tray-icon"]');
     expect(lib).toContain("mod tray;");
     expect(lib).toContain("tray::register_tray(app)?");
+    expect(tauriConfig.app.windows[0]).toMatchObject({
+      label: "main",
+      title: "Dictation Dock",
+      skipTaskbar: true,
+    });
   });
 
   it("uses stable Fixvox-parity tray IDs and show/hide/quit actions", () => {

@@ -12,7 +12,7 @@
 - [x] T005 Verify `cd src-tauri && cargo check`, `npm run test:pipeline`, and a dev status smoke.
 - [x] T006 Record redacted evidence and update docs.
 
-Checkpoint A evidence (2026-06-23): `npm run test:pipeline` OK (53 files / 250 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, `npm run dev:desktop:restart` OK with `dictation-tauri` running as `Dictation Dock`. Tauri logs show clean compile/run after enabling `tray-icon`.
+Checkpoint A evidence (2026-06-23): `npm run test:pipeline` OK (53 files / 250 tests), `npm run build` OK, `cd src-tauri && cargo check` OK, `npm run dev:desktop:restart` OK with `dictation-tauri` running as `Dictation Dock`. Tauri logs show clean compile/run after enabling `tray-icon`. Follow-up: main dock window has `skipTaskbar: true` so the tray/background app does not show a dock entry in the Windows taskbar.
 
 ## Phase 3: Checkpoint B - Settings And Hotkey Schema
 
