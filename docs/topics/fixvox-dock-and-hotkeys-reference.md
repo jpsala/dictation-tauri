@@ -137,7 +137,33 @@ Antes de cambiar dock/hotkeys:
 ## Gaps Actuales En Dictation Tauri
 
 - Tray/background dev baseline existe en Tauri: icono tray Rust con IDs estables `show_dock`, `hide_dock`, `settings`, `quit`, left-click toggle, `skipTaskbar: true`, hotkeys vivas y helper `npm run dev:desktop:refresh`; falta smoke visual/UX prolongado e installer/autostart.
+- Falta no-activate real en todos los caminos show/hide/refresh: Fixvox usa `showWindowNoActivate`/`setWindowNoActivate`; Dictation Tauri todavia puede usar `set_focus()` en tray/refresh y eso no debe quedar para el dock utility.
+- Falta drag/movilidad del dock: Fixvox permite mover el dock arrastrandolo, persiste posicion por monitor y puede seguir el monitor del cursor cuando esta idle.
 - No hay companion/recovery overlay separado; el estado actual usa chip compacto dentro del dock.
+- Falta context menu del dock: Fixvox tiene right-click con skin/dev/hide; Dictation Tauri hoy tiene tray menu pero no menu contextual propio del dock.
 - Falta artifact/log JSON redacted para delivery status sin depender de UIA/computer-use; la verificacion nativa gated ya existe para targets Win32 compatibles.
 - No hay seleccion/replace real en este flujo; solo insert-at-cursor gated.
 - Alt+Space esta code-enabled via Tauri global-shortcut, pero sigue pendiente el smoke manual Windows antes de declararlo probado; `Ctrl+Shift+F9` es fallback tecnico.
+
+## Analisis 2026-06-23: Que Hace Fixvox Con El Dock
+
+Fixvox implementa el dock como una superficie utility, no como ventana normal:
+- Ventana pequena por skin; Skin 4 usa aprox. `148x56` con 7 dots, controles laterales y estado compacto.
+- Siempre arriba, transparente y sin taskbar.
+- Show no-activate: se revela sin robar foco al input del usuario.
+- Interactividad ajustable: puede activar/desactivar mouse passthrough cuando detecta menus nativos (`#32768`) para no bloquear interacciones del sistema.
+- Drag nativo/manual: `POST /dock/drag/start` mide cursor inicial, poll de boton izquierdo, mueve ventana por delta y persiste al soltar.
+- Posicion por monitor: guarda posicion, resuelve posicion para monitor del cursor y mueve el dock cuando idle si cambia el monitor.
+- Renderer sync diferenciado: polling rapido durante arming/recording (`~60ms`) y sync liviano idle (`~450ms`).
+- Visual mirror: puede mostrar estado visual arming/recording/processing aunque el runtime interno este idle brevemente, evitando parpadeos.
+- Companion separado para errores/retry/dismiss, para no agrandar el dock.
+- Context menu propio en right-click: skin, dev, hide.
+- Settings defaults relevantes: `dockSkin: 4`, `showDockOnStartup: true`, `startWithWindows: false`, `pasteLast: Alt+Shift+X`, `picker: Alt+Q`, `stopAndSubmit: Alt+Shift+Space`, `voiceRecord: Alt+Space`, `pushToTalk: Ctrl+Alt+Space`.
+## Opciones Rust/Tauri Para Drag Y Dock Utility
+Preferencia actual para Dictation Tauri:
+1. Implementar primero un comando Rust `start_dock_drag` que llame el equivalente Tauri nativo `start_dragging()` sobre la ventana `main`.
+2. El renderer debe iniciar drag desde pointer down/move con threshold para no confundir click con drag; si es click, sigue start/stop como hoy.
+3. Persistir posicion al recibir eventos de ventana movida, en storage local de app, sin contenido de usuario.
+4. Mantener show/hide/topmost en Rust y no-activate. Evitar `set_focus()` en dock salvo que el usuario abra Settings/main window.
+5. Si Tauri native drag falla por `transparent` + `decorations:false` + `skipTaskbar`, implementar fallback Win32 manual estilo Fixvox: cursor polling + `SetWindowPos` + persist al soltar.
+6. Despues de drag/persistencia, agregar monitor-follow idle con guardrails para no mover el dock durante recording/processing.
