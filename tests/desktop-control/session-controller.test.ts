@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { DesktopDictationController } from "../../src/desktop-control/controller";
 import type { DesktopCaptureGateway, DesktopRuntimeGateway } from "../../src/desktop-control/controller";
+import type { DesktopDeliveryGateway } from "../../src/delivery";
 import {
   isActiveDesktopDictationState,
   isTerminalDesktopDictationState,
@@ -206,6 +207,56 @@ describe("DesktopDictationController US1 session lifecycle", () => {
     expect(JSON.stringify(reviewed)).not.toContain("paste_observed");
   });
 
+  it("preserves verified paste observation from a trusted desktop delivery gateway", async () => {
+    const delivery: DesktopDeliveryGateway = {
+      deliver: vi.fn(async (request) => ({
+        status: "paste_observed",
+        output: request.text,
+        strategy: "paste_send",
+        message: "Paste insertion was observed by a verified desktop observer.",
+        reason: "Native observer confirmed insertion.",
+      })),
+    };
+    const controller = createController({
+      delivery,
+      allowDesktopDeliverySideEffects: true,
+      runtime: {
+        transcribe: vi.fn(async () => ({
+          transcript: "observed transcript",
+          summary: {
+            terminalState: "done",
+            transcript: "observed transcript",
+            output: "observed transcript",
+            events: [],
+          },
+        })),
+      },
+    });
+
+    await controller.handleControl(createControlEvent({ action: "start" }));
+    const reviewed = await controller.handleControl(
+      createControlEvent({ action: "stop", id: "stop-observed-delivery" }),
+    );
+
+    expect(reviewed).toMatchObject({
+      state: "reviewing",
+      delivery: {
+        status: "paste_observed",
+        strategy: "paste_send",
+        output: "observed transcript",
+      },
+      runtime: {
+        summary: {
+          deliveryEvidence: {
+            status: "paste_observed",
+            output: "observed transcript",
+            reason: "Native observer confirmed insertion.",
+          },
+        },
+      },
+    });
+  });
+
   it("rejects overlapping starts without replacing the active session", async () => {
     const controller = createController();
 
@@ -380,6 +431,8 @@ describe("DesktopDictationController US1 session lifecycle", () => {
 function createController(input: {
   capture?: DesktopCaptureGateway;
   runtime?: DesktopRuntimeGateway;
+  delivery?: DesktopDeliveryGateway;
+  allowDesktopDeliverySideEffects?: boolean;
 } = {}) {
   return new DesktopDictationController({
     capture: input.capture ?? {
@@ -390,6 +443,8 @@ function createController(input: {
     runtime: input.runtime ?? {
       transcribe: vi.fn(async () => ({ transcript: "default transcript" })),
     },
+    delivery: input.delivery,
+    allowDesktopDeliverySideEffects: input.allowDesktopDeliverySideEffects,
     createSessionId: () => "desktop-session-001",
     now: () => "2026-06-22T10:00:05.000Z",
   });

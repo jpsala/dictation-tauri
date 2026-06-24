@@ -365,7 +365,9 @@ function describeDeliveryEvidence(
     case "uncertain":
       return evidence.reason ?? "Delivery remains uncertain; transcript is still available.";
     case "paste_sent":
-      return "Paste was sent, but observation is not implemented in this batch.";
+      return "Paste was sent, but target insertion was not observed.";
+    case "paste_observed":
+      return "Paste insertion was observed by a verified desktop observer.";
     case "failed":
       return evidence.reason ?? "Delivery failed before a confirmed handoff.";
     default:

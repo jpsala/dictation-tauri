@@ -49,4 +49,11 @@ Manual steps:
   - Command: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-dock.ps1 -Mode Fallback -RecordSeconds 4 -SpeakText '[REDACTED_SYNTHETIC_SPEECH]'`.
   - Report: `artifacts/microphone-capture/reports/dock-smoke-Fallback-20260623-202847.json`.
   - Computer-use evidence: `computer_use_get_window_state` on Notepad showed the scratch document value matched the dictated fixture text and `32 characters`; dock state showed `Review ready`, transcript text, and recovery actions.
-  - Limitation: the dock UI still did not expose a distinct `paste_observed` label in the compact view, so final closeout still needs machine-readable/logged delivery status or a UI affordance that shows observed-vs-sent.
+  - Limitation at that point: the dock UI did not expose a distinct `paste_observed` label in the compact view.
+- 2026-06-23 final verified observer smoke after adding machine-readable dock status:
+  - Gate: dev dock restarted with `VITE_ENABLE_NATIVE_PASTE_OBSERVER=1`.
+  - Command: `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke-dock.ps1 -Mode Fallback -RecordSeconds 6 -SpeakText '[REDACTED_SYNTHETIC_SPEECH]'`.
+  - Report: `artifacts/microphone-capture/reports/dock-smoke-Fallback-20260623-204424.json`.
+  - Computer-use dock evidence: `Paste observed`, `paste_observed: verified target insertion.`, `Delivery status: paste_observed`, transcript preview redacted.
+  - Computer-use target evidence: Notepad scratch document value contained non-empty inserted text and reported `21 characters` / modified tab.
+  - Clipboard sentinel was restored by the smoke script; raw transcript/provider/secrets were not recorded in docs.

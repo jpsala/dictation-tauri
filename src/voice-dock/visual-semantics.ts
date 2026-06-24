@@ -38,6 +38,8 @@ export function createVoiceDockState(
     phase,
     statusText: status.text,
     statusDetail: status.detail,
+    deliveryStatus: input.state === "idle" ? undefined : input.delivery?.status,
+    deliveryStatusLabel: input.state === "idle" ? undefined : getDeliveryStatusLabel(input.delivery),
     ariaLabel: createAriaLabel(status.text, status.detail),
     active: phase === "arming" || phase === "recording" || phase === "processing",
     busy: phase === "arming" || phase === "processing",
@@ -98,10 +100,17 @@ function createRecoveryState(
   },
 ): DockRecoveryState | undefined {
   if (phase === "review" && actions.canCopy) {
+    const observed = input.state !== "idle" && input.delivery?.status === "paste_observed";
+    const sent = input.state !== "idle" && input.delivery?.status === "paste_sent";
+
     return {
       kind: "copy",
-      title: "Transcript ready",
-      message: "Review the transcript locally or copy it manually.",
+      title: observed ? "Paste observed" : sent ? "Paste sent" : "Transcript ready",
+      message: observed
+        ? "Verified observer confirmed target insertion; transcript remains available."
+        : sent
+          ? "Paste was sent but target insertion was not observed; transcript remains available."
+          : "Review the transcript locally or copy it manually.",
       primaryAction: "copy",
       secondaryAction: actions.canPasteLastSafe ? "paste_last_safe" : undefined,
     };
@@ -153,6 +162,12 @@ function getStatus(
     case "processing":
       return { text: "Processing", detail: "Transcribing and preparing review." };
     case "review":
+      if (input.state !== "idle" && input.delivery?.status === "paste_observed") {
+        return { text: "Paste observed", detail: "paste_observed: verified target insertion." };
+      }
+      if (input.state !== "idle" && input.delivery?.status === "paste_sent") {
+        return { text: "Paste sent", detail: "paste_sent: insertion was sent but not observed." };
+      }
       return { text: "Review ready", detail: "Transcript is available for local review." };
     case "failed":
       return { text: "Needs attention", detail: getErrorMessage(input) };
@@ -173,6 +188,25 @@ function hasDeliveryOutput(input: DockInputState): boolean {
   }
 
   return typeof input.delivery?.output === "string" && input.delivery.output.length > 0;
+}
+
+function getDeliveryStatusLabel(delivery: DeliveryEvidence | undefined): string | undefined {
+  switch (delivery?.status) {
+    case "paste_observed":
+      return "paste_observed";
+    case "paste_sent":
+      return "paste_sent";
+    case "available":
+      return "available";
+    case "copied":
+      return "copied";
+    case "failed":
+      return "failed";
+    case "uncertain":
+      return "uncertain";
+    default:
+      return undefined;
+  }
 }
 
 function deliveryIsUncertain(delivery: DeliveryEvidence | undefined): boolean {

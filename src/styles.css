@@ -385,6 +385,7 @@ h1 {
 
 .voice-dock__row,
 .voice-dock__detail,
+.voice-dock__delivery-status,
 .voice-dock__preview {
   position: absolute;
   width: 1px;

@@ -16,7 +16,7 @@
 
 - [x] T006 Design Windows host observer strategy: a Rust-owned `observe_desktop_paste` command polls readable Win32 text surfaces on the saved target, returns only status/confidence/reason/snapshot metadata, and never returns raw target contents.
 - [x] T007 Implement native observer behind explicit `VITE_ENABLE_NATIVE_PASTE_OBSERVER=1` renderer gate; default delivery still has no observer and remains `paste_sent`.
-- [ ] T008 Run controlled manual smoke only after explicit approval and record redacted evidence.
+- [x] T008 Run controlled manual smoke after explicit approval and record redacted evidence.
 
 ## Checkpoint A Done When
 
@@ -25,3 +25,5 @@ The app has a safe seam for verified observers, default behavior remains honest 
 ## Native Observer Checkpoint Done When
 
 With `VITE_ENABLE_NATIVE_PASTE_OBSERVER=1`, a controlled Windows target can promote `paste_sent` to `paste_observed` only when the native observer confirms high-confidence insertion. Without the gate, behavior stays unchanged.
+
+Status: done 2026-06-23 with computer-use evidence. The dock exposes `data-delivery-status="paste_observed"` plus accessible text `Delivery status: paste_observed`, and computer-use verified the scratch Notepad target contained the inserted text.

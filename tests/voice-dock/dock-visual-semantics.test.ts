@@ -99,10 +99,43 @@ describe("voice dock visual semantics", () => {
     ).toMatchObject({
       phase: "review",
       statusText: "Review ready",
+      deliveryStatus: "available",
+      deliveryStatusLabel: "available",
       canCopy: true,
       canPasteLastSafe: true,
       recovery: {
         kind: "copy",
+        primaryAction: "copy",
+        secondaryAction: "paste_last_safe",
+      },
+    });
+  });
+
+  it("renders verified paste observation as explicit dock status", () => {
+    expect(
+      createVoiceDockState(
+        session({
+          state: "done",
+          delivery: {
+            status: "paste_observed",
+            strategy: "paste_send",
+            output: "local transcript",
+            message: "Paste insertion was observed by a verified desktop observer.",
+          },
+        }),
+        { canPasteLastSafe: true },
+      ),
+    ).toMatchObject({
+      phase: "review",
+      statusText: "Paste observed",
+      statusDetail: "paste_observed: verified target insertion.",
+      deliveryStatus: "paste_observed",
+      deliveryStatusLabel: "paste_observed",
+      canCopy: true,
+      canPasteLastSafe: true,
+      recovery: {
+        kind: "copy",
+        title: "Paste observed",
         primaryAction: "copy",
         secondaryAction: "paste_last_safe",
       },

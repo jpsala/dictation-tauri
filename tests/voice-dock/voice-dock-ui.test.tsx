@@ -19,13 +19,18 @@ type RenderedDock = {
   onCommand: ReturnType<typeof vi.fn<(command: DockCommand) => void>>;
 };
 
-function renderDock(state: VoiceDockState): RenderedDock {
+function renderDock(
+  state: VoiceDockState,
+  options: { allowPasteObservedWording?: boolean } = {},
+): RenderedDock {
   const onCommand = vi.fn<(command: DockCommand) => void>();
   const html = renderToStaticMarkup(
     <VoiceDock state={state} onCommand={onCommand} />,
   );
 
-  expectNoPasteObservedWording(html);
+  if (!options.allowPasteObservedWording) {
+    expectNoPasteObservedWording(html);
+  }
 
   return { html, onCommand };
 }
@@ -166,10 +171,40 @@ describe("VoiceDock UI", () => {
     );
 
     expect(html).toContain('data-phase="uncertain"');
+    expect(html).toContain('data-delivery-status="uncertain"');
     expect(html).toContain("Check target");
     expect(html).toContain("Check the target app");
     expect(html).toContain("Delivery was not verified");
+    expect(html).toContain("Delivery status:");
+    expect(html).toContain("uncertain");
     expectAction(html, "Copy transcript");
     expectAction(html, "Paste last (safe)");
+  });
+
+  it("renders verified paste observation as explicit machine-readable dock evidence", () => {
+    const { html } = renderDock(
+      createVoiceDockState(
+        session({
+          state: "done",
+          delivery: {
+            status: "paste_observed",
+            strategy: "paste_send",
+            output: "local transcript",
+            message: "Paste insertion was observed by a verified desktop observer.",
+          },
+        }),
+        { canPasteLastSafe: true },
+      ),
+      { allowPasteObservedWording: true },
+    );
+
+    expect(html).toContain('data-phase="review"');
+    expect(html).toContain('data-delivery-status="paste_observed"');
+    expect(html).toContain('data-testid="voice-dock-delivery-status"');
+    expect(html).toContain("Paste observed");
+    expect(html).toContain("Delivery status:");
+    expect(html).toContain("paste_observed");
+    expect(html).toContain("Verified observer confirmed target insertion");
+    expectAction(html, "Copy transcript");
   });
 });

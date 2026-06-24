@@ -2,7 +2,7 @@
 
 **Feature Branch**: `013-verified-paste-observer`  
 **Created**: 2026-06-23  
-**Status**: Active - native observer implemented behind gate; manual smoke pending  
+**Status**: Complete for gated Windows observer smoke  
 **Input**: Continuation after `012-fixvox-dock-dictation-key` safe dock + saved-target `paste_sent` landed.
 
 ## User Story
@@ -34,3 +34,4 @@ As JP, when dictation inserts text into another desktop app, I need the app to d
 5. Safe checks remain provider-free and do not require desktop side effects.
 6. With the native observer gate disabled, Tauri desktop delivery behavior is unchanged.
 7. With the native observer gate enabled, only high-confidence native confirmation can promote evidence to `paste_observed`; unsupported/mismatch/timeout remain recoverable `paste_sent`.
+8. The compact dock exposes machine-readable and accessible delivery status so computer-use can verify `paste_observed` directly.

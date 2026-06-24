@@ -31,6 +31,7 @@ export function VoiceDock({
       className={`voice-dock voice-dock--${state.phase}`}
       data-testid="voice-dock"
       data-phase={state.phase}
+      data-delivery-status={state.deliveryStatus}
       aria-label="Voice dock"
     >
       <div className="voice-dock__main">
@@ -53,6 +54,14 @@ export function VoiceDock({
           </div>
           {state.statusDetail ? (
             <p className="voice-dock__detail">{state.statusDetail}</p>
+          ) : null}
+          {state.deliveryStatusLabel ? (
+            <p
+              className="voice-dock__delivery-status"
+              data-testid="voice-dock-delivery-status"
+            >
+              Delivery status: <code>{state.deliveryStatusLabel}</code>
+            </p>
           ) : null}
           <div
             className="voice-dock__vu"

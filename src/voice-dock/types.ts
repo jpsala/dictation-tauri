@@ -25,10 +25,20 @@ export type DockRecoveryState = {
   secondaryAction?: DockCommand;
 };
 
+export type VoiceDockDeliveryStatus =
+  | "available"
+  | "copied"
+  | "paste_sent"
+  | "failed"
+  | "uncertain"
+  | "paste_observed";
+
 export type VoiceDockState = {
   phase: VoiceDockPhase;
   statusText: string;
   statusDetail?: string;
+  deliveryStatus?: VoiceDockDeliveryStatus;
+  deliveryStatusLabel?: string;
   ariaLabel: string;
   active: boolean;
   busy: boolean;
