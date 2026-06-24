@@ -2,7 +2,7 @@
 
 Estado vivo del proyecto. Mantener corto.
 
-Ultima actualizacion manual: 2026-06-24 (AOS continuar sesion after Alt+Space/default E2E hardening).
+Ultima actualizacion manual: 2026-06-24 (AOS companion sync batch after observer E2E).
 
 ## Regla
 
@@ -39,7 +39,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `009-fixvox-cloud-runtime-port` | complete through T023 plus managed STT smoke on fresh hotkey WAV passed 2026-06-23 | `specs/009-fixvox-cloud-runtime-port/tasks.md` |
 | `010-desktop-dictation-control-delivery` | complete incl. T046 and E2E: `Ctrl+Shift+F9` -> fresh WAV -> Fixvox managed STT -> review visible -> copy fallback changed clipboard | `specs/010-desktop-dictation-control-delivery/tasks.md` |
 | `011-selection-transform-and-recovery-ergonomics` | active post-selection smoke: fixture-first routing/transforms, safe paste-last, explicit host command boundary, redacted target metadata, best-effort UIA selected-text read, and T039 product IPC smoke passed; replace-selection remains gated | `specs/011-selection-transform-and-recovery-ergonomics/tasks.md` |
-| `012-fixvox-dock-dictation-key` | complete through larger parity follow-ups: Skin4-like dock, Rust/Tauri shell, tray/context menu, default native Alt+Space with fallback, companion window first-slice, bounded result history, side-by-side smoke, and real `paste_sent` E2E | `specs/012-fixvox-dock-dictation-key/tasks.md` |
+| `012-fixvox-dock-dictation-key` | complete through larger parity follow-ups: Skin4-like dock, Rust/Tauri shell, tray/context menu, default native Alt+Space with fallback, synced companion window first-slice, bounded result history, side-by-side smoke, and real `paste_sent`/controlled `paste_observed` E2E | `specs/012-fixvox-dock-dictation-key/tasks.md` |
 
 ## Tracks Activas
 
@@ -95,7 +95,7 @@ bun scripts/check-skills-junction.ts
 
 ## Proximo Paso Probable
 
-`011` T039 quedo cerrado con smoke real redacted de selected-text UIA por IPC de producto. `012` Checkpoint E y follow-ups principales quedaron cerrados: dock parity principal, tray/context menu, hide-on-close, Alt+Space default en Windows con fallback, companion window first-slice, result history local, UIA selected-text read y observer bounded. Observer interno hardeneado y E2E controlado `paste_observed` paso; proximo trabajo probable: conectar presets a selection-transform/replace-selection, sincronizar companion window real, o pasar mas E2E post-default/Alt+Space.
+`011` T039 quedo cerrado con smoke real redacted de selected-text UIA por IPC de producto. `012` Checkpoint E y follow-ups principales quedaron cerrados: dock parity principal, tray/context menu, hide-on-close, Alt+Space default en Windows con fallback, companion window sincronizada first-slice, result history local, UIA selected-text read y observer bounded. Observer interno hardeneado y E2E controlado `paste_observed` paso; proximo trabajo probable: conectar presets a selection-transform/replace-selection, cablear acciones propias de companion, o pasar mas E2E post-default/Alt+Space.
 
 1. `010` quedo cerrado completo: shortcut fijo `Ctrl+Shift+F9`, ruta Rust-owned Tauri v2 global shortcut, renderer solo escucha evento `desktop-control://global-hotkey`, sin JS hotkey registration ni permisos frontend global-shortcut. T046 smoke manual paso con evidencia redacted en `specs/010-desktop-dictation-control-delivery/quickstart.md`.
 2. `011` se creo como siguiente spec post-010: `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/selection-transform-and-recovery.md`, `quickstart.md`, `tasks.md`.
@@ -132,6 +132,7 @@ bun scripts/check-skills-junction.ts
 33. Lote 4 avanzo los 6 frentes: `Alt+Space` es default Windows con fallback explicito `DICTATION_TAURI_DICTATION_KEY=Ctrl+Shift+F9`; `capture_selection_context` intenta UIA `TextPattern.GetSelection()` real sin clipboard/keyboard/focus mutation; desktop delivery agrega observer Win32 bounded que solo eleva a `paste_observed` si verifica texto insertado; `dock-companion` es una segunda ventana Tauri hidden/no-taskbar first-slice; settings/history/presets siguen cableados desde menu. Smoke Alt+Space default paso en `artifacts/desktop-control/combined-lote-smoke/20260624-six-fronts-default-altspace-uia-observer/report.json`; checks OK (50/242, build, visual 8, cargo). El bloqueo E2E por Windows foreground-lock se resolvio hardeneando `scripts/desktop-dictation-e2e.ps1` con `AttachThreadInput` y `-DictationKey AltSpace`; full default Alt+Space E2E paso en `artifacts/desktop-control/dictation-e2e/20260624-e2e-altspace-default/report.json`.
 34. `011` T039 quedo cerrado: se agrego harness gated `scripts/selection-capture-smoke.ps1` + `scripts/cdp-evaluate.mjs` (`npm run selection-capture:smoke`) y paso un smoke con target WPF controlado, texto sintetico seleccionado e IPC de producto `capture_selection_context` via Tauri WebView/CDP. Evidencia redacted: `artifacts/desktop-control/selection-capture-smoke/20260624-T039-uia-selection-smoke-retry/report.json` (`status: ok`, length/hash only, target labels `[redacted]`, no raw selected text, no clipboard/keyboard/focus mutation por el comando, no paste/replace/observer).
 35. Observer interno hardeneado y probado en E2E controlado: `did_observe_inserted_text` normaliza CRLF/LF y exige aumento de ocurrencias entre lecturas Win32; hay unit tests Rust compile-guarded y test renderer del camino Tauri verified-observer. JP noto que el harness hablaba antes de activar dictado; se corrigio `scripts/desktop-dictation-e2e.ps1` para loggear CDP/hotkey/UI y esperar `Listening` antes de speech. Passing observer run: `artifacts/desktop-control/dictation-e2e/20260624-observer-paste-observed-e2e-verified/report.json` con product UI `paste_observed`, target text length/hash only en docs, fresh WAV y clipboard sentinel restored. `docs/topics/pi-agentic-os.md` documenta el playbook efectivo de computer use/CDP para Dictation Dock. Checks: `npm run test:pipeline` OK (50/243), focused delivery-evidence OK (13), `npm run build` OK, `cargo fmt --check` OK, `cargo check` OK. `cargo test desktop_delivery::platform::tests --lib` sigue bloqueado por `STATUS_ENTRYPOINT_NOT_FOUND` conocido.
+36. Companion window real first-slice quedo sincronizada: `src/voice-dock/companion-state.ts` proyecta snapshot redacted de recovery/history/settings, `App.tsx` emite `dock-companion://state` a la ventana Tauri `dock-companion`, y `CompanionSurface` renderiza cards reales en vez del placeholder estatico. History muestra source/length/status sin raw transcript/selected text. Checks: focused companion/voice-dock OK, `npm run test:pipeline` OK (51/247), `npm run build` OK, `npm run visual:check` OK, `cd src-tauri && cargo check` OK.
 
 ## Promocion De Memoria
 

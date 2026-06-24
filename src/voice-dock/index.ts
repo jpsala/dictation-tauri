@@ -13,4 +13,14 @@ export {
   createVoiceDockState,
   sanitizeVuBands,
 } from "./visual-semantics";
+export {
+  createDockCompanionSnapshot,
+  createEmptyDockCompanionSnapshot,
+  dockCompanionStateEvent,
+} from "./companion-state";
+export type {
+  DockCompanionHistoryEntry,
+  DockCompanionHistoryItem,
+  DockCompanionSnapshot,
+} from "./companion-state";
 export { VoiceDock } from "./VoiceDock";

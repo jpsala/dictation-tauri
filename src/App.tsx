@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { FakeCaptureGateway } from "./capture/fake-gateway";
 import type { CaptureGateway } from "./capture/gateway";
 import { NativeTauriCaptureGateway } from "./capture/native-tauri-gateway";
@@ -54,10 +55,14 @@ import type {
   SimulatedRunSummary,
 } from "./pipeline/types";
 import {
+  createDockCompanionSnapshot,
+  createEmptyDockCompanionSnapshot,
   createVoiceDockState,
+  dockCompanionStateEvent,
   VoiceDock,
   type DockActivePreset,
   type DockCommand,
+  type DockCompanionSnapshot,
 } from "./voice-dock";
 import type {
   DesktopDictationSession,
@@ -603,13 +608,86 @@ function getAppSurface(): "dock" | "companion" {
 }
 
 function CompanionSurface() {
+  const [snapshot, setSnapshot] = useState<DockCompanionSnapshot>(() =>
+    createEmptyDockCompanionSnapshot(),
+  );
+
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    void listen<DockCompanionSnapshot>(dockCompanionStateEvent, (event) => {
+      if (!disposed) {
+        setSnapshot(event.payload);
+      }
+    }).then((nextUnlisten) => {
+      if (disposed) {
+        nextUnlisten?.();
+        return;
+      }
+
+      unlisten = nextUnlisten;
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
   return (
     <main className="companion-shell" aria-label="Dock companion">
-      <section className="dock-companion-card dock-companion-card--standalone">
-        <p className="dock-companion-kicker">Companion</p>
-        <strong>Recovery and history surface</strong>
-        <p>Dictation Tauri keeps the dock compact and uses this no-activate companion window for richer recovery, history, and settings.</p>
-      </section>
+      {snapshot.recovery ? (
+        <section className="dock-companion-card dock-companion-card--standalone">
+          <p className="dock-companion-kicker">Recovery</p>
+          <strong>{snapshot.recovery.title}</strong>
+          <p>{snapshot.recovery.message}</p>
+        </section>
+      ) : null}
+
+      {snapshot.history.open ? (
+        <section className="dock-companion-card dock-companion-card--standalone">
+          <p className="dock-companion-kicker">Result history</p>
+          {snapshot.history.items.length === 0 ? (
+            <p>No reusable results saved yet.</p>
+          ) : (
+            <ul>
+              {snapshot.history.items.map((entry) => (
+                <li key={entry.id}>
+                  {entry.label} · {entry.textLength} chars · {entry.deliveryStatus}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
+
+      {snapshot.settings.open ? (
+        <section className="dock-companion-card dock-companion-card--standalone">
+          <p className="dock-companion-kicker">Settings</p>
+          <strong>Dock settings are staged.</strong>
+          <p>
+            {snapshot.settings.activePreset
+              ? `Active preset: ${snapshot.settings.activePreset.presetName}. Use the tray/context menu to change or clear it.`
+              : "Use the tray/context menu for presets while the full settings surface is built."}
+          </p>
+        </section>
+      ) : null}
+
+      {!snapshot.recovery && !snapshot.history.open && !snapshot.settings.open ? (
+        <section className="dock-companion-card dock-companion-card--standalone">
+          <p className="dock-companion-kicker">Companion</p>
+          <strong>{snapshot.status.statusText}</strong>
+          <p>
+            {snapshot.status.statusDetail ??
+              "Waiting for recovery, history, or settings from the dock."}
+          </p>
+        </section>
+      ) : null}
     </main>
   );
 }
@@ -1066,6 +1144,13 @@ export function App() {
   const voiceDockHotkey = isTauri()
     ? effectiveHotkeyLabel
     : "Dock button";
+  const companionSnapshot = createDockCompanionSnapshot({
+    voiceDockState,
+    resultHistoryOpen,
+    resultHistoryEntries,
+    settingsPanelOpen,
+    activePreset,
+  });
 
   useEffect(() => {
     if (!isTauri()) {
@@ -1082,9 +1167,15 @@ export function App() {
       return;
     }
 
-    const shouldShowCompanion = Boolean(resultHistoryOpen || settingsPanelOpen || voiceDockState.recovery);
-    void invoke(shouldShowCompanion ? "show_companion" : "hide_companion").catch(() => undefined);
-  }, [resultHistoryOpen, settingsPanelOpen, voiceDockState.recovery]);
+    const command = companionSnapshot.visible ? "show_companion" : "hide_companion";
+    void invoke(command)
+      .then(() =>
+        companionSnapshot.visible
+          ? emitTo("dock-companion", dockCompanionStateEvent, companionSnapshot)
+          : undefined,
+      )
+      .catch(() => undefined);
+  }, [companionSnapshot]);
 
   async function loadResultHistory() {
     if (!isTauri()) {

@@ -201,6 +201,18 @@ Evidence rules: record screenshots/observations only under ignored artifacts or 
 
 ---
 
+## Phase 10: Companion Window Sync Follow-Up
+
+**Goal**: Turn the separate `dock-companion` Tauri window from a placeholder into a real synchronized recovery/history/settings surface without adding risky desktop side effects.
+
+- [x] T041 Add provider-free companion snapshot coverage proving recovery/history/settings sync does not include raw transcript or selected text.
+- [x] T042 Implement renderer-side `dock-companion://state` sync from the main dock to the companion window with redacted history metadata only.
+- [x] T043 Update docs with current companion status and remaining action/layout gaps.
+
+**Status**: Done 2026-06-24. `src/voice-dock/companion-state.ts` now projects a redacted companion snapshot; the main dock emits it to the `dock-companion` window via Tauri events when recovery/history/settings are visible; `CompanionSurface` renders synced cards instead of the previous static placeholder. Remaining follow-up: companion-local actions and closer Fixvox companion layout/actions.
+
+---
+
 ## Dependencies & Execution Order
 
 - Phase 1 is complete before implementation.
