@@ -146,6 +146,32 @@ describe("voice dock visual semantics", () => {
     });
   });
 
+  it("returns to quiet idle after sent or observed insertion while keeping recovery out of the dock", () => {
+    for (const status of ["paste_sent", "paste_observed"] as const) {
+      expect(
+        createVoiceDockState(
+          session({
+            state: "done",
+            delivery: {
+              status,
+              strategy: "paste_send",
+              output: "local transcript",
+              message: "Inserted into the target app.",
+            },
+          }),
+          { canPasteLastSafe: true },
+        ),
+      ).toMatchObject({
+        phase: "idle",
+        statusText: "Ready",
+        canStart: true,
+        canCopy: false,
+        canPasteLastSafe: false,
+        recovery: undefined,
+      });
+    }
+  });
+
   it("renders failed, cancelled, and uncertain recovery honestly", () => {
     expect(
       createVoiceDockState(

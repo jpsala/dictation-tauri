@@ -1,4 +1,5 @@
-import type { CSSProperties } from "react";
+import { useRef } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import type { DockCommand, VoiceDockState } from "./types";
 
 export type VoiceDockProps = {
@@ -7,6 +8,7 @@ export type VoiceDockProps = {
   transcriptPreview?: string;
   onCommand: (command: DockCommand) => void;
   onContextMenuRequest?: () => void;
+  onDockDragStart?: () => void | Promise<void>;
 };
 
 type DockAction = {
@@ -23,7 +25,75 @@ export function VoiceDock({
   transcriptPreview,
   onCommand,
   onContextMenuRequest,
+  onDockDragStart,
 }: VoiceDockProps) {
+  const dragStateRef = useRef<{
+    pointerId: number;
+    screenX: number;
+    screenY: number;
+    moved: boolean;
+  } | undefined>(undefined);
+  const suppressNextClickRef = useRef(false);
+  const handleDockPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.button === 2 && onContextMenuRequest) {
+      event.preventDefault();
+      event.stopPropagation();
+      onContextMenuRequest();
+      return;
+    }
+
+    if (event.button !== 0 || !onDockDragStart) {
+      return;
+    }
+
+    const pointerId = event.pointerId;
+    const startScreenX = event.screenX;
+    const startScreenY = event.screenY;
+    dragStateRef.current = {
+      pointerId,
+      screenX: startScreenX,
+      screenY: startScreenY,
+      moved: false,
+    };
+
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onPointerMove, true);
+      window.removeEventListener("pointerup", onPointerUp, true);
+      window.removeEventListener("pointercancel", onPointerUp, true);
+    };
+
+    const onPointerUp = (nextEvent: PointerEvent) => {
+      if (nextEvent.pointerId !== pointerId) {
+        return;
+      }
+
+      cleanup();
+      dragStateRef.current = undefined;
+    };
+
+    const onPointerMove = (nextEvent: PointerEvent) => {
+      const dragState = dragStateRef.current;
+      if (!dragState || nextEvent.pointerId !== pointerId || dragState.moved) {
+        return;
+      }
+
+      const dx = nextEvent.screenX - startScreenX;
+      const dy = nextEvent.screenY - startScreenY;
+      if (Math.abs(dx) <= 3 && Math.abs(dy) <= 3) {
+        return;
+      }
+
+      dragState.moved = true;
+      suppressNextClickRef.current = true;
+      cleanup();
+      void onDockDragStart();
+    };
+
+    window.addEventListener("pointermove", onPointerMove, true);
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("pointercancel", onPointerUp, true);
+  };
+
   const actions = createDockActions(state);
   const visibleActions = actions.filter((action) => action.visible);
   const companion = createCompanionChip(state);
@@ -68,7 +138,13 @@ export function VoiceDock({
           type="button"
           className="voice-dock__orb"
           data-command={primaryAction ?? undefined}
+          onPointerDown={handleDockPointerDown}
           onClick={() => {
+            if (suppressNextClickRef.current) {
+              suppressNextClickRef.current = false;
+              return;
+            }
+
             if (primaryAction) {
               onCommand(primaryAction);
             }

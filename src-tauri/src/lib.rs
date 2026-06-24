@@ -29,6 +29,7 @@ pub fn run() {
             companion_window::show_companion,
             companion_window::hide_companion,
             dock_shell::update_dock_shell_state,
+            dock_shell::save_dock_shell_position,
             dock_shell::show_dock,
             dock_shell::hide_dock,
             desktop_control::get_desktop_control_hotkey_config,

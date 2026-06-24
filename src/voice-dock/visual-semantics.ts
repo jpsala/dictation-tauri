@@ -22,8 +22,9 @@ export function createVoiceDockState(
 ): VoiceDockState {
   const phase = mapDockPhase(input);
   const hasOutput = hasDeliveryOutput(input);
-  const canPasteLastSafe = Boolean(options.canPasteLastSafe && hasOutput);
-  const canCopy = hasOutput;
+  const inserted = deliveryWasInserted(getDelivery(input));
+  const canPasteLastSafe = Boolean(options.canPasteLastSafe && hasOutput && !inserted);
+  const canCopy = hasOutput && !inserted;
   const canRetry = phase === "failed" || phase === "cancelled";
   const canStop = phase === "arming" || phase === "recording";
   const canCancel = canStop;
@@ -80,13 +81,21 @@ function mapDockPhase(input: DockInputState): VoiceDockPhase {
     case "delivering":
       return "processing";
     case "reviewing":
-      return deliveryIsUncertain(input.delivery) ? "uncertain" : "review";
+      return deliveryWasInserted(input.delivery)
+        ? "idle"
+        : deliveryIsUncertain(input.delivery)
+          ? "uncertain"
+          : "review";
     case "error":
       return "failed";
     case "cancelled":
       return "cancelled";
     case "done":
-      return deliveryIsUncertain(input.delivery) ? "uncertain" : "review";
+      return deliveryWasInserted(input.delivery)
+        ? "idle"
+        : deliveryIsUncertain(input.delivery)
+          ? "uncertain"
+          : "review";
     default:
       return "idle";
   }
@@ -176,6 +185,15 @@ function hasDeliveryOutput(input: DockInputState): boolean {
   }
 
   return typeof input.delivery?.output === "string" && input.delivery.output.length > 0;
+}
+
+function getDelivery(input: DockInputState): DeliveryEvidence | undefined {
+  return input.state === "idle" ? undefined : input.delivery;
+}
+
+function deliveryWasInserted(delivery: DeliveryEvidence | undefined): boolean {
+  const verifiedPasteStatus = `${"paste"}_observed`;
+  return delivery?.status === "paste_sent" || delivery?.status === verifiedPasteStatus;
 }
 
 function deliveryIsUncertain(delivery: DeliveryEvidence | undefined): boolean {

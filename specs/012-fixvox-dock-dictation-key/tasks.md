@@ -213,6 +213,19 @@ Evidence rules: record screenshots/observations only under ignored artifacts or 
 
 ---
 
+## Phase 11: Dock Move And Post-Insert Feedback Follow-Up
+
+**Goal**: Close the next JP-observed parity gaps: the dock must be movable with saved position, and post-insert feedback should settle like Fixvox instead of leaving a persistent recovery chip on the dock.
+
+- [x] T044 Add provider-free visual semantics coverage for sent/observed insertion returning the dock to quiet idle without recovery actions.
+- [x] T045 Add drag-to-move wiring from the dock orb without breaking normal click-to-start behavior.
+- [x] T046 Add Rust/Tauri persisted dock position storage, restore, and work-area clamp.
+- [x] T047 Keep `npm run tauri:dev` live for JP testing and document remaining visual side-by-side gap.
+
+**Status**: Done 2026-06-24. `VoiceDock` now distinguishes click vs drag with a small movement threshold and delegates native dragging to Tauri from `App.tsx`; Rust exposes `save_dock_shell_position` and restores/clamps `dock-position.v1.json` from app data. Visual semantics now collapse sent/verified insertions back to idle, matching Fixvox's successful completion behavior more closely. Remaining follow-up: dedicated side-by-side visual smoke for drag/restore/post-insert and further micro-polish of dot/chip timing.
+
+---
+
 ## Dependencies & Execution Order
 
 - Phase 1 is complete before implementation.

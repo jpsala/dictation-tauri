@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{error::Error, io};
+use std::{error::Error, fs, io, path::PathBuf};
 
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Runtime, WebviewWindow};
 
@@ -7,6 +7,7 @@ pub const DOCK_WINDOW_LABEL: &str = "main";
 pub const DOCK_WIDTH: i32 = 164;
 pub const DOCK_HEIGHT: i32 = 64;
 pub const DOCK_WINDOW_MARGIN: i32 = 16;
+pub const DOCK_POSITION_FILE: &str = "dock-position.v1.json";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DockWorkArea {
@@ -16,7 +17,8 @@ pub struct DockWorkArea {
     pub height: i32,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DockPosition {
     pub x: i32,
     pub y: i32,
@@ -62,12 +64,25 @@ pub struct DockShellSnapshot {
     state: DockShellState,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredDockPosition {
+    schema_version: u8,
+    x: i32,
+    y: i32,
+}
+
 #[tauri::command]
 pub fn update_dock_shell_state(
     app: AppHandle,
     state: DockShellState,
 ) -> Result<DockShellSnapshot, String> {
     apply_dock_shell_state(&app, state).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn save_dock_shell_position(app: AppHandle) -> Result<DockPosition, String> {
+    save_current_dock_position(&app).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -142,26 +157,10 @@ fn resolve_dock_position<R: Runtime>(
     window: &WebviewWindow<R>,
     layout: DockShellLayout,
 ) -> Result<DockPosition, Box<dyn Error>> {
-    let monitor = window
-        .current_monitor()?
-        .or(app.primary_monitor()?)
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                "No monitor available for Dictation Dock",
-            )
-        })?;
-    let work_area = monitor.work_area();
+    let work_area = resolve_work_area(app, window)?;
+    let saved = read_saved_dock_position(app).ok().flatten();
 
-    Ok(calculate_bottom_center_position(
-        DockWorkArea {
-            x: work_area.position.x,
-            y: work_area.position.y,
-            width: work_area.size.width as i32,
-            height: work_area.size.height as i32,
-        },
-        layout,
-    ))
+    Ok(resolve_saved_or_default_position(saved, work_area, layout))
 }
 
 fn resolve_state_position<R: Runtime>(
@@ -169,22 +168,7 @@ fn resolve_state_position<R: Runtime>(
     window: &WebviewWindow<R>,
     next_layout: DockShellLayout,
 ) -> Result<DockPosition, Box<dyn Error>> {
-    let monitor = window
-        .current_monitor()?
-        .or(app.primary_monitor()?)
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                "No monitor available for Dictation Dock",
-            )
-        })?;
-    let work_area = monitor.work_area();
-    let work_area = DockWorkArea {
-        x: work_area.position.x,
-        y: work_area.position.y,
-        width: work_area.size.width as i32,
-        height: work_area.size.height as i32,
-    };
+    let work_area = resolve_work_area(app, window)?;
     let current_position = window.outer_position()?;
     let current_size = window.outer_size()?;
 
@@ -198,6 +182,89 @@ fn resolve_state_position<R: Runtime>(
         next_layout,
         work_area,
     ))
+}
+
+fn resolve_work_area<R: Runtime>(
+    app: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+) -> Result<DockWorkArea, Box<dyn Error>> {
+    let monitor = window
+        .current_monitor()?
+        .or(app.primary_monitor()?)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "No monitor available for Dictation Dock",
+            )
+        })?;
+    let work_area = monitor.work_area();
+
+    Ok(DockWorkArea {
+        x: work_area.position.x,
+        y: work_area.position.y,
+        width: work_area.size.width as i32,
+        height: work_area.size.height as i32,
+    })
+}
+
+fn save_current_dock_position<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<DockPosition, Box<dyn Error>> {
+    let window = app.get_webview_window(DOCK_WINDOW_LABEL).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "Dictation Dock window is not available",
+        )
+    })?;
+    let position = window.outer_position()?;
+    let dock_position = DockPosition {
+        x: position.x,
+        y: position.y,
+    };
+    write_saved_dock_position(app, dock_position)?;
+    Ok(dock_position)
+}
+
+fn dock_position_path<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<PathBuf> {
+    Ok(app.path().app_data_dir()?.join(DOCK_POSITION_FILE))
+}
+
+fn read_saved_dock_position<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Option<DockPosition>> {
+    let path = dock_position_path(app)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let content = fs::read_to_string(path)?;
+    let stored = serde_json::from_str::<StoredDockPosition>(&content)?;
+    if stored.schema_version != 1 {
+        return Ok(None);
+    }
+
+    Ok(Some(DockPosition {
+        x: stored.x,
+        y: stored.y,
+    }))
+}
+
+fn write_saved_dock_position<R: Runtime>(
+    app: &AppHandle<R>,
+    position: DockPosition,
+) -> Result<(), Box<dyn Error>> {
+    let path = dock_position_path(app)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&StoredDockPosition {
+            schema_version: 1,
+            x: position.x,
+            y: position.y,
+        })?,
+    )?;
+    Ok(())
 }
 
 pub fn dock_shell_layout(state: DockShellState) -> DockShellLayout {
@@ -232,6 +299,16 @@ fn expanded_layout(width: i32, height: i32) -> DockShellLayout {
         height,
         hit_region: DockHitRegion::Full,
     }
+}
+
+pub fn resolve_saved_or_default_position(
+    saved: Option<DockPosition>,
+    work_area: DockWorkArea,
+    layout: DockShellLayout,
+) -> DockPosition {
+    saved
+        .map(|position| clamp_dock_position(position, work_area, layout))
+        .unwrap_or_else(|| calculate_bottom_center_position(work_area, layout))
 }
 
 pub fn calculate_bottom_center_position(
@@ -444,6 +521,43 @@ mod tests {
                 dock_shell_layout(DockShellState::Idle),
             ),
             DockPosition { x: -722, y: 924 }
+        );
+    }
+
+    #[test]
+    fn restores_saved_position_inside_work_area() {
+        assert_eq!(
+            resolve_saved_or_default_position(
+                Some(DockPosition { x: 200, y: 300 }),
+                DockWorkArea {
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                },
+                dock_shell_layout(DockShellState::Idle),
+            ),
+            DockPosition { x: 200, y: 300 }
+        );
+    }
+
+    #[test]
+    fn clamps_saved_position_to_current_work_area() {
+        assert_eq!(
+            resolve_saved_or_default_position(
+                Some(DockPosition {
+                    x: -10_000,
+                    y: 10_000
+                }),
+                DockWorkArea {
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                },
+                dock_shell_layout(DockShellState::Idle),
+            ),
+            DockPosition { x: 16, y: 1000 }
         );
     }
 

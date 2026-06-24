@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { FakeCaptureGateway } from "./capture/fake-gateway";
 import type { CaptureGateway } from "./capture/gateway";
 import { NativeTauriCaptureGateway } from "./capture/native-tauri-gateway";
@@ -1213,6 +1214,21 @@ export function App() {
     }
   }
 
+  async function handleDockDragStart() {
+    if (!isTauri()) {
+      return;
+    }
+
+    try {
+      await getCurrentWindow().startDragging();
+    } finally {
+      void invoke("save_dock_shell_position").catch(() => undefined);
+      window.setTimeout(() => {
+        void invoke("save_dock_shell_position").catch(() => undefined);
+      }, 250);
+    }
+  }
+
   function handleVoiceDockCommand(command: DockCommand) {
     switch (command) {
       case "start":
@@ -1451,6 +1467,7 @@ export function App() {
           hotkeyLabel={voiceDockHotkey}
           transcriptPreview={transcriptReview?.text}
           onCommand={handleVoiceDockCommand}
+          onDockDragStart={handleDockDragStart}
           onContextMenuRequest={() => {
             if (!isTauri()) {
               return;
