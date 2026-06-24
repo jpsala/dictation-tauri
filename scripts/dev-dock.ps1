@@ -1,5 +1,6 @@
 param(
   [switch]$Restart,
+  [switch]$Refresh,
   [switch]$Status
 )
 
@@ -9,6 +10,18 @@ $reports = Join-Path $repo 'artifacts/microphone-capture/reports'
 New-Item -ItemType Directory -Force -Path $reports | Out-Null
 $stdout = Join-Path $reports 'tauri-dev-live.log'
 $stderr = Join-Path $reports 'tauri-dev-live.err.log'
+
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class DevDockWindowApi {
+  [DllImport("user32.dll")]
+  public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+
+  [DllImport("user32.dll", SetLastError = true)]
+  public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+}
+"@ -ErrorAction SilentlyContinue
 
 function Stop-DevDockProcesses {
   Get-Process -Name dictation-tauri -ErrorAction SilentlyContinue |
@@ -31,6 +44,32 @@ function Stop-DevDockProcesses {
     ForEach-Object {
       Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
     }
+}
+
+function Refresh-DevDockWindow($process) {
+  if (-not $process -or -not $process.MainWindowHandle -or $process.MainWindowHandle -eq [IntPtr]::Zero) {
+    Write-Host 'dockWindow=missing'
+    return
+  }
+
+  $SW_SHOWNOACTIVATE = 4
+  $HWND_TOPMOST = [IntPtr](-1)
+  $SWP_NOSIZE = 0x0001
+  $SWP_NOMOVE = 0x0002
+  $SWP_NOACTIVATE = 0x0010
+  $SWP_SHOWWINDOW = 0x0040
+
+  [DevDockWindowApi]::ShowWindowAsync($process.MainWindowHandle, $SW_SHOWNOACTIVATE) | Out-Null
+  [DevDockWindowApi]::SetWindowPos(
+    $process.MainWindowHandle,
+    $HWND_TOPMOST,
+    0,
+    0,
+    0,
+    0,
+    ($SWP_NOSIZE -bor $SWP_NOMOVE -bor $SWP_NOACTIVATE -bor $SWP_SHOWWINDOW)
+  ) | Out-Null
+  Write-Host "dockWindow=refreshed pid=$($process.Id)"
 }
 
 if ($Restart) {
@@ -57,6 +96,11 @@ if (-not $dictation -and -not $Status) {
     # Keep smoke tests from racing dock startup after a cold restart.
     Start-Sleep -Seconds 15
   }
+}
+
+if ($Refresh -or (-not $Status -and $dictation)) {
+  $dictation = Get-Process -Name dictation-tauri -ErrorAction SilentlyContinue | Select-Object -First 1
+  Refresh-DevDockWindow $dictation
 }
 
 Get-Process -Name dictation-tauri,node -ErrorAction SilentlyContinue |

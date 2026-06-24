@@ -6,6 +6,7 @@ describe("Tauri tray background lifecycle", () => {
     const cargo = readFileSync("src-tauri/Cargo.toml", "utf8");
     const lib = readFileSync("src-tauri/src/lib.rs", "utf8");
     const tauriConfig = JSON.parse(readFileSync("src-tauri/tauri.conf.json", "utf8"));
+    const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 
     expect(cargo).toContain('features = ["tray-icon"]');
     expect(lib).toContain("mod tray;");
@@ -15,6 +16,8 @@ describe("Tauri tray background lifecycle", () => {
       title: "Dictation Dock",
       skipTaskbar: true,
     });
+    expect(packageJson.scripts["dev:desktop:refresh"]).toContain("-Refresh");
+    expect(packageJson.scripts["dev:desktop:restart"]).toContain("-Refresh");
   });
 
   it("uses stable Fixvox-parity tray IDs and show/hide/quit actions", () => {
@@ -28,5 +31,14 @@ describe("Tauri tray background lifecycle", () => {
     expect(source).toContain("show_menu_on_left_click(false)");
     expect(source).toContain("toggle_dock_window(tray.app_handle())");
     expect(source).toContain("app.exit(0)");
+  });
+
+  it("keeps a refresh helper for restoring the instantiated dock window", () => {
+    const source = readFileSync("scripts/dev-dock.ps1", "utf8");
+
+    expect(source).toContain("[switch]$Refresh");
+    expect(source).toContain("function Refresh-DevDockWindow");
+    expect(source).toContain("dockWindow=refreshed");
+    expect(source).toContain("SWP_SHOWWINDOW");
   });
 });

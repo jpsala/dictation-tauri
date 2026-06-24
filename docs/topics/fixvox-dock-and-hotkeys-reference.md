@@ -130,13 +130,14 @@ Antes de cambiar dock/hotkeys:
 - El hotkey primario en codigo Tauri ahora es `Alt+Space` con la misma semantica hold/tap estilo Fixvox mediante eventos `pressed`/`released`; `Ctrl+Shift+F9` sigue registrado como fallback tecnico.
 - El dock tiene feedback vivo de voz: Rust/Tauri expone RMS/VU bands (`get_native_microphone_capture_level`) y el renderer las usa para barras visibles durante recording.
 - El stop explicito en Tauri usa host STT real y puede llegar a `Transcript ready` sin abrir panel grande.
-- Primer delivery real gated: se guarda el target foreground antes de grabar, luego se enfoca ese target, se escribe clipboard temporal, se envia `Ctrl+V`, se restaura clipboard y se reporta solo `paste_sent`.
-- Paste-last seguro sigue existiendo como recovery/UI sin reclamar observacion; no hay `paste_observed` hasta tener verificador real.
+- Primer delivery real gated: se guarda el target foreground antes de grabar, luego se enfoca ese target, se escribe clipboard temporal, se envia `Ctrl+V`, se restaura clipboard y se reporta `paste_sent` o `paste_observed` solo cuando el observer nativo gated confirma insercion.
+- Paste-last seguro sigue existiendo como recovery/UI sin reclamar observacion por si solo.
+- El dock no debe aparecer en la taskbar (`skipTaskbar: true`); para desarrollo debe seguir instanciado y re-mostrable con `npm run dev:desktop:refresh` cuando quede oculto/no visible.
 
 ## Gaps Actuales En Dictation Tauri
 
-- Tray/background dev baseline existe en Tauri: icono tray Rust con IDs estables `show_dock`, `hide_dock`, `settings`, `quit`, left-click toggle y hotkeys vivas; falta smoke visual/UX prolongado e installer/autostart.
+- Tray/background dev baseline existe en Tauri: icono tray Rust con IDs estables `show_dock`, `hide_dock`, `settings`, `quit`, left-click toggle, `skipTaskbar: true`, hotkeys vivas y helper `npm run dev:desktop:refresh`; falta smoke visual/UX prolongado e installer/autostart.
 - No hay companion/recovery overlay separado; el estado actual usa chip compacto dentro del dock.
-- No hay observer/verificacion real de insercion; `paste_sent` no debe presentarse como paste observado.
+- Falta artifact/log JSON redacted para delivery status sin depender de UIA/computer-use; la verificacion nativa gated ya existe para targets Win32 compatibles.
 - No hay seleccion/replace real en este flujo; solo insert-at-cursor gated.
 - Alt+Space esta code-enabled via Tauri global-shortcut, pero sigue pendiente el smoke manual Windows antes de declararlo probado; `Ctrl+Shift+F9` es fallback tecnico.
