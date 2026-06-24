@@ -53,9 +53,10 @@ mod platform {
                 VIRTUAL_KEY, VK_CONTROL, VK_RETURN, VK_V,
             },
             WindowsAndMessaging::{
-                BringWindowToTop, GetClassNameW, GetForegroundWindow, GetWindowTextLengthW,
-                GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-                SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW,
+                BringWindowToTop, EnumChildWindows, GetClassNameW, GetForegroundWindow,
+                GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
+                IsWindowVisible, SendMessageW, SetForegroundWindow, ShowWindow, SW_RESTORE,
+                SW_SHOW, WM_GETTEXT, WM_GETTEXTLENGTH,
             },
         },
     };
@@ -108,6 +109,7 @@ mod platform {
         }
 
         let hwnd = parse_hwnd(&target.frame_hwnd)?;
+        let observable_before = read_observable_window_text(hwnd);
         let previous_clipboard = read_clipboard_text();
         write_clipboard_text(&text)?;
 
@@ -129,9 +131,23 @@ mod platform {
 
         paste_result?;
 
+        let observable_after = read_observable_window_text(hwnd);
+        let observed = did_observe_inserted_text(
+            &text,
+            observable_before.as_deref(),
+            observable_after.as_deref(),
+        );
+
         Ok(DesktopDeliveryResult {
-            status: "paste_sent",
-            reason: if press_enter_after_paste {
+            status: if observed {
+                "paste_observed"
+            } else {
+                "paste_sent"
+            },
+            reason: if observed {
+                "Paste insertion was verified by a bounded Win32 text observer on the saved target."
+                    .to_string()
+            } else if press_enter_after_paste {
                 "Paste and Enter commands were sent to the saved foreground target without observation."
                     .to_string()
             } else {
@@ -140,6 +156,66 @@ mod platform {
             },
             target,
         })
+    }
+
+    fn did_observe_inserted_text(text: &str, before: Option<&str>, after: Option<&str>) -> bool {
+        let expected = text.trim();
+        if expected.is_empty() {
+            return false;
+        }
+
+        let Some(after) = after else {
+            return false;
+        };
+        if !after.contains(expected) {
+            return false;
+        }
+
+        before
+            .map(|value| !value.contains(expected))
+            .unwrap_or(true)
+    }
+
+    fn read_observable_window_text(hwnd: HWND) -> Option<String> {
+        let mut values = Vec::<String>::new();
+        push_window_text(hwnd, &mut values);
+        unsafe {
+            EnumChildWindows(
+                hwnd,
+                Some(enum_child_text_proc),
+                &mut values as *mut _ as isize,
+            );
+        }
+        let joined = values
+            .into_iter()
+            .filter(|value| !value.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if joined.trim().is_empty() {
+            None
+        } else {
+            Some(joined)
+        }
+    }
+
+    unsafe extern "system" fn enum_child_text_proc(hwnd: HWND, lparam: isize) -> i32 {
+        let values = &mut *(lparam as *mut Vec<String>);
+        push_window_text(hwnd, values);
+        1
+    }
+
+    fn push_window_text(hwnd: HWND, values: &mut Vec<String>) {
+        let len = unsafe { SendMessageW(hwnd, WM_GETTEXTLENGTH, 0, 0) } as usize;
+        if len == 0 || len > 200_000 {
+            return;
+        }
+        let mut buffer = vec![0u16; len + 1];
+        let copied =
+            unsafe { SendMessageW(hwnd, WM_GETTEXT, buffer.len(), buffer.as_mut_ptr() as isize) }
+                as usize;
+        if copied > 0 && copied <= len {
+            values.push(String::from_utf16_lossy(&buffer[..copied]));
+        }
     }
 
     fn parse_hwnd(value: &str) -> Result<HWND, String> {

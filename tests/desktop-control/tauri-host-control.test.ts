@@ -84,7 +84,7 @@ describe("Tauri host-owned global hotkey boundary", () => {
   it("keeps the renderer adapter listen-only with no shortcut registration or paste side effects", () => {
     const source = readFileSync("src/desktop-control/tauri-host-control.ts", "utf8");
 
-    expect(tauriDefaultGlobalHotkeyShortcut).toBe("Ctrl+Shift+F9");
+    expect(tauriDefaultGlobalHotkeyShortcut).toBe("Alt+Space");
     expect(tauriGlobalHotkeyEventName).toBe("desktop-control://global-hotkey");
     expect(tauriHostCommandEventName).toBe("desktop-control://host-command");
     for (const marker of forbiddenHotkeyBoundaryMarkers) {

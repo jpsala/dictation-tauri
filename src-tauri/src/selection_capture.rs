@@ -94,10 +94,19 @@ fn no_selection(
 #[cfg(windows)]
 mod platform {
     use super::{
-        no_selection, SelectionCaptureOutcome, SelectionCaptureStatus, SelectionTargetSnapshot,
+        no_selection, HostSelectionContext, SelectionCaptureOutcome, SelectionCaptureStatus,
+        SelectionTargetSnapshot, MAX_SELECTION_CAPTURE_CHARS,
+    };
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
+        COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Accessibility::{
+        CUIAutomation, IUIAutomation, IUIAutomationTextPattern, UIA_TextPatternId,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetClassNameW, GetForegroundWindow, GetWindowTextLengthW, GetWindowTextW,
+        GetWindowThreadProcessId,
     };
 
     pub fn capture_selection_context() -> SelectionCaptureOutcome {
@@ -116,9 +125,148 @@ mod platform {
             };
         }
 
+        let target_snapshot = redacted_target_snapshot(hwnd);
+        match capture_selected_text(hwnd, target_snapshot.clone()) {
+            Ok(outcome) => outcome,
+            Err(reason) => SelectionCaptureOutcome {
+                status: SelectionCaptureStatus::Failed,
+                selection: None,
+                target_snapshot: Some(target_snapshot),
+                redacted: true,
+                truncated: false,
+                reason: Some(reason),
+            },
+        }
+    }
+
+    fn capture_selected_text(
+        hwnd: windows_sys::Win32::Foundation::HWND,
+        target_snapshot: SelectionTargetSnapshot,
+    ) -> Result<SelectionCaptureOutcome, String> {
+        unsafe {
+            CoInitializeEx(None, COINIT_APARTMENTTHREADED)
+                .ok()
+                .map_err(|error| format!("UI Automation COM init failed: {error}"))?;
+        }
+
+        let result = unsafe { capture_selected_text_inner(hwnd, target_snapshot) };
+        unsafe {
+            CoUninitialize();
+        }
+        result
+    }
+
+    unsafe fn capture_selected_text_inner(
+        hwnd: windows_sys::Win32::Foundation::HWND,
+        target_snapshot: SelectionTargetSnapshot,
+    ) -> Result<SelectionCaptureOutcome, String> {
+        let automation: IUIAutomation =
+            CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
+                .map_err(|error| format!("UI Automation is unavailable: {error}"))?;
+        let focused = automation
+            .GetFocusedElement()
+            .map_err(|error| format!("Focused UI Automation element is unavailable: {error}"))?;
+
+        let mut foreground_pid = 0u32;
+        GetWindowThreadProcessId(hwnd, &mut foreground_pid);
+        let focused_pid = focused.CurrentProcessId().unwrap_or_default().max(0) as u32;
+        if foreground_pid != 0 && focused_pid != 0 && foreground_pid != focused_pid {
+            return Ok(SelectionCaptureOutcome {
+                status: SelectionCaptureStatus::UnsupportedTarget,
+                selection: None,
+                target_snapshot: Some(target_snapshot),
+                redacted: true,
+                truncated: false,
+                reason: Some(
+                    "Focused element does not belong to the foreground target.".to_string(),
+                ),
+            });
+        }
+
+        let text_pattern = match focused
+            .GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)
+        {
+            Ok(pattern) => pattern,
+            Err(_) => {
+                return Ok(SelectionCaptureOutcome {
+                    status: SelectionCaptureStatus::UnsupportedTarget,
+                    selection: None,
+                    target_snapshot: Some(target_snapshot),
+                    redacted: true,
+                    truncated: false,
+                    reason: Some(
+                        "Foreground target does not expose UI Automation TextPattern.".to_string(),
+                    ),
+                });
+            }
+        };
+
+        let ranges = text_pattern
+            .GetSelection()
+            .map_err(|error| format!("UI Automation selection range could not be read: {error}"))?;
+        let range_count = ranges.Length().unwrap_or_default();
+        if range_count <= 0 {
+            return Ok(no_selection(
+                Some(target_snapshot),
+                "UI Automation reported no selected text ranges.",
+            ));
+        }
+
+        let mut text = String::new();
+        for index in 0..range_count {
+            if let Ok(range) = ranges.GetElement(index) {
+                if let Ok(fragment) = range.GetText((MAX_SELECTION_CAPTURE_CHARS + 1) as i32) {
+                    text.push_str(&fragment.to_string());
+                }
+            }
+            if text.chars().count() > MAX_SELECTION_CAPTURE_CHARS {
+                break;
+            }
+        }
+
+        let normalized = text.trim().to_string();
+        if normalized.is_empty() {
+            return Ok(no_selection(
+                Some(target_snapshot),
+                "UI Automation selection text was empty.",
+            ));
+        }
+
+        let truncated = normalized.chars().count() > MAX_SELECTION_CAPTURE_CHARS;
+        let selected_text = if truncated {
+            normalized
+                .chars()
+                .take(MAX_SELECTION_CAPTURE_CHARS)
+                .collect()
+        } else {
+            normalized
+        };
+
+        Ok(SelectionCaptureOutcome {
+            status: SelectionCaptureStatus::Ok,
+            selection: Some(HostSelectionContext {
+                selection_id: "host-selection-uia".to_string(),
+                text_length: selected_text.chars().count(),
+                selected_text: Some(selected_text),
+                source: "host_capture",
+                captured_at: None,
+                target_snapshot: Some(target_snapshot.clone()),
+                confidence: "medium",
+                redacted: true,
+            }),
+            target_snapshot: Some(target_snapshot),
+            redacted: true,
+            truncated,
+            reason: Some("Selected text captured through UI Automation TextPattern without clipboard, keyboard, focus, or paste side effects.".to_string()),
+        })
+    }
+
+    fn redacted_target_snapshot(
+        hwnd: windows_sys::Win32::Foundation::HWND,
+    ) -> SelectionTargetSnapshot {
         let has_window_label = !get_window_text(hwnd).trim().is_empty();
         let has_app_label = !get_class_name(hwnd).trim().is_empty();
-        let target_snapshot = SelectionTargetSnapshot {
+        SelectionTargetSnapshot {
             captured_at: None,
             app_label: if has_app_label {
                 Some("[redacted]".to_string())
@@ -131,15 +279,7 @@ mod platform {
                 None
             },
             confidence: "low",
-        };
-
-        // This first host-owned boundary intentionally performs no clipboard roundtrip,
-        // keyboard shortcut, focus change, or persistence. A future approved UI Automation
-        // implementation can replace this no-selection outcome with redacted selected text.
-        no_selection(
-            Some(target_snapshot),
-            "Host selection capture boundary is available; selected text capture remains gated.",
-        )
+        }
     }
 
     fn get_window_text(hwnd: windows_sys::Win32::Foundation::HWND) -> String {

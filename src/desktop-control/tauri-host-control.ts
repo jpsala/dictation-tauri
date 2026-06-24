@@ -2,7 +2,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { DictationKeyEvent } from "./dictation-key";
 
-export const tauriDefaultGlobalHotkeyShortcut = "Ctrl+Shift+F9";
+export const tauriDefaultGlobalHotkeyShortcut = "Alt+Space";
 export const tauriGlobalHotkeyShortcut = tauriDefaultGlobalHotkeyShortcut;
 export const tauriGlobalHotkeyEventName = "desktop-control://global-hotkey";
 export const tauriHostCommandEventName = "desktop-control://host-command";

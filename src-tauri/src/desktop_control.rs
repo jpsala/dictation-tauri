@@ -8,7 +8,8 @@ pub enum HotkeyBackend {
     WindowsLowLevelHook,
 }
 
-pub const DEFAULT_DESKTOP_CONTROL_HOTKEY: &str = "Ctrl+Shift+F9";
+pub const DEFAULT_DESKTOP_CONTROL_HOTKEY: &str = "Alt+Space";
+pub const FALLBACK_DESKTOP_CONTROL_HOTKEY: &str = "Ctrl+Shift+F9";
 pub const ALT_SPACE_DESKTOP_CONTROL_HOTKEY: &str = "Alt+Space";
 pub const DESKTOP_CONTROL_HOTKEY_EVENT: &str = "desktop-control://global-hotkey";
 pub const DICTATION_KEY_ENV: &str = "DICTATION_TAURI_DICTATION_KEY";
@@ -83,48 +84,56 @@ pub fn resolve_effective_dictation_hotkey(
     alt_space_allowed: bool,
 ) -> EffectiveDictationHotkey {
     match requested.map(normalize_shortcut).as_deref() {
-        None | Some("") | Some("ctrl+shift+f9") => default_hotkey(None),
-        Some("alt+space") if alt_space_allowed && cfg!(windows) => EffectiveDictationHotkey {
-            shortcut: ALT_SPACE_DESKTOP_CONTROL_HOTKEY,
-            modifiers: Modifiers::ALT,
-            code: Code::Space,
-            backend: HotkeyBackend::WindowsLowLevelHook,
-            requested_shortcut: Some(ALT_SPACE_DESKTOP_CONTROL_HOTKEY),
-            alt_space_requested: true,
-            alt_space_enabled: true,
-            fallback_reason: None,
-        },
+        None | Some("") if cfg!(windows) => alt_space_hotkey(None),
+        None | Some("") => fallback_hotkey(None),
+        Some("ctrl+shift+f9") => fallback_hotkey(Some(FALLBACK_DESKTOP_CONTROL_HOTKEY)),
+        Some("alt+space") if alt_space_allowed && cfg!(windows) => {
+            alt_space_hotkey(Some(ALT_SPACE_DESKTOP_CONTROL_HOTKEY))
+        }
         Some("alt+space") if alt_space_allowed => EffectiveDictationHotkey {
             requested_shortcut: Some(ALT_SPACE_DESKTOP_CONTROL_HOTKEY),
             alt_space_requested: true,
             alt_space_enabled: false,
             fallback_reason: Some("alt_space_native_hook_windows_only"),
-            ..default_hotkey(None)
+            ..fallback_hotkey(None)
         },
         Some("alt+space") => EffectiveDictationHotkey {
             requested_shortcut: Some(ALT_SPACE_DESKTOP_CONTROL_HOTKEY),
             alt_space_requested: true,
             alt_space_enabled: false,
             fallback_reason: Some("alt_space_requires_explicit_gate"),
-            ..default_hotkey(None)
+            ..fallback_hotkey(None)
         },
         Some(_) => EffectiveDictationHotkey {
             requested_shortcut: Some("unsupported"),
             fallback_reason: Some("unsupported_shortcut"),
-            ..default_hotkey(None)
+            ..fallback_hotkey(None)
         },
     }
 }
 
-fn default_hotkey(requested_shortcut: Option<&'static str>) -> EffectiveDictationHotkey {
+fn fallback_hotkey(requested_shortcut: Option<&'static str>) -> EffectiveDictationHotkey {
     EffectiveDictationHotkey {
-        shortcut: DEFAULT_DESKTOP_CONTROL_HOTKEY,
+        shortcut: FALLBACK_DESKTOP_CONTROL_HOTKEY,
         modifiers: Modifiers::CONTROL | Modifiers::SHIFT,
         code: Code::F9,
         backend: HotkeyBackend::TauriGlobalShortcut,
         requested_shortcut,
         alt_space_requested: false,
         alt_space_enabled: false,
+        fallback_reason: None,
+    }
+}
+
+fn alt_space_hotkey(requested_shortcut: Option<&'static str>) -> EffectiveDictationHotkey {
+    EffectiveDictationHotkey {
+        shortcut: ALT_SPACE_DESKTOP_CONTROL_HOTKEY,
+        modifiers: Modifiers::ALT,
+        code: Code::Space,
+        backend: HotkeyBackend::WindowsLowLevelHook,
+        requested_shortcut,
+        alt_space_requested: true,
+        alt_space_enabled: true,
         fallback_reason: None,
     }
 }
@@ -339,21 +348,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_to_safe_ctrl_shift_f9() {
+    fn defaults_to_alt_space_on_windows() {
         let hotkey = resolve_effective_dictation_hotkey(None, false);
 
         assert_eq!(hotkey.shortcut, DEFAULT_DESKTOP_CONTROL_HOTKEY);
+        assert_eq!(hotkey.modifiers, Modifiers::ALT);
+        assert_eq!(hotkey.code, Code::Space);
+        assert_eq!(hotkey.backend, HotkeyBackend::WindowsLowLevelHook);
+        assert!(hotkey.alt_space_enabled);
+        assert_eq!(hotkey.fallback_reason, None);
+    }
+
+    #[test]
+    fn keeps_ctrl_shift_f9_as_explicit_fallback() {
+        let hotkey = resolve_effective_dictation_hotkey(Some("Ctrl+Shift+F9"), false);
+
+        assert_eq!(hotkey.shortcut, FALLBACK_DESKTOP_CONTROL_HOTKEY);
         assert_eq!(hotkey.modifiers, Modifiers::CONTROL | Modifiers::SHIFT);
         assert_eq!(hotkey.code, Code::F9);
         assert_eq!(hotkey.backend, HotkeyBackend::TauriGlobalShortcut);
-        assert!(!hotkey.alt_space_enabled);
-        assert_eq!(hotkey.fallback_reason, None);
     }
 
     #[test]
     fn gates_alt_space_behind_explicit_allow_flag() {
         let blocked = resolve_effective_dictation_hotkey(Some("Alt+Space"), false);
-        assert_eq!(blocked.shortcut, DEFAULT_DESKTOP_CONTROL_HOTKEY);
+        assert_eq!(blocked.shortcut, FALLBACK_DESKTOP_CONTROL_HOTKEY);
         assert!(blocked.alt_space_requested);
         assert!(!blocked.alt_space_enabled);
         assert_eq!(
@@ -384,7 +403,7 @@ mod tests {
         );
 
         assert_eq!(
-            desktop_control_hotkey_released_payload(default_hotkey(None)),
+            desktop_control_hotkey_released_payload(fallback_hotkey(None)),
             DesktopControlHotkeyPayload {
                 source: "global_hotkey",
                 action: "released",

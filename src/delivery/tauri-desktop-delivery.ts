@@ -14,7 +14,7 @@ export type TauriDesktopDeliveryTarget = {
 };
 
 type NativeDeliveryResult = {
-  status: "paste_sent";
+  status: "paste_sent" | "paste_observed";
   reason: string;
   target: TauriDesktopDeliveryTarget;
 };
@@ -55,10 +55,14 @@ export function createTauriSavedTargetDeliveryGateway(input: {
           },
         );
 
-        return deriveDeliveryEvidence(request, {
-          status: "paste_sent",
-          reason: result.reason,
-        });
+        return deriveDeliveryEvidence(
+          request,
+          {
+            status: result.status,
+            reason: result.reason,
+          },
+          { allowVerifiedPasteObservation: result.status === "paste_observed" },
+        );
       } catch (error) {
         return deriveDeliveryEvidence(request, {
           status: "failed",

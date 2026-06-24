@@ -169,6 +169,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-dictation-e2
 - Accepted follow-ups: JP chose to accept remaining deviations as follow-ups rather than continue this batch: blue enter-submit affordance, native idle hit-region/rounded hit-test, state-aware processing/error resize, context menu, preset badge, and assistant indicators.
 - Still gated: Alt+Space, tray/background lifecycle, selected-text capture, replace-selection, observer-backed `paste_observed`, real app targets beyond controlled fixtures.
 
+### Lote 4 Six-Front Parity Follow-Up - 2026-06-24
+
+- Scope: JP requested continuing all six remaining fronts: Alt+Space default, real selected-text read, replace-selection foundation, separate companion window, realer settings/history/presets UX, and paste observer.
+- Alt+Space: on Windows, `Alt+Space` is now the default effective dictation key through the native `WH_KEYBOARD_LL` backend; `Ctrl+Shift+F9` remains an explicit fallback by setting `DICTATION_TAURI_DICTATION_KEY=Ctrl+Shift+F9`. CUA smoke confirmed the dock label showed `Alt+Space` without env override and synthetic Alt+Space started Listening.
+- Selection: `capture_selection_context` now attempts UI Automation `TextPattern.GetSelection()` without clipboard, keyboard, focus, paste, or persistence. It still returns redacted metadata and caps selected text at 2,000 chars. Product IPC smoke remains pending.
+- Replace/observer foundation: desktop delivery now performs a bounded Win32 text observer after paste. It can return `paste_observed` only when the target text contains the inserted output and the controller accepts it only when the reason says the observer verified it. Full replace-selection UX remains staged.
+- Companion: added hidden Tauri `dock-companion` window (`index.html?surface=companion`), capability entry, and show/hide commands. The current companion surface is static first-slice; dynamic Fixvox-like companion state/actions remain pending.
+- Evidence: `artifacts/desktop-control/combined-lote-smoke/20260624-six-fronts-default-altspace-uia-observer/report.json`. Two post-change full E2E attempts were blocked before dictation by Windows foreground-lock rejecting CUA `bring_to_front`; earlier E2E in Lote 3 remains the last passing full real E2E.
+- Checks passed before docs update: `npm run test:pipeline` (50 files / 242 tests), `npm run build`, `npm run visual:check` (8 tests), and `cd src-tauri && cargo check`.
+- Guardrails: no raw transcript in docs, no selected text printed, no autostart install. Do not claim product `paste_observed` until a passing observer smoke proves it on a controlled target.
+
 ### Lote 3 Five-Front Fixvox Parity Follow-Up - 2026-06-24
 
 - Scope: continued the five remaining Fixvox-parity fronts: robust Alt+Space, selection/replace foundation, enriched tray/context menu, companion/recovery, and durable history.

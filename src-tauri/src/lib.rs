@@ -1,3 +1,4 @@
+mod companion_window;
 mod desktop_control;
 mod desktop_delivery;
 mod dock_shell;
@@ -25,6 +26,8 @@ pub fn run() {
             runtime_transcription::transcribe_captured_audio,
             desktop_delivery::capture_desktop_delivery_target,
             desktop_delivery::deliver_text_to_desktop_target,
+            companion_window::show_companion,
+            companion_window::hide_companion,
             dock_shell::update_dock_shell_state,
             dock_shell::show_dock,
             dock_shell::hide_dock,

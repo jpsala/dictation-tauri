@@ -593,7 +593,32 @@ function createSyntheticDockVu(tick: number) {
   return { level, bands };
 }
 
+function getAppSurface(): "dock" | "companion" {
+  if (typeof window === "undefined") {
+    return "dock";
+  }
+  return new URLSearchParams(window.location.search).get("surface") === "companion"
+    ? "companion"
+    : "dock";
+}
+
+function CompanionSurface() {
+  return (
+    <main className="companion-shell" aria-label="Dock companion">
+      <section className="dock-companion-card dock-companion-card--standalone">
+        <p className="dock-companion-kicker">Companion</p>
+        <strong>Recovery and history surface</strong>
+        <p>Dictation Tauri keeps the dock compact and uses this no-activate companion window for richer recovery, history, and settings.</p>
+      </section>
+    </main>
+  );
+}
+
 export function App() {
+  if (getAppSurface() === "companion") {
+    return <CompanionSurface />;
+  }
+
   const captureRuntime = useMemo(() => createCaptureGatewayRuntime(), []);
   const hostRuntime = useMemo(
     () =>
@@ -1051,6 +1076,15 @@ export function App() {
       // Dock shell updates are best-effort; renderer state remains the source of truth.
     });
   }, [voiceDockState.phase]);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
+    const shouldShowCompanion = Boolean(resultHistoryOpen || settingsPanelOpen || voiceDockState.recovery);
+    void invoke(shouldShowCompanion ? "show_companion" : "hide_companion").catch(() => undefined);
+  }, [resultHistoryOpen, settingsPanelOpen, voiceDockState.recovery]);
 
   async function loadResultHistory() {
     if (!isTauri()) {

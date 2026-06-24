@@ -27,6 +27,23 @@
         "focus": false,
         "skipTaskbar": true,
         "visible": false
+      },
+      {
+        "label": "dock-companion",
+        "title": "Dictation Companion",
+        "url": "index.html?surface=companion",
+        "width": 320,
+        "height": 158,
+        "minWidth": 320,
+        "minHeight": 158,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "focus": false,
+        "skipTaskbar": true,
+        "visible": false
       }
     ],
     "security": {

@@ -270,7 +270,11 @@ export class DesktopDictationController
 
     try {
       delivery = await this.delivery.deliver(request);
-      assertDefaultDeliveryEvidenceAllowed(delivery);
+      assertDefaultDeliveryEvidenceAllowed(delivery, {
+        allowVerifiedPasteObservation:
+          delivery.status === "paste_observed" &&
+          delivery.reason?.toLowerCase().includes("verified") === true,
+      });
     } catch (error) {
       const recovery = mapDesktopFailureToRecovery({
         kind: "delivery",
