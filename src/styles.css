@@ -646,7 +646,7 @@ h1 {
   min-width: 25px;
   height: 25px;
   min-height: 25px;
-  transform: translate(-50%, 34%);
+  transform: translate(-50%, calc(34% + 5px));
 }
 
 .voice-dock__action[data-side="right"] {
