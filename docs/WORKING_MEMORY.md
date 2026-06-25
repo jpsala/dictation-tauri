@@ -98,7 +98,7 @@ bun scripts/check-skills-junction.ts
 
 ## Proximo Paso Probable
 
-Post-`013`: el flujo Fixvox-equivalent fue validado con CUA visible, managed provider real y TTS controlado. Siguiente batch recomendado: preparar commit local atomico de `013` + follow-up dock/TTS docs, o investigar/hardenear el caso especifico de pregunta argentina donde TTS/STT no reconocio bien `como/sentis` antes de postprocess.
+Post-`013`: el foco activo siguio siendo paridad operativa/ergonomica con Fixvox en el dock. Siguiente paso recomendado: continuar refinando diferencias pequeñas de dock contra Fixvox en una instancia real `npm run tauri:dev`, priorizando comportamiento observable (click targets, posicion, feedback, hotkeys) sobre cambios esteticos grandes.
 
 1. `010` quedo cerrado completo: shortcut fijo `Ctrl+Shift+F9`, ruta Rust-owned Tauri v2 global shortcut, renderer solo escucha evento `desktop-control://global-hotkey`, sin JS hotkey registration ni permisos frontend global-shortcut. T046 smoke manual paso con evidencia redacted en `specs/010-desktop-dictation-control-delivery/quickstart.md`.
 2. `011` se creo como siguiente spec post-010: `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/selection-transform-and-recovery.md`, `quickstart.md`, `tasks.md`.
@@ -143,6 +143,7 @@ Post-`013`: el flujo Fixvox-equivalent fue validado con CUA visible, managed pro
 41. Follow-up dock visible cerrado en vivo con CUA: drag del dock fallo inicialmente con `setPosition` renderer y quedo corregido usando comandos nativos Tauri `get_dock_shell_position`/`move_dock_shell_position`, hit-region full y updates Windows sin `SWP_SHOWWINDOW`/`SWP_FRAMECHANGED` cuando ya esta visible para reducir flicker. Smoke visible movio `Dictation Dock` y Start/Stop & review creo WAV local ignorado.
 42. Validacion TTS redacted: `artifacts/tts-parity/` genera casos locales ignorados; managed smoke y runtime Tauri/Rust pasaron fillers/correcciones, identificadores tecnicos (`process.env`, `==`, API key con pronunciacion clara) y pregunta neutral con `¿...?`, `fallbackToRaw:false`. Caveat: la frase exacta con TTS mexicano y forma argentina `sentis` no reconocio `como/sentis` en STT, por lo que postprocess no pudo reconstruir la pregunta; investigar STT prompt/language/prosody si JP quiere robustecer ese caso.
 43. Paridad Fixvox Esc-cancel implementada: hook nativo Windows host-owned registra Escape pero solo lo intercepta cuando el renderer arma `set_desktop_control_escape_cancel_enabled` durante captura cancelable; emite cancel por el canal `desktop-control://global-hotkey` y reutiliza el cancel existente del controller, incluso para sesiones iniciadas desde dock/boton.
+44. Refinements de dock post-013 cerrados por feedback directo: cursor del orb volvio a `default` (sin hand/grab), `dock_shell` preserva posicion en cambios same-size y ancla visual al expandir cerca/debajo del work area de Windows, click en VU/barras durante recording ejecuta `Stop & review` y no `Stop & submit`, iconos de acciones subieron a 22px y `Stop & submit` quedo 5px mas abajo. Checks usados: focused voice-dock, build, visual, cargo check segun alcance.
 
 ## Promocion De Memoria
 
