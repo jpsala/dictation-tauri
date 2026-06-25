@@ -356,17 +356,27 @@ pub fn calculate_centered_bottom_resize_position(
         return current_position;
     }
 
-    let centered_x = current_position.x + (current_width - next_layout.width) / 2;
-    let bottom_y = current_position.y + current_height - next_layout.height;
+    let current_layout = DockShellLayout {
+        width: current_width,
+        height: current_height,
+        hit_region: DockHitRegion::Full,
+    };
+    let current_is_outside_safe_area =
+        clamp_dock_position(current_position, work_area, current_layout) != current_position;
+    let current_content_offset_x = (current_width - DOCK_WIDTH).max(0) / 2;
+    let current_content_offset_y = (current_height - DOCK_HEIGHT).max(0) / 2;
+    let next_content_offset_x = (next_layout.width - DOCK_WIDTH).max(0) / 2;
+    let next_content_offset_y = (next_layout.height - DOCK_HEIGHT).max(0) / 2;
+    let anchored_position = DockPosition {
+        x: current_position.x + current_content_offset_x - next_content_offset_x,
+        y: current_position.y + current_content_offset_y - next_content_offset_y,
+    };
 
-    clamp_dock_position(
-        DockPosition {
-            x: centered_x,
-            y: bottom_y,
-        },
-        work_area,
-        next_layout,
-    )
+    if current_is_outside_safe_area {
+        anchored_position
+    } else {
+        clamp_dock_position(anchored_position, work_area, next_layout)
+    }
 }
 
 fn clamp_dock_position(
@@ -643,7 +653,7 @@ mod tests {
     }
 
     #[test]
-    fn review_layout_expands_while_preserving_center_and_bottom() {
+    fn review_layout_expands_with_safe_area_clamp_from_default_position() {
         assert_eq!(
             calculate_centered_bottom_resize_position(
                 DockPosition { x: 878, y: 1000 },
@@ -658,6 +668,25 @@ mod tests {
                 },
             ),
             DockPosition { x: 830, y: 974 }
+        );
+    }
+
+    #[test]
+    fn review_layout_preserves_visual_anchor_when_user_dragged_below_safe_area() {
+        assert_eq!(
+            calculate_centered_bottom_resize_position(
+                DockPosition { x: 878, y: 1020 },
+                164,
+                64,
+                dock_shell_layout(DockShellState::Review),
+                DockWorkArea {
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                },
+            ),
+            DockPosition { x: 830, y: 1007 }
         );
     }
 }
