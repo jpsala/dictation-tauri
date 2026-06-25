@@ -52,6 +52,11 @@ pub fn get_desktop_control_hotkey_config() -> DesktopControlHotkeyConfig {
     desktop_control_hotkey_config_from_env()
 }
 
+#[tauri::command]
+pub fn set_desktop_control_escape_cancel_enabled(enabled: bool) -> bool {
+    native_escape_cancel::set_escape_cancel_enabled(enabled)
+}
+
 pub fn desktop_control_hotkey_config_from_env() -> DesktopControlHotkeyConfig {
     desktop_control_hotkey_config(resolve_effective_dictation_hotkey_from_env())
 }
@@ -158,6 +163,14 @@ pub fn desktop_control_hotkey_released_payload(
     desktop_control_hotkey_payload("released", hotkey)
 }
 
+pub fn desktop_control_escape_cancel_payload() -> DesktopControlHotkeyPayload {
+    DesktopControlHotkeyPayload {
+        source: "global_hotkey",
+        action: "cancel",
+        shortcut: "Escape",
+    }
+}
+
 fn desktop_control_hotkey_payload(
     action: &'static str,
     hotkey: EffectiveDictationHotkey,
@@ -177,6 +190,7 @@ pub fn register_desktop_control_hotkey<R: tauri::Runtime>(
     use tauri_plugin_global_shortcut::ShortcutState;
 
     let hotkey = resolve_effective_dictation_hotkey_from_env();
+    native_escape_cancel::register_escape_cancel_hook(app)?;
 
     if hotkey.backend == HotkeyBackend::WindowsLowLevelHook {
         return native_alt_space::register_alt_space_hook(app, hotkey);
@@ -213,6 +227,121 @@ pub fn register_desktop_control_hotkey<R: tauri::Runtime>(
     _app: &tauri::AppHandle<R>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
+}
+
+#[cfg(windows)]
+mod native_escape_cancel {
+    use super::{desktop_control_escape_cancel_payload, DESKTOP_CONTROL_HOTKEY_EVENT};
+    use std::error::Error;
+    use std::ptr::null_mut;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{mpsc, Mutex, OnceLock};
+    use tauri::Emitter;
+    use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, GetMessageW, SetWindowsHookExW, HC_ACTION, KBDLLHOOKSTRUCT, MSG,
+        WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    };
+
+    static EVENT_SENDER: OnceLock<Mutex<Option<mpsc::Sender<()>>>> = OnceLock::new();
+    static ESCAPE_CANCEL_ENABLED: AtomicBool = AtomicBool::new(false);
+    static ESCAPE_DOWN: AtomicBool = AtomicBool::new(false);
+
+    pub fn set_escape_cancel_enabled(enabled: bool) -> bool {
+        ESCAPE_CANCEL_ENABLED.store(enabled, Ordering::SeqCst);
+        if !enabled {
+            ESCAPE_DOWN.store(false, Ordering::SeqCst);
+        }
+        enabled
+    }
+
+    pub fn register_escape_cancel_hook<R: tauri::Runtime>(
+        app: &tauri::AppHandle<R>,
+    ) -> Result<(), Box<dyn Error>> {
+        let (tx, rx) = mpsc::channel::<()>();
+        let sender = EVENT_SENDER.get_or_init(|| Mutex::new(None));
+        *sender
+            .lock()
+            .map_err(|_| "escape cancel hook sender poisoned")? = Some(tx);
+
+        let app_handle = app.clone();
+        std::thread::spawn(move || {
+            while rx.recv().is_ok() {
+                let _ = app_handle.emit(
+                    DESKTOP_CONTROL_HOTKEY_EVENT,
+                    desktop_control_escape_cancel_payload(),
+                );
+            }
+        });
+
+        std::thread::spawn(move || unsafe {
+            let module = GetModuleHandleW(null_mut());
+            let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), module, 0);
+            if hook.is_null() {
+                return;
+            }
+
+            let mut message: MSG = std::mem::zeroed();
+            while GetMessageW(&mut message, null_mut(), 0, 0) > 0 {}
+        });
+
+        Ok(())
+    }
+
+    unsafe extern "system" fn keyboard_proc(
+        code: i32,
+        w_param: WPARAM,
+        l_param: LPARAM,
+    ) -> LRESULT {
+        if code == HC_ACTION as i32 {
+            let event = w_param as u32;
+            let is_down = event == WM_KEYDOWN || event == WM_SYSKEYDOWN;
+            let is_up = event == WM_KEYUP || event == WM_SYSKEYUP;
+            let keyboard = &*(l_param as *const KBDLLHOOKSTRUCT);
+            let is_escape = keyboard.vkCode == VK_ESCAPE as u32;
+            let enabled = ESCAPE_CANCEL_ENABLED.load(Ordering::SeqCst);
+
+            if is_escape && is_down && enabled {
+                if !ESCAPE_DOWN.swap(true, Ordering::SeqCst) {
+                    send_event();
+                }
+                return 1;
+            }
+
+            if is_escape && is_up && ESCAPE_DOWN.swap(false, Ordering::SeqCst) && enabled {
+                return 1;
+            }
+        }
+
+        CallNextHookEx(null_mut(), code, w_param, l_param)
+    }
+
+    fn send_event() {
+        if let Some(lock) = EVENT_SENDER.get() {
+            if let Ok(guard) = lock.lock() {
+                if let Some(sender) = guard.as_ref() {
+                    let _ = sender.send(());
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+mod native_escape_cancel {
+    use std::error::Error;
+
+    pub fn set_escape_cancel_enabled(enabled: bool) -> bool {
+        enabled
+    }
+
+    pub fn register_escape_cancel_hook<R: tauri::Runtime>(
+        _app: &tauri::AppHandle<R>,
+    ) -> Result<(), Box<dyn Error>> {
+        Ok(())
+    }
 }
 
 #[cfg(windows)]
@@ -408,6 +537,18 @@ mod tests {
                 source: "global_hotkey",
                 action: "released",
                 shortcut: "Ctrl+Shift+F9",
+            }
+        );
+    }
+
+    #[test]
+    fn escape_cancel_payload_uses_existing_hotkey_event_channel() {
+        assert_eq!(
+            desktop_control_escape_cancel_payload(),
+            DesktopControlHotkeyPayload {
+                source: "global_hotkey",
+                action: "cancel",
+                shortcut: "Escape",
             }
         );
     }

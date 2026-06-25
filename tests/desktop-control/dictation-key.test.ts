@@ -148,4 +148,19 @@ describe("dictation key hold/tap resolver", () => {
     expect(dictationKeyDecisionToControlAction(cancelled.decision)).toBe("cancel");
     expect(cancelled.state.status).toBe("idle");
   });
+
+  it("lets Escape cancel a dock-started active session", () => {
+    const cancelled = resolveDictationKeyEvent(
+      createInitialDictationKeyState(),
+      event("cancel", "2026-06-23T15:06:01.000Z", {
+        eventId: "escape-dock-started",
+        shortcut: "Escape",
+      }),
+      { activeSessionCanCancel: true },
+    );
+
+    expect(cancelled.decision).toEqual({ action: "cancel", reason: "escape" });
+    expect(dictationKeyDecisionToControlAction(cancelled.decision)).toBe("cancel");
+    expect(cancelled.state.status).toBe("idle");
+  });
 });

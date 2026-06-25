@@ -905,6 +905,7 @@ export function App() {
   }, [desktopDelivery, gateway, hostRuntime.client]);
   const dictationKeyStateRef = useRef(createInitialDictationKeyState());
   const deferredStopEventIdRef = useRef<string | undefined>(undefined);
+  const canCancelDictationRef = useRef(false);
   const copyDelivery = useMemo(
     () =>
       createCopyDeliveryGateway({
@@ -1273,6 +1274,7 @@ export function App() {
   const canStop = capture.state === "recording";
   const canCancel =
     capture.state === "recording" || capture.state === "requesting_permission";
+  canCancelDictationRef.current = canCancel;
   const canSubmit = Boolean(capture.result?.ok) && pipelineUi.status !== "running";
   const canTranscribeWithProvider =
     canSubmit && hostReadinessUi.status === "configured";
@@ -1335,6 +1337,24 @@ export function App() {
       // Dock shell updates are best-effort; renderer state remains the source of truth.
     });
   }, [voiceDockState.phase]);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
+    void invoke("set_desktop_control_escape_cancel_enabled", {
+      enabled: canCancel,
+    }).catch(() => {
+      // Escape cancel is best-effort; explicit dock cancel remains available.
+    });
+
+    return () => {
+      void invoke("set_desktop_control_escape_cancel_enabled", {
+        enabled: false,
+      }).catch(() => undefined);
+    };
+  }, [canCancel]);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -1612,6 +1632,7 @@ export function App() {
       const resolution = resolveDictationKeyEvent(
         dictationKeyStateRef.current,
         event,
+        { activeSessionCanCancel: canCancelDictationRef.current },
       );
       dictationKeyStateRef.current = resolution.state;
 

@@ -35,6 +35,7 @@ pub fn run() {
             dock_shell::show_dock,
             dock_shell::hide_dock,
             desktop_control::get_desktop_control_hotkey_config,
+            desktop_control::set_desktop_control_escape_cancel_enabled,
             selection_capture::capture_selection_context,
             result_history::append_result_history_entry,
             result_history::list_result_history_entries,

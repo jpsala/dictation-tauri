@@ -9,7 +9,7 @@ export const tauriHostCommandEventName = "desktop-control://host-command";
 
 export type TauriGlobalHotkeyPayload = {
   source?: "global_hotkey";
-  action?: "pressed" | "released" | "toggle";
+  action?: "pressed" | "released" | "cancel" | "toggle";
   shortcut?: string;
   receivedAt?: string;
 };
@@ -43,7 +43,7 @@ export type TauriGlobalHotkeyListenerOptions = {
   now?: () => string;
   createEventId?: (
     receivedAt: string,
-    action: Extract<TauriGlobalHotkeyPayload["action"], "pressed" | "released">,
+    action: Extract<TauriGlobalHotkeyPayload["action"], "pressed" | "released" | "cancel">,
   ) => string;
 };
 
@@ -64,7 +64,11 @@ export function createDictationKeyEventFromTauriHotkey(
     return undefined;
   }
 
-  if (payload.action !== "pressed" && payload.action !== "released") {
+  if (
+    payload.action !== "pressed" &&
+    payload.action !== "released" &&
+    payload.action !== "cancel"
+  ) {
     return undefined;
   }
 

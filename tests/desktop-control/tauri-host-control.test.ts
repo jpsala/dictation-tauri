@@ -64,6 +64,28 @@ describe("Tauri host-owned global hotkey boundary", () => {
     });
   });
 
+  it("maps Rust-owned Escape payloads to cancel events", () => {
+    expect(
+      createDictationKeyEventFromTauriHotkey(
+        {
+          source: "global_hotkey",
+          action: "cancel",
+          shortcut: "Escape",
+          receivedAt: "2026-06-25T15:00:00.000Z",
+        },
+        {
+          createEventId: (receivedAt, action) => `global-hotkey:${action}:${receivedAt}`,
+        },
+      ),
+    ).toEqual({
+      eventId: "global-hotkey:cancel:2026-06-25T15:00:00.000Z",
+      source: "global_hotkey",
+      kind: "cancel",
+      shortcut: "Escape",
+      receivedAt: "2026-06-25T15:00:00.000Z",
+    });
+  });
+
   it("ignores unexpected host shortcut payloads and legacy toggle payloads", () => {
     expect(
       createDictationKeyEventFromTauriHotkey({
@@ -120,6 +142,9 @@ describe("Tauri host-owned global hotkey boundary", () => {
     expect(source).toContain("global_hotkey");
     expect(source).toContain("pressed");
     expect(source).toContain("released");
+    expect(source).toContain("Escape");
+    expect(source).toContain("set_desktop_control_escape_cancel_enabled");
+    expect(source).toContain("VK_ESCAPE");
     expect(source).not.toContain("paste_observed");
   });
 });

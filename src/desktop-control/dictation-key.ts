@@ -26,6 +26,7 @@ export type DictationKeyDecision =
 
 export type DictationKeyResolverOptions = {
   holdThresholdMs?: number;
+  activeSessionCanCancel?: boolean;
 };
 
 export type DictationKeyResolution = {
@@ -52,7 +53,7 @@ export function resolveDictationKeyEvent(
   }
 
   if (event.kind === "cancel") {
-    return resolveCancel(state, event);
+    return resolveCancel(state, event, options.activeSessionCanCancel ?? false);
   }
 
   if (event.kind === "pressed") {
@@ -211,8 +212,9 @@ function resolveRelease(
 function resolveCancel(
   state: DictationKeyState,
   event: DictationKeyEvent,
+  activeSessionCanCancel: boolean,
 ): DictationKeyResolution {
-  if (state.status === "idle") {
+  if (state.status === "idle" && !activeSessionCanCancel) {
     return {
       state: rememberEvent(state, event),
       decision: { action: "ignore", reason: "cancel_without_active_session" },
