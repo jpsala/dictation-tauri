@@ -116,6 +116,10 @@ describe("VoiceDock Fixvox Skin4 parity contract", () => {
     expect(styles).toMatch(/\.voice-dock\s*{[^}]*width:\s*164px;[^}]*height:\s*64px;[^}]*background:\s*transparent;/s);
     expect(styles).toMatch(/\.voice-dock__vu\s*{[^}]*gap:\s*3\.5px;[^}]*height:\s*24px;/s);
     expect(styles).toMatch(/\.voice-dock__vu-dot\s*{[^}]*width:\s*var\(--dot-width, 5px\);[^}]*height:\s*var\(--dot-height, 6px\);/s);
+    expect(styles).toContain("--voice-dock-mic-cursor");
+    expect(styles).toMatch(/\.voice-dock__orb\s*{[^}]*cursor:\s*var\(--voice-dock-mic-cursor\);/s);
+    expect(styles).not.toContain("cursor: grab");
+    expect(styles).not.toContain("cursor: grabbing");
     expect(styles).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)\s*{[^}]*\.voice-dock__vu-dot\s*{[^}]*transition:\s*none;/s);
   });
 });
