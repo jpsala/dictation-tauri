@@ -50,7 +50,12 @@ export function VoiceDock({
       return;
     }
 
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+
     const pointerId = event.pointerId;
+    const dragTarget = event.currentTarget;
     const startScreenX = event.screenX;
     const startScreenY = event.screenY;
     dragStateRef.current = {
@@ -64,6 +69,9 @@ export function VoiceDock({
       window.removeEventListener("pointermove", onPointerMove, true);
       window.removeEventListener("pointerup", onPointerUp, true);
       window.removeEventListener("pointercancel", onPointerUp, true);
+      if (dragTarget.hasPointerCapture?.(pointerId)) {
+        dragTarget.releasePointerCapture(pointerId);
+      }
     };
 
     const createDragEvent = (nextEvent: PointerEvent): DockDragEvent => ({
@@ -79,6 +87,8 @@ export function VoiceDock({
         return;
       }
 
+      nextEvent.preventDefault();
+      nextEvent.stopPropagation();
       const dragState = dragStateRef.current;
       cleanup();
       dragStateRef.current = undefined;
@@ -93,6 +103,9 @@ export function VoiceDock({
       if (!dragState || nextEvent.pointerId !== pointerId) {
         return;
       }
+
+      nextEvent.preventDefault();
+      nextEvent.stopPropagation();
 
       const dx = nextEvent.screenX - startScreenX;
       const dy = nextEvent.screenY - startScreenY;

@@ -9,6 +9,7 @@ export default defineConfig({
       "tests/capture/**/*.test.ts",
       "tests/runtime-transcription/**/*.test.ts",
       "tests/host-runtime/**/*.test.ts",
+      "tests/fixvox-text-runtime/**/*.test.ts",
       "tests/desktop-control/**/*.test.ts",
       "tests/voice-dock/**/*.test.ts",
       "tests/voice-dock/**/*.test.tsx",

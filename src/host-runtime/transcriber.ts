@@ -1,6 +1,12 @@
+import {
+  buildRawVoicePostProcessSystemPrompt,
+  buildRawVoicePostProcessUserMessage,
+  materializeFixvoxNormalDictationOutput,
+  resolveFixvoxTextRuntimeRoute,
+} from "../fixvox-text-runtime";
 import { createGroqSttGatewayFromEnv } from "../model-gateway/groq-stt";
 import { classifyRuntimeTranscript } from "../model-gateway/runtime-transcription";
-import type { TranscriptionResult } from "../model-gateway/types";
+import type { PostProcessResult, TranscriptionResult } from "../model-gateway/types";
 import {
   hostRuntimeArtifactDirectories,
   validateHostRuntimeAudioPath,
@@ -30,11 +36,25 @@ export type HostRuntimeArtifactWriter = (input: {
   kind: "report" | "transcript";
 }) => Promise<void>;
 
+export type HostRuntimePostProcessInput = {
+  runId: string;
+  transcript: string;
+  provider: string;
+  model: string;
+  systemPrompt: string;
+  userMessage: string;
+};
+
+export type HostRuntimePostProcessor = (
+  input: HostRuntimePostProcessInput,
+) => Promise<PostProcessResult>;
+
 export type HostRuntimeTranscriberOptions = {
   env?: HostRuntimeEnv;
   fetch?: typeof fetch;
   readAudioFile?: HostRuntimeAudioReader;
   writeArtifact?: HostRuntimeArtifactWriter;
+  postProcessText?: HostRuntimePostProcessor;
   now?: () => number;
 };
 
@@ -144,10 +164,14 @@ async function transcribeCapturedAudio(
     language: request.language,
     mode: request.mode === "real" ? "real" : "dry-run",
   });
-  const response = mapTranscriptionResultToHostResponse(
-    result,
+  const response = await applyFixvoxTextMaterialization(
+    mapTranscriptionResultToHostResponse(
+      result,
+      request,
+      audioPathResult.normalizedPath,
+    ),
     request,
-    audioPathResult.normalizedPath,
+    options,
   );
 
   await persistHostArtifacts(response, request, options.writeArtifact);
@@ -212,6 +236,119 @@ function mapTranscriptionResultToHostResponse(
   };
 }
 
+async function applyFixvoxTextMaterialization(
+  response: HostTranscriptionResponse,
+  request: HostTranscriptionRequest,
+  options: HostRuntimeTranscriberOptions,
+): Promise<HostTranscriptionResponse> {
+  if (response.status !== "ok") {
+    return response;
+  }
+
+  const postProcess = request.postProcess;
+  if (!postProcess) {
+    return response;
+  }
+
+  const route = resolveFixvoxTextRuntimeRoute({
+    transcript: response.text,
+    postProcessEnabled: postProcess.enabled,
+    postProcessPrompt: postProcess.prompt,
+    postProcessProvider: postProcess.provider,
+    postProcessModel: postProcess.model,
+    postProcessSource: postProcess.source,
+    policyId: postProcess.policyId,
+    voiceRoutingProfileId: postProcess.voiceRoutingProfileId,
+  });
+  const rawTranscript = response.text;
+  const baseEvidence = {
+    enabled: postProcess.enabled,
+    source: postProcess.source ?? null,
+    policyId: postProcess.policyId ?? null,
+    voiceRoutingProfileId: postProcess.voiceRoutingProfileId ?? null,
+    rawTranscriptLength: rawTranscript.length,
+    redacted: true as const,
+  };
+
+  if (route.route !== "post-process" || !route.provider || !route.model) {
+    return {
+      ...response,
+      postProcess: {
+        ...baseEvidence,
+        ran: false,
+        fallbackToRaw: true,
+        finalTextLength: rawTranscript.length,
+      },
+    };
+  }
+
+  if (!options.postProcessText) {
+    return {
+      ...response,
+      postProcess: {
+        ...baseEvidence,
+        ran: false,
+        provider: route.provider,
+        model: route.model,
+        fallbackToRaw: true,
+        finalTextLength: rawTranscript.length,
+      },
+    };
+  }
+
+  const systemPrompt = buildRawVoicePostProcessSystemPrompt(postProcess.prompt ?? "");
+  const userMessage = buildRawVoicePostProcessUserMessage({ transcript: rawTranscript });
+  const postProcessResult = await options.postProcessText({
+    runId: request.runId,
+    transcript: rawTranscript,
+    provider: route.provider,
+    model: route.model,
+    systemPrompt,
+    userMessage,
+  });
+
+  if (postProcessResult.status !== "ok") {
+    return {
+      ...response,
+      postProcess: {
+        ...baseEvidence,
+        ran: true,
+        provider: route.provider,
+        model: route.model,
+        fallbackToRaw: true,
+        finalTextLength: rawTranscript.length,
+        requestId: redactHostRuntimeRequestId(postProcessResult.requestId),
+        redacted: true,
+      },
+    };
+  }
+
+  const materialized = materializeFixvoxNormalDictationOutput({
+    transcript: rawTranscript,
+    rawPostProcessOutput: postProcessResult.output,
+    postProcessAttempted: true,
+  });
+
+  return {
+    ...response,
+    text: materialized.outputText,
+    provider: response.provider,
+    model: response.model,
+    postProcess: {
+      ...baseEvidence,
+      ran: true,
+      provider: postProcessResult.provider,
+      model: postProcessResult.model,
+      sanitizedChanged: materialized.sanitizer?.changed,
+      sanitizerReason: materialized.sanitizer?.reason,
+      fallbackToRaw: materialized.outputText === rawTranscript,
+      finalTextLength: materialized.outputText.length,
+      requestId: redactHostRuntimeRequestId(postProcessResult.requestId),
+      redacted: true,
+    },
+  };
+}
+
 async function persistHostArtifacts(
   response: HostTranscriptionResponse,
   request: HostTranscriptionRequest,
@@ -260,6 +397,7 @@ function createRedactedReport(
     latencyMs: response.latencyMs,
     requestId: response.requestId,
     transcriptLength: response.status === "ok" ? response.text.length : undefined,
+    postProcess: response.status === "ok" ? response.postProcess : undefined,
     error: response.status === "ok" ? undefined : response.error,
     rawProviderPayloadStored: false,
     redacted: true,

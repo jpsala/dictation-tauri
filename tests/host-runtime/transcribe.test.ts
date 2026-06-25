@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { DEFAULT_V2_VOICE_POST_PROCESS_PROMPT } from "../../src/fixvox-text-runtime";
 import { createHostRuntimeTranscriber } from "../../src/host-runtime/transcriber";
 
 const configuredEnv = {
@@ -187,6 +188,152 @@ describe("host runtime transcriber", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("materializes final output through Fixvox postprocess when policy enables it", async () => {
+    const writes: Array<{ path: string; content: string; kind: string }> = [];
+    const postProcessText = vi.fn(async (input) => ({
+      status: "ok" as const,
+      output: "Final\nHola, JP.",
+      provider: input.provider,
+      model: input.model,
+      latencyMs: 9,
+      requestId: "chat_req_123",
+    }));
+    const transcriber = createHostRuntimeTranscriber({
+      env: configuredEnv,
+      readAudioFile: async () => new Blob(["audio"]),
+      fetch: async () =>
+        new Response(JSON.stringify({ text: "hola jp" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      postProcessText,
+      writeArtifact: async (write) => {
+        writes.push(write);
+      },
+    });
+
+    const response = await transcriber.transcribe({
+      ...baseRequest,
+      postProcess: enabledPostProcessPolicy(),
+    });
+
+    expect(postProcessText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transcript: "hola jp",
+        provider: "groq",
+        model: "openai/gpt-oss-120b",
+      }),
+    );
+    expect(postProcessText.mock.calls[0][0].systemPrompt).toContain(
+      "You are a transcription post-processor",
+    );
+    expect(postProcessText.mock.calls[0][0].userMessage).toContain("<TRANSCRIPT_RAW>\nhola jp\n</TRANSCRIPT_RAW>");
+    expect(response).toMatchObject({
+      status: "ok",
+      text: "Hola, JP.",
+      postProcess: {
+        enabled: true,
+        ran: true,
+        provider: "groq",
+        model: "openai/gpt-oss-120b",
+        sanitizerReason: "final_marker",
+        fallbackToRaw: false,
+        rawTranscriptLength: 7,
+        finalTextLength: 9,
+        requestId: "chat_req_123",
+        redacted: true,
+      },
+    });
+    expect(writes[0]).toMatchObject({ kind: "transcript", content: "Hola, JP." });
+    expect(writes[1].content).toContain('"postProcess"');
+    expect(writes[1].content).toContain('"rawTranscriptLength": 7');
+    expect(writes[1].content).not.toContain("hola jp");
+    expect(writes[1].content).not.toContain("Hola, JP.");
+  });
+
+  it("skips postprocess and preserves raw text when policy is disabled or unavailable", async () => {
+    const postProcessText = vi.fn();
+    const transcriber = createHostRuntimeTranscriber({
+      env: configuredEnv,
+      readAudioFile: async () => new Blob(["audio"]),
+      fetch: async () =>
+        new Response(JSON.stringify({ text: "raw transcript" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      postProcessText,
+    });
+
+    await expect(
+      transcriber.transcribe({
+        ...baseRequest,
+        postProcess: { ...enabledPostProcessPolicy(), enabled: false },
+      }),
+    ).resolves.toMatchObject({
+      status: "ok",
+      text: "raw transcript",
+      postProcess: { enabled: false, ran: false, fallbackToRaw: true },
+    });
+
+    expect(postProcessText).not.toHaveBeenCalled();
+  });
+
+  it("falls back to raw transcript when postprocess fails or sanitizer rejects output", async () => {
+    const transcriber = createHostRuntimeTranscriber({
+      env: configuredEnv,
+      readAudioFile: async () => new Blob(["audio"]),
+      fetch: async () =>
+        new Response(JSON.stringify({ text: "raw transcript" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      postProcessText: async () => ({
+        status: "provider-error",
+        error: { code: "FIXVOX_CHAT_HTTP_500", message: "failed", redacted: true },
+        provider: "groq",
+        model: "openai/gpt-oss-120b",
+        latencyMs: 3,
+      }),
+    });
+
+    await expect(
+      transcriber.transcribe({ ...baseRequest, postProcess: enabledPostProcessPolicy() }),
+    ).resolves.toMatchObject({
+      status: "ok",
+      text: "raw transcript",
+      postProcess: { enabled: true, ran: true, fallbackToRaw: true },
+    });
+
+    const sanitizerFallback = createHostRuntimeTranscriber({
+      env: configuredEnv,
+      readAudioFile: async () => new Blob(["audio"]),
+      fetch: async () =>
+        new Response(JSON.stringify({ text: "raw transcript" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      postProcessText: async () => ({
+        status: "ok",
+        output: "Before: raw\nAfter: cleaned",
+        provider: "groq",
+        model: "openai/gpt-oss-120b",
+        latencyMs: 3,
+      }),
+    });
+
+    await expect(
+      sanitizerFallback.transcribe({ ...baseRequest, postProcess: enabledPostProcessPolicy() }),
+    ).resolves.toMatchObject({
+      status: "ok",
+      text: "raw transcript",
+      postProcess: {
+        ran: true,
+        sanitizerReason: "explanation_marker",
+        fallbackToRaw: true,
+      },
+    });
+  });
+
   it("maps empty provider successes to retryable empty outcomes", async () => {
     const readAudioFile = vi.fn(async () => new Blob(["audio"]));
     const fetch = vi.fn(async () =>
@@ -215,3 +362,15 @@ describe("host runtime transcriber", () => {
     });
   });
 });
+
+function enabledPostProcessPolicy() {
+  return {
+    enabled: true,
+    prompt: DEFAULT_V2_VOICE_POST_PROCESS_PROMPT,
+    provider: "groq",
+    model: "openai/gpt-oss-120b",
+    source: "policy",
+    policyId: "pro",
+    voiceRoutingProfileId: "pro-post-process",
+  };
+}

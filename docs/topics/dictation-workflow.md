@@ -39,12 +39,19 @@ La UI no debe ser la unica dueña del flujo. Las acciones deben poder dispararse
 
 El primer flujo de producto es dictado rapido universal. La seleccion real y los modos asistidos son extensiones posteriores.
 
+Decision 2026-06-25: el proceso de dictado/texto debe adoptar Fixvox como canon. Dictation Tauri conserva una frontera propia para desktop shell y testabilidad, pero no debe reinterpretar el proceso que en Fixvox ya funciona: audio prep, STT, servicios, prompts, policy, postprocess, sanitizer, fallback y materializacion final.
+
+Estado 2026-06-25 (`013` completo): `src/fixvox-text-runtime` contiene los primitivos puros adoptados de Fixvox; el request TS/Tauri acepta politica `postProcess`; Rust/Tauri ejecuta managed STT y, si la policy lo habilita, managed chat `/v1/chat/completions`; delivery consume el texto final materializado y cae a transcript raw si el provider/sanitizer falla o devuelve empty. Evidencia durable debe registrar longitudes/metadata/sanitizer reason, no raw transcript.
+
+Validacion 2026-06-25: el flujo fue probado con CUA visible y con TTS local controlado. Managed STT + postprocess y el runtime real Tauri/Rust pasaron casos redacted de fillers/correcciones, identificadores tecnicos y pregunta neutral con signos `¿...?` cuando STT reconoce la pregunta. Caveat durable: una frase TTS mexicana con forma argentina `sentis` no reconocio `como/sentis` en STT; el postprocess no debe inventar una pregunta si la transcripcion no conserva suficiente señal. Para robustecer ese caso, investigar STT language/prompt/prosody o fixtures de voz humana antes de cambiar el sanitizer.
+
 El runtime debe tener una frontera propia:
 
 - `PipelineService` o equivalente controla run activo, no-overlap, cancelacion, ids y emision de eventos.
-- El core del pipeline no accede directo a UI, Tauri, clipboard, microfono ni provider real.
-- Transcripcion, postprocess/materializacion y delivery entran por puertos/adapters.
-- Cada run genera un ledger de eventos tipados; la UI, logs y summaries observan ese ledger.
+- El core del pipeline no accede directo a UI, Tauri, clipboard ni foco.
+- La logica de transcripcion/postprocess/materializacion para dictado normal debe ser Fixvox-equivalent y vivir en una capa de compatibilidad (`specs/013-fixvox-text-runtime-parity/`).
+- Provider calls y secretos siguen host-owned en Rust/Tauri; tests default validan previews/prompts/sanitizer sin llamar proveedores.
+- Cada run genera un ledger de eventos tipados/redacted; la UI, logs y summaries observan ese ledger.
 - La UI dispara comandos y observa estado, pero no decide transiciones ni recovery.
 
 ## Estados
@@ -66,6 +73,7 @@ Nombres de UI:
 ## Decision Inicial
 
 - La experiencia usable objetivo debe respetar la ergonomia probada de Fixvox para dock/hotkeys: una `Dictation key` visible con hold/tap, dock flotante compacto, feedback vivo de grabacion y recovery honesto. Ver `docs/topics/fixvox-dock-and-hotkeys-reference.md`.
+- El proceso usable objetivo debe respetar Fixvox como implementacion canonica para texto: mismos servicios/prompts/policy/postprocess/sanitizer/fallback salvo divergencia tecnica documentada.
 - MVP 1 debe correr con pipeline simulado y adapter mock.
 - MVP 2 debe correr con audio sintetico y STT real sobre fixtures controlados; tambien puede usar audio local real si acelera desarrollo.
 - MVP 3 agrega la frontera de microfono y stop-submit sobre captura fake/WebView testable; la grabacion real queda como check manual aprobado.

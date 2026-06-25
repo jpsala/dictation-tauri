@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-24T22:39:58.238Z
+Generated: 2026-06-25T12:56:36.622Z
 
 ## Topics
 
@@ -47,6 +47,7 @@ Generated: 2026-06-24T22:39:58.238Z
 - [010-desktop-dictation-control-delivery](../../specs/010-desktop-dictation-control-delivery/)
 - [011-selection-transform-and-recovery-ergonomics](../../specs/011-selection-transform-and-recovery-ergonomics/)
 - [012-fixvox-dock-dictation-key](../../specs/012-fixvox-dock-dictation-key/)
+- [013-fixvox-text-runtime-parity](../../specs/013-fixvox-text-runtime-parity/)
 
 ## Skills
 

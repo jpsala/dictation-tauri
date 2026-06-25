@@ -22,6 +22,16 @@ export type HostRuntimeReadiness = {
   reason?: RedactedHostRuntimeError;
 };
 
+export type HostPostProcessPolicy = {
+  enabled: boolean;
+  prompt?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  source?: string | null;
+  policyId?: string | null;
+  voiceRoutingProfileId?: string | null;
+};
+
 export type HostTranscriptionRequest = {
   runId: string;
   audioPath: string;
@@ -30,6 +40,7 @@ export type HostTranscriptionRequest = {
   language?: string;
   mode: HostRuntimeMode;
   allowProviderCall: boolean;
+  postProcess?: HostPostProcessPolicy;
 };
 
 export type RedactedFixvoxResponseMetadata = {
@@ -61,6 +72,7 @@ export type HostTranscriptionResponse =
       latencyMs: number;
       requestId?: string;
       fixvoxMetadata?: RedactedFixvoxResponseMetadata;
+      postProcess?: HostPostProcessEvidence;
       redacted: true;
     }
   | {
@@ -81,6 +93,23 @@ export type HostTranscriptionResponse =
       retryable: boolean;
       redacted: true;
     };
+
+export type HostPostProcessEvidence = {
+  enabled: boolean;
+  ran: boolean;
+  provider?: string;
+  model?: string;
+  source?: string | null;
+  policyId?: string | null;
+  voiceRoutingProfileId?: string | null;
+  sanitizedChanged?: boolean;
+  sanitizerReason?: "final_marker" | "explanation_marker" | "too_long" | null;
+  fallbackToRaw: boolean;
+  rawTranscriptLength: number;
+  finalTextLength: number;
+  requestId?: string;
+  redacted: true;
+};
 
 export type HostRuntimeClient = {
   getReadiness(): Promise<HostRuntimeReadiness>;

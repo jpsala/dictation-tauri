@@ -102,6 +102,65 @@ describe("App desktop session controller seam", () => {
     expect(gateway.cancelCapture).toHaveBeenCalledTimes(1);
   });
 
+  it("uses materialized host runtime text as transcript and delivery output", async () => {
+    const client: HostRuntimeClient = {
+      async getReadiness() {
+        throw new Error("readiness not needed");
+      },
+      async transcribeCapturedAudio() {
+        return {
+          status: "ok",
+          text: "materialized final text",
+          provider: "fixvox-cloud",
+          model: "whisper-large-v3",
+          latencyMs: 12,
+          postProcess: {
+            enabled: true,
+            ran: true,
+            provider: "groq",
+            model: "openai/gpt-oss-120b",
+            source: "policy",
+            policyId: "pro",
+            voiceRoutingProfileId: "pro-post-process",
+            sanitizedChanged: true,
+            sanitizerReason: "final_marker",
+            fallbackToRaw: false,
+            rawTranscriptLength: 10,
+            finalTextLength: 23,
+            redacted: true,
+          },
+          redacted: true,
+        };
+      },
+    };
+    const adapter = createHostRuntimeControllerAdapter(client, {
+      mode: "real",
+      allowProviderCall: true,
+      postProcess: {
+        enabled: true,
+        prompt: "Clean dictated text",
+        provider: "groq",
+        model: "openai/gpt-oss-120b",
+        source: "policy",
+        policyId: "pro",
+        voiceRoutingProfileId: "pro-post-process",
+      },
+    });
+
+    const result = await adapter.transcribe({
+      sessionId: "session-1",
+      capture: createCapturedAudioResult(),
+      event: appEvent("stop"),
+    });
+
+    expect(result.transcript).toBe("materialized final text");
+    expect(result.output).toBe("materialized final text");
+    expect(result.summary.deliveryEvidence).toMatchObject({
+      status: "available",
+      output: "materialized final text",
+    });
+  });
+
   it("keeps host runtime adapter provider-free unless explicitly allowed", async () => {
     const requests: unknown[] = [];
     const client: HostRuntimeClient = {

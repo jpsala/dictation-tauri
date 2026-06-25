@@ -47,13 +47,6 @@ pub struct DockShellLayout {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DockHitRegion {
     Full,
-    RoundedRect {
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
-        radius: i32,
-    },
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -78,6 +71,16 @@ pub fn update_dock_shell_state(
     state: DockShellState,
 ) -> Result<DockShellSnapshot, String> {
     apply_dock_shell_state(&app, state).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn get_dock_shell_position(app: AppHandle) -> Result<DockPosition, String> {
+    current_dock_position(&app).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn move_dock_shell_position(app: AppHandle, x: i32, y: i32) -> Result<DockPosition, String> {
+    move_dock_position(&app, DockPosition { x, y }).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -207,9 +210,7 @@ fn resolve_work_area<R: Runtime>(
     })
 }
 
-fn save_current_dock_position<R: Runtime>(
-    app: &AppHandle<R>,
-) -> Result<DockPosition, Box<dyn Error>> {
+fn current_dock_position<R: Runtime>(app: &AppHandle<R>) -> Result<DockPosition, Box<dyn Error>> {
     let window = app.get_webview_window(DOCK_WINDOW_LABEL).ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::NotFound,
@@ -217,10 +218,30 @@ fn save_current_dock_position<R: Runtime>(
         )
     })?;
     let position = window.outer_position()?;
-    let dock_position = DockPosition {
+    Ok(DockPosition {
         x: position.x,
         y: position.y,
-    };
+    })
+}
+
+fn move_dock_position<R: Runtime>(
+    app: &AppHandle<R>,
+    position: DockPosition,
+) -> Result<DockPosition, Box<dyn Error>> {
+    let window = app.get_webview_window(DOCK_WINDOW_LABEL).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "Dictation Dock window is not available",
+        )
+    })?;
+    window.set_position(PhysicalPosition::new(position.x, position.y))?;
+    Ok(position)
+}
+
+fn save_current_dock_position<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<DockPosition, Box<dyn Error>> {
+    let dock_position = current_dock_position(app)?;
     write_saved_dock_position(app, dock_position)?;
     Ok(dock_position)
 }
@@ -272,13 +293,7 @@ pub fn dock_shell_layout(state: DockShellState) -> DockShellLayout {
         DockShellState::Idle => DockShellLayout {
             width: DOCK_WIDTH,
             height: DOCK_HEIGHT,
-            hit_region: DockHitRegion::RoundedRect {
-                x: 43,
-                y: 26,
-                width: 78,
-                height: 20,
-                radius: 14,
-            },
+            hit_region: DockHitRegion::Full,
         },
         DockShellState::Arming | DockShellState::Recording => DockShellLayout {
             width: DOCK_WIDTH,
@@ -377,14 +392,14 @@ fn clamp_axis(value: i32, min: i32, max: i32) -> i32 {
 #[cfg(windows)]
 mod platform {
     use super::{DockHitRegion, DockPosition, DockShellLayout};
-    use std::{error::Error, io, ptr};
+    use std::{error::Error, io};
     use tauri::{Runtime, WebviewWindow};
     use windows_sys::Win32::{
-        Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn},
+        Graphics::Gdi::SetWindowRgn,
         UI::WindowsAndMessaging::{
-            GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_TOPMOST,
-            SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_SHOWWINDOW, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
-            WS_EX_TOOLWINDOW,
+            GetWindowLongPtrW, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE,
+            HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_SHOWWINDOW, WS_EX_APPWINDOW,
+            WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
         },
     };
 
@@ -399,7 +414,10 @@ mod platform {
         unsafe {
             let existing_style = GetWindowLongPtrW(raw_hwnd, GWL_EXSTYLE);
             let dock_style = dock_extended_style(existing_style);
-            SetWindowLongPtrW(raw_hwnd, GWL_EXSTYLE, dock_style);
+            let style_changed = dock_style != existing_style;
+            if style_changed {
+                SetWindowLongPtrW(raw_hwnd, GWL_EXSTYLE, dock_style);
+            }
             apply_hit_region(raw_hwnd, layout.hit_region)?;
 
             let ok = SetWindowPos(
@@ -409,7 +427,7 @@ mod platform {
                 position.y,
                 layout.width,
                 layout.height,
-                SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED,
+                dock_set_window_pos_flags(style_changed, IsWindowVisible(raw_hwnd) != 0),
             );
             if ok == 0 {
                 return Err(Box::new(io::Error::last_os_error()));
@@ -426,23 +444,7 @@ mod platform {
         unsafe {
             match hit_region {
                 DockHitRegion::Full => {
-                    if SetWindowRgn(hwnd, ptr::null_mut(), 1) == 0 {
-                        return Err(Box::new(io::Error::last_os_error()));
-                    }
-                }
-                DockHitRegion::RoundedRect {
-                    x,
-                    y,
-                    width,
-                    height,
-                    radius,
-                } => {
-                    let region =
-                        CreateRoundRectRgn(x, y, x + width + 1, y + height + 1, radius, radius);
-                    if region.is_null() {
-                        return Err(Box::new(io::Error::last_os_error()));
-                    }
-                    if SetWindowRgn(hwnd, region, 1) == 0 {
+                    if SetWindowRgn(hwnd, std::ptr::null_mut(), 0) == 0 {
                         return Err(Box::new(io::Error::last_os_error()));
                     }
                 }
@@ -450,6 +452,17 @@ mod platform {
         }
 
         Ok(())
+    }
+
+    fn dock_set_window_pos_flags(style_changed: bool, already_visible: bool) -> u32 {
+        let mut flags = SWP_NOACTIVATE;
+        if !already_visible {
+            flags |= SWP_SHOWWINDOW;
+        }
+        if style_changed {
+            flags |= SWP_FRAMECHANGED;
+        }
+        flags
     }
 
     fn dock_extended_style(existing_style: isize) -> isize {
@@ -468,6 +481,15 @@ mod platform {
             assert_eq!(style & WS_EX_NOACTIVATE, WS_EX_NOACTIVATE);
             assert_eq!(style & WS_EX_TOOLWINDOW, WS_EX_TOOLWINDOW);
             assert_eq!(style & WS_EX_APPWINDOW, 0);
+        }
+
+        #[test]
+        fn visible_unchanged_dock_updates_do_not_force_show_or_frame_change() {
+            let flags = dock_set_window_pos_flags(false, true);
+
+            assert_eq!(flags & SWP_NOACTIVATE, SWP_NOACTIVATE);
+            assert_eq!(flags & SWP_SHOWWINDOW, 0);
+            assert_eq!(flags & SWP_FRAMECHANGED, 0);
         }
     }
 }
@@ -578,16 +600,10 @@ mod tests {
     }
 
     #[test]
-    fn idle_layout_uses_small_rounded_hit_region() {
+    fn idle_layout_uses_full_hit_region_for_reliable_drag() {
         assert_eq!(
             dock_shell_layout(DockShellState::Idle).hit_region,
-            DockHitRegion::RoundedRect {
-                x: 43,
-                y: 26,
-                width: 78,
-                height: 20,
-                radius: 14,
-            }
+            DockHitRegion::Full,
         );
     }
 

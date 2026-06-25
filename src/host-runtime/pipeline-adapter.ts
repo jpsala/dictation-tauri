@@ -1,6 +1,7 @@
 import type { MockTranscriptionAdapter } from "../pipeline/ports";
 import type { MockTranscriptionResult } from "../pipeline/types";
 import type {
+  HostPostProcessPolicy,
   HostRuntimeClient,
   HostRuntimeMode,
   HostTranscriptionResponse,
@@ -9,6 +10,7 @@ import type {
 export type HostClientTranscriptionAdapterOptions = {
   mode?: HostRuntimeMode;
   allowProviderCall?: boolean;
+  postProcess?: HostPostProcessPolicy;
 };
 
 export function createHostClientTranscriptionAdapter(
@@ -23,6 +25,7 @@ export function createHostClientTranscriptionAdapter(
         audioPath: artifact?.relativePath ?? artifact?.path ?? "",
         mode: options.mode ?? "dry-run",
         allowProviderCall: options.allowProviderCall ?? false,
+        ...(options.postProcess === undefined ? {} : { postProcess: options.postProcess }),
       });
 
       return mapHostTranscriptionResponse(response);

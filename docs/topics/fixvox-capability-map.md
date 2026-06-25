@@ -38,7 +38,9 @@ La pregunta no es "como portamos Fixvox", sino:
 
 Antes de implementar features durables, definir alcance de producto.
 
-Dictation Tauri debe nacer con un flujo chico, verificable y automatizable. Las capacidades de Fixvox son referencia, no backlog obligatorio.
+Dictation Tauri debe nacer con un flujo chico, verificable y automatizable. Las capacidades de Fixvox no son backlog obligatorio para UI/producto completo, pero el proceso de dictado/texto que ya funciona en Fixvox pasa a ser canonico.
+
+Decision 2026-06-25: para dictado normal, usar Fixvox igual en cuanto a proceso: recording/audio prep vigente, STT, servicios, prompts, policy, postprocess, sanitizer, fallback y materializacion. La shell desktop puede ser Tauri/Rust propia; el texto no debe reinventarse.
 
 ## Estados De Decision
 
@@ -58,7 +60,7 @@ En este mapa, `mvp` cubre el tramo MVP 0-3 definido en `docs/topics/product-dire
 | Capacidad Fixvox | Que hace hoy | Valor para Dictation Tauri | Opciones de implementacion | Decision inicial |
 | --- | --- | --- | --- | --- |
 | Dictado sin seleccion | Audio -> STT -> postprocess opcional -> insert/copy. | Es el core del producto. | Pipeline por puertos/adapters; mock primero, directo local en MVP 2. | `mvp` |
-| Postprocess de dictado | Limpia puntuacion, fillers, listas, terminos tecnicos y errores ASR. | Muy alto; mejora calidad percibida. | Medido en benchmark primero; runtime despues con niveles light/medium/strong. | `mvp` |
+| Postprocess de dictado | Limpia puntuacion, fillers, listas, terminos tecnicos y errores ASR. | Muy alto; mejora calidad percibida. | Adoptar la implementacion Fixvox: mismos prompts, policy, provider/model, user message, sanitizer y fallback; benchmarks solo verifican paridad. | `mvp/adopt-fixvox` |
 | Dictado con texto seleccionado | Voz como instruccion sobre seleccion. | Diferencia producto de simple STT. | Simular `selectedText` en tests; captura real despues. | `early` |
 | Selection transform | Aplica instruccion hablada al texto seleccionado. | Alto para workflows de edicion. | Fixture/preset simple primero; prompt general despues. | `early` |
 | Assistant Mode | Mantiene modo conversacional/asistente para prompts sucesivos. | Util, pero puede ampliar mucho alcance. | Toggle hotkey, wake-word, o Quick Chat manual. | `later` |
@@ -140,3 +142,15 @@ Cuando una capacidad cambie de estado, registrar:
 3. riesgo de privacidad;
 4. evidencia o spike que lo justifica;
 5. destino: spec, decision o task.
+
+## Update 2026-06-25: Proceso Fixvox Como Canon
+
+JP aclaro que no se refiere a copiar UI, sino a procesos. Para el proceso de texto, la estrategia cambia de "referencia/adaptar" a "usar lo que funciona":
+
+- copiar/extraer el nucleo de proceso Fixvox cuando sea posible;
+- usar los mismos servicios managed y contratos HTTP;
+- usar los mismos prompts y parametros efectivos;
+- usar la misma logica de postprocess/sanitizer/fallback;
+- mantener Tauri/Rust solo como shell/host de desktop y frontera de side effects.
+
+Spec de implementacion: `specs/013-fixvox-text-runtime-parity/`.

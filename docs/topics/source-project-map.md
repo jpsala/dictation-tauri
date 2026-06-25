@@ -54,9 +54,10 @@ Este mapa no convierte ningun proyecto fuente en dependencia. Todo lo adoptado d
 | Settings standalone | CopyQ Tauri | `adapt` | Settings como ventana propia, no overlay; contenido de dictado y hotkeys propios. |
 | Shortcut/tray/background | CopyQ Tauri | `adapt` | Registrar shortcut y tray desde Rust; cerrar ventana debe ocultar salvo quit explicito. |
 | Focus/delivery Win32 | Fixvox + CopyQ Tauri | `adapt` | Delivery best-effort con niveles de certeza; evitar prometer paste observado en Chromium/WebView. |
-| Voice runtime pipeline | Fixvox | `adapt` | Contrato propio por fases, `PipelineService`, event ledger y puertos/adapters. |
-| STT/TTS/benchmarks | Fixvox | `adapt` | Harness propio con frases/prompts/matrices como referencia; no copiar arquitectura Electrobun/Bun. |
-| Model routing | Fixvox | `adapt` | `ModelGateway` hibrido: mock/provider-free, directo BYOK/dev y managed cloud Fixvox como camino principal post-008. |
+| Voice runtime process | Fixvox | `adopt` | Para dictado/texto normal usar el proceso Fixvox como canon: audio prep, STT, prompts, policy, postprocess, sanitizer, fallback y materializacion. No reinventar prompts/reglas. |
+| Voice runtime shell | Dictation Tauri | `adapt` | Mantener Tauri/Rust para dock, hotkeys, ventanas, tray, foco/clipboard, permisos y packaging. |
+| STT/TTS/benchmarks | Fixvox | `adopt-process` | Reusar contratos, prompts, matrices y evidencia como canon del proceso; harness propio solo como envoltorio Tauri/test. |
+| Model routing | Fixvox | `adopt-process` | Managed cloud Fixvox, provider/model/policy/prompts y postprocess como fuente de verdad; mock/provider-free solo para tests. |
 | Policy/control plane | Fixvox | `adapt` | Reusar contratos cloud (`/v2/device/register`, preflight, policy/defaults) desde Rust/Tauri, no internals Bun. |
 | Wake words/assistant/Quick Chat | Fixvox | `parked` | No entran en MVP; usar solo para diseno futuro de rutas. |
 | UIA/Koffi/Python/PowerShell helper | Fixvox | `reject` | No reintroducir en hot path sin nueva decision explicita. |
@@ -130,40 +131,39 @@ No copiar:
 
 ## Implementable En MVP 1-3
 
-### Pipeline De Dictado
+### Pipeline / Proceso De Dictado
 
-Estado: `adapt` desde Fixvox.
+Estado actualizado 2026-06-25: `adopt` desde Fixvox para el proceso de texto; `adapt` solo para shell desktop Tauri.
 
-Crear spec separada si excede el scaffold. Contrato recomendado:
+Decision de JP: lo que ya funciona impecable en Fixvox debe usarse igual para el proceso. Dictation Tauri no debe inventar prompts, reglas de cleanup, postprocess, sanitizer, provider/model routing ni materializacion de salida para dictado normal.
 
-1. Trigger.
-2. Target capture.
-3. Route classification inicial.
-4. Audio recording o fixture input.
-5. Transcription por adapter.
-6. Output materialization/postprocess por adapter.
-7. Delivery por adapter.
-8. Completion/failure/cancellation.
+Proceso canonico a adoptar:
 
-Reglas propias:
+1. Trigger desde Tauri/dock/hotkey propio.
+2. Target capture/delivery desde Tauri/Rust propio cuando aplique.
+3. Recording/audio preparation igual a Fixvox si hay logica de compresion/conversion/preparacion en la ruta vigente.
+4. Transcription request igual a Fixvox: endpoint, headers, device id, provider/model, fields, prompt/policy y parsing.
+5. Raw transcript handling igual a Fixvox.
+6. Postprocess igual a Fixvox cuando policy lo habilita: system prompt, user message, provider/model, endpoint y telemetry/evidence redacted.
+7. Sanitizer/fallback igual a Fixvox.
+8. Output materialization igual a Fixvox antes de entregar/copiar/pegar desde Tauri.
 
-- Un `PipelineService` controla ejecucion activa, cancelacion y no-overlap.
-- Un ledger de eventos tipados es la evidencia primaria; summaries/UI/logs se derivan de ahi.
-- El core del pipeline no debe depender de UI, Tauri, clipboard, microfono ni provider real.
-- Los side effects desktop viven en Rust/Tauri o frontera host explicita cuando una spec los habilite.
+Reglas propias que se mantienen:
 
-Para Dictation Tauri, el primer corte debe soportar pipeline simulado antes de microfono real. Las rutas pueden empezar chicas:
+- Tauri/Rust sigue siendo dueño de ventanas, dock, hotkeys, tray, foco, clipboard, permisos, packaging y secrets host-owned.
+- Tests default siguen provider-free; pueden validar request previews, prompts, sanitizer y policy sin llamar proveedores.
+- Un ledger/evidencia redacted sigue siendo obligatorio, pero no puede cambiar el comportamiento de texto.
+- Si un fragmento Fixvox depende de Electrobun/Bun/appStore/UI, se copia o extrae el nucleo de proceso y se documenta la minima divergencia tecnica.
 
-- `dictation`;
-- `post-process`;
-- futuro `selection-transform` simulado en fixtures.
+Spec activa para este giro: `specs/013-fixvox-text-runtime-parity/`.
 
-No traer todavia:
+No traer todavia salvo que sea dependencia directa de dictado normal:
 
 - Assistant Mode persistente;
 - command wake words;
 - Quick Chat;
-- rutas completas de Fixvox.
+- full picker/Alt+Q;
+- UX completa de selection transform.
 
 ### Benchmarks STT/Postprocess
 

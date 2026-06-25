@@ -2,14 +2,19 @@ import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import {
+  DEFAULT_V2_VOICE_POST_PROCESS_PROMPT,
+  buildRawVoicePostProcessSystemPrompt,
+  buildRawVoicePostProcessUserMessage,
+} from "../src/fixvox-text-runtime";
+
 const artifactRoot = "artifacts/microphone-capture";
 const audioRoot = `${artifactRoot}/audio`;
 const transcriptRoot = `${artifactRoot}/transcripts`;
 const reportRoot = `${artifactRoot}/reports`;
 const preferredBackendUrl = "https://auth-fixvox.jpsala.dev";
 const staleBackendUrl = "https://fixvox-api.jpsala.dev";
-const defaultPostprocessPrompt =
-  "Clean Spanish/bilingual dictation with minimal edits. Preserve wording, language mix, technical tokens, and intent. Return only the cleaned transcript.";
+const defaultPostprocessPrompt = DEFAULT_V2_VOICE_POST_PROCESS_PROMPT;
 
 type DeviceState = {
   installId: string;
@@ -385,10 +390,13 @@ async function callManagedPostprocess(input: {
     body: JSON.stringify({
       model: input.model,
       messages: [
-        { role: "system", content: input.prompt },
-        { role: "user", content: input.transcript },
+        { role: "system", content: buildRawVoicePostProcessSystemPrompt(input.prompt) },
+        {
+          role: "user",
+          content: buildRawVoicePostProcessUserMessage({ transcript: input.transcript }),
+        },
       ],
-      max_tokens: Math.max(256, Math.min(4096, Math.ceil(input.transcript.length / 2))),
+      max_tokens: 4096,
       stream: false,
     }),
   });

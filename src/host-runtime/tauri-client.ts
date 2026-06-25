@@ -43,5 +43,6 @@ function createSafeTranscriptionPayload(
     ...(request.language === undefined ? {} : { language: request.language }),
     mode: request.mode,
     allowProviderCall: request.allowProviderCall,
+    ...(request.postProcess === undefined ? {} : { postProcess: request.postProcess }),
   };
 }

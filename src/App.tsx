@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { FakeCaptureGateway } from "./capture/fake-gateway";
 import type { CaptureGateway } from "./capture/gateway";
 import { NativeTauriCaptureGateway } from "./capture/native-tauri-gateway";
@@ -23,6 +21,7 @@ import {
   type DeliveryEvidence as DesktopDeliveryEvidence,
   type TauriDesktopDeliveryTarget,
 } from "./delivery";
+import { DEFAULT_V2_VOICE_POST_PROCESS_PROMPT } from "./fixvox-text-runtime";
 import { createHostClientTranscriptionAdapter } from "./host-runtime/pipeline-adapter";
 import {
   describeHostReadiness,
@@ -30,7 +29,7 @@ import {
   type HostReadinessUiState,
 } from "./host-runtime/readiness-ui";
 import { createHostRuntimeClientRuntime } from "./host-runtime/runtime-selection";
-import type { HostRuntimeClient } from "./host-runtime/types";
+import type { HostPostProcessPolicy, HostRuntimeClient } from "./host-runtime/types";
 import {
   deriveRuntimeRecoveryAction,
   type RuntimeRecoveryAction,
@@ -81,6 +80,16 @@ type CaptureUiState = {
   result?: CaptureResult;
 };
 
+const fixvoxManagedPostProcessPolicy: HostPostProcessPolicy = {
+  enabled: true,
+  prompt: DEFAULT_V2_VOICE_POST_PROCESS_PROMPT,
+  provider: "groq",
+  model: "openai/gpt-oss-120b",
+  source: "policy",
+  policyId: "pro",
+  voiceRoutingProfileId: "pro-post-process",
+};
+
 type PipelineUiState = {
   status: "idle" | "running" | "done" | "error" | "cancelled";
   message: string;
@@ -109,6 +118,11 @@ type ResultHistoryEntry = {
   };
   provider?: string;
   model?: string;
+};
+
+type DockShellPosition = {
+  x: number;
+  y: number;
 };
 
 type CaptureGatewayRuntime = {
@@ -875,7 +889,13 @@ export function App() {
       capture: createCaptureGatewayControllerAdapter(gateway),
       runtime: createHostRuntimeControllerAdapter(
         hostRuntime.client,
-        isTauri() ? { mode: "real", allowProviderCall: true } : undefined,
+        isTauri()
+          ? {
+              mode: "real",
+              allowProviderCall: true,
+              postProcess: fixvoxManagedPostProcessPolicy,
+            }
+          : undefined,
       ),
       delivery: desktopDelivery,
       allowDesktopDeliverySideEffects: isTauri(),
@@ -1136,7 +1156,11 @@ export function App() {
         transcriptionAdapter: createHostClientTranscriptionAdapter(
           hostRuntime.client,
           useRealProvider
-            ? { mode: "real", allowProviderCall: true }
+            ? {
+                mode: "real",
+                allowProviderCall: true,
+                postProcess: fixvoxManagedPostProcessPolicy,
+              }
             : undefined,
         ),
       });
@@ -1397,7 +1421,7 @@ export function App() {
     }
 
     try {
-      const windowPosition = await getCurrentWindow().outerPosition();
+      const windowPosition = await invoke<DockShellPosition>("get_dock_shell_position");
       dockDragRef.current = {
         startScreenX: event.startScreenX,
         startScreenY: event.startScreenY,
@@ -1442,7 +1466,7 @@ export function App() {
       drag.startWindowY + (event.screenY - drag.startScreenY) * drag.scale,
     );
 
-    await getCurrentWindow().setPosition(new PhysicalPosition(nextX, nextY));
+    await invoke("move_dock_shell_position", { x: nextX, y: nextY });
   }
 
   function handleVoiceDockCommand(command: DockCommand) {

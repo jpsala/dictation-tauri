@@ -1,7 +1,7 @@
 import type { CaptureGateway } from "../capture/gateway";
 import type { CapturePermissionStatus, CaptureResult } from "../capture/types";
 import { createHostClientTranscriptionAdapter } from "../host-runtime/pipeline-adapter";
-import type { HostRuntimeClient } from "../host-runtime/types";
+import type { HostPostProcessPolicy, HostRuntimeClient } from "../host-runtime/types";
 import { createCapturedAudioPipelineRequest } from "../pipeline/ports";
 import { PipelineService } from "../pipeline/service";
 import type { SimulatedRunSummary } from "../pipeline/types";
@@ -42,6 +42,7 @@ export type AppDesktopRuntimeResult = DesktopRuntimeResult & {
 export type AppSessionRuntimeOptions = {
   mode?: "dry-run" | "real";
   allowProviderCall?: boolean;
+  postProcess?: HostPostProcessPolicy;
 };
 
 export function createAppSessionControllerFacade(
@@ -125,6 +126,7 @@ export function createHostRuntimeControllerAdapter(
         transcriptionAdapter: createHostClientTranscriptionAdapter(client, {
           mode: options.mode ?? "dry-run",
           allowProviderCall: options.allowProviderCall ?? false,
+          postProcess: options.postProcess,
         }),
       });
       const summary = await pipeline.run(

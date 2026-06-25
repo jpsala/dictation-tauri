@@ -72,5 +72,5 @@ Este repo incluye la skill local `impeccable` en `docs/skills/impeccable` para t
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan
-at specs/012-fixvox-dock-dictation-key/plan.md
+at specs/013-fixvox-text-runtime-parity/plan.md
 <!-- SPECKIT END -->
