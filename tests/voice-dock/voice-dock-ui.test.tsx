@@ -83,6 +83,8 @@ describe("VoiceDock UI", () => {
     expect(html).toContain('data-phase="recording"');
     expect(html).toContain("Recording");
     expect(html).toContain("Release or stop when finished.");
+    expect(html).toContain('class="voice-dock__orb" data-command="stop"');
+    expect(html).toContain('aria-label="Stop recording for review"');
     expectAction(html, "Stop &amp; review");
     expectAction(html, "Stop &amp; submit");
     expectAction(html, "Cancel");

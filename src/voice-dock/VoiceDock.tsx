@@ -294,8 +294,12 @@ function getPrimaryActionLabel(state: VoiceDockState): string {
     return "Start";
   }
 
+  if (state.canStop) {
+    return "Stop recording for review";
+  }
+
   if (state.canStopSubmit) {
-    return "Stop";
+    return "Stop & submit";
   }
 
   return "Cancel";
@@ -304,6 +308,10 @@ function getPrimaryActionLabel(state: VoiceDockState): string {
 function getPrimaryActionCommand(state: VoiceDockState): DockCommand | undefined {
   if (state.canStart) {
     return state.phase === "cancelled" ? "retry" : "start";
+  }
+
+  if (state.canStop) {
+    return "stop";
   }
 
   if (state.canStopSubmit) {

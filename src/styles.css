@@ -646,7 +646,7 @@ h1 {
   min-width: 25px;
   height: 25px;
   min-height: 25px;
-  transform: translate(-50%, 28%);
+  transform: translate(-50%, 34%);
 }
 
 .voice-dock__action[data-side="right"] {
@@ -666,7 +666,7 @@ h1 {
   display: grid;
   place-items: center;
   color: currentColor;
-  font-size: 18px;
+  font-size: 22px;
   line-height: 1;
 }
 
