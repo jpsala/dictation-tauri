@@ -1739,14 +1739,14 @@ export function App() {
       <section className="voice-panel" aria-labelledby="voice-title">
         <div className="voice-header">
           <div>
-            <p className="eyebrow">MVP 3 capture</p>
-            <h1 id="voice-title">Dictation Tauri</h1>
+            <p className="eyebrow">Desktop dictation</p>
+            <h1 id="voice-title">Dictation Dock</h1>
           </div>
           <span
-            className={`status-chip status-chip--${capture.state}`}
+            className={`status-chip status-chip--${voiceDockState.phase === "idle" ? "idle" : capture.state}`}
             data-testid="capture-state"
           >
-            {captureStateLabels[capture.state]}
+            {voiceDockState.statusText}
           </span>
         </div>
 
