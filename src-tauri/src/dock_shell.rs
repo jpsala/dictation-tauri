@@ -352,6 +352,10 @@ pub fn calculate_centered_bottom_resize_position(
     next_layout: DockShellLayout,
     work_area: DockWorkArea,
 ) -> DockPosition {
+    if current_width == next_layout.width && current_height == next_layout.height {
+        return current_position;
+    }
+
     let centered_x = current_position.x + (current_width - next_layout.width) / 2;
     let bottom_y = current_position.y + current_height - next_layout.height;
 
@@ -616,6 +620,25 @@ mod tests {
                 height: 64,
                 hit_region: DockHitRegion::Full,
             }
+        );
+    }
+
+    #[test]
+    fn same_size_state_update_preserves_user_dragged_position() {
+        assert_eq!(
+            calculate_centered_bottom_resize_position(
+                DockPosition { x: 878, y: 1020 },
+                164,
+                64,
+                dock_shell_layout(DockShellState::Recording),
+                DockWorkArea {
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                },
+            ),
+            DockPosition { x: 878, y: 1020 }
         );
     }
 
