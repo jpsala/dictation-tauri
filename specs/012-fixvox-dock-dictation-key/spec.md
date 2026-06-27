@@ -131,4 +131,4 @@ The product has a clear decision path for converging to Fixvox's `Alt+Space` def
 - The first implementation should minimize steps by reusing the existing controller/runtime instead of rewriting capture, STT, or delivery.
 - Real paste automation, selected-text capture, result history, Quick Chat, Assistant Mode, and `Alt+Q` are not part of the first dock/hotkey implementation slice.
 - `Alt+Space` is the desired ergonomic direction, but can be a follow-up if it would delay the usable dock.
-- Fixvox is a UX/product reference; Electrobun/Bun code is not copied as architecture.
+- Fixvox is a UX/product reference; legacy Fixvox desktop internals code is not copied as architecture.

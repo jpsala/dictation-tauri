@@ -1,4 +1,4 @@
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { DictationKeyEvent } from "./dictation-key";
 
@@ -20,7 +20,27 @@ export type TauriGlobalHotkeyConfig = {
   requestedShortcut?: string;
   altSpaceRequested: boolean;
   altSpaceEnabled: boolean;
+  backend?: "tauri_global_shortcut" | "windows_low_level_hook";
   fallbackReason?: string;
+};
+
+export type TauriHotkeyRegistrationPreview = {
+  requestedShortcut: string;
+  normalizedShortcut: string;
+  canApply: boolean;
+  reason?: string;
+  targetConfig?: TauriGlobalHotkeyConfig;
+};
+
+export type TauriHotkeyRegistrationApplyResult = {
+  preview: TauriHotkeyRegistrationPreview;
+  previousConfig: TauriGlobalHotkeyConfig;
+  effectiveConfig: TauriGlobalHotkeyConfig;
+  changed: boolean;
+  rolledBack: boolean;
+  preferencePersisted: boolean;
+  persistenceError?: string;
+  error?: string;
 };
 
 export type TauriHostCommand =
@@ -34,7 +54,7 @@ export type TauriHostCommand =
   | "open_settings";
 
 export type TauriHostCommandPayload = {
-  source?: "tray_or_context_menu";
+  source?: "tray_or_context_menu" | "global_hotkey";
   command?: TauriHostCommand;
   presetId?: "rewrite" | "shorten" | "bulletize";
 };
@@ -81,6 +101,32 @@ export function createDictationKeyEventFromTauriHotkey(
     shortcut: payload.shortcut,
     receivedAt,
   };
+}
+
+export async function previewTauriHotkeyRegistration(
+  requestedShortcut: string,
+): Promise<TauriHotkeyRegistrationPreview | undefined> {
+  if (!isTauri()) {
+    return undefined;
+  }
+
+  return invoke<TauriHotkeyRegistrationPreview>(
+    "preview_desktop_control_hotkey_registration",
+    { requestedShortcut },
+  );
+}
+
+export async function applyTauriHotkeyRegistration(
+  requestedShortcut: string,
+): Promise<TauriHotkeyRegistrationApplyResult | undefined> {
+  if (!isTauri()) {
+    return undefined;
+  }
+
+  return invoke<TauriHotkeyRegistrationApplyResult>(
+    "apply_desktop_control_hotkey_registration",
+    { requestedShortcut },
+  );
 }
 
 export async function listenForTauriGlobalHotkey(

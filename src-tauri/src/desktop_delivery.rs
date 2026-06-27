@@ -1,4 +1,13 @@
 use serde::{Deserialize, Serialize};
+use std::{
+    sync::{Mutex, Once},
+    thread,
+    time::Duration,
+};
+
+static DELIVERY_TARGET_WATCHER: Once = Once::new();
+
+static CACHED_DESKTOP_DELIVERY_TARGET: Mutex<Option<DesktopDeliveryTarget>> = Mutex::new(None);
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,7 +30,66 @@ pub struct DesktopDeliveryResult {
 
 #[tauri::command]
 pub fn capture_desktop_delivery_target() -> Result<DesktopDeliveryTarget, String> {
-    platform::capture_desktop_delivery_target()
+    let target = platform::capture_desktop_delivery_target()?;
+    cache_delivery_target_if_editable("capture_desktop_delivery_target", target.clone());
+    Ok(target)
+}
+
+#[tauri::command]
+pub fn get_cached_desktop_delivery_target() -> Option<DesktopDeliveryTarget> {
+    CACHED_DESKTOP_DELIVERY_TARGET
+        .lock()
+        .ok()
+        .and_then(|target| target.clone())
+}
+
+pub fn start_delivery_target_watcher() {
+    DELIVERY_TARGET_WATCHER.call_once(|| {
+        eprintln!("[dictation-tauri][delivery-target] starting foreground watcher");
+        thread::spawn(|| loop {
+            cache_current_desktop_delivery_target_for_tray("foreground_watcher");
+            thread::sleep(Duration::from_millis(350));
+        });
+    });
+}
+
+pub fn cache_current_desktop_delivery_target_for_tray(reason: &str) {
+    match platform::capture_desktop_delivery_target() {
+        Ok(target) => cache_delivery_target_if_editable(reason, target),
+        Err(error) => {
+            eprintln!("[dictation-tauri][delivery-target] cache failed reason={reason}: {error}")
+        }
+    }
+}
+
+fn cache_delivery_target_if_editable(reason: &str, target: DesktopDeliveryTarget) {
+    if !target.input_like {
+        if reason != "foreground_watcher" {
+            eprintln!(
+                "[dictation-tauri][delivery-target] skipped non-editable target reason={} target_reason={}",
+                reason, target.reason
+            );
+        }
+        return;
+    }
+
+    let process_id = target.process_id;
+    let window_class = target.window_class.clone();
+    let title_length = target.window_title.len();
+    let mut should_log = reason != "foreground_watcher";
+    if let Ok(mut cached) = CACHED_DESKTOP_DELIVERY_TARGET.lock() {
+        should_log = should_log
+            || cached
+                .as_ref()
+                .map(|existing| existing.frame_hwnd != target.frame_hwnd)
+                .unwrap_or(true);
+        *cached = Some(target);
+    }
+    if should_log {
+        eprintln!(
+            "[dictation-tauri][delivery-target] cached reason={reason} pid={process_id} class={window_class} title_len={title_length}"
+        );
+    }
 }
 
 #[tauri::command]
@@ -49,7 +117,7 @@ mod platform {
         },
         UI::{
             Input::KeyboardAndMouse::{
-                SendInput, SetFocus, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
+                SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
                 VIRTUAL_KEY, VK_CONTROL, VK_RETURN, VK_V,
             },
             WindowsAndMessaging::{
@@ -76,10 +144,17 @@ mod platform {
             GetWindowThreadProcessId(hwnd, &mut process_id);
         }
         let probe = format!("{} {}", window_title, window_class).to_lowercase();
-        let is_own_dock = window_title == "Dictation Dock";
-        let input_like = !is_own_dock;
-        let reason = if is_own_dock {
-            "foreground target is the dictation dock; paste is blocked".to_string()
+        let is_own_process = process_id == std::process::id();
+        let is_own_surface = is_own_process
+            || window_title == "Dictation Dock"
+            || window_title == "Dictation Companion"
+            || window_title == "Dictation Tauri Settings"
+            || probe.contains("tray_icon_app");
+        let input_like =
+            !is_own_surface && !probe.contains("taskbar") && !probe.contains("shell_traywnd");
+        let reason = if is_own_surface {
+            "foreground target is a Dictation Tauri surface; preserving previous editable target"
+                .to_string()
         } else if probe.contains("taskbar") || probe.contains("shell_traywnd") {
             "foreground target is not an editable app".to_string()
         } else {
@@ -262,7 +337,6 @@ mod platform {
 
             BringWindowToTop(hwnd);
             SetForegroundWindow(hwnd);
-            SetFocus(hwnd);
 
             if attached_foreground {
                 AttachThreadInput(current_thread_id, foreground_thread_id, 0);

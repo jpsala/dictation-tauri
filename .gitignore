@@ -27,6 +27,8 @@ artifacts/synthetic-audio-stt/
 artifacts/microphone-capture/
 artifacts/desktop-control/
 artifacts/tts-parity/
+artifacts/ui-spikes/
+artifacts/live-app/
 
 # OS/editor noise
 .DS_Store

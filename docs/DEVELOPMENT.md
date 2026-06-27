@@ -48,7 +48,7 @@ Stack decidido para la fundacion tecnica:
 - Testing visual: Playwright.
 - Storage: pendiente de definir como producto, pero en esta etapa personal/dev la persistencia experimental local de audio/transcripciones/logs no esta bloqueada por privacidad.
 
-No copiar dependencias de `copyq-tauri` que sean especificas de clipboard, SQLite, Win32 o storage hasta que una spec las justifique.
+No copiar dependencias de `copicu` que sean especificas de clipboard, SQLite, Win32 o storage hasta que una spec las justifique.
 
 ## Estado De Implementacion
 
@@ -197,6 +197,7 @@ Pendiente de decision de producto. Hasta entonces, en modo personal/dev:
 - Se puede guardar persistencia experimental local si acelera benchmarks, diagnostico o desarrollo.
 - Antes de volverlo contrato de producto, documentar ruta, formato, ciclo de vida y politica de borrado.
 - Resultado reusable post-2026-06-24: `result-history.v1.jsonl` es persistencia host-owned experimental bajo app data Tauri, bounded a 50 entradas, con comandos list/append/clear. Guarda texto de salida exitoso como dato sensible local; no guardar `paste_observed` sin observer verificado, raw selection input, target titles, audio paths ni provider payloads.
+- Resultado reusable post-2026-06-26: `hotkey-preferences.v1.json` es persistencia host-owned bajo app data Tauri para la `Dictation key`. Formato JSON `{ schemaVersion: 1, shortcut }`; soporta `Alt+Space`, `Alt+3` y `Ctrl+Shift+F9`; se escribe desde apply host-owned tras verify/rollback y se lee al registrar hotkeys en startup. Ciclo de vida: sobreescribir con la ultima preferencia; para reset manual borrar el archivo o guardar `Alt+Space` desde Settings. No guardar shortcuts arbitrarios desde renderer.
 - `.env`/tokens no se commitean salvo pedido explicito y acotado de JP.
 - No usar `localStorage`, caches temporales o logs como fuente de verdad durable.
 

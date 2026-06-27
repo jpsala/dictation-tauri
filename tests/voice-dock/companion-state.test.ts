@@ -36,12 +36,14 @@ describe("dock companion state", () => {
         {
           id: "history-1",
           source: "dictation",
+          text: "first reusable dictation result preview",
           textLength: 42,
           deliveryEvidence: { status: "available" },
         },
         {
           id: "history-2",
           source: "selection_transform",
+          text: "second reusable result preview for hover details",
           textLength: 17,
           deliveryEvidence: { status: "uncertain" },
         },
@@ -60,12 +62,16 @@ describe("dock companion state", () => {
         label: "selection transform",
         textLength: 17,
         deliveryStatus: "uncertain",
+        textPreview: "second reusable result preview for hover details",
+        hoverPreview: "second reusable result preview for hover details",
       },
       {
         id: "history-1",
         label: "dictation",
         textLength: 42,
         deliveryStatus: "available",
+        textPreview: "first reusable dictation result preview",
+        hoverPreview: "first reusable dictation result preview",
       },
     ]);
     expect(JSON.stringify(snapshot)).not.toContain(

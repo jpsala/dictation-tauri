@@ -86,7 +86,7 @@ components:
 
 Dictation Tauri should feel like a compact desktop control surface: restrained, legible, and exact about what is happening. The interface serves an active workflow, so the design must stay calm while another application is the user's main context.
 
-The system uses a pure white canvas, cool technical neutrals, and a small amount of warm coral as the primary action color. Warmth lives in the accent, not in a cream surface. The main product UI should reject generic AI SaaS landing-page aesthetics, dark purple gradient chrome, and audio-engineering dashboards. The voice dock is a utility-overlay exception: it should deliberately adapt the compact Fixvox dock ergonomics when that improves always-on desktop usability, without copying Electrobun implementation details.
+The system uses a pure white canvas, cool technical neutrals, and a small amount of warm coral as the primary action color. Warmth lives in the accent, not in a cream surface. The main product UI should reject generic AI SaaS landing-page aesthetics, dark purple gradient chrome, and audio-engineering dashboards. The voice dock is a utility-overlay exception: it should deliberately adapt the compact Fixvox dock ergonomics when that improves always-on desktop usability, without copying legacy Fixvox desktop implementation details.
 
 **Key Characteristics:**
 
@@ -226,6 +226,6 @@ Components should look familiar and task-oriented. Build states before decoratio
 - **Don't** use dark purple or blue gradient AI tool chrome in product windows; the dock may use a restrained dark/translucent utility-overlay treatment when adapting Fixvox ergonomics.
 - **Don't** make the app look like an audio engineering dashboard.
 - **Don't** make chat-first assistant UI the main surface for MVP 0-3.
-- **Don't** copy Clipboard-manager UI patterns from CopyQ Tauri unless a Dictation Tauri spec explicitly needs them.
+- **Don't** copy Clipboard-manager UI patterns from Copicu unless a Dictation Tauri spec explicitly needs them.
 - **Don't** imply delivery was observed when the app only sent paste or copied text.
 - **Don't** use colored side stripes, gradient text, glassmorphism, decorative blobs, oversized hero sections, or repeated marketing card grids.

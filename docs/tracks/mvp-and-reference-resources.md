@@ -20,8 +20,8 @@ Como implementar el alcance MVP 0-3 decidido usando recursos existentes de Fixvo
 ## Acuerdo Actual
 
 - Stack propio: React, Vite, TypeScript strict, npm, Tauri v2, Rust 2021, Playwright.
-- `C:\dev\chat\copyq-tauri` es referencia de stack Tauri.
-- `C:\dev\electro-bun-1` / Fixvox es referencia de recursos de voz, benchmarks, prompts y aprendizajes.
+- `C:\dev\copicu` es referencia de stack Tauri.
+- `C:\dev\fixvox` / Fixvox es referencia de recursos de voz, benchmarks, prompts y aprendizajes.
 - Se busca que no haga falta interaccion humana hasta mas adelante.
 - Primeras validaciones deben poder correr con fixtures, audio sintetico y texto esperado.
 - MVP 0 ya esta cerrado: app base React/Vite/Tauri minima, Playwright smoke test, capability `core:default`, build/visual/cargo/audit verdes.

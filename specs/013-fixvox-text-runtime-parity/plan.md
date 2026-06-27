@@ -73,7 +73,7 @@ npm run test:pipeline -- tests/fixvox-text-runtime
 
 ### Checkpoint 2 — Copy/Extract The Pure Fixvox Text Runtime
 
-**Goal**: Bring over the process primitives that do not depend on Electrobun/Bun UI runtime.
+**Goal**: Bring over the process primitives that do not depend on legacy Fixvox desktop UI/runtime.
 
 **Steps**:
 

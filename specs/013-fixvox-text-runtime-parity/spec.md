@@ -40,7 +40,7 @@ The implementation uses Fixvox code or a minimal extraction of it instead of reb
 **Acceptance Scenarios**:
 
 1. **Given** a process primitive such as `buildRawVoicePostProcessSystemPrompt`, **When** it exists in Dictation Tauri, **Then** its source file/function in Fixvox is referenced in code or docs.
-2. **Given** a divergence is necessary because Dictation Tauri uses Tauri/Rust instead of Electrobun/Bun, **When** the divergence is implemented, **Then** the behavior-level contract remains Fixvox-equivalent and the reason is documented.
+2. **Given** a divergence is necessary because Dictation Tauri uses Tauri/Rust instead of legacy Fixvox desktop internals, **When** the divergence is implemented, **Then** the behavior-level contract remains Fixvox-equivalent and the reason is documented.
 
 ### User Story 3 - Side-By-Side Parity Evidence (P2)
 
@@ -63,7 +63,7 @@ The team can compare Fixvox and Dictation Tauri against the same fixture/audio w
 - **FR-006**: Provider/model/policy resolution MUST follow Fixvox effective runtime behavior for the local managed setup, including postprocess enablement and target selection.
 - **FR-007**: Default automated tests MUST remain provider-free and must validate request construction, prompt text, sanitizer behavior, and routing decisions without calling real providers.
 - **FR-008**: Real managed provider calls and side-by-side smokes are gated/local; evidence must be redacted by default.
-- **FR-009**: If Fixvox currently depends on Electrobun/Bun app state for a process decision, Dictation Tauri MUST either port the minimum state/policy needed or document the temporary gap.
+- **FR-009**: If Fixvox currently depends on legacy Fixvox desktop app state for a process decision, Dictation Tauri MUST either port the minimum state/policy needed or document the temporary gap.
 - **FR-010**: Normal dictation parity is first. Selection transform, assistant mode, Quick Chat, wake words, and full preset UX remain out of scope unless they are required by the normal dictation path.
 
 ## Out Of Scope

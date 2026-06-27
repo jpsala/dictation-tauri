@@ -14,6 +14,8 @@ export default defineConfig({
       "tests/voice-dock/**/*.test.ts",
       "tests/voice-dock/**/*.test.tsx",
       "tests/selection-transform/**/*.test.ts",
+      "tests/settings/**/*.test.ts",
+      "tests/settings/**/*.test.tsx",
     ],
     passWithNoTests: false,
   },

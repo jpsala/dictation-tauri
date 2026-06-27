@@ -2,13 +2,13 @@
 
 ## Decision: Fixvox is the UX reference, not the architecture source
 
-**Decision**: Adapt the behavior and ergonomics from `C:/dev/fixvox`, especially `src/app/views/voice-dock/` and `src/app/backend/hotkeys.ts`, but do not port Electrobun/Bun architecture or copy implementation files.
+**Decision**: Adapt the behavior and ergonomics from `C:/dev/fixvox`, especially `src/app/views/voice-dock/` and `src/app/backend/hotkeys.ts`, but do not port legacy Fixvox desktop architecture or copy implementation files.
 
 **Rationale**: JP explicitly finds the Fixvox dock and hotkeys useful end-to-end. Dictation Tauri already has a Rust/Tauri runtime boundary and should keep side effects host-owned.
 
 **Alternatives considered**:
 
-- Copy Fixvox files: rejected because Svelte/Electrobun/Bun architecture does not match this Tauri/React app.
+- Copy Fixvox files: rejected because Svelte/legacy Fixvox desktop architecture does not match this Tauri/React app.
 - Continue polishing the current large panel: rejected as the main path because it does not match the desired daily-use ergonomics.
 
 ## Decision: One spec, four implementation checkpoints

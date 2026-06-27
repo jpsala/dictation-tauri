@@ -1,15 +1,15 @@
 # Research: Port Foundation
 
-## Decision: Adopt npm/Vite/React/Tauri base from CopyQ Tauri
+## Decision: Adopt npm/Vite/React/Tauri base from Copicu
 
-Rationale: `C:\dev\chat\copyq-tauri` is the accepted technical reference for a
+Rationale: `C:\dev\copicu` is the accepted technical reference for a
 working Tauri v2 app on JP's Windows machine. Reusing its stack family reduces
 new decisions while keeping Dictation Tauri independent.
 
 Alternatives considered:
 
 - Fresh Tauri template: lower context fit and likely version drift.
-- Bun/Electrobun from Fixvox: rejected by project decisions; Fixvox is a
+- legacy Fixvox desktop internals from Fixvox: rejected by project decisions; Fixvox is a
   functional reference, not the architecture for this repo.
 
 ## Decision: Keep MVP 0 dependencies minimal

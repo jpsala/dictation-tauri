@@ -5,11 +5,11 @@ kind: decision-map
 triggers:
   - proyectos fuente
   - proyecto Tauri
-  - CopyQ Tauri
-  - copyq-tauri
+  - Copicu
+  - copicu
   - proyecto canonico
   - Fixvox
-  - electro-bun
+  - fixvox
   - que implementar
   - que portar
 primary_refs:
@@ -27,8 +27,10 @@ primary_refs:
 
 Definir que se puede traer a Dictation Tauri desde:
 
-- proyecto Tauri: `C:\dev\chat\copyq-tauri`;
-- proyecto canonico: `C:\dev\electro-bun-1` / Fixvox.
+- proyecto Tauri canonico: `C:\dev\copicu`;
+- proyecto funcional canonico: `C:\dev\fixvox` / Fixvox.
+
+Decision 2026-06-27: estas son las unicas rutas fuente activas; no usar worktrees/rutas anteriores como referencia.
 
 Este mapa no convierte ningun proyecto fuente en dependencia. Todo lo adoptado debe quedar como decision, spec o codigo propio en `C:\dev\dictation-tauri`.
 
@@ -46,14 +48,14 @@ Este mapa no convierte ningun proyecto fuente en dependencia. Todo lo adoptado d
 
 | Dominio | Fuente principal | Estado | Que implementar en Dictation Tauri |
 | --- | --- | --- | --- |
-| Stack/scaffold | CopyQ Tauri | `adopt` | React, Vite, TypeScript strict, npm, Tauri v2, Rust 2021, Playwright. |
-| Scripts base | CopyQ Tauri | `adopt` | `dev`, `build`, `tauri`, `tauri:dev`, `tauri:build`, `visual:check`; `cargo check` con target separado para agentes. |
-| App/window base | CopyQ Tauri | `adapt` | Ventana inicial solida y verificable, sin copiar comportamiento de clipboard/picker. |
-| Custom chrome | CopyQ Tauri | `adapt` | Frame compartido despues del scaffold; `decorations:false`, `transparent:false`, `shadow:false` como default Windows para ventanas custom. |
-| UI library/theme | CopyQ Tauri | `adapt` | Mantine para settings/controles comunes, lucide para iconos, theme catalog propio. |
-| Settings standalone | CopyQ Tauri | `adapt` | Settings como ventana propia, no overlay; contenido de dictado y hotkeys propios. |
-| Shortcut/tray/background | CopyQ Tauri | `adapt` | Registrar shortcut y tray desde Rust; cerrar ventana debe ocultar salvo quit explicito. |
-| Focus/delivery Win32 | Fixvox + CopyQ Tauri | `adapt` | Delivery best-effort con niveles de certeza; evitar prometer paste observado en Chromium/WebView. |
+| Stack/scaffold | Copicu | `adopt` | React, Vite, TypeScript strict, npm, Tauri v2, Rust 2021, Playwright. |
+| Scripts base | Copicu | `adopt` | `dev`, `build`, `tauri`, `tauri:dev`, `tauri:build`, `visual:check`; `cargo check` con target separado para agentes. |
+| App/window base | Copicu | `adapt` | Ventana inicial solida y verificable, sin copiar comportamiento de clipboard/picker. |
+| Custom chrome | Copicu | `adapt` | Frame compartido despues del scaffold; `decorations:false`, `transparent:false`, `shadow:false` como default Windows para ventanas custom. |
+| UI library/theme | Copicu | `adapt` | Mantine para settings/controles comunes, lucide para iconos, theme catalog propio. |
+| Settings standalone | Copicu | `adapt` | Settings como ventana propia, no overlay; contenido de dictado y hotkeys propios. |
+| Shortcut/tray/background | Copicu | `adapt` | Registrar shortcut y tray desde Rust; cerrar ventana debe ocultar salvo quit explicito. |
+| Focus/delivery Win32 | Fixvox + Copicu | `adapt` | Delivery best-effort con niveles de certeza; evitar prometer paste observado en Chromium/WebView. |
 | Voice runtime process | Fixvox | `adopt` | Para dictado/texto normal usar el proceso Fixvox como canon: audio prep, STT, prompts, policy, postprocess, sanitizer, fallback y materializacion. No reinventar prompts/reglas. |
 | Voice runtime shell | Dictation Tauri | `adapt` | Mantener Tauri/Rust para dock, hotkeys, ventanas, tray, foco/clipboard, permisos y packaging. |
 | STT/TTS/benchmarks | Fixvox | `adopt-process` | Reusar contratos, prompts, matrices y evidencia como canon del proceso; harness propio solo como envoltorio Tauri/test. |
@@ -66,7 +68,7 @@ Este mapa no convierte ningun proyecto fuente en dependencia. Todo lo adoptado d
 
 ### Fundacion Tecnica
 
-Estado: `adopt` desde CopyQ Tauri.
+Estado: `adopt` desde Copicu.
 
 Implementar en `001-port-foundation`:
 
@@ -80,14 +82,14 @@ Implementar en `001-port-foundation`:
 
 No incluir todavia:
 
-- dependencias de clipboard/storage de CopyQ Tauri;
+- dependencias de clipboard/storage de Copicu;
 - plugin de notification hasta que haya una superficie que lo use;
 - `windows` crate hasta que se implemente delivery/focus;
 - global shortcut/tray si el corte es solo scaffold tecnico.
 
 ### Custom Window Base
 
-Estado: `adapt` desde CopyQ Tauri.
+Estado: `adapt` desde Copicu.
 
 Se puede implementar despues de que exista app base:
 
@@ -107,7 +109,7 @@ Reglas a adoptar:
 
 ### UI Y Settings
 
-Estado: `adapt` desde CopyQ Tauri, condicionado por producto/diseno.
+Estado: `adapt` desde Copicu, condicionado por producto/diseno.
 
 Antes de UI durable:
 
@@ -153,7 +155,7 @@ Reglas propias que se mantienen:
 - Tauri/Rust sigue siendo dueño de ventanas, dock, hotkeys, tray, foco, clipboard, permisos, packaging y secrets host-owned.
 - Tests default siguen provider-free; pueden validar request previews, prompts, sanitizer y policy sin llamar proveedores.
 - Un ledger/evidencia redacted sigue siendo obligatorio, pero no puede cambiar el comportamiento de texto.
-- Si un fragmento Fixvox depende de Electrobun/Bun/appStore/UI, se copia o extrae el nucleo de proceso y se documenta la minima divergencia tecnica.
+- Si un fragmento Fixvox depende de legacy Fixvox desktop app state/UI, se copia o extrae el nucleo de proceso y se documenta la minima divergencia tecnica.
 
 Spec activa para este giro: `specs/013-fixvox-text-runtime-parity/`.
 
@@ -179,7 +181,7 @@ Implementar harness propio:
 
 Recursos fuente utiles:
 
-- `C:\dev\electro-bun-1\docs\reference\ops\tts-benchmark-phrases.txt`;
+- `C:\dev\fixvox\docs\reference\ops\tts-benchmark-phrases.txt`;
 - matrices `voice-benchmark-matrix.*.json`;
 - prompts en `voice-benchmark-prompts\`.
 
@@ -208,7 +210,7 @@ Adapters:
 - directo local para BYOK/dev, configurado por `.env`/variables locales desde host Rust/Tauri, no desde UI React;
 - managed Fixvox cloud como camino principal post-008, usando `X-Device-Id`, `/v1/audio/transcriptions`, `/v2/execution/preflight` y headers `X-Fixvox-*`.
 
-Regla: acoplarse a contratos HTTP documentados, no a internals Bun/Electrobun. Si Tauri/Rust pide un diseño distinto para side effects, packaging, storage o seguridad, preferir el diseño propio.
+Regla: acoplarse a contratos HTTP documentados, no a legacy Fixvox desktop internals. Si Tauri/Rust pide un diseño distinto para side effects, packaging, storage o seguridad, preferir el diseño propio.
 
 ### Delivery Y Target Assurance
 
@@ -286,10 +288,10 @@ No implementar todavia:
 
 | Fuente | Elemento | Motivo |
 | --- | --- | --- |
-| CopyQ Tauri | Clipboard manager domain | Producto distinto; no copiar storage, history, query grammar ni clipboard watchers. |
-| CopyQ Tauri | SQLite/rusqlite | Persistencia de dictado no esta decidida como contrato. |
-| CopyQ Tauri | Notification plugin | Esperar una necesidad real de recovery/toasts. |
-| Fixvox | Electrobun/Bun architecture | Dictation Tauri ya decidio Tauri v2 + Rust + npm. |
+| Copicu | Clipboard manager domain | Producto distinto; no copiar storage, history, query grammar ni clipboard watchers. |
+| Copicu | SQLite/rusqlite | Persistencia de dictado no esta decidida como contrato. |
+| Copicu | Notification plugin | Esperar una necesidad real de recovery/toasts. |
+| Fixvox | legacy Fixvox desktop architecture | Dictation Tauri ya decidio Tauri v2 + Rust + npm. |
 | Fixvox | Koffi UIA in-process | Crash/finalizer risk en runtime fuente; no llevar al hot path. |
 | Fixvox | Python/PowerShell UIA | Dependencia y fragilidad no aceptadas para producto inicial. |
 | Fixvox | Wake listening default | No pedir microfono al startup; wake word disabled por default. |

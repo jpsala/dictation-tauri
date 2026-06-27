@@ -28,8 +28,8 @@ Esta task fue el lugar para la discusion viva. Las decisiones durables deben pro
 
 - El baseline documental/agentico esta cerrado.
 - Stack decidido: React, Vite, TypeScript strict, npm, Tauri v2, Rust 2021, Playwright.
-- `C:\dev\chat\copyq-tauri` es referencia de stack Tauri.
-- `C:\dev\electro-bun-1` / Fixvox es referencia de producto, recursos de voz, fixtures y benchmarks.
+- `C:\dev\copicu` es referencia de stack Tauri.
+- `C:\dev\fixvox` / Fixvox es referencia de producto, recursos de voz, fixtures y benchmarks.
 - No se porta Fixvox literalmente.
 - Modo personal/dev permisivo: se pueden leer `.env`, audio humano, transcripciones, logs y artifacts locales si ayuda; no imprimir secretos completos ni commitear `.env`/tokens salvo pedido explicito.
 - La prioridad inicial es evitar interaccion humana temprana mediante fixtures, TTS sintetico, STT y tests automatizados.
@@ -50,10 +50,10 @@ Leer en este orden:
 
 Referencia externa opcional, solo si hace falta:
 
-- `C:\dev\electro-bun-1\docs\reference\voice-runtime.md`
-- `C:\dev\electro-bun-1\.specify\specs\004-dictation-latency-postprocess\spec.md`
-- `C:\dev\electro-bun-1\scripts\run-voice-benchmark-matrix.ts`
-- `C:\dev\electro-bun-1\scripts\generate-tts-benchmark.ts`
+- `C:\dev\fixvox\docs\reference\voice-runtime.md`
+- `C:\dev\fixvox\.specify\specs\004-dictation-latency-postprocess\spec.md`
+- `C:\dev\fixvox\scripts\run-voice-benchmark-matrix.ts`
+- `C:\dev\fixvox\scripts\generate-tts-benchmark.ts`
 
 ## Decisiones A Tomar
 

@@ -42,6 +42,9 @@ describe("dock companion view", () => {
     expect(html).toContain("Transcript ready");
     expect(html).toContain("Copy transcript");
     expect(html).toContain("Paste last (safe)");
+    expect(html).toContain("Close companion");
+    expect(html).toContain("×");
+    expect(html).not.toContain("Dismiss");
     expect(html).not.toContain("sensitive transcript stays out of companion");
     expect(html.toLowerCase()).not.toContain("paste observed");
   });
@@ -65,10 +68,12 @@ describe("dock companion view", () => {
     expect(html).toContain("Shorten");
     expect(html).toContain("Bulletize");
     expect(html).toContain("Clear preset");
-    expect(html).toContain("Dismiss");
+    expect(html).toContain("Close companion");
+    expect(html).toContain("×");
+    expect(html).not.toContain("Dismiss");
   });
 
-  it("renders history metadata only with a dismiss action", () => {
+  it("renders history metadata as selectable buttons with an X close action", () => {
     const snapshot = createDockCompanionSnapshot({
       voiceDockState: createVoiceDockState({ state: "idle" }),
       resultHistoryOpen: true,
@@ -76,6 +81,7 @@ describe("dock companion view", () => {
         {
           id: "history-1",
           source: "selection_transform",
+          text: "rewrite this selected paragraph into a clearer version with more detail on hover",
           textLength: 64,
           deliveryEvidence: { status: "available" },
         },
@@ -85,7 +91,11 @@ describe("dock companion view", () => {
 
     const html = renderToStaticMarkup(<CompanionSurfaceView snapshot={snapshot} />);
 
+    expect(html).toContain("rewrite this selected paragraph");
     expect(html).toContain("selection transform · 64 chars · available");
-    expect(html).toContain("Dismiss");
+    expect(html).toContain("select_history_entry");
+    expect(html).toContain("Close companion");
+    expect(html).toContain("×");
+    expect(html).not.toContain("Dismiss");
   });
 });

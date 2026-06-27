@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { FakeCaptureGateway } from "./capture/fake-gateway";
@@ -69,6 +69,7 @@ import {
   type DockCompanionPresetId,
   type DockCompanionSnapshot,
 } from "./voice-dock";
+import { SettingsSurface } from "./settings/SettingsSurface";
 import type {
   DesktopDictationSession,
   IdleDesktopDictationState,
@@ -360,6 +361,27 @@ export function getTranscriptReview(
   };
 }
 
+function createHistorySummary(entry: ResultHistoryEntry): SimulatedRunSummary {
+  return {
+    runId: entry.runId,
+    fixtureId: "result-history",
+    inputKind: "microphone",
+    events: [],
+    states: ["done"],
+    terminalState: "done",
+    transcript: entry.text,
+    output: entry.text,
+    deliveryEvidence: entry.deliveryEvidence
+      ? {
+          status: entry.deliveryEvidence.status as NonNullable<SimulatedRunSummary["deliveryEvidence"]>["status"],
+          output: entry.text,
+          reason: entry.deliveryEvidence.reason,
+        }
+      : undefined,
+    durationMs: 0,
+  };
+}
+
 function createHistoryEntryFromSummary(
   summary: SimulatedRunSummary | undefined,
 ): ResultHistoryEntry | undefined {
@@ -618,19 +640,20 @@ function createSyntheticDockVu(tick: number) {
   return { level, bands };
 }
 
-function getAppSurface(): "dock" | "companion" {
+function getAppSurface(): "dock" | "companion" | "settings" {
   if (typeof window === "undefined") {
     return "dock";
   }
-  return new URLSearchParams(window.location.search).get("surface") === "companion"
-    ? "companion"
-    : "dock";
+
+  const surface = new URLSearchParams(window.location.search).get("surface");
+  return surface === "companion" || surface === "settings" ? surface : "dock";
 }
 
 type CompanionSurfaceViewProps = {
   snapshot: DockCompanionSnapshot;
   onCommand?: (payload: DockCompanionCommandPayload) => void;
   showRecoveryActions?: boolean;
+  showChromeClose?: boolean;
 };
 
 function companionActionLabel(command: DockCommand): string {
@@ -666,15 +689,23 @@ function CompanionCommandButton({
   payload,
   children,
   onCommand,
+  className = "secondary-button",
+  ariaLabel,
 }: {
   payload: DockCompanionCommandPayload;
-  children: string;
+  children: ReactNode;
   onCommand?: (payload: DockCompanionCommandPayload) => void;
+  className?: string;
+  ariaLabel?: string;
 }) {
   return (
     <button
       type="button"
-      className="secondary-button"
+      className={className}
+      data-command={payload.command}
+      data-entry-id={"entryId" in payload ? payload.entryId : undefined}
+      aria-label={ariaLabel}
+      title={ariaLabel}
       onClick={() => onCommand?.(payload)}
     >
       {children}
@@ -686,6 +717,7 @@ export function CompanionSurfaceView({
   snapshot,
   onCommand,
   showRecoveryActions = true,
+  showChromeClose = true,
 }: CompanionSurfaceViewProps) {
   const recoveryActions = (showRecoveryActions ? [
     snapshot.recovery?.primaryAction,
@@ -702,57 +734,85 @@ export function CompanionSurfaceView({
         Boolean(action),
     );
 
+  const closeButton = showChromeClose ? (
+    <CompanionCommandButton
+      payload={{ source: "dock_companion", command: "close_companion" }}
+      onCommand={onCommand}
+      className="dock-companion-close-button"
+      ariaLabel="Close companion"
+    >
+      ×
+    </CompanionCommandButton>
+  ) : null;
+
   return (
     <>
       {snapshot.recovery ? (
         <section className="dock-companion-card dock-companion-card--standalone">
-          <p className="dock-companion-kicker">Recovery</p>
+          <div className="dock-companion-title-row">
+            <p className="dock-companion-kicker">Recovery</p>
+            {closeButton}
+          </div>
           <strong>{snapshot.recovery.title}</strong>
           <p>{snapshot.recovery.message}</p>
-          {recoveryActions.length > 0 ? (
-            <div className="dock-companion-actions" aria-label="Recovery actions">
-              {recoveryActions.map((action) => (
-                <CompanionCommandButton
-                  key={action.payload.command}
-                  payload={action.payload}
-                  onCommand={onCommand}
-                >
-                  {action.label}
-                </CompanionCommandButton>
-              ))}
-            </div>
-          ) : null}
+          <div className="dock-companion-actions" aria-label="Recovery actions">
+            {recoveryActions.map((action) => (
+              <CompanionCommandButton
+                key={action.payload.command}
+                payload={action.payload}
+                onCommand={onCommand}
+              >
+                {action.label}
+              </CompanionCommandButton>
+            ))}
+          </div>
         </section>
       ) : null}
 
       {snapshot.history.open ? (
         <section className="dock-companion-card dock-companion-card--standalone">
-          <p className="dock-companion-kicker">Result history</p>
+          <div className="dock-companion-title-row">
+            <p className="dock-companion-kicker">Result history</p>
+            {closeButton}
+          </div>
           {snapshot.history.items.length === 0 ? (
             <p>No reusable results saved yet.</p>
           ) : (
-            <ul>
+            <div className="dock-companion-history-list" aria-label="Reusable result history">
               {snapshot.history.items.map((entry) => (
-                <li key={entry.id}>
-                  {entry.label} · {entry.textLength} chars · {entry.deliveryStatus}
-                </li>
+                <CompanionCommandButton
+                  key={entry.id}
+                  payload={{
+                    source: "dock_companion",
+                    command: "select_history_entry",
+                    entryId: entry.id,
+                  }}
+                  onCommand={onCommand}
+                  className="dock-companion-history-item"
+                  ariaLabel={`Paste history result: ${entry.hoverPreview}`}
+                >
+                  <span className="dock-companion-history-preview">
+                    {entry.textPreview}
+                  </span>
+                  <span className="dock-companion-history-meta">
+                    {`${entry.label} · ${entry.textLength} chars · ${entry.deliveryStatus}`}
+                  </span>
+                  <span className="dock-companion-history-hover" aria-hidden="true">
+                    {entry.hoverPreview}
+                  </span>
+                </CompanionCommandButton>
               ))}
-            </ul>
+            </div>
           )}
-          <div className="dock-companion-actions" aria-label="History actions">
-            <CompanionCommandButton
-              payload={{ source: "dock_companion", command: "dismiss_result_history" }}
-              onCommand={onCommand}
-            >
-              Dismiss
-            </CompanionCommandButton>
-          </div>
         </section>
       ) : null}
 
       {snapshot.settings.open ? (
         <section className="dock-companion-card dock-companion-card--standalone">
-          <p className="dock-companion-kicker">Settings</p>
+          <div className="dock-companion-title-row">
+            <p className="dock-companion-kicker">Settings</p>
+            {closeButton}
+          </div>
           <strong>Dock settings are staged.</strong>
           <p>
             {snapshot.settings.activePreset
@@ -775,19 +835,16 @@ export function CompanionSurfaceView({
             >
               Clear preset
             </CompanionCommandButton>
-            <CompanionCommandButton
-              payload={{ source: "dock_companion", command: "dismiss_settings" }}
-              onCommand={onCommand}
-            >
-              Dismiss
-            </CompanionCommandButton>
           </div>
         </section>
       ) : null}
 
       {!snapshot.recovery && !snapshot.history.open && !snapshot.settings.open ? (
         <section className="dock-companion-card dock-companion-card--standalone">
-          <p className="dock-companion-kicker">Companion</p>
+          <div className="dock-companion-title-row">
+            <p className="dock-companion-kicker">Companion</p>
+            {closeButton}
+          </div>
           <strong>{snapshot.status.statusText}</strong>
           <p>
             {snapshot.status.statusDetail ??
@@ -844,14 +901,19 @@ function CompanionSurface() {
       <CompanionSurfaceView
         snapshot={snapshot}
         onCommand={handleCompanionCommand}
+        showChromeClose={false}
       />
     </main>
   );
 }
 
 export function App() {
-  if (getAppSurface() === "companion") {
+  const appSurface = getAppSurface();
+  if (appSurface === "companion") {
     return <CompanionSurface />;
+  }
+  if (appSurface === "settings") {
+    return <SettingsSurface />;
   }
 
   const captureRuntime = useMemo(() => createCaptureGatewayRuntime(), []);
@@ -934,6 +996,7 @@ export function App() {
   );
   const [desktopRecoveryAction, setDesktopRecoveryAction] =
     useState<DesktopRecoveryAction>();
+  const [dismissedRecoveryKey, setDismissedRecoveryKey] = useState<string>();
   const [dockVu, setDockVu] = useState({
     level: 0,
     bands: [0, 0, 0, 0, 0, 0, 0],
@@ -1247,10 +1310,11 @@ export function App() {
 
     if (!summary || !latestResult) {
       setPipelineUi({
-        status: "error",
+        status: "idle",
         message: "No latest transcript is available for paste-last recovery.",
         summary,
       });
+      setDesktopRecoveryAction(undefined);
       return;
     }
 
@@ -1261,6 +1325,70 @@ export function App() {
       message:
         describeDeliveryEvidence(nextSummary.deliveryEvidence) ??
         "Paste last was not sent in safe mode; transcript remains available for manual copy.",
+      summary: nextSummary,
+    });
+  }
+
+  async function pasteLastToForegroundTarget(forced?: {
+    summary: SimulatedRunSummary;
+    text: string;
+  }) {
+    const summary = forced?.summary ?? pipelineUi.summary;
+    const latestResult = latestResultFromPipelineSummary(summary);
+    let pasteSummary = summary;
+    let pasteText = forced?.text ?? latestResult?.text;
+
+    if (!pasteText && isTauri()) {
+      try {
+        const entries = await invoke<ResultHistoryEntry[]>("list_result_history_entries");
+        const entry = entries
+          .slice()
+          .reverse()
+          .find((candidate) => candidate.text.trim().length > 0);
+        if (entry) {
+          pasteSummary = createHistorySummary(entry);
+          pasteText = entry.text;
+          setResultHistoryEntries(entries);
+        }
+      } catch {
+        // Fall through to the no-latest-result branch below.
+      }
+    }
+
+    if (!pasteSummary || !pasteText) {
+      setPipelineUi({
+        status: "idle",
+        message: "No latest transcript is available for paste-last.",
+        summary,
+      });
+      setDesktopRecoveryAction(undefined);
+      return;
+    }
+
+    if (isTauri()) {
+      savedDeliveryTargetRef.current = await captureTauriDesktopDeliveryTarget(invoke);
+    }
+
+    if (!desktopDelivery) {
+      markSafePasteLastRecovery();
+      return;
+    }
+
+    const evidence = await desktopDelivery.deliver({
+      sessionId: pasteSummary.runId,
+      text: pasteText,
+      strategy: "paste_send",
+      allowDesktopSideEffects: true,
+    });
+    const nextSummary = applyDeliveryEvidenceFallback(pasteSummary, evidence);
+
+    setPipelineUi({
+      status: evidence.status === "failed" ? "error" : "done",
+      message:
+        describeDeliveryEvidence(nextSummary.deliveryEvidence) ??
+        (evidence.status === "failed"
+          ? "Paste last failed. Transcript remains available in the app."
+          : "Paste last was sent to the foreground target."),
       summary: nextSummary,
     });
   }
@@ -1320,8 +1448,14 @@ export function App() {
   const voiceDockHotkey = isTauri()
     ? effectiveHotkeyLabel
     : "Dock button";
+  const recoveryKey = voiceDockState.recovery
+    ? `${voiceDockState.phase}:${voiceDockState.recovery.title}:${voiceDockState.recovery.message}`
+    : undefined;
+  const companionVoiceDockState = recoveryKey && dismissedRecoveryKey === recoveryKey
+    ? { ...voiceDockState, recovery: undefined }
+    : voiceDockState;
   const companionSnapshot = createDockCompanionSnapshot({
-    voiceDockState,
+    voiceDockState: companionVoiceDockState,
     resultHistoryOpen,
     resultHistoryEntries,
     settingsPanelOpen,
@@ -1390,6 +1524,35 @@ export function App() {
     });
   }
 
+  function clearActivePreset() {
+    setActivePreset(undefined);
+  }
+
+  function closeCompanionSurfaces() {
+    if (recoveryKey) {
+      setDismissedRecoveryKey(recoveryKey);
+    }
+    setResultHistoryOpen(false);
+    setSettingsPanelOpen(false);
+  }
+
+  function selectHistoryEntry(entryId: string) {
+    const entry = resultHistoryEntries.find((candidate) => candidate.id === entryId);
+    if (!entry) {
+      return;
+    }
+
+    const summary = createHistorySummary(entry);
+    setPipelineUi({
+      status: "done",
+      message: "History result selected; paste-last is being sent to the saved target.",
+      summary,
+    });
+    setResultHistoryOpen(false);
+    setDesktopRecoveryAction(undefined);
+    void pasteLastToForegroundTarget({ summary, text: entry.text });
+  }
+
   function handleHostCommandPayload(payload: Required<Pick<TauriHostCommandPayload, "command">> & Omit<TauriHostCommandPayload, "command">) {
     switch (payload.command) {
       case "select_preset":
@@ -1398,13 +1561,20 @@ export function App() {
         }
         break;
       case "clear_preset":
-        setActivePreset(undefined);
+        clearActivePreset();
         break;
       case "show_result_history":
         void loadResultHistory();
         break;
       case "open_settings":
-        setSettingsPanelOpen(true);
+        if (isTauri()) {
+          void invoke("show_settings_window").catch(() => setSettingsPanelOpen(true));
+        } else {
+          setSettingsPanelOpen(true);
+        }
+        break;
+      case "paste_last_safe":
+        void pasteLastToForegroundTarget();
         break;
       default:
         handleVoiceDockCommand(payload.command);
@@ -1414,23 +1584,36 @@ export function App() {
   function handleCompanionCommandPayload(payload: DockCompanionCommandPayload) {
     switch (payload.command) {
       case "copy":
-      case "paste_last_safe":
       case "retry":
         handleVoiceDockCommand(payload.command);
+        break;
+      case "paste_last_safe":
+        void pasteLastToForegroundTarget();
         break;
       case "select_preset":
         selectActivePreset(payload.presetId);
         setSettingsPanelOpen(false);
         break;
       case "clear_preset":
-        setActivePreset(undefined);
+        clearActivePreset();
         setSettingsPanelOpen(false);
+        break;
+      case "dismiss_recovery":
+        if (recoveryKey) {
+          setDismissedRecoveryKey(recoveryKey);
+        }
         break;
       case "dismiss_result_history":
         setResultHistoryOpen(false);
         break;
       case "dismiss_settings":
         setSettingsPanelOpen(false);
+        break;
+      case "select_history_entry":
+        selectHistoryEntry(payload.entryId);
+        break;
+      case "close_companion":
+        closeCompanionSurfaces();
         break;
     }
   }
@@ -1513,7 +1696,7 @@ export function App() {
         void copyTranscriptFallback();
         break;
       case "paste_last_safe":
-        markSafePasteLastRecovery();
+        void pasteLastToForegroundTarget();
         break;
     }
   }
@@ -1598,6 +1781,34 @@ export function App() {
   }, [voiceDockState.phase, pipelineUi.summary]);
 
   useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return;
+    }
+
+    const handleSmokeHostCommand = (event: Event) => {
+      const payload = event instanceof CustomEvent ? event.detail : undefined;
+      const command = payload?.command;
+      if (typeof command !== "string") {
+        return;
+      }
+
+      handleHostCommandPayload({ ...payload, command });
+    };
+
+    window.addEventListener(
+      "dictation-tauri:host-command",
+      handleSmokeHostCommand,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "dictation-tauri:host-command",
+        handleSmokeHostCommand,
+      );
+    };
+  }, [voiceDockState.phase, pipelineUi.summary]);
+
+  useEffect(() => {
     if (!isTauri()) {
       return;
     }
@@ -1622,7 +1833,7 @@ export function App() {
       disposed = true;
       unlisten?.();
     };
-  }, [pipelineUi.summary]);
+  }, [pipelineUi.summary, recoveryKey, resultHistoryEntries]);
 
   useEffect(() => {
     let disposed = false;

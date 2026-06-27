@@ -10,7 +10,7 @@ Resultado esperado:
 UI React -> HostRuntimeClient -> Tauri/Rust -> Fixvox Worker -> Groq
 ```
 
-con fallback BYOK/direct explicito para dev, sin secretos en React y sin acoplarse a internals Bun/Electrobun.
+con fallback BYOK/direct explicito para dev, sin secretos en React y sin acoplarse a legacy Fixvox desktop internals.
 
 ## Contexto De Estudio
 

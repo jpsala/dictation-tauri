@@ -109,7 +109,7 @@ Cierre:
 ## No-Goals Iniciales
 
 - No portar Fixvox literalmente.
-- No copiar arquitectura Electrobun/Bun.
+- No copiar arquitectura legacy de Fixvox.
 - No requerir pruebas manuales de voz antes de tener fixtures automaticos.
 - No convertir audio/transcripciones reales en contrato de producto sin decision documentada.
 - No crear historial de dictados en el primer corte tecnico.
@@ -117,7 +117,7 @@ Cierre:
 
 ## Referencia Principal
 
-Fixvox (`C:\dev\electro-bun-1`) se usa como referencia de recursos y aprendizajes:
+Fixvox (`C:\dev\fixvox`) se usa como referencia de recursos y aprendizajes:
 
 - TTS sintetico.
 - Matrices STT/postprocess.

@@ -1,5 +1,13 @@
 use serde::{Deserialize, Serialize};
-use std::{error::Error, fs, io, path::PathBuf};
+use std::{
+    error::Error,
+    fs, io,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
+};
 
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Runtime, WebviewWindow};
 
@@ -7,7 +15,11 @@ pub const DOCK_WINDOW_LABEL: &str = "main";
 pub const DOCK_WIDTH: i32 = 164;
 pub const DOCK_HEIGHT: i32 = 64;
 pub const DOCK_WINDOW_MARGIN: i32 = 16;
+pub const DOCK_TASKBAR_CLEARANCE: i32 = 48;
 pub const DOCK_POSITION_FILE: &str = "dock-position.v1.json";
+
+static DOCK_VISIBLE: AtomicBool = AtomicBool::new(true);
+static LAST_DOCK_STATE: Mutex<DockShellState> = Mutex::new(DockShellState::Idle);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DockWorkArea {
@@ -99,6 +111,10 @@ pub fn hide_dock(app: AppHandle) -> Result<(), String> {
 }
 
 pub fn configure_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn Error>> {
+    eprintln!("[dictation-tauri][dock] configure requested");
+    DOCK_VISIBLE.store(true, Ordering::SeqCst);
+    remember_dock_state(DockShellState::Idle);
+
     let window = app.get_webview_window(DOCK_WINDOW_LABEL).ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::NotFound,
@@ -113,15 +129,23 @@ pub fn configure_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<d
     window.set_skip_taskbar(true)?;
     window.set_always_on_top(true)?;
     platform::show_dock_window_no_activate(&window, position, layout)?;
+    eprintln!(
+        "[dictation-tauri][dock] configured position=({}, {}) size={}x{}",
+        position.x, position.y, layout.width, layout.height
+    );
 
     Ok(())
 }
 
 pub fn show_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn Error>> {
-    apply_dock_shell_state(app, DockShellState::Idle).map(|_| ())
+    let state = last_dock_state();
+    eprintln!("[dictation-tauri][dock] show requested state={state:?}");
+    DOCK_VISIBLE.store(true, Ordering::SeqCst);
+    apply_dock_shell_state(app, state).map(|_| ())
 }
 
 pub fn hide_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn Error>> {
+    eprintln!("[dictation-tauri][dock] hide requested");
     let window = app.get_webview_window(DOCK_WINDOW_LABEL).ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::NotFound,
@@ -129,7 +153,9 @@ pub fn hide_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn Er
         )
     })?;
 
-    window.hide()?;
+    DOCK_VISIBLE.store(false, Ordering::SeqCst);
+    platform::hide_dock_window(&window)?;
+    eprintln!("[dictation-tauri][dock] hide ok");
     Ok(())
 }
 
@@ -143,10 +169,25 @@ fn apply_dock_shell_state<R: Runtime>(
             "Dictation Dock window is not available",
         )
     })?;
+    remember_dock_state(state);
     let layout = dock_shell_layout(state);
+
+    if !DOCK_VISIBLE.load(Ordering::SeqCst) {
+        eprintln!("[dictation-tauri][dock] state update stored while hidden state={state:?}");
+        return Ok(DockShellSnapshot {
+            width: layout.width,
+            height: layout.height,
+            state,
+        });
+    }
+
     let position = resolve_state_position(app, &window, layout)?;
 
     platform::show_dock_window_no_activate(&window, position, layout)?;
+    eprintln!(
+        "[dictation-tauri][dock] state applied state={:?} position=({}, {}) size={}x{}",
+        state, position.x, position.y, layout.width, layout.height
+    );
 
     Ok(DockShellSnapshot {
         width: layout.width,
@@ -246,6 +287,19 @@ fn save_current_dock_position<R: Runtime>(
     Ok(dock_position)
 }
 
+fn remember_dock_state(state: DockShellState) {
+    if let Ok(mut stored_state) = LAST_DOCK_STATE.lock() {
+        *stored_state = state;
+    }
+}
+
+fn last_dock_state() -> DockShellState {
+    LAST_DOCK_STATE
+        .lock()
+        .map(|stored_state| *stored_state)
+        .unwrap_or(DockShellState::Idle)
+}
+
 fn dock_position_path<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<PathBuf> {
     Ok(app.path().app_data_dir()?.join(DOCK_POSITION_FILE))
 }
@@ -333,7 +387,7 @@ pub fn calculate_bottom_center_position(
     let available_width = (work_area.width - layout.width).max(0);
     let available_height = (work_area.height - layout.height).max(0);
     let centered_x = work_area.x + available_width / 2;
-    let bottom_y = work_area.y + available_height - DOCK_WINDOW_MARGIN;
+    let bottom_y = work_area.y + available_height - DOCK_TASKBAR_CLEARANCE;
 
     clamp_dock_position(
         DockPosition {
@@ -353,7 +407,7 @@ pub fn calculate_centered_bottom_resize_position(
     work_area: DockWorkArea,
 ) -> DockPosition {
     if current_width == next_layout.width && current_height == next_layout.height {
-        return current_position;
+        return clamp_dock_position(current_position, work_area, next_layout);
     }
 
     let current_layout = DockShellLayout {
@@ -373,10 +427,13 @@ pub fn calculate_centered_bottom_resize_position(
     };
 
     if current_is_outside_safe_area {
-        anchored_position
-    } else {
-        clamp_dock_position(anchored_position, work_area, next_layout)
+        eprintln!(
+            "[dictation-tauri][dock] clamping dock back into work area from=({}, {})",
+            current_position.x, current_position.y
+        );
     }
+
+    clamp_dock_position(anchored_position, work_area, next_layout)
 }
 
 fn clamp_dock_position(
@@ -387,7 +444,7 @@ fn clamp_dock_position(
     let min_x = work_area.x + DOCK_WINDOW_MARGIN;
     let min_y = work_area.y + DOCK_WINDOW_MARGIN;
     let max_x = work_area.x + work_area.width - layout.width - DOCK_WINDOW_MARGIN;
-    let max_y = work_area.y + work_area.height - layout.height - DOCK_WINDOW_MARGIN;
+    let max_y = work_area.y + work_area.height - layout.height - DOCK_TASKBAR_CLEARANCE;
 
     DockPosition {
         x: clamp_axis(position.x, min_x, max_x),
@@ -411,9 +468,9 @@ mod platform {
     use windows_sys::Win32::{
         Graphics::Gdi::SetWindowRgn,
         UI::WindowsAndMessaging::{
-            GetWindowLongPtrW, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE,
-            HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_SHOWWINDOW, WS_EX_APPWINDOW,
-            WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+            GetWindowLongPtrW, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+            GWL_EXSTYLE, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_HIDE,
+            WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
         },
     };
 
@@ -448,6 +505,18 @@ mod platform {
             }
         }
 
+        Ok(())
+    }
+
+    pub fn hide_dock_window<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), Box<dyn Error>> {
+        let hwnd = window.hwnd()?;
+        let raw_hwnd = hwnd.0 as windows_sys::Win32::Foundation::HWND;
+
+        unsafe {
+            ShowWindow(raw_hwnd, SW_HIDE);
+        }
+
+        eprintln!("[dictation-tauri][dock] native SW_HIDE sent");
         Ok(())
     }
 
@@ -522,6 +591,12 @@ mod platform {
         window.show()?;
         Ok(())
     }
+
+    pub fn hide_dock_window<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), Box<dyn Error>> {
+        window.hide()?;
+        eprintln!("[dictation-tauri][dock] window.hide sent");
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -540,7 +615,7 @@ mod tests {
                 },
                 dock_shell_layout(DockShellState::Idle),
             ),
-            DockPosition { x: 878, y: 1000 }
+            DockPosition { x: 878, y: 968 }
         );
     }
 
@@ -556,7 +631,7 @@ mod tests {
                 },
                 dock_shell_layout(DockShellState::Idle),
             ),
-            DockPosition { x: -722, y: 924 }
+            DockPosition { x: -722, y: 892 }
         );
     }
 
@@ -593,7 +668,7 @@ mod tests {
                 },
                 dock_shell_layout(DockShellState::Idle),
             ),
-            DockPosition { x: 16, y: 1000 }
+            DockPosition { x: 16, y: 968 }
         );
     }
 
@@ -634,7 +709,7 @@ mod tests {
     }
 
     #[test]
-    fn same_size_state_update_preserves_user_dragged_position() {
+    fn same_size_state_update_clamps_user_dragged_position_to_work_area() {
         assert_eq!(
             calculate_centered_bottom_resize_position(
                 DockPosition { x: 878, y: 1020 },
@@ -648,7 +723,7 @@ mod tests {
                     height: 1080,
                 },
             ),
-            DockPosition { x: 878, y: 1020 }
+            DockPosition { x: 878, y: 968 }
         );
     }
 
@@ -656,7 +731,7 @@ mod tests {
     fn review_layout_expands_with_safe_area_clamp_from_default_position() {
         assert_eq!(
             calculate_centered_bottom_resize_position(
-                DockPosition { x: 878, y: 1000 },
+                DockPosition { x: 878, y: 968 },
                 164,
                 64,
                 dock_shell_layout(DockShellState::Review),
@@ -667,12 +742,12 @@ mod tests {
                     height: 1080,
                 },
             ),
-            DockPosition { x: 830, y: 974 }
+            DockPosition { x: 830, y: 942 }
         );
     }
 
     #[test]
-    fn review_layout_preserves_visual_anchor_when_user_dragged_below_safe_area() {
+    fn review_layout_clamps_when_user_dragged_below_safe_area() {
         assert_eq!(
             calculate_centered_bottom_resize_position(
                 DockPosition { x: 878, y: 1020 },
@@ -686,7 +761,7 @@ mod tests {
                     height: 1080,
                 },
             ),
-            DockPosition { x: 830, y: 1007 }
+            DockPosition { x: 830, y: 942 }
         );
     }
 }

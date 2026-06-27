@@ -23,6 +23,17 @@ export async function captureTauriDesktopDeliveryTarget(
   invoke: TauriInvoke,
 ): Promise<TauriDesktopDeliveryTarget | undefined> {
   try {
+    const cachedTarget = await invoke<TauriDesktopDeliveryTarget | undefined>(
+      "get_cached_desktop_delivery_target",
+    );
+    if (cachedTarget?.inputLike) {
+      return cachedTarget;
+    }
+  } catch {
+    // Fall back to capturing the current foreground target below.
+  }
+
+  try {
     const target = await invoke<TauriDesktopDeliveryTarget>("capture_desktop_delivery_target");
     return target.inputLike ? target : undefined;
   } catch {

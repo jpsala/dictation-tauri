@@ -45,8 +45,8 @@ primary_refs:
 | `aos-perfect-os`, dejar en condiciones, calidad agentica | [Calidad Agentica / Perfect OS](topics/os-quality.md) | Checklist de contexto, docs, tracks, skills/adapters, indice y audit. |
 | Skills locales, slash commands, comandos Codex, docs/skills, .agents/skills, pasar a skills, evaluar skills | [Skills locales de Codex](topics/local-codex-skills.md) | Skills portables versionadas en `docs/skills/`; `.agents/skills` es compatibilidad local. |
 | Port Tauri, stack inicial, estructura, comandos, fundacion | [Fundacion Dictation Tauri](topics/dictation-tauri-foundation.md) | Contexto inicial del port y decisiones pendientes. |
-| Proyecto canonico, proyecto Tauri, CopyQ Tauri, Fixvox, estudiar fuentes, que sacar de cada repo | [Plan de estudio de proyectos fuente](tracks/source-project-study-plan.md) | Trabajo vivo para separar que se adopta del proyecto Tauri, del proyecto canonico y de nuestro proyecto. |
-| Proyectos fuente, que implementar, que portar, adopt/adapt/reference, CopyQ Tauri vs Fixvox | [Mapa de proyectos fuente](topics/source-project-map.md) | Decision map estable de que se adopta, adapta, referencia, posterga o rechaza desde cada repo fuente. |
+| Proyecto canonico, proyecto Tauri, Copicu, Fixvox, estudiar fuentes, que sacar de cada repo | [Plan de estudio de proyectos fuente](tracks/source-project-study-plan.md) | Trabajo vivo para separar que se adopta del proyecto Tauri, del proyecto canonico y de nuestro proyecto. |
+| Proyectos fuente, que implementar, que portar, adopt/adapt/reference, Copicu vs Fixvox | [Mapa de proyectos fuente](topics/source-project-map.md) | Decision map estable de que se adopta, adapta, referencia, posterga o rechaza desde cada repo fuente. |
 | Privacidad, audio, transcripciones, logs, modelos, storage | [Privacidad y datos de dictado](topics/privacy-and-dictation-data.md) | Reglas para tratar datos sensibles de dictado. |
 | SpecKit, spec, plan, tasks.md, feature grande | [SpecKit y planificacion](topics/speckit-workflow.md) | Como trabajar con specs y constitucion. |
 

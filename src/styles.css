@@ -808,11 +808,12 @@ h1 {
 
 .companion-shell {
   width: 100vw;
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 14px;
-  background: transparent;
+  height: 100vh;
+  overflow: auto;
+  padding: 12px;
+  background:
+    radial-gradient(circle at 20% 0%, rgb(116 226 164 / 10%), transparent 34%),
+    linear-gradient(180deg, rgb(20 25 29), rgb(10 13 16));
 }
 
 .dock-companion-panel {
@@ -828,9 +829,11 @@ h1 {
 }
 
 .dock-companion-card {
+  width: 100%;
+  min-height: calc(100vh - 24px);
   border: 1px solid rgb(255 255 255 / 14%);
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgb(19 24 27 / 94%), rgb(11 14 17 / 94%));
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgb(19 24 27 / 96%), rgb(11 14 17 / 96%));
   color: rgb(244 248 247 / 94%);
   box-shadow: 0 14px 32px rgb(0 0 0 / 34%);
   padding: 12px 14px;
@@ -839,7 +842,7 @@ h1 {
 }
 
 .dock-companion-card--standalone {
-  width: min(320px, calc(100vw - 28px));
+  width: 100%;
 }
 
 .dock-companion-card p {
@@ -847,18 +850,82 @@ h1 {
   color: rgb(218 228 226 / 74%);
 }
 
-.dock-companion-card ul {
-  margin: 8px 0 10px;
-  padding-left: 18px;
-  color: rgb(230 238 236 / 86%);
+.dock-companion-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
 }
 
-.dock-companion-card li + li {
-  margin-top: 4px;
+.dock-companion-history-list {
+  display: grid;
+  gap: 7px;
+  max-height: calc(100vh - 92px);
+  margin-top: 8px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.dock-companion-history-item {
+  position: relative;
+  display: grid;
+  width: 100%;
+  border: 1px solid rgb(255 255 255 / 13%);
+  border-radius: 9px;
+  background: rgb(255 255 255 / 6%);
+  color: rgb(230 238 236 / 88%);
+  padding: 7px 8px;
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dock-companion-history-preview {
+  color: rgb(244 248 247 / 94%);
+  font-size: 0.75rem;
+  font-weight: 720;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dock-companion-history-meta {
+  margin-top: 3px;
+  color: rgb(218 228 226 / 62%);
+  font-size: 0.66rem;
+}
+
+.dock-companion-history-hover {
+  display: none;
+  margin-top: 7px;
+  border-top: 1px solid rgb(255 255 255 / 10%);
+  padding-top: 7px;
+  color: rgb(230 238 236 / 90%);
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+.dock-companion-history-item:hover .dock-companion-history-hover,
+.dock-companion-history-item:focus-visible .dock-companion-history-hover {
+  display: block;
+}
+
+.dock-companion-history-item:hover,
+.dock-companion-history-item:focus-visible,
+.secondary-button:hover,
+.secondary-button:focus-visible,
+.dock-companion-close-button:hover,
+.dock-companion-close-button:focus-visible {
+  border-color: rgb(116 226 164 / 42%);
+  background: rgb(116 226 164 / 12%);
+  outline: none;
 }
 
 .dock-companion-kicker {
-  margin: 0 0 4px !important;
+  margin: 0 !important;
   color: rgb(116 226 164 / 82%) !important;
   font-size: 0.68rem;
   font-weight: 800;
@@ -873,7 +940,8 @@ h1 {
   margin-top: 10px;
 }
 
-.secondary-button {
+.secondary-button,
+.dock-companion-close-button {
   border: 1px solid rgb(255 255 255 / 16%);
   border-radius: 8px;
   background: rgb(255 255 255 / 8%);
@@ -882,6 +950,13 @@ h1 {
   font: inherit;
   font-size: 0.75rem;
   cursor: pointer;
+}
+
+.dock-companion-close-button {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  color: rgb(218 228 226 / 84%);
+  font-size: 0.68rem;
 }
 
 .debug-details {

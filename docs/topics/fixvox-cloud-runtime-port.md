@@ -26,7 +26,7 @@ primary_refs:
 
 ## Norte
 
-Dictation Tauri debe reemplazar el runtime desktop hecho en Bun/Electrobun por Rust/Tauri, pero puede usar la misma infraestructura cloud de Fixvox cuando sea conveniente.
+Dictation Tauri debe reemplazar el runtime desktop hecho en el runtime desktop legacy de Fixvox por Rust/Tauri, pero puede usar la misma infraestructura cloud de Fixvox cuando sea conveniente.
 
 La regla no es "copiar codigo Fixvox" ni "evitar Fixvox". La regla es:
 
@@ -183,7 +183,7 @@ Por eso Dictation Tauri debe tratar managed como `Groq-only` hasta que el Worker
 
 - Audio y transcript pasan por cloud si managed esta activo; debe ser explicito en UI/docs antes de convertirlo en default de producto.
 - No imprimir ni commitear device ids sensibles, `.env`, provider payloads, audio real, transcripts reales ni reports con contenido sensible.
-- No acoplar Dictation Tauri a archivos internos Bun/Electrobun; acoplar solo a contratos HTTP documentados o a specs propias.
+- No acoplar Dictation Tauri a archivos internos legacy Fixvox desktop internals; acoplar solo a contratos HTTP documentados o a specs propias.
 - Managed mode debe fallar cerrado: si falta device id, preflight o lane proxied, no debe caer silenciosamente a Groq directo.
 - BYOK/direct debe existir como modo avanzado/dev separado.
 - No prometer delivery observado hasta implementar evidencia real de paste/target.

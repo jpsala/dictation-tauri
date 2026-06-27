@@ -5,7 +5,7 @@ kind: decision-map
 triggers:
   - Fixvox
   - Fixbox
-  - electro-bun
+  - fixvox
   - capacidades Fixvox
   - alcance producto
   - mapa de producto

@@ -55,9 +55,9 @@ Proximo paso: antes de nuevas superficies durables, refactorizar `App.tsx` en co
 
 Estado: accepted
 
-Decision: Dictation Tauri debe usar la infraestructura cloud managed de Fixvox como camino principal para el siguiente runtime real, reimplementando el desktop runtime en Rust/Tauri en vez de portar internals Bun/Electrobun. El camino directo Groq local queda como BYOK/dev fallback explicito, no como default silencioso.
+Decision: Dictation Tauri debe usar la infraestructura cloud managed de Fixvox como camino principal para el siguiente runtime real, reimplementando el desktop runtime en Rust/Tauri en vez de portar legacy Fixvox desktop internals. El camino directo Groq local queda como BYOK/dev fallback explicito, no como default silencioso.
 
-Motivo: Fixvox ya funciona bien con device registration, proxy managed, policy/preflight, claves server-side, costos/usage/timings y prompts/heuristicas maduras. Dictation Tauri puede aprovechar esa frontera cloud sin heredar deuda de Bun/Electrobun, manteniendo React sin secretos y dejando side effects desktop en Rust/Tauri.
+Motivo: Fixvox ya funciona bien con device registration, proxy managed, policy/preflight, claves server-side, costos/usage/timings y prompts/heuristicas maduras. Dictation Tauri puede aprovechar esa frontera cloud sin heredar deuda de legacy Fixvox desktop internals, manteniendo React sin secretos y dejando side effects desktop en Rust/Tauri.
 
 Alcance:
 
@@ -246,11 +246,11 @@ Alcance:
 
 Proximo paso: actualizar specs y topics para que la fundacion tecnica no trate privacidad como bloqueo inicial.
 
-### 2026-06-05 - Usar el stack base de copyq-tauri
+### 2026-06-05 - Usar el stack base de copicu
 
 Estado: accepted
 
-Decision: la fundacion tecnica usara el mismo stack base probado en `C:\dev\chat\copyq-tauri`: React, Vite, TypeScript strict, npm con `package-lock.json`, Tauri v2, Rust edition 2021 y Playwright para checks visuales.
+Decision: la fundacion tecnica usara el mismo stack base probado en `C:\dev\copicu`: React, Vite, TypeScript strict, npm con `package-lock.json`, Tauri v2, Rust edition 2021 y Playwright para checks visuales.
 
 Motivo: ese stack ya funciona bien en la maquina de JP, reduce decisiones nuevas y da una base conocida para una app desktop operativa.
 
@@ -262,7 +262,7 @@ Proximo paso: crear manifiestos y app base verificable con scripts oficiales.
 
 Estado: accepted
 
-Decision: usar `C:\dev\electro-bun-1` / Fixvox como fuente de referencia para recursos de voz, fixtures, benchmarks, prompts y aprendizajes de producto, manteniendo el stack propio de Dictation Tauri: React, Vite, TypeScript, npm, Tauri v2 y Rust.
+Decision: usar `C:\dev\fixvox` / Fixvox como fuente de referencia para recursos de voz, fixtures, benchmarks, prompts y aprendizajes de producto, manteniendo el stack propio de Dictation Tauri: React, Vite, TypeScript, npm, Tauri v2 y Rust.
 
 Motivo: Fixvox ya contiene recursos valiosos para avanzar sin depender de pruebas manuales tempranas: scripts de TTS, matrices STT/postprocess, prompts, manifests de audio y variables `.env` locales con proveedores disponibles.
 
@@ -272,7 +272,7 @@ Alcance:
 - Permitido leer variables `.env` y usar claves locales cuando una tarea lo requiera.
 - No imprimir ni commitear valores de secretos salvo pedido explicito y acotado de JP.
 - Permitido leer y usar muestras humanas/artifacts de Fixvox como referencia local.
-- No copiar arquitectura Electrobun/Bun ni dependencias de Fixvox.
+- No copiar arquitectura legacy de Fixvox ni dependencias de Fixvox.
 
 Proximo paso: armar una capa propia de fixtures/benchmarks para Dictation Tauri, empezando por TTS sintetico y STT/postprocess controlado.
 

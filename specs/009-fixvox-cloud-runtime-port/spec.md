@@ -2,7 +2,7 @@
 
 ## User Story
 
-As JP, I want Dictation Tauri to use the same managed cloud infrastructure that makes Fixvox work well, while replacing the Bun/Electrobun desktop runtime with Rust/Tauri, so the new app can inherit provider routing, policy, cost/usage tracking and mature dictation behavior without carrying old desktop architecture.
+As JP, I want Dictation Tauri to use the same managed cloud infrastructure that makes Fixvox work well, while replacing the legacy Fixvox desktop runtime with Rust/Tauri, so the new app can inherit provider routing, policy, cost/usage tracking and mature dictation behavior without carrying old desktop architecture.
 
 ## Acceptance Criteria
 
@@ -16,7 +16,7 @@ As JP, I want Dictation Tauri to use the same managed cloud infrastructure that 
 
 ## Non-goals
 
-- Do not copy Bun/Electrobun runtime internals into Dictation Tauri.
+- Do not copy legacy Fixvox desktop internals into Dictation Tauri.
 - Do not implement all Fixvox surfaces in this spec.
 - Do not add hotkeys/tray/delivery as part of the cloud transport slice.
 - Do not make cloud default silently without privacy/product copy.

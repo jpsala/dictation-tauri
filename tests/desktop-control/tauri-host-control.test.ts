@@ -116,7 +116,7 @@ describe("Tauri host-owned global hotkey boundary", () => {
     }
   });
 
-  it("models enriched tray/context host commands without desktop side effects", () => {
+  it("models enriched tray/context and paste-last host commands without desktop side effects", () => {
     const presetPayload: TauriHostCommandPayload = {
       source: "tray_or_context_menu",
       command: "select_preset",
@@ -126,9 +126,14 @@ describe("Tauri host-owned global hotkey boundary", () => {
       source: "tray_or_context_menu",
       command: "show_result_history",
     };
+    const pasteLastPayload: TauriHostCommandPayload = {
+      source: "global_hotkey",
+      command: "paste_last_safe",
+    };
 
     expect(presetPayload.presetId).toBe("rewrite");
     expect(historyPayload.command).toBe("show_result_history");
+    expect(pasteLastPayload.command).toBe("paste_last_safe");
   });
 
   it("keeps Rust hotkey registration host-owned with a gated Alt+Space path", () => {
@@ -136,14 +141,24 @@ describe("Tauri host-owned global hotkey boundary", () => {
 
     expect(source).toContain("Ctrl+Shift+F9");
     expect(source).toContain("Alt+Space");
+    expect(source).toContain("Alt+3");
+    expect(source).toContain("Code::Digit3");
     expect(source).toContain("DICTATION_TAURI_ALLOW_ALT_SPACE");
+    expect(source).toContain("hotkey-preferences.v1.json");
+    expect(source).toContain("resolve_effective_dictation_hotkey_from_app");
+    expect(source).toContain("write_hotkey_preference");
+    expect(source).toContain("preference_persisted");
     expect(source).toContain("WH_KEYBOARD_LL");
     expect(source).toContain(tauriGlobalHotkeyEventName);
     expect(source).toContain("global_hotkey");
     expect(source).toContain("pressed");
     expect(source).toContain("released");
     expect(source).toContain("Escape");
+    expect(source).toContain("Alt+Shift+X");
+    expect(source).toContain("paste_last_safe");
     expect(source).toContain("set_desktop_control_escape_cancel_enabled");
+    expect(source).toContain("set_desktop_control_hotkey_capture_enabled");
+    expect(source).toContain("desktop-control://hotkey-capture");
     expect(source).toContain("VK_ESCAPE");
     expect(source).not.toContain("paste_observed");
   });

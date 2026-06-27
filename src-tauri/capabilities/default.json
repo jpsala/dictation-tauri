@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default permissions for the main window.",
-  "windows": ["main", "dock-companion"],
+  "windows": ["main", "dock-companion", "settings"],
   "permissions": ["core:default"]
 }

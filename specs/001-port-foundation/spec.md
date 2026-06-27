@@ -42,16 +42,16 @@ Decision aceptada el 2026-06-05:
 - UI verification: Playwright.
 - Primer set de capabilities: minimo, empezar con `core:default`.
 
-El patron de referencia es `C:\dev\chat\copyq-tauri`, pero no se deben copiar dependencias especificas de clipboard, SQLite, Win32 o storage sin una necesidad documentada.
+El patron de referencia es `C:\dev\copicu`, pero no se deben copiar dependencias especificas de clipboard, SQLite, Win32 o storage sin una necesidad documentada.
 
 El mapa estable de que adoptar desde proyectos fuente vive en `docs/topics/source-project-map.md`.
 
 Decisiones importables para este scaffold:
 
-- Adoptar desde CopyQ Tauri: React, Vite, TypeScript strict, npm, Tauri v2, Rust 2021, Playwright y scripts base.
+- Adoptar desde Copicu: React, Vite, TypeScript strict, npm, Tauri v2, Rust 2021, Playwright y scripts base.
 - Adaptar, no copiar todavia: ventanas custom, Mantine/theme/settings, shortcut/tray/background.
 - No incluir en la fundacion tecnica: clipboard/storage, SQLite, notification plugin, `windows` crate, global shortcut/tray o dependencias de dictado hasta que una spec las requiera.
-- Usar Fixvox solo como referencia funcional posterior para pipeline, STT/postprocess benchmarks, `ModelGateway` y delivery; no importar Electrobun/Bun ni control plane en MVP 0.
+- Usar Fixvox solo como referencia funcional posterior para pipeline, STT/postprocess benchmarks, `ModelGateway` y delivery; no importar legacy Fixvox desktop internals ni control plane en MVP 0.
 
 ## User Scenarios & Testing
 

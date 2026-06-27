@@ -1,0 +1,472 @@
+import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import {
+  applyTauriHotkeyRegistration,
+  previewTauriHotkeyRegistration,
+  type TauriGlobalHotkeyConfig,
+  type TauriHotkeyRegistrationApplyResult,
+  type TauriHotkeyRegistrationPreview,
+} from "../desktop-control/tauri-host-control";
+import { formatHotkeyEditReason } from "./hotkey-edit-copy";
+import { nativeHotkeyEditContract } from "./hotkey-edit-contract";
+
+const sections = [
+  { id: "general", label: "General", state: "Later" },
+  { id: "hotkeys", label: "Hotkeys", state: "Active" },
+  { id: "dock", label: "Dock", state: "Later" },
+  { id: "delivery", label: "Delivery", state: "Later" },
+  { id: "presets", label: "Presets", state: "Later" },
+  { id: "about", label: "About", state: "Later" },
+] as const;
+
+type HotkeyRow = {
+  id: string;
+  label: string;
+  value: string;
+  hint: string;
+  mode: "host" | "fixed" | "planned";
+};
+
+type EditorNotice = {
+  tone: "idle" | "success" | "warning" | "danger";
+  message: string;
+};
+
+type BusyAction = "preview" | "apply";
+
+type CaptureState = "idle" | "recording";
+
+type HostHotkeyCapturePayload = {
+  source: string;
+  shortcut: string;
+};
+
+const HOST_HOTKEY_CAPTURE_EVENT = "desktop-control://hotkey-capture";
+
+export function SettingsSurface() {
+  const tauriRuntime = isTauri();
+  const [dictationShortcut, setDictationShortcut] = useState("Alt+Space");
+  const [editingShortcut, setEditingShortcut] = useState("Alt+Space");
+  const [preview, setPreview] = useState<TauriHotkeyRegistrationPreview | undefined>();
+  const [applyResult, setApplyResult] = useState<TauriHotkeyRegistrationApplyResult | undefined>();
+  const [notice, setNotice] = useState<EditorNotice>({
+    tone: "idle",
+    message: "Click the shortcut field, then press the new key combination.",
+  });
+  const [busyAction, setBusyAction] = useState<BusyAction | undefined>();
+  const [captureState, setCaptureState] = useState<CaptureState>("idle");
+
+  useEffect(() => {
+    void import("./settings-heroui.css");
+  }, []);
+
+  useEffect(() => {
+    if (!tauriRuntime) {
+      return;
+    }
+
+    void invoke<TauriGlobalHotkeyConfig>("get_desktop_control_hotkey_config")
+      .then((config) => {
+        const shortcut = config.shortcut || "Alt+Space";
+        setDictationShortcut(shortcut);
+        setEditingShortcut(shortcut);
+      })
+      .catch(() => {
+        setDictationShortcut("Alt+Space");
+        setEditingShortcut("Alt+Space");
+      });
+  }, [tauriRuntime]);
+
+  useEffect(() => {
+    if (!tauriRuntime) {
+      return;
+    }
+
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<HostHotkeyCapturePayload>(HOST_HOTKEY_CAPTURE_EVENT, (event) => {
+      if (disposed || !event.payload.shortcut) {
+        return;
+      }
+
+      void invoke<boolean>("set_desktop_control_hotkey_capture_enabled", { enabled: false });
+      setCaptureState("idle");
+      setEditingShortcut(event.payload.shortcut);
+      void applyCandidate(event.payload.shortcut);
+    }).then((cleanup) => {
+      if (disposed) {
+        cleanup();
+        return;
+      }
+      unlisten = cleanup;
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+      void invoke<boolean>("set_desktop_control_hotkey_capture_enabled", { enabled: false });
+    };
+  }, [tauriRuntime]);
+
+  const hotkeys: HotkeyRow[] = useMemo(
+    () => [
+      {
+        id: "dictation-key",
+        label: "Dictation key",
+        value: dictationShortcut,
+        hint: "Hold or tap. Host-owned runtime binding.",
+        mode: "host",
+      },
+      {
+        id: "paste-last",
+        label: "Paste last",
+        value: "Alt+Shift+X",
+        hint: "Safe paste path for the latest result.",
+        mode: "fixed",
+      },
+      {
+        id: "cancel-recording",
+        label: "Cancel recording",
+        value: "Escape",
+        hint: "Only armed during cancellable capture.",
+        mode: "fixed",
+      },
+    ],
+    [dictationShortcut],
+  );
+
+  const previewCopy = preview
+    ? preview.canApply
+      ? `Ready: host can swap to ${preview.normalizedShortcut}.`
+      : `Blocked: ${formatHotkeyEditReason(preview.reason)}`
+    : "No host preview yet.";
+  const applyCopy = applyResult
+    ? applyResult.error
+      ? applyResult.rolledBack
+        ? `Rolled back: ${formatHotkeyEditReason(applyResult.error)}`
+        : `Apply failed: ${formatHotkeyEditReason(applyResult.error)}`
+      : applyResult.persistenceError
+        ? `Applied, not saved: ${formatHotkeyEditReason(applyResult.persistenceError)}`
+        : applyResult.preferencePersisted
+          ? `Saved: ${applyResult.effectiveConfig.shortcut}.`
+          : `Already verified: ${applyResult.effectiveConfig.shortcut}.`
+    : "Apply waits for preview.";
+  const candidateChanged = editingShortcut !== dictationShortcut;
+
+  async function previewCandidate(nextShortcut = editingShortcut) {
+    setBusyAction("preview");
+    setApplyResult(undefined);
+    try {
+      const hostPreview = await previewTauriHotkeyRegistration(nextShortcut);
+      if (!hostPreview) {
+        setPreview({
+          requestedShortcut: nextShortcut,
+          normalizedShortcut: nextShortcut,
+          canApply: false,
+          reason: "tauri_runtime_unavailable",
+        });
+        setNotice({
+          tone: "warning",
+          message: "Open this surface inside Tauri to run the host preview.",
+        });
+        return;
+      }
+
+      setPreview(hostPreview);
+      setNotice({
+        tone: hostPreview.canApply ? "success" : "warning",
+        message: hostPreview.canApply
+          ? "Host preview passed. Save will swap, verify, persist, and roll back on registration failure."
+          : `Host preview blocked this binding: ${formatHotkeyEditReason(hostPreview.reason)}`,
+      });
+    } catch (error) {
+      setPreview(undefined);
+      setNotice({
+        tone: "danger",
+        message: `Host preview failed: ${formatHotkeyEditReason(error)}`,
+      });
+    } finally {
+      setBusyAction(undefined);
+    }
+  }
+
+  async function startShortcutCapture() {
+    if (!tauriRuntime || busyAction) {
+      setNotice({
+        tone: "warning",
+        message: "Open this surface inside Tauri to record a shortcut.",
+      });
+      return;
+    }
+
+    setPreview(undefined);
+    setApplyResult(undefined);
+    try {
+      await invoke<boolean>("set_desktop_control_hotkey_capture_enabled", { enabled: true });
+      setCaptureState("recording");
+      setNotice({
+        tone: "idle",
+        message: "Press the new shortcut now. Esc cancels.",
+      });
+    } catch (error) {
+      setNotice({
+        tone: "danger",
+        message: `Host capture failed: ${formatHotkeyEditReason(error)}`,
+      });
+    }
+  }
+
+  async function handleShortcutCaptureKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (captureState !== "recording") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (event.key === "Escape") {
+      void invoke<boolean>("set_desktop_control_hotkey_capture_enabled", { enabled: false });
+      setCaptureState("idle");
+      setEditingShortcut(dictationShortcut);
+      setNotice({
+        tone: "idle",
+        message: "Shortcut capture cancelled.",
+      });
+      return;
+    }
+
+    const shortcut = shortcutFromKeyboardEvent(event);
+    if (!shortcut) {
+      setNotice({
+        tone: "warning",
+        message: "Press a shortcut with Ctrl, Alt, or Shift plus another key.",
+      });
+      return;
+    }
+
+    void invoke<boolean>("set_desktop_control_hotkey_capture_enabled", { enabled: false });
+    setCaptureState("idle");
+    setEditingShortcut(shortcut);
+    await applyCandidate(shortcut);
+  }
+
+  async function applyCandidate(nextShortcut = editingShortcut) {
+    setBusyAction("apply");
+    try {
+      const result = await applyTauriHotkeyRegistration(nextShortcut);
+      if (!result) {
+        setNotice({
+          tone: "warning",
+          message: "Open this surface inside Tauri to apply a runtime binding.",
+        });
+        return;
+      }
+
+      setApplyResult(result);
+      setPreview(result.preview);
+      setDictationShortcut(result.effectiveConfig.shortcut);
+      setEditingShortcut(result.effectiveConfig.shortcut);
+      setNotice({
+        tone: result.error ? (result.rolledBack ? "warning" : "danger") : result.persistenceError ? "warning" : "success",
+        message: result.error
+          ? result.rolledBack
+            ? `Host restored the previous binding: ${formatHotkeyEditReason(result.error)}`
+            : `Host could not apply the binding: ${formatHotkeyEditReason(result.error)}`
+          : result.persistenceError
+            ? `Binding applied, but local preference was not saved: ${formatHotkeyEditReason(result.persistenceError)}`
+            : result.preferencePersisted
+              ? "Binding saved locally and verified by the host."
+              : "Binding was already active, saved locally, and verified by the host.",
+      });
+    } catch (error) {
+      setNotice({
+        tone: "danger",
+        message: `Host apply failed: ${formatHotkeyEditReason(error)}`,
+      });
+    } finally {
+      setBusyAction(undefined);
+    }
+  }
+
+  return (
+    <main className="settings-window-shell" aria-label="Dictation settings" data-theme="quiet-dark">
+      <aside className="settings-sidebar" aria-label="Settings sections">
+        <div className="settings-brand-row">
+          <div className="settings-brand-mark" aria-hidden="true">DT</div>
+          <div className="settings-brand-copy">
+            <strong>Settings</strong>
+            <span>Dictation Tauri</span>
+          </div>
+        </div>
+
+        <nav className="settings-nav-list">
+          {sections.map((section) => {
+            const isActive = section.id === "hotkeys";
+            return (
+              <button
+                key={section.id}
+                type="button"
+                className="settings-nav-item"
+                aria-current={isActive ? "page" : undefined}
+                disabled={!isActive}
+              >
+                <span>{section.label}</span>
+                <small>{section.state}</small>
+              </button>
+            );
+          })}
+        </nav>
+      </aside>
+
+      <section className="settings-content" aria-labelledby="settings-hotkeys-title">
+        <header className="settings-header">
+          <div className="settings-title-block">
+            <p className="settings-path">Settings / Hotkeys</p>
+            <h1 id="settings-hotkeys-title">Keyboard shortcuts</h1>
+            <p>
+              Host-owned runtime bindings.
+            </p>
+          </div>
+          <span className="settings-status-badge">Persistent edit</span>
+        </header>
+
+        <section className="settings-panel" aria-labelledby="settings-current-bindings-title">
+          <div className="settings-panel-header">
+            <div>
+              <h2 id="settings-current-bindings-title">Current bindings</h2>
+              <p>Fixvox-like shortcuts with compact runtime status.</p>
+            </div>
+            <span className="settings-panel-count">3 keys</span>
+          </div>
+
+          <div className="settings-hotkey-list">
+            {hotkeys.map((hotkey) => (
+              <HotkeyRow key={hotkey.id} hotkey={hotkey} />
+            ))}
+          </div>
+
+          <section className="settings-hotkey-editor" aria-labelledby="settings-hotkey-editor-title">
+            <div className="settings-hotkey-editor-topline">
+              <div className="settings-hotkey-editor-copy">
+                <div className="settings-native-plan-heading">
+                  <h3 id="settings-hotkey-editor-title">{nativeHotkeyEditContract.heading}</h3>
+                  <span>{nativeHotkeyEditContract.statusLabel}</span>
+                </div>
+                <p>{nativeHotkeyEditContract.summary} Click the field, then press the shortcut.</p>
+              </div>
+              <div className="settings-hotkey-editor-state" aria-label="Hotkey edit state">
+                <span>Current <kbd>{dictationShortcut}</kbd></span>
+                <span>Candidate <kbd>{editingShortcut}</kbd></span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="settings-hotkey-recorder"
+              data-recording={captureState === "recording"}
+              disabled={!tauriRuntime || Boolean(busyAction)}
+              onMouseDown={() => void startShortcutCapture()}
+              onFocus={() => void startShortcutCapture()}
+              onClick={() => void startShortcutCapture()}
+              onKeyDown={(event) => void handleShortcutCaptureKeyDown(event)}
+              aria-label={`Dictation key shortcut: ${editingShortcut}. Click, then press a new shortcut.`}
+            >
+              <span>{captureState === "recording" ? "Press new shortcut…" : editingShortcut}</span>
+              <small>{captureState === "recording" ? "Esc cancels" : "Click to edit"}</small>
+            </button>
+
+            <div className="settings-hotkey-editor-actions">
+              <button
+                type="button"
+                className="settings-editor-button settings-editor-button-secondary"
+                disabled={!tauriRuntime || Boolean(busyAction) || captureState === "recording"}
+                onClick={() => void previewCandidate()}
+              >
+                {busyAction === "preview" ? "Checking" : "Check current shortcut"}
+              </button>
+            </div>
+
+            <div className="settings-hotkey-editor-feedback" data-tone={notice.tone}>
+              <span>{candidateChanged ? "Change staged" : "Current binding selected"}</span>
+              <span>{previewCopy}</span>
+              <span>{applyCopy}</span>
+              <strong>{notice.message}</strong>
+            </div>
+
+            <ol className="settings-native-plan-steps settings-hotkey-editor-steps" aria-label="Native re-registration steps">
+              {nativeHotkeyEditContract.steps.map((step) => (
+                <li key={step.id} title={step.guardrail}>{step.label}</li>
+              ))}
+            </ol>
+          </section>
+        </section>
+      </section>
+    </main>
+  );
+}
+
+function shortcutFromKeyboardEvent(event: KeyboardEvent): string | undefined {
+  const key = normalizeShortcutKey(event.key);
+  if (!key) {
+    return undefined;
+  }
+
+  const parts: string[] = [];
+  if (event.ctrlKey) {
+    parts.push("Ctrl");
+  }
+  if (event.altKey) {
+    parts.push("Alt");
+  }
+  if (event.shiftKey) {
+    parts.push("Shift");
+  }
+  if (event.metaKey) {
+    parts.push("Meta");
+  }
+
+  if (parts.length === 0) {
+    return undefined;
+  }
+
+  parts.push(key);
+  return parts.join("+");
+}
+
+function normalizeShortcutKey(key: string): string | undefined {
+  if (["Control", "Alt", "Shift", "Meta", "OS"].includes(key)) {
+    return undefined;
+  }
+  if (key === " ") {
+    return "Space";
+  }
+  if (/^F\d{1,2}$/i.test(key)) {
+    return key.toUpperCase();
+  }
+  if (/^[a-z]$/i.test(key)) {
+    return key.toUpperCase();
+  }
+  if (/^\d$/.test(key)) {
+    return key;
+  }
+  if (key.length === 1) {
+    return key.toUpperCase();
+  }
+  return key;
+}
+
+function HotkeyRow({ hotkey }: { hotkey: HotkeyRow }) {
+  return (
+    <div className="settings-hotkey-row">
+      <div className="settings-hotkey-copy">
+        <strong>{hotkey.label}</strong>
+        <span>{hotkey.hint}</span>
+      </div>
+      <div className="settings-hotkey-value" aria-label={`${hotkey.label}: ${hotkey.value}`}>
+        <kbd>{hotkey.value}</kbd>
+        <small>{hotkey.mode}</small>
+      </div>
+    </div>
+  );
+}

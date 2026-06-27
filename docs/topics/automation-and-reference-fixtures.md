@@ -9,7 +9,7 @@ triggers:
   - STT
   - benchmarks
   - Fixvox
-  - electro-bun
+  - fixvox
   - sin interaccion humana
 primary_refs:
   - docs/DECISIONS.md
@@ -28,7 +28,7 @@ El primer camino de validacion debe usar audio sintetico y frases controladas pa
 
 ## Referencia Fixvox
 
-Fuente local: `C:\dev\electro-bun-1`.
+Fuente local: `C:\dev\fixvox`.
 
 Recursos observados:
 
@@ -46,7 +46,7 @@ Recursos observados:
 - Modo personal/dev permisivo: se pueden leer `.env`, variables locales, muestras humanas, audio, outputs de benchmarks, transcripciones y logs locales cuando ayuden.
 - No imprimir secretos completos en respuestas ni commitear `.env`/tokens salvo pedido explicito y acotado de JP.
 - Fixtures sinteticos siguen siendo utiles para automatizacion y comparaciones controladas, pero no son una restriccion de privacidad.
-- Mantener scripts propios compatibles con npm/Tauri aunque la referencia use Bun/Electrobun.
+- Mantener scripts propios compatibles con npm/Tauri aunque la referencia use the legacy Fixvox desktop runtime.
 - Dictation Tauri puede usar variables disponibles durante desarrollo; para producto propio, evitar acoplamiento accidental a `.env` de Fixvox.
 - El proxy existente de Fixvox es referencia o spike, no dependencia del MVP 0-3.
 

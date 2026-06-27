@@ -26,7 +26,7 @@ primary_refs:
 
 Referencia durable para preservar lo que JP considera especialmente usable de Fixvox: dock flotante, feedback de dictado, recovery y semantica de hotkeys.
 
-No significa copiar Electrobun/Bun ni portar archivos literal. Significa adaptar la experiencia a Tauri/Rust respetando comportamiento, ergonomia y criterio visual.
+No significa copiar legacy Fixvox desktop internals ni portar archivos literal. Significa adaptar la experiencia a Tauri/Rust respetando comportamiento, ergonomia y criterio visual.
 
 ## Decision
 
@@ -70,7 +70,7 @@ Adaptacion a Dictation Tauri:
 
 - Mantener la marca propia de `DESIGN.md`, pero aceptar que el dock utility overlay puede usar un lenguaje mas oscuro/translucido y compacto inspirado en Fixvox si mejora usabilidad.
 - No adoptar el look completo de landing/marketing ni copiar tokens de sitio publico.
-- No copiar la arquitectura HTTP/Electrobun; en Tauri, el host Rust/commands/events debe ser la frontera.
+- No copiar la arquitectura HTTP/legacy Fixvox desktop internals; en Tauri, el host Rust/commands/events debe ser la frontera.
 - No prometer paste observado si solo se envio paste o se copio texto.
 
 ## Hotkeys: Modelo Observado
@@ -155,17 +155,19 @@ Trabajo cerrado: `specs/012-fixvox-dock-dictation-key/tasks.md` Phase 8 / Checkp
 - Lote dock move/feedback agrego drag-to-move desde la orb con threshold, persistencia de posicion en app data (`dock-position.v1.json`) y restore/clamp al arrancar. El primer intento con `startDragging()` fue insuficiente en vivo; se cambio a drag manual por deltas del renderer y `setPosition(PhysicalPosition)`, luego a comandos nativos `get_dock_shell_position`/`move_dock_shell_position` para el dock real. Tambien alinea el feedback post-insert y post-cancel con Fixvox: si delivery llega a `paste_sent`/observer verificado o se cancela explicitamente, el dock vuelve a idle en lugar de quedarse mostrando `Transcript ready`/`Dictation cancelled`/acciones de recovery encima de los dots.
 - Refinements post-013 por feedback directo: cursor del orb usa cursor standard `default` (no hand/grab); cambios de estado same-size (`idle`/`recording`) preservan posicion exacta aunque el dock este debajo del work area; expansion a review/processing conserva el ancla visual si el usuario lo dejo cerca/debajo de la taskbar; `Escape` cancela solo durante captura cancelable; click en VU/barras durante recording hace `Stop & review`, no `Stop & submit`; iconos de acciones son 22px y el icono central `Stop & submit` queda 5px mas abajo.
 - Refinement de accesibilidad post-cancel: despues de cancelar, tanto el dock visual como el header/status oculto para AT vuelven a `Ready`; ya no queda `Cancelled` expuesto en el arbol accesible mientras la superficie operativa muestra idle.
+- Smoke real dedicado de companion: `scripts/dock-companion-smoke.ps1` (`npm run dock-companion:smoke -- -AllowDesktopSideEffects`) lanza Tauri con WebView2 CDP, usa un puente DEV-only para emitir host commands redacted, verifica ventana nativa `Dictation Companion`, settings/preset/clear y ausencia de texto sensible en el reporte. Por defecto no mata instancias Tauri preexistentes; usar `-StopExisting` solo en runs aislados. Los errores de espera de texto redaktan el contenido por longitud/hash para no filtrar transcripciones si una regression mostrara texto crudo. Passing run: `artifacts/desktop-control/dock-companion-smoke/20260625-companion-smoke-r6/report.json`.
 
 ## Gaps Actuales En Dictation Tauri
 
 - No hay autostart/Start with Windows ni instalador/background lifecycle de app instalada; si se implementa, pedir confirmacion.
-- La ventana Tauri `dock-companion` ya renderiza recovery/history/settings sincronizados desde el dock por evento `dock-companion://state` y emite acciones propias por `dock-companion://command`: copy, paste-last safe, retry, preset select/clear y dismiss de panels. Falta settings editing real y smoke real dedicado.
+- La ventana Tauri `dock-companion` ya renderiza recovery/history/settings sincronizados desde el dock por evento `dock-companion://state` y emite acciones propias por `dock-companion://command`: copy, paste-last safe, retry, preset select/clear y dismiss de panels. El smoke real dedicado de settings/preset/clear ya paso; falta settings editing real.
 - Hay observer Win32 bounded con hardening interno provider-free: normaliza line endings y exige aumento de ocurrencias entre lecturas Win32 antes de elevar a `paste_observed`. Un E2E controlado post-cambio paso con product UI `paste_observed` en `artifacts/desktop-control/dictation-e2e/20260624-observer-paste-observed-e2e-verified/report.json`; fuera de esa ruta verificada, `paste_sent` no debe presentarse como observado.
 - Hay selected-text read UIA best-effort con smoke T039 redacted pasado y replace foundation, pero falta flujo UX completo preset -> selection transform -> replace-selection.
 - Alt+Space es default en Windows y `Ctrl+Shift+F9` queda fallback explicito. Falta mas soak/manual E2E post-default para harden antes de llamarlo final.
 - Escape cancel esta implementado por hook nativo Windows host-owned: el renderer arma/desarma `set_desktop_control_escape_cancel_enabled` solo mientras hay captura cancelable, el hook emite `desktop-control://global-hotkey` con `action: "cancel"`/`shortcut: "Escape"`, y la ruta comparte el cancel existente del controller. Mientras no esta armado, Escape no se intercepta.
+- `Alt+Shift+X` / paste-last tiene hook nativo Windows host-owned (`WH_KEYBOARD_LL`) que exige combo exacto Alt+Shift+X y emite `desktop-control://host-command` con `paste_last_safe` despues de `X` keyup y de esperar que Alt/Shift esten liberados, para que el paste no salga como `Ctrl+Alt+Shift+V`. Si viene de `global_hotkey`, el renderer intenta pegar el ultimo resultado en el foreground target actual usando delivery Tauri real (`paste_sent`/observer si aplica) y puede recuperar el ultimo result desde `result-history.v1.jsonl`. Si no hay ultimo resultado, queda en idle y no abre recovery modal persistente.
 - Context menu/tray existen con presets/history/settings iniciales; falta settings real editable, input device, picker y result history UX completa.
 - Existe ventana Tauri `dock-companion` separada; el primer sync real ya evita el placeholder estatico y redakta history a longitud/status. Las acciones basicas de recovery/history/settings ya estan cableadas por evento renderer; falta converger layout avanzado, settings editing y acciones de seleccion/assistant a la companion de Fixvox.
 - Preset badge ya responde a menu, pero todavia no activa motor real de selection transform/assistant por default.
 - Indicador assistant sigue visual-only y no activa Quick Chat/Assistant Mode real.
-- Falta smoke real dedicado de restore tras reinicio y seguir puliendo diferencias pequenas contra Fixvox segun feedback de uso; drag/posicion/cancel/click-targets tienen contratos provider-free y validaciones focales, pero algunos ajustes visuales finos siguen siendo iterativos.
+- Falta smoke real dedicado de restore tras reinicio y seguir puliendo diferencias pequenas contra Fixvox segun feedback de uso; drag/posicion/cancel/click-targets/companion settings tienen contratos provider-free o smokes focales, pero algunos ajustes visuales finos siguen siendo iterativos.

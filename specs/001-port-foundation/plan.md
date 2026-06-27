@@ -13,7 +13,7 @@ verification. This cut intentionally avoids dictation, audio capture, provider
 selection, persistence contracts, selected-text capture, tray/global shortcuts,
 and durable product UI.
 
-The technical scaffold adopts the proven base from `C:\dev\chat\copyq-tauri`
+The technical scaffold adopts the proven base from `C:\dev\copicu`
 while excluding CopyQ-specific clipboard/storage/Win32 dependencies and Fixvox
 runtime architecture.
 
@@ -98,7 +98,7 @@ src-tauri/
 ```
 
 **Structure Decision**: Use a single Vite frontend at repository root and the
-standard Tauri backend under `src-tauri/`. This matches the CopyQ Tauri stack
+standard Tauri backend under `src-tauri/`. This matches the Copicu stack
 shape without adopting its domain modules.
 
 ## Phase 0 Research

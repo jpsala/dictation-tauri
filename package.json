@@ -15,6 +15,8 @@
     "runtime-transcription:check": "bun scripts/runtime-transcription.ts --mode artifact-check --dry-run",
     "runtime-transcription:groq:dry-run": "bun scripts/runtime-transcription.ts --mode groq-dry-run --dry-run",
     "desktop-control:e2e": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-dictation-e2e.ps1",
+    "dock-companion:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dock-companion-smoke.ps1",
+    "hotkey-reregistration:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hotkey-reregistration-smoke.ps1",
     "selection-capture:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/selection-capture-smoke.ps1",
     "context:index": "bun scripts/context-index.ts",
     "context:audit": "bun scripts/agent-context-audit.ts",
@@ -27,15 +29,20 @@
     "visual:check": "playwright test --workers=1",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
+    "tauri:dev:hidden": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-tauri-dev-hidden.ps1",
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@heroui/react": "^3.2.1",
+    "@heroui/styles": "^3.2.1",
     "@tauri-apps/api": "^2.11.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "tailwindcss": "^4.3.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "@tailwindcss/vite": "^4.3.1",
     "@tauri-apps/cli": "^2.11.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",

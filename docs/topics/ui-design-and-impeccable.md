@@ -52,6 +52,18 @@ Contexto inicial creado:
 - Picker o Quick Chat si entran mas adelante.
 - Onboarding/mic check si entra en producto.
 
+## Decision UI Foundation 2026-06-25
+
+Para ventanas normales de producto, la direccion aceptada es **HeroUI v3** sobre React/Vite/Tauri:
+
+- Usar HeroUI para Settings, History, Presets, Devices y About/Debug.
+- Mantener dock, companion compacta y overlays/recovery cercanos al dock como superficies especiales custom React/CSS + shell Rust/Tauri, no como HeroUI generico.
+- El spike dark aprobado por JP esta en `artifacts/ui-spikes/heroui-settings/settings-dark-spike.png` y el trabajo retomable en `docs/tracks/settings-window-and-ui-foundation.md`.
+- Mantine queda como fallback seguro/productivo si HeroUI fricciona; shadcn/Park UI quedan como referencia, no base inicial, porque implican ownership alto de design system.
+- Tailwind v4 debe estar cableado con `@tailwindcss/vite`; sin ese plugin, los estilos HeroUI pueden no procesar `@apply` correctamente y verse rotos/grandes.
+
+Criterio visual para esta app: dark theme denso, calmo, operacional, con acento coral/Burnt Signal moderado; evitar look generico de AI SaaS.
+
 ## Principios Para Esta App
 
 - Producto operativo, no landing page.
@@ -71,6 +83,23 @@ Contexto inicial creado:
 4. Para implementar una superficie, usar `impeccable craft <surface>` o aplicar sus reglas durante el build.
 5. Antes de cerrar una UI, usar `critique`, `audit` o `polish` segun el riesgo.
 6. Verificar en browser/Tauri con capturas o checks visuales cuando haya app corriendo.
+
+## Workflow Settings / Diseño 2026-06-25
+
+Decision de JP: de ahora en adelante, cualquier trabajo de diseño durable, o cuando JP lo pida, debe usar este flujo asistido **Impeccable + v0 + screenshot real** antes de cerrar implementacion:
+
+1. Capturar screenshot limpio del estado real de la superficie, preferentemente Tauri si la UI vive en desktop.
+2. Preparar prompt acotado para v0 con contexto, constraints y no-go explícitos. Para Settings: desktop settings compacto, dark, Fixvox-like, sidebar + alcance funcional minimo.
+3. Usar el output de v0 como direccion, no como codigo a pegar sin criterio.
+4. Pasar la variante por criterio Impeccable `critique`/`polish`: jerarquia, densidad, contraste, copy, IA, accesibilidad, fit con `PRODUCT.md`/`DESIGN.md` y anti-slop.
+5. Implementar manualmente en los archivos del producto, manteniendo componentes/convenciones locales.
+6. Validar con screenshot real, detector/checks relevantes y feedback JP antes de ampliar alcance.
+
+Para Settings actual, el alcance sigue siendo **solo secciones + Hotkeys read-only**. No agregar nuevos settings ni editar hotkeys reales hasta diseñar re-registro nativo.
+
+## Gotcha Live / Tauri 2026-06-26
+
+No activar Impeccable live sobre el `index.html` compartido de Dictation Tauri salvo que el agente quede corriendo `live-poll.mjs` y se limpie al terminar con `live-server.mjs stop`. Ese `index.html` sirve dock, settings y companion; inyectar `live.js` puede contaminar el dock con la barra/picker de Impeccable y dejar la pagina en `Generating variants...` si ningun agente esta polleando. Para diseño durable de superficies Tauri, preferir screenshot real + prompt v0 + critique/polish + implementacion manual. Si se usa live, hacerlo en una pagina/superficie aislada o limpiar de inmediato los markers `impeccable-live`, `impeccable-variants` y `impeccable-carbonize`.
 
 ## Primer Uso Sugerido
 

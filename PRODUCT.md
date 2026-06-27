@@ -32,8 +32,8 @@ The voice is direct and factual. Prefer concrete labels such as "Listening", "Tr
 - Dark purple or blue gradient AI tool chrome.
 - Busy recording dashboards that make dictation feel like audio engineering.
 - Chat-first assistant UI as the main surface for MVP 0-3.
-- Clipboard-manager UI patterns from CopyQ Tauri unless a Dictation Tauri spec explicitly needs them.
-- Fixvox architecture or Electrobun/Bun implementation assumptions copied directly into this app.
+- Clipboard-manager UI patterns from Copicu unless a Dictation Tauri spec explicitly needs them.
+- Fixvox architecture or legacy Fixvox desktop implementation assumptions copied directly into this app.
 - Ignoring the proven Fixvox dock/hotkey ergonomics JP finds useful; dock and dictation-key work should adapt that experience deliberately.
 - Hidden failure states, optimistic paste claims, or UI that implies delivery was observed when only a send/copy action happened.
 

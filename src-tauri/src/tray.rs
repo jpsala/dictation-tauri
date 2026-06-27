@@ -1,11 +1,13 @@
 use serde::Serialize;
 use tauri::{
     menu::{ContextMenu, MenuBuilder, MenuEvent},
-    tray::TrayIconBuilder,
+    tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, Runtime, WindowEvent,
 };
 
+use crate::desktop_delivery;
 use crate::dock_shell::{self, DOCK_WINDOW_LABEL};
+use crate::settings_window;
 
 pub const HOST_COMMAND_EVENT: &str = "desktop-control://host-command";
 
@@ -75,8 +77,8 @@ pub fn host_command_payload(action: HostMenuAction) -> Option<HostCommandPayload
         HostMenuAction::SelectPreset(preset_id) => ("select_preset", Some(preset_id)),
         HostMenuAction::ClearPreset => ("clear_preset", None),
         HostMenuAction::ShowResultHistory => ("show_result_history", None),
-        HostMenuAction::OpenSettings => ("open_settings", None),
         HostMenuAction::ShowDock
+        | HostMenuAction::OpenSettings
         | HostMenuAction::HideDock
         | HostMenuAction::Quit
         | HostMenuAction::Unknown => return None,
@@ -97,6 +99,9 @@ pub fn configure_tray_and_background<R: Runtime>(
         .tooltip("Dictation Tauri")
         .menu(&menu)
         .show_menu_on_left_click(true)
+        .on_tray_icon_event(|_tray, event| {
+            cache_delivery_target_before_tray_menu(event);
+        })
         .on_menu_event(|app, event| {
             handle_menu_event(app, event);
         });
@@ -129,6 +134,20 @@ pub fn show_dock_context_menu(app: AppHandle) -> Result<(), String> {
     menu.popup(window).map_err(|error| error.to_string())
 }
 
+fn cache_delivery_target_before_tray_menu(event: TrayIconEvent) {
+    if matches!(
+        event,
+        TrayIconEvent::Click {
+            button_state: MouseButtonState::Down,
+            ..
+        }
+    ) {
+        desktop_delivery::cache_current_desktop_delivery_target_for_tray(
+            "tray_icon_click_before_menu",
+        );
+    }
+}
+
 fn build_host_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::Menu<R>> {
     MenuBuilder::new(app)
         .text(MENU_SHOW_DOCK, "Show dock")
@@ -153,12 +172,28 @@ fn build_host_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu:
 }
 
 fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
-    match resolve_host_menu_action(event.id().as_ref()) {
+    let action = resolve_host_menu_action(event.id().as_ref());
+    eprintln!(
+        "[dictation-tauri][tray] menu event id={} action={:?}",
+        event.id().as_ref(),
+        action
+    );
+
+    match action {
         HostMenuAction::ShowDock => {
-            let _ = dock_shell::show_dock_window(app);
+            if let Err(error) = dock_shell::show_dock_window(app) {
+                eprintln!("failed to show dock window: {error}");
+            }
         }
         HostMenuAction::HideDock => {
-            let _ = dock_shell::hide_dock_window(app);
+            if let Err(error) = dock_shell::hide_dock_window(app) {
+                eprintln!("failed to hide dock window: {error}");
+            }
+        }
+        HostMenuAction::OpenSettings => {
+            if let Err(error) = settings_window::show_settings_window_for_app(app) {
+                eprintln!("failed to open settings window: {error}");
+            }
         }
         HostMenuAction::Quit => app.exit(0),
         action => {
@@ -246,6 +281,8 @@ mod tests {
             })
         );
         assert_eq!(host_command_payload(HostMenuAction::ShowDock), None);
+        assert_eq!(host_command_payload(HostMenuAction::HideDock), None);
+        assert_eq!(host_command_payload(HostMenuAction::OpenSettings), None);
         assert_eq!(host_command_payload(HostMenuAction::Quit), None);
     }
 }

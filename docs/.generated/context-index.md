@@ -2,18 +2,18 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-25T14:31:38.858Z
+Generated: 2026-06-27T15:36:08.745Z
 
 ## Topics
 
 - active: [agentic-os-operations](../topics/agentic-os-operations.md) - crear sistema agentico, migrar sistema agentico, actualizar norte, aos, init os, adopt os, update os, adaptar proyecto, repo nuevo, realinear os, auditar sistema agentico, reparar sistema agentico, drift de contexto
 - active: [agentic-os](../topics/agentic-os.md) - norte, working memory, aos, agentic os, memoria viva, audit docs, tracks, cerrar sesion, continuar sesion, siguiente, handoff thread, nuevo thread, context index, Small Batches, small batches, commits atomicos
-- active: [automation-and-reference-fixtures](../topics/automation-and-reference-fixtures.md) - fixtures, audio sintetico, TTS, STT, benchmarks, Fixvox, electro-bun, sin interaccion humana
+- active: [automation-and-reference-fixtures](../topics/automation-and-reference-fixtures.md) - fixtures, audio sintetico, TTS, STT, benchmarks, Fixvox, fixvox, sin interaccion humana
 - draft: [backend-and-model-routing](../topics/backend-and-model-routing.md) - backend, proxy, model routing, proveedores, API keys, Groq, OpenAI, OpenRouter, xAI
 - active: [dictation-tauri-foundation](../topics/dictation-tauri-foundation.md) - tauri, port, fundacion, stack, comandos, src-tauri
 - draft: [dictation-workflow](../topics/dictation-workflow.md) - dictado, workflow, flujo, estados, pipeline, listening, transcribing
 - active: [docs-knowledge-system](../topics/docs-knowledge-system.md) - documentacion, docs, topics, indice, contexto liviano, tracks, context bloat, contaminacion de contexto
-- active: [fixvox-capability-map](../topics/fixvox-capability-map.md) - Fixvox, Fixbox, electro-bun, capacidades Fixvox, alcance producto, mapa de producto, que copiamos, que implementamos
+- active: [fixvox-capability-map](../topics/fixvox-capability-map.md) - Fixvox, Fixbox, fixvox, capacidades Fixvox, alcance producto, mapa de producto, que copiamos, que implementamos
 - active: [fixvox-cloud-runtime-port](../topics/fixvox-cloud-runtime-port.md) - Fixvox cloud, Fixbox backend, managed runtime, proxy compartido, reemplazar Bun por Rust, Rust Tauri port, cloud infrastructure, X-Device-Id
 - active: [fixvox-dock-and-hotkeys-reference](../topics/fixvox-dock-and-hotkeys-reference.md) - Fixvox dock, dock, voice dock, hotkeys Fixvox, Alt+Space, push to talk, dictation key, paste last, Alt+Q
 - reference: [local-codex-skills](../topics/local-codex-skills.md) - skills locales, local skills, slash commands, docs/skills, .agents/skills, sigamos, cerrar sesion, continuar sesion, continuar sesion con gol, continuar con gol, siguiente, realinear os, evaluar skills, pasar a skills, promover a skill, que se puede pasar a skills, skill o topic, metadata mínima, metadata minima, modelo hibrido
@@ -22,7 +22,7 @@ Generated: 2026-06-25T14:31:38.858Z
 - active: [privacy-and-dictation-data](../topics/privacy-and-dictation-data.md) - privacidad, audio, transcripciones, dictado, logs, storage, modelos
 - active: [product-direction](../topics/product-direction.md) - producto, MVP, alcance, direccion, no human interaction, automatizacion
 - draft: [selection-and-assistant-actions](../topics/selection-and-assistant-actions.md) - texto seleccionado, seleccion, assistant mode, asistente, quick chat, alt-q, presets, hotkeys
-- reference: [source-project-map](../topics/source-project-map.md) - proyectos fuente, proyecto Tauri, CopyQ Tauri, copyq-tauri, proyecto canonico, Fixvox, electro-bun, que implementar, que portar
+- reference: [source-project-map](../topics/source-project-map.md) - proyectos fuente, proyecto Tauri, Copicu, copicu, proyecto canonico, Fixvox, fixvox, que implementar, que portar
 - active: [speckit-workflow](../topics/speckit-workflow.md) - speckit, spec kit, spec, plan, tasks.md, feature grande, Small Batches, small batches, lotes chicos, checkpoint
 - active: [ui-design-and-impeccable](../topics/ui-design-and-impeccable.md) - UI, diseño, design, frontend, React, app shell, voice dock, settings, impeccable
 
@@ -31,7 +31,8 @@ Generated: 2026-06-25T14:31:38.858Z
 - archived/low: [Prompt Para Proxima Sesion Archivado](../tracks/archive/next-session-prompt-2026-06-20.md) - updated 2026-06-20
 - archived/medium: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md) - updated 2026-06-07
 - active/high: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md) - updated 2026-06-10
-- active/high: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md) - updated 2026-06-10
+- active/high: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md) - updated 2026-06-26
+- active/high: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md) - updated 2026-06-27
 
 ## Specs
 
@@ -59,10 +60,10 @@ Generated: 2026-06-25T14:31:38.858Z
 
 | Dictation Tauri | Nombre operativo del proyecto en `C:\dev\dictation-tauri`. |
 | Nuestro proyecto | Alias conversacional para Dictation Tauri, el repo actual en `C:\dev\dictation-tauri`. |
-| Proyecto canonico | Fixvox en `C:\dev\electro-bun-1`. Fuente de verdad sobre lo que funciona hoy en dictado, runtime de voz, backend/proxy, policies, variables de entorno, benchmarks y aprendizajes de producto. No se porta literal ni se copia su arquitectura Electrobun/Bun. |
-| Proyecto Tauri | `C:\dev\chat\copyq-tauri`. Fuente de verdad tecnica moderna para stack Tauri, ventanas, custom chrome, superficies, Mantine, temas, settings, global shortcuts, tray, foco/paste en Windows, checks visuales y estructura de app desktop. |
-| CopyQ Tauri / Copicu | Nombre del proyecto Tauri de referencia en `C:\dev\chat\copyq-tauri`. |
-| Fixvox | Nombre del proyecto canonico en `C:\dev\electro-bun-1`. |
+| Proyecto canonico | Fixvox en `C:\dev\fixvox`. Fuente de verdad sobre lo que funciona hoy en dictado, runtime de voz, backend/proxy, policies, variables de entorno, benchmarks y aprendizajes de producto. No se porta literal ni se copian sus internals legacy. |
+| Proyecto Tauri | `C:\dev\copicu`. Fuente de verdad tecnica moderna para stack Tauri, ventanas, custom chrome, superficies, Mantine, temas, settings, global shortcuts, tray, foco/paste en Windows, checks visuales y estructura de app desktop. |
+| Copicu | Nombre del proyecto Tauri de referencia en `C:\dev\copicu`. |
+| Fixvox | Nombre del proyecto canonico en `C:\dev\fixvox`. |
 | AOS | Agentic OS (AOS), sistema liviano de memoria, docs, topics, specs y skills. |
 | Working Memory | `docs/WORKING_MEMORY.md`, estado vivo y corto del proyecto. |
 | Topic | Documento recuperable en `docs/topics/` con frontmatter y triggers. |
