@@ -407,7 +407,7 @@ pub fn calculate_centered_bottom_resize_position(
     work_area: DockWorkArea,
 ) -> DockPosition {
     if current_width == next_layout.width && current_height == next_layout.height {
-        return clamp_dock_position(current_position, work_area, next_layout);
+        return current_position;
     }
 
     let current_layout = DockShellLayout {
@@ -709,7 +709,7 @@ mod tests {
     }
 
     #[test]
-    fn same_size_state_update_clamps_user_dragged_position_to_work_area() {
+    fn same_size_state_update_preserves_user_dragged_position() {
         assert_eq!(
             calculate_centered_bottom_resize_position(
                 DockPosition { x: 878, y: 1020 },
@@ -723,7 +723,7 @@ mod tests {
                     height: 1080,
                 },
             ),
-            DockPosition { x: 878, y: 968 }
+            DockPosition { x: 878, y: 1020 }
         );
     }
 
