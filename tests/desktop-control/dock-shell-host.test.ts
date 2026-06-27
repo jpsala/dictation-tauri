@@ -19,5 +19,8 @@ describe("Dock shell host visibility", () => {
     expect(dockSource).toContain("if !DOCK_VISIBLE.load");
     expect(dockSource).toContain("ShowWindow(raw_hwnd, SW_HIDE)");
     expect(dockSource).toContain("last_dock_state()");
+    expect(dockSource).toContain("DOCK_BOTTOM_MARGIN");
+    expect(dockSource).toContain("monitor.size()");
+    expect(dockSource).not.toContain("DOCK_TASKBAR_CLEARANCE");
   });
 });

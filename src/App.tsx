@@ -1479,9 +1479,16 @@ export function App() {
       return;
     }
 
-    void invoke("update_dock_shell_state", { state: voiceDockState.phase }).catch(() => {
-      // Dock shell updates are best-effort; renderer state remains the source of truth.
-    });
+    const syncDockShellState = () => {
+      void invoke("update_dock_shell_state", { state: voiceDockState.phase }).catch(() => {
+        // Dock shell updates are best-effort; renderer state remains the source of truth.
+      });
+    };
+
+    syncDockShellState();
+    const startupRetry = window.setTimeout(syncDockShellState, 250);
+
+    return () => window.clearTimeout(startupRetry);
   }, [voiceDockState.phase]);
 
   useEffect(() => {

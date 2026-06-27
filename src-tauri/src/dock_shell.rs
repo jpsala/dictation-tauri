@@ -9,13 +9,13 @@ use std::{
     },
 };
 
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Runtime, WebviewWindow};
+use tauri::{AppHandle, Manager, PhysicalPosition, Runtime, WebviewWindow};
 
 pub const DOCK_WINDOW_LABEL: &str = "main";
 pub const DOCK_WIDTH: i32 = 164;
 pub const DOCK_HEIGHT: i32 = 64;
 pub const DOCK_WINDOW_MARGIN: i32 = 16;
-pub const DOCK_TASKBAR_CLEARANCE: i32 = 48;
+pub const DOCK_BOTTOM_MARGIN: i32 = 16;
 pub const DOCK_POSITION_FILE: &str = "dock-position.v1.json";
 
 static DOCK_VISIBLE: AtomicBool = AtomicBool::new(true);
@@ -54,6 +54,12 @@ pub struct DockShellLayout {
     pub width: i32,
     pub height: i32,
     pub hit_region: DockHitRegion,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct DockLayoutMetrics {
+    compact_width: i32,
+    compact_height: i32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -122,16 +128,22 @@ pub fn configure_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<d
         )
     })?;
     let layout = dock_shell_layout(DockShellState::Idle);
-    let position = resolve_dock_position(app, &window, layout)?;
+    let scale_factor = dock_scale_factor(&window);
+    let native_layout = scale_dock_shell_layout(layout, scale_factor);
+    let position = resolve_dock_position(app, &window, native_layout)?;
 
-    window.set_size(PhysicalSize::new(layout.width as u32, layout.height as u32))?;
-    window.set_position(PhysicalPosition::new(position.x, position.y))?;
     window.set_skip_taskbar(true)?;
     window.set_always_on_top(true)?;
-    platform::show_dock_window_no_activate(&window, position, layout)?;
+    platform::show_dock_window_no_activate(&window, position, native_layout)?;
     eprintln!(
-        "[dictation-tauri][dock] configured position=({}, {}) size={}x{}",
-        position.x, position.y, layout.width, layout.height
+        "[dictation-tauri][dock] configured position=({}, {}) size={}x{} logical={}x{} scale={:.2}",
+        position.x,
+        position.y,
+        native_layout.width,
+        native_layout.height,
+        layout.width,
+        layout.height,
+        scale_factor
     );
 
     Ok(())
@@ -171,6 +183,8 @@ fn apply_dock_shell_state<R: Runtime>(
     })?;
     remember_dock_state(state);
     let layout = dock_shell_layout(state);
+    let scale_factor = dock_scale_factor(&window);
+    let native_layout = scale_dock_shell_layout(layout, scale_factor);
 
     if !DOCK_VISIBLE.load(Ordering::SeqCst) {
         eprintln!("[dictation-tauri][dock] state update stored while hidden state={state:?}");
@@ -181,12 +195,19 @@ fn apply_dock_shell_state<R: Runtime>(
         });
     }
 
-    let position = resolve_state_position(app, &window, layout)?;
+    let position = resolve_state_position(app, &window, native_layout, scale_factor)?;
 
-    platform::show_dock_window_no_activate(&window, position, layout)?;
+    platform::show_dock_window_no_activate(&window, position, native_layout)?;
     eprintln!(
-        "[dictation-tauri][dock] state applied state={:?} position=({}, {}) size={}x{}",
-        state, position.x, position.y, layout.width, layout.height
+        "[dictation-tauri][dock] state applied state={:?} position=({}, {}) size={}x{} logical={}x{} scale={:.2}",
+        state,
+        position.x,
+        position.y,
+        native_layout.width,
+        native_layout.height,
+        layout.width,
+        layout.height,
+        scale_factor
     );
 
     Ok(DockShellSnapshot {
@@ -211,12 +232,13 @@ fn resolve_state_position<R: Runtime>(
     app: &AppHandle<R>,
     window: &WebviewWindow<R>,
     next_layout: DockShellLayout,
+    scale_factor: f64,
 ) -> Result<DockPosition, Box<dyn Error>> {
     let work_area = resolve_work_area(app, window)?;
     let current_position = window.outer_position()?;
     let current_size = window.outer_size()?;
 
-    Ok(calculate_centered_bottom_resize_position(
+    Ok(calculate_centered_bottom_resize_position_with_metrics(
         DockPosition {
             x: current_position.x,
             y: current_position.y,
@@ -225,6 +247,7 @@ fn resolve_state_position<R: Runtime>(
         current_size.height as i32,
         next_layout,
         work_area,
+        dock_layout_metrics(scale_factor),
     ))
 }
 
@@ -241,13 +264,14 @@ fn resolve_work_area<R: Runtime>(
                 "No monitor available for Dictation Dock",
             )
         })?;
-    let work_area = monitor.work_area();
+    let position = monitor.position();
+    let size = monitor.size();
 
     Ok(DockWorkArea {
-        x: work_area.position.x,
-        y: work_area.position.y,
-        width: work_area.size.width as i32,
-        height: work_area.size.height as i32,
+        x: position.x,
+        y: position.y,
+        width: size.width as i32,
+        height: size.height as i32,
     })
 }
 
@@ -275,8 +299,17 @@ fn move_dock_position<R: Runtime>(
             "Dictation Dock window is not available",
         )
     })?;
-    window.set_position(PhysicalPosition::new(position.x, position.y))?;
-    Ok(position)
+    let work_area = resolve_work_area(app, &window)?;
+    let layout = scale_dock_shell_layout(
+        dock_shell_layout(last_dock_state()),
+        dock_scale_factor(&window),
+    );
+    let clamped_position = clamp_dock_position(position, work_area, layout);
+    window.set_position(PhysicalPosition::new(
+        clamped_position.x,
+        clamped_position.y,
+    ))?;
+    Ok(clamped_position)
 }
 
 fn save_current_dock_position<R: Runtime>(
@@ -387,7 +420,7 @@ pub fn calculate_bottom_center_position(
     let available_width = (work_area.width - layout.width).max(0);
     let available_height = (work_area.height - layout.height).max(0);
     let centered_x = work_area.x + available_width / 2;
-    let bottom_y = work_area.y + available_height - DOCK_TASKBAR_CLEARANCE;
+    let bottom_y = work_area.y + available_height - DOCK_BOTTOM_MARGIN;
 
     clamp_dock_position(
         DockPosition {
@@ -399,6 +432,7 @@ pub fn calculate_bottom_center_position(
     )
 }
 
+#[cfg(test)]
 pub fn calculate_centered_bottom_resize_position(
     current_position: DockPosition,
     current_width: i32,
@@ -406,10 +440,24 @@ pub fn calculate_centered_bottom_resize_position(
     next_layout: DockShellLayout,
     work_area: DockWorkArea,
 ) -> DockPosition {
-    if current_width == next_layout.width && current_height == next_layout.height {
-        return current_position;
-    }
+    calculate_centered_bottom_resize_position_with_metrics(
+        current_position,
+        current_width,
+        current_height,
+        next_layout,
+        work_area,
+        dock_layout_metrics(1.0),
+    )
+}
 
+fn calculate_centered_bottom_resize_position_with_metrics(
+    current_position: DockPosition,
+    current_width: i32,
+    current_height: i32,
+    next_layout: DockShellLayout,
+    work_area: DockWorkArea,
+    metrics: DockLayoutMetrics,
+) -> DockPosition {
     let current_layout = DockShellLayout {
         width: current_width,
         height: current_height,
@@ -417,10 +465,21 @@ pub fn calculate_centered_bottom_resize_position(
     };
     let current_is_outside_safe_area =
         clamp_dock_position(current_position, work_area, current_layout) != current_position;
-    let current_content_offset_x = (current_width - DOCK_WIDTH).max(0) / 2;
-    let current_content_offset_y = (current_height - DOCK_HEIGHT).max(0) / 2;
-    let next_content_offset_x = (next_layout.width - DOCK_WIDTH).max(0) / 2;
-    let next_content_offset_y = (next_layout.height - DOCK_HEIGHT).max(0) / 2;
+
+    if current_width == next_layout.width && current_height == next_layout.height {
+        if current_is_outside_safe_area {
+            eprintln!(
+                "[dictation-tauri][dock] clamping dock back into work area from=({}, {})",
+                current_position.x, current_position.y
+            );
+        }
+        return clamp_dock_position(current_position, work_area, next_layout);
+    }
+
+    let current_content_offset_x = (current_width - metrics.compact_width).max(0) / 2;
+    let current_content_offset_y = (current_height - metrics.compact_height).max(0) / 2;
+    let next_content_offset_x = (next_layout.width - metrics.compact_width).max(0) / 2;
+    let next_content_offset_y = (next_layout.height - metrics.compact_height).max(0) / 2;
     let anchored_position = DockPosition {
         x: current_position.x + current_content_offset_x - next_content_offset_x,
         y: current_position.y + current_content_offset_y - next_content_offset_y,
@@ -436,6 +495,29 @@ pub fn calculate_centered_bottom_resize_position(
     clamp_dock_position(anchored_position, work_area, next_layout)
 }
 
+fn dock_scale_factor<R: Runtime>(window: &WebviewWindow<R>) -> f64 {
+    window.scale_factor().unwrap_or(1.0).max(1.0)
+}
+
+fn scale_dock_shell_layout(layout: DockShellLayout, scale_factor: f64) -> DockShellLayout {
+    DockShellLayout {
+        width: scale_dimension(layout.width, scale_factor),
+        height: scale_dimension(layout.height, scale_factor),
+        hit_region: layout.hit_region,
+    }
+}
+
+fn dock_layout_metrics(scale_factor: f64) -> DockLayoutMetrics {
+    DockLayoutMetrics {
+        compact_width: scale_dimension(DOCK_WIDTH, scale_factor),
+        compact_height: scale_dimension(DOCK_HEIGHT, scale_factor),
+    }
+}
+
+fn scale_dimension(value: i32, scale_factor: f64) -> i32 {
+    ((value as f64) * scale_factor).round().max(1.0) as i32
+}
+
 fn clamp_dock_position(
     position: DockPosition,
     work_area: DockWorkArea,
@@ -444,7 +526,7 @@ fn clamp_dock_position(
     let min_x = work_area.x + DOCK_WINDOW_MARGIN;
     let min_y = work_area.y + DOCK_WINDOW_MARGIN;
     let max_x = work_area.x + work_area.width - layout.width - DOCK_WINDOW_MARGIN;
-    let max_y = work_area.y + work_area.height - layout.height - DOCK_TASKBAR_CLEARANCE;
+    let max_y = work_area.y + work_area.height - layout.height - DOCK_BOTTOM_MARGIN;
 
     DockPosition {
         x: clamp_axis(position.x, min_x, max_x),
@@ -615,7 +697,7 @@ mod tests {
                 },
                 dock_shell_layout(DockShellState::Idle),
             ),
-            DockPosition { x: 878, y: 968 }
+            DockPosition { x: 878, y: 1000 }
         );
     }
 
@@ -631,7 +713,7 @@ mod tests {
                 },
                 dock_shell_layout(DockShellState::Idle),
             ),
-            DockPosition { x: -722, y: 892 }
+            DockPosition { x: -722, y: 924 }
         );
     }
 
@@ -668,7 +750,7 @@ mod tests {
                 },
                 dock_shell_layout(DockShellState::Idle),
             ),
-            DockPosition { x: 16, y: 968 }
+            DockPosition { x: 16, y: 1000 }
         );
     }
 
@@ -709,7 +791,26 @@ mod tests {
     }
 
     #[test]
-    fn same_size_state_update_preserves_user_dragged_position() {
+    fn same_size_state_update_preserves_user_dragged_position_inside_safe_area() {
+        assert_eq!(
+            calculate_centered_bottom_resize_position(
+                DockPosition { x: 878, y: 900 },
+                164,
+                64,
+                dock_shell_layout(DockShellState::Recording),
+                DockWorkArea {
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                },
+            ),
+            DockPosition { x: 878, y: 900 }
+        );
+    }
+
+    #[test]
+    fn same_size_state_update_clamps_stale_position_outside_safe_area() {
         assert_eq!(
             calculate_centered_bottom_resize_position(
                 DockPosition { x: 878, y: 1020 },
@@ -723,7 +824,43 @@ mod tests {
                     height: 1080,
                 },
             ),
-            DockPosition { x: 878, y: 1020 }
+            DockPosition { x: 878, y: 1000 }
+        );
+    }
+
+    #[test]
+    fn scales_dock_window_layout_for_high_dpi() {
+        assert_eq!(
+            scale_dock_shell_layout(dock_shell_layout(DockShellState::Idle), 1.5),
+            DockShellLayout {
+                width: 246,
+                height: 96,
+                hit_region: DockHitRegion::Full,
+            }
+        );
+        assert_eq!(
+            scale_dock_shell_layout(dock_shell_layout(DockShellState::Review), 1.5),
+            DockShellLayout {
+                width: 390,
+                height: 135,
+                hit_region: DockHitRegion::Full,
+            }
+        );
+    }
+
+    #[test]
+    fn high_dpi_default_position_uses_scaled_native_size() {
+        assert_eq!(
+            calculate_bottom_center_position(
+                DockWorkArea {
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1040,
+                },
+                scale_dock_shell_layout(dock_shell_layout(DockShellState::Idle), 1.5),
+            ),
+            DockPosition { x: 837, y: 928 }
         );
     }
 
@@ -742,7 +879,7 @@ mod tests {
                     height: 1080,
                 },
             ),
-            DockPosition { x: 830, y: 942 }
+            DockPosition { x: 830, y: 955 }
         );
     }
 
@@ -761,7 +898,7 @@ mod tests {
                     height: 1080,
                 },
             ),
-            DockPosition { x: 830, y: 942 }
+            DockPosition { x: 830, y: 974 }
         );
     }
 }
