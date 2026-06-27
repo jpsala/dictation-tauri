@@ -204,7 +204,7 @@ describe("VoiceDock UI", () => {
     expectAction(html, "Paste last (safe)");
   });
 
-  it("renders verified paste observation as explicit machine-readable dock evidence", () => {
+  it("returns verified paste observation to quiet idle with machine-readable dock evidence", () => {
     const { html } = renderDock(
       createVoiceDockState(
         session({
@@ -221,13 +221,12 @@ describe("VoiceDock UI", () => {
       { allowPasteObservedWording: true },
     );
 
-    expect(html).toContain('data-phase="review"');
+    expect(html).toContain('data-phase="idle"');
     expect(html).toContain('data-delivery-status="paste_observed"');
     expect(html).toContain('data-testid="voice-dock-delivery-status"');
-    expect(html).toContain("Paste observed");
+    expect(html).toContain("Ready");
     expect(html).toContain("Delivery status:");
     expect(html).toContain("paste_observed");
-    expect(html).toContain("Verified observer confirmed target insertion");
-    expectAction(html, "Copy transcript");
+    expect(html).not.toContain("Copy transcript");
   });
 });

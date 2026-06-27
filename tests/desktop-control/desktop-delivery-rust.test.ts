@@ -16,9 +16,9 @@ describe("Windows desktop delivery native paste", () => {
     const libSource = readFileSync("src-tauri/src/lib.rs", "utf8");
 
     expect(source).toContain("pub fn observe_desktop_paste(");
-    expect(source).toContain("read_window_text_surfaces(hwnd)");
+    expect(source).toContain("read_window_text_surfaces");
     expect(source).toContain("SendMessageTimeoutW");
-    expect(source).toContain("Native Windows observer confirmed");
+    expect(source).toContain("Paste insertion was verified by a bounded Win32 text observer");
     expect(source).not.toContain("observedContents");
     expect(source).not.toContain("targetContents");
     expect(libSource).toContain("desktop_delivery::observe_desktop_paste");

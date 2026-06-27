@@ -627,6 +627,7 @@ pub fn desktop_control_escape_cancel_payload() -> DesktopControlHotkeyPayload {
         source: "global_hotkey",
         action: "cancel",
         shortcut: "Escape",
+        target_snapshot: None,
     }
 }
 
@@ -647,6 +648,7 @@ fn desktop_control_hotkey_payload(
         source: "global_hotkey",
         action,
         shortcut: hotkey.shortcut,
+        target_snapshot: None,
     }
 }
 
@@ -744,26 +746,6 @@ pub fn register_desktop_control_hotkey<R: tauri::Runtime>(
                     Some(desktop_control_hotkey_pressed_payload(active_hotkey))
                 } else if event.state == ShortcutState::Released {
                     Some(desktop_control_hotkey_released_payload(active_hotkey))
-                } else {
-                    None
-                };
-
-                let Some(matched_shortcut) = matched_shortcut else {
-                    return;
-                };
-
-                let payload = if event.state == ShortcutState::Pressed {
-                    if matched_shortcut == DESKTOP_CONTROL_PRIMARY_HOTKEY {
-                        Some(desktop_control_primary_hotkey_pressed_payload())
-                    } else {
-                        Some(desktop_control_fallback_hotkey_pressed_payload())
-                    }
-                } else if event.state == ShortcutState::Released {
-                    if matched_shortcut == DESKTOP_CONTROL_PRIMARY_HOTKEY {
-                        Some(desktop_control_primary_hotkey_released_payload())
-                    } else {
-                        Some(desktop_control_fallback_hotkey_released_payload())
-                    }
                 } else {
                     None
                 };

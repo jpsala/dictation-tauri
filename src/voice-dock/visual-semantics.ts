@@ -206,6 +206,10 @@ function getDelivery(input: DockInputState): DeliveryEvidence | undefined {
   return input.state === "idle" ? undefined : input.delivery;
 }
 
+function getDeliveryStatusLabel(delivery: DeliveryEvidence | undefined): string | undefined {
+  return delivery?.status;
+}
+
 function deliveryWasInserted(delivery: DeliveryEvidence | undefined): boolean {
   const verifiedPasteStatus = `${"paste"}_observed`;
   return delivery?.status === "paste_sent" || delivery?.status === verifiedPasteStatus;

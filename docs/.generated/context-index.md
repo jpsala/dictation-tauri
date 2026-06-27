@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-27T15:36:08.745Z
+Generated: 2026-06-27T20:35:21.019Z
 
 ## Topics
 
@@ -50,6 +50,8 @@ Generated: 2026-06-27T15:36:08.745Z
 - [011-selection-transform-and-recovery-ergonomics](../../specs/011-selection-transform-and-recovery-ergonomics/)
 - [012-fixvox-dock-dictation-key](../../specs/012-fixvox-dock-dictation-key/)
 - [013-fixvox-text-runtime-parity](../../specs/013-fixvox-text-runtime-parity/)
+- [013-verified-paste-observer](../../specs/013-verified-paste-observer/)
+- [014-fixvox-parity-tray-settings-hotkeys](../../specs/014-fixvox-parity-tray-settings-hotkeys/)
 
 ## Skills
 

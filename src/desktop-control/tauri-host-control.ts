@@ -4,6 +4,8 @@ import type { TauriDesktopDeliveryTarget } from "../delivery/tauri-desktop-deliv
 import type { DictationKeyEvent } from "./dictation-key";
 
 export const tauriDefaultGlobalHotkeyShortcut = "Alt+Space";
+export const tauriPrimaryDictationKeyShortcut = tauriDefaultGlobalHotkeyShortcut;
+export const tauriFallbackDictationKeyShortcut = "Ctrl+Shift+F9";
 export const tauriGlobalHotkeyShortcut = tauriDefaultGlobalHotkeyShortcut;
 export const tauriGlobalHotkeyEventName = "desktop-control://global-hotkey";
 export const tauriHostCommandEventName = "desktop-control://host-command";

@@ -6,7 +6,7 @@ import {
   type DesktopPasteObserver,
   type PasteObservation,
 } from "./observation";
-import type { DeliveryRequest, DesktopDeliveryGateway } from "./types";
+import type { DeliveryRequest, DesktopDeliveryGateway, DesktopTargetSnapshot } from "./types";
 
 export type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -58,6 +58,14 @@ export function createTauriNativePasteObserver(input: {
   };
 }
 
+function createTargetSnapshot(target: TauriDesktopDeliveryTarget): DesktopTargetSnapshot {
+  return {
+    appLabel: target.windowClass,
+    windowLabel: target.windowTitle,
+    confidence: target.inputLike ? "high" : "low",
+  };
+}
+
 export async function captureTauriDesktopDeliveryTarget(
   invoke: TauriInvoke,
 ): Promise<TauriDesktopDeliveryTarget | undefined> {
@@ -84,6 +92,7 @@ export function createTauriSavedTargetDeliveryGateway(input: {
   invoke: TauriInvoke;
   getTarget: () => TauriDesktopDeliveryTarget | undefined;
   getPressEnterAfterPaste?: () => boolean;
+  observer?: DesktopPasteObserver<TauriDesktopDeliveryTarget>;
 }): DesktopDeliveryGateway {
   return {
     async deliver(request: DeliveryRequest) {
@@ -105,11 +114,29 @@ export function createTauriSavedTargetDeliveryGateway(input: {
           },
         );
 
+        if (result.status === "paste_sent" && input.observer) {
+          try {
+            const observation = await input.observer.observe({
+              sessionId: request.sessionId,
+              text: request.text,
+              target: result.target,
+              targetBefore: request.targetSnapshot,
+              pasteSentReason: result.reason,
+            });
+            return deriveObservedPasteEvidence(request, observation, {
+              pasteSentReason: result.reason,
+            });
+          } catch (error) {
+            return derivePasteObserverErrorEvidence(request, error);
+          }
+        }
+
         return deriveDeliveryEvidence(
           request,
           {
             status: result.status,
             reason: result.reason,
+            targetAfter: createTargetSnapshot(result.target),
           },
           { allowVerifiedPasteObservation: result.status === "paste_observed" },
         );

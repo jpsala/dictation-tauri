@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   createDictationKeyEventFromTauriHotkey,
   tauriDefaultGlobalHotkeyShortcut,
+  tauriFallbackDictationKeyShortcut,
   tauriGlobalHotkeyEventName,
   tauriGlobalHotkeyShortcut,
+  tauriPrimaryDictationKeyShortcut,
   tauriHostCommandEventName,
   type TauriHostCommandPayload,
 } from "../../src/desktop-control/tauri-host-control";

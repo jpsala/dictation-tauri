@@ -152,13 +152,13 @@ mod platform {
         UI::{
             Input::KeyboardAndMouse::{
                 SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
-                VIRTUAL_KEY, VK_CONTROL, VK_RETURN, VK_V,
+                VIRTUAL_KEY, VK_CONTROL, VK_ESCAPE, VK_MENU, VK_RETURN, VK_V,
             },
             WindowsAndMessaging::{
                 BringWindowToTop, EnumChildWindows, GetClassNameW, GetForegroundWindow,
                 GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
-                IsWindowVisible, SendMessageW, SetForegroundWindow, ShowWindow, SW_RESTORE,
-                SW_SHOW, WM_GETTEXT, WM_GETTEXTLENGTH,
+                IsWindowVisible, SendMessageTimeoutW, SendMessageW, SetForegroundWindow,
+                ShowWindow, SMTO_ABORTIFHUNG, SW_RESTORE, SW_SHOW, WM_GETTEXT, WM_GETTEXTLENGTH,
             },
         },
     };
@@ -203,6 +203,47 @@ mod platform {
             input_like,
             reason,
         })
+    }
+
+    pub fn observe_desktop_paste(
+        text: String,
+        target: DesktopDeliveryTarget,
+        timeout_ms: Option<u64>,
+    ) -> Result<DesktopPasteObservationResult, String> {
+        let hwnd = parse_hwnd(&target.frame_hwnd)?;
+        let expected = normalize_observed_text(&text);
+        if expected.trim().is_empty() {
+            return Ok(create_observation(
+                "unsupported",
+                "none",
+                "Observer received empty text.",
+                &target,
+            ));
+        }
+
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.unwrap_or(750).max(50));
+        while Instant::now() <= deadline {
+            let observed = read_window_text_surfaces(hwnd)
+                .into_iter()
+                .map(|value| normalize_observed_text(&value))
+                .any(|value| value.contains(&expected));
+            if observed {
+                return Ok(create_observation(
+                    "observed",
+                    "high",
+                    "Native Windows observer confirmed insertion in the saved target.",
+                    &target,
+                ));
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+
+        Ok(create_observation(
+            "timeout",
+            "low",
+            "Native Windows observer did not see inserted text before timeout.",
+            &target,
+        ))
     }
 
     pub fn deliver_text_to_desktop_target(

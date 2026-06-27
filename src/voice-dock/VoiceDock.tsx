@@ -140,6 +140,7 @@ export function VoiceDock({
       className={`voice-dock voice-dock--${state.phase}`}
       data-testid="voice-dock"
       data-phase={state.phase}
+      data-delivery-status={state.deliveryStatus}
       data-skin="fixvox-skin4"
       role="toolbar"
       aria-label="Voice dock"

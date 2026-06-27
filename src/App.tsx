@@ -939,6 +939,13 @@ export function App() {
     scale: number;
   } | undefined>(undefined);
   const pressEnterAfterPasteRef = useRef(false);
+  const nativePasteObserver = useMemo(
+    () =>
+      isTauri() && isTauriNativePasteObserverEnabled()
+        ? createTauriNativePasteObserver({ invoke })
+        : undefined,
+    [],
+  );
   const desktopDelivery = useMemo(
     () =>
       isTauri()
@@ -946,6 +953,7 @@ export function App() {
             invoke,
             getTarget: () => savedDeliveryTargetRef.current,
             getPressEnterAfterPaste: () => pressEnterAfterPasteRef.current,
+            observer: nativePasteObserver,
           })
         : undefined,
     [nativePasteObserver],

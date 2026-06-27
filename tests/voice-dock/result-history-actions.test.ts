@@ -7,7 +7,7 @@ describe("result history actions", () => {
 
     expect(source).toContain("command: \"select_history_entry\"");
     expect(source).toContain("void pasteLastToForegroundTarget({ summary, text: entry.text })");
-    expect(source).toContain("case \"paste_last_safe\":\n        void pasteLastToForegroundTarget();");
+    expect(source).toMatch(/case "paste_last_safe":\s+void pasteLastToForegroundTarget\(\);/);
     expect(source).toContain("[pipelineUi.summary, recoveryKey, resultHistoryEntries]");
   });
 });

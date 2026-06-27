@@ -19,7 +19,6 @@ pub fn run() {
             settings_window::configure_settings_window(app.handle());
             tray::configure_tray_and_background(app.handle())?;
             desktop_control::register_desktop_control_hotkey(app.handle())?;
-            tray::register_tray(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -32,6 +31,7 @@ pub fn run() {
             desktop_delivery::capture_desktop_delivery_target,
             desktop_delivery::get_cached_desktop_delivery_target,
             desktop_delivery::deliver_text_to_desktop_target,
+            desktop_delivery::observe_desktop_paste,
             companion_window::show_companion,
             companion_window::hide_companion,
             dock_shell::update_dock_shell_state,

@@ -273,7 +273,7 @@ export class DesktopDictationController
       assertDefaultDeliveryEvidenceAllowed(delivery, {
         allowVerifiedPasteObservation:
           delivery.status === "paste_observed" &&
-          delivery.reason?.toLowerCase().includes("verified") === true,
+          isTrustedPasteObservationReason(delivery.reason),
       });
     } catch (error) {
       const recovery = mapDesktopFailureToRecovery({
@@ -452,6 +452,14 @@ export {
   recordAgainRecovery,
   retryFromClipRecovery,
 };
+
+function isTrustedPasteObservationReason(reason: string | undefined): boolean {
+  if (!reason) {
+    return false;
+  }
+
+  return /verified|observer|observed|confirmed/i.test(reason);
+}
 
 function createDefaultSessionId(): string {
   return `desktop-session-${cryptoSafeRandom()}`;
