@@ -490,7 +490,7 @@ async fn transcribe_captured_audio_with_provider_call(
         })
         .unwrap_or(false);
 
-    let direct_config = if use_direct_byok {
+    let mut direct_config = if use_direct_byok {
         match read_host_runtime_config(env_lookup) {
             Ok(config) => Some(config),
             Err(reason) => {
@@ -528,18 +528,24 @@ async fn transcribe_captured_audio_with_provider_call(
     } else {
         match read_managed_runtime_config(env_lookup, &request) {
             Ok(config) => Some(config),
-            Err(reason) => {
-                return HostTranscriptionResponse::SetupError {
-                    error: reason,
-                    provider: Some("fixvox-cloud".to_string()),
-                    model: request
-                        .model
-                        .clone()
-                        .or_else(|| Some(DEFAULT_MODEL.to_string())),
-                    retryable: true,
-                    redacted: true,
-                };
-            }
+            Err(reason) => match read_host_runtime_config(env_lookup) {
+                Ok(config) => {
+                    direct_config = Some(config);
+                    None
+                }
+                Err(_) => {
+                    return HostTranscriptionResponse::SetupError {
+                        error: reason,
+                        provider: Some("fixvox-cloud".to_string()),
+                        model: request
+                            .model
+                            .clone()
+                            .or_else(|| Some(DEFAULT_MODEL.to_string())),
+                        retryable: true,
+                        redacted: true,
+                    };
+                }
+            },
         }
     };
 

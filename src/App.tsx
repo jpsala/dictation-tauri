@@ -17,7 +17,9 @@ import type { DesktopRecoveryAction } from "./desktop-control";
 import {
   captureTauriDesktopDeliveryTarget,
   createCopyDeliveryGateway,
+  createTauriNativePasteObserver,
   createTauriSavedTargetDeliveryGateway,
+  isTauriNativePasteObserverEnabled,
   type DeliveryEvidence as DesktopDeliveryEvidence,
   type TauriDesktopDeliveryTarget,
 } from "./delivery";
@@ -473,7 +475,9 @@ function describeDeliveryEvidence(
     case "uncertain":
       return evidence.reason ?? "Delivery remains uncertain; transcript is still available.";
     case "paste_sent":
-      return "Paste was sent, but observation is not implemented in this batch.";
+      return "Paste was sent, but target insertion was not observed.";
+    case "paste_observed":
+      return "Paste insertion was observed by a verified desktop observer.";
     case "failed":
       return evidence.reason ?? "Delivery failed before a confirmed handoff.";
     default:
@@ -944,7 +948,7 @@ export function App() {
             getPressEnterAfterPaste: () => pressEnterAfterPasteRef.current,
           })
         : undefined,
-    [],
+    [nativePasteObserver],
   );
   const desktopSession = useMemo(() => {
     const controller = new DesktopDictationController({
@@ -1858,7 +1862,9 @@ export function App() {
       }
 
       if (controlAction === "start") {
-        await rememberDeliveryTarget();
+        savedDeliveryTargetRef.current = event.targetSnapshot?.inputLike
+          ? event.targetSnapshot
+          : await captureTauriDesktopDeliveryTarget(invoke);
         setCapture({
           state: "requesting_permission",
           message: captureRuntime.permissionMessage,

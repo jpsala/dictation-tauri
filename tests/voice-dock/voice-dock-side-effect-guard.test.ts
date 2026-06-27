@@ -12,11 +12,12 @@ const forbiddenRendererSideEffectMarkers = [
   "writeText(",
   "readText(",
   "document.execCommand",
-  "paste_observed",
   "Groq",
   "OPENAI_API_KEY",
   "GROQ_API_KEY",
 ] as const;
+
+const forbiddenDictationKeyMarkers = ["paste_observed"] as const;
 
 describe("voice dock and dictation-key side-effect guardrails", () => {
   it("keeps Checkpoint A renderer helpers provider-free and desktop-side-effect free", () => {
@@ -28,6 +29,11 @@ describe("voice dock and dictation-key side-effect guardrails", () => {
       const source = readFileSync(file, "utf8");
       for (const marker of forbiddenRendererSideEffectMarkers) {
         expect(source, `${file} must not contain ${marker}`).not.toContain(marker);
+      }
+      if (file.endsWith("dictation-key.ts")) {
+        for (const marker of forbiddenDictationKeyMarkers) {
+          expect(source, `${file} must not contain ${marker}`).not.toContain(marker);
+        }
       }
     }
   });

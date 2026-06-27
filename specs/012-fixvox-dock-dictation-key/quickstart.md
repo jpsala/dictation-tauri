@@ -31,11 +31,25 @@ bun scripts/agent-context-audit.ts
 
 ## Live Dev Dock
 
-Run the app as the current testable desktop surface:
+Run the app as the current testable desktop surface and keep it running during dock work:
 
 ```powershell
-npm run tauri:dev
+npm run dev:desktop
 ```
+
+Use this recovery helper after any Rust/Tauri/hotkey/window change, or whenever the dock is not visible/stale:
+
+```powershell
+npm run dev:desktop:restart
+```
+
+Check the current desktop dev surface with:
+
+```powershell
+npm run dev:desktop:status
+```
+
+`dev:desktop` is the canonical Tauri dev command (`tauri dev`, like Fixvox's npm-script entrypoints). `dev:desktop:restart` wraps the Windows cleanup helper (`scripts/dev-dock.ps1`) to kill stale `dictation-tauri`/port-1420/Vite processes before relaunching. Renderer/CSS/TypeScript changes hot-refresh through Vite. Rust, Tauri config, global-shortcut, native capture, desktop delivery, and window-shape changes require a restart. Treat the dev dock as a standing surface: before and after a manual smoke, confirm a `dictation-tauri` process with `Dictation Dock` title is running.
 
 Current behavior:
 
@@ -43,7 +57,7 @@ Current behavior:
 - Idle is a Fixvox-like transparent 7-dot dock (`164x64`) with no titlebar, panel chrome, header text, or visible developer controls.
 - Uses Vite dev URL `http://127.0.0.1:1420`, so renderer/CSS changes hot-refresh while the dev app is running.
 - Keeps the window visible and `alwaysOnTop` for iterative manual testing.
-- The dock remains safe by default: no selected-text capture, no paste automation, no durable history, no `paste_observed` claim.
+- The dock remains safe by default: no selected-text capture, no durable history, no `paste_observed` claim. Paste delivery remains gated/honest as `paste_sent` until a verifier exists.
 - Developer evidence and provider controls are hidden from the compact dock surface.
 - Active recording reveals side controls; terminal/recovery states show a compact status chip such as `Needs attention` without paste or selection side effects.
 
@@ -256,9 +270,11 @@ Target daily-use behavior after this spec lands:
 These require explicit local approval because they use real desktop side effects:
 
 ```powershell
-npm run tauri:dev
-# Manual smoke A: current safe dictation key Ctrl+Shift+F9 hold/tap -> fresh WAV -> review/recovery -> optional copy fallback
-# Manual smoke B: optional Alt+Space compatibility check
+npm run dev:desktop:restart
+powershell -ExecutionPolicy Bypass -File scripts/smoke-dock.ps1 -Mode AltSpace -RecordSeconds 6
+powershell -ExecutionPolicy Bypass -File scripts/smoke-dock.ps1 -Mode Fallback -RecordSeconds 6
+# Manual smoke A: primary dictation key Alt+Space hold/tap -> fresh WAV -> review/recovery -> optional copy fallback
+# Manual smoke B: fallback dictation key Ctrl+Shift+F9 hold/tap -> fresh WAV -> review/recovery -> optional copy fallback
 ```
 
 Evidence rules:
@@ -276,16 +292,30 @@ Evidence rules:
 - Artifact evidence: fresh native WAV was created at ignored path `artifacts/microphone-capture/audio/capture-native-1782234499663.wav` (481,964 bytes).
 - Provider/selection/paste: no selected text, no paste automation, no `paste_observed`, no Alt+Space. No raw transcript or secret was recorded in docs/chat.
 
+### Computer-Use Smoke - 2026-06-23
+
+- Approval: JP asked to keep dev always running, use computer use, and run a complete smoke.
+- Initial failure: dock showed `Needs attention` because the repo had no local `.env` and the Tauri path required managed Fixvox identity before falling back. Dev restart also left a stale Vite process on port `1420`, so the dock process could be stale.
+- Fix: copied only gitignored local dev keys from `C:/dev/fixvox/.env` into `C:/dev/dictation/.env` without printing secrets, added Rust fallback from managed Fixvox setup failure to direct Groq BYOK when configured, and hardened `scripts/dev-dock.ps1 -Restart` to kill stale `dictation-tauri` plus port-1420/Vite processes before relaunch.
+- Dev surface: clean `npm run dev:desktop:restart` launched and left `dictation-tauri` running with `Dictation Dock` window title; logs are under ignored `artifacts/microphone-capture/reports/tauri-dev-live*.log`.
+- Follow-up fix: native hotkey payloads now carry the foreground delivery target captured synchronously in the Rust shortcut handler, and Windows paste delivery dismisses a transient Alt+Space system menu before sending Ctrl+V. This avoids racing the renderer target capture and prevents Alt+Space menu focus from swallowing paste.
+- Primary key smoke: `scripts/smoke-dock.ps1 -Mode AltSpace -RecordSeconds 6` sent `Alt+Space` twice, created fresh WAV `capture-native-1782248488074.wav` / `capture-native-1782248980021.wav`, restored clipboard sentinel, and changed the controlled target from empty to non-empty (`34`/`270` bytes redacted).
+- Fallback key smoke: `scripts/smoke-dock.ps1 -Mode Fallback -RecordSeconds 6` sent `Ctrl+Shift+F9` twice, created fresh WAV `capture-native-1782248836922.wav` / `capture-native-1782249026565.wav`, restored clipboard sentinel, and changed the controlled target from empty to non-empty (`147`/`222` bytes redacted).
+- Evidence model: this is successful insert-at-cursor smoke with `paste_sent` semantics, not `paste_observed`; the non-empty controlled file is smoke evidence, but there is still no general verified observer.
+- Guardrails: reports and scratch targets are ignored artifacts; raw transcript/target content and secrets were not copied into docs/chat.
+
 ## Alt+Space Decision Gate
 
-`Alt+Space` is the desired Fixvox-like default, but Windows reserves it.
+`Alt+Space` is the desired Fixvox-like default, and the first Rust-owned Tauri path is now code-enabled: `tauri-plugin-global-shortcut` registers `Alt+Space` plus fallback `Ctrl+Shift+F9`, emits the same `pressed`/`released` event contract, and the renderer accepts both shortcuts through the existing hold/tap resolver.
 
-Before making it default, prove one of these:
+Status 2026-06-23:
 
-1. Tauri/global-shortcut can register and emit reliable press/release without opening the system menu; or
-2. a Rust-owned native hook/fallback is designed, reviewed, and compile-guarded without AutoHotkey.
+- Code/default: `Alt+Space` is now the primary displayed dictation key in the Tauri dock.
+- Fallback: `Ctrl+Shift+F9` remains registered for recovery if `Alt+Space` is taken or unreliable on a machine.
+- Safe checks: provider-free hotkey adapter tests, full Vitest suite, build, visual check, and `cargo check` passed.
+- Manual smoke: still required before calling `Alt+Space` fully proven on Windows. Smoke must verify no system-menu leak, press/release reliability, fresh WAV creation, and honest delivery state.
 
-If neither is true, keep the same hold/tap semantics on a configurable fallback key and document Alt+Space as future work.
+If manual smoke shows `Alt+Space` is unreliable, keep the fallback and design a Rust-owned native hook/fallback without AutoHotkey.
 
 ## Out Of Scope For First Landing
 

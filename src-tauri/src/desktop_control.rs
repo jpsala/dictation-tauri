@@ -55,6 +55,8 @@ pub struct DesktopControlHotkeyPayload {
     pub source: &'static str,
     pub action: &'static str,
     pub shortcut: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_snapshot: Option<crate::desktop_delivery::DesktopDeliveryTarget>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -746,7 +748,31 @@ pub fn register_desktop_control_hotkey<R: tauri::Runtime>(
                     None
                 };
 
-                if let Some(payload) = payload {
+                let Some(matched_shortcut) = matched_shortcut else {
+                    return;
+                };
+
+                let payload = if event.state == ShortcutState::Pressed {
+                    if matched_shortcut == DESKTOP_CONTROL_PRIMARY_HOTKEY {
+                        Some(desktop_control_primary_hotkey_pressed_payload())
+                    } else {
+                        Some(desktop_control_fallback_hotkey_pressed_payload())
+                    }
+                } else if event.state == ShortcutState::Released {
+                    if matched_shortcut == DESKTOP_CONTROL_PRIMARY_HOTKEY {
+                        Some(desktop_control_primary_hotkey_released_payload())
+                    } else {
+                        Some(desktop_control_fallback_hotkey_released_payload())
+                    }
+                } else {
+                    None
+                };
+
+                if let Some(mut payload) = payload {
+                    if event.state == ShortcutState::Pressed {
+                        payload.target_snapshot =
+                            crate::desktop_delivery::capture_desktop_delivery_target().ok();
+                    }
                     let _ = app.emit(DESKTOP_CONTROL_HOTKEY_EVENT, payload);
                 }
             })
@@ -1325,6 +1351,7 @@ mod tests {
                 source: "global_hotkey",
                 action: "released",
                 shortcut: "Ctrl+Shift+F9",
+                target_snapshot: None,
             }
         );
     }

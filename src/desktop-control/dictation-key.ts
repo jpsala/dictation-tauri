@@ -1,3 +1,4 @@
+import type { TauriDesktopDeliveryTarget } from "../delivery/tauri-desktop-delivery";
 import type { DesktopControlAction } from "./types";
 
 export type DictationKeyEventKind = "pressed" | "released" | "cancel";
@@ -8,6 +9,7 @@ export type DictationKeyEvent = {
   source: "fake_host_event" | "global_hotkey" | "dock_button";
   receivedAt: string;
   eventId?: string;
+  targetSnapshot?: TauriDesktopDeliveryTarget;
 };
 
 export type DictationKeyState = {

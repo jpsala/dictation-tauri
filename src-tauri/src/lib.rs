@@ -19,6 +19,7 @@ pub fn run() {
             settings_window::configure_settings_window(app.handle());
             tray::configure_tray_and_background(app.handle())?;
             desktop_control::register_desktop_control_hotkey(app.handle())?;
+            tray::register_tray(app)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

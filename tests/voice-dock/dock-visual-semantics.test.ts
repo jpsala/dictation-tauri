@@ -136,6 +136,8 @@ describe("voice dock visual semantics", () => {
     ).toMatchObject({
       phase: "review",
       statusText: "Review ready",
+      deliveryStatus: "available",
+      deliveryStatusLabel: "available",
       canCopy: true,
       canPasteLastSafe: true,
       recovery: {

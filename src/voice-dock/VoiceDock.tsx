@@ -201,6 +201,14 @@ export function VoiceDock({
           {state.statusDetail ? (
             <p className="voice-dock__detail">{state.statusDetail}</p>
           ) : null}
+          {state.deliveryStatusLabel ? (
+            <p
+              className="voice-dock__delivery-status"
+              data-testid="voice-dock-delivery-status"
+            >
+              Delivery status: <code>{state.deliveryStatusLabel}</code>
+            </p>
+          ) : null}
           <div
             className="voice-dock__vu"
             role="meter"
