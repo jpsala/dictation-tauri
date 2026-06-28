@@ -935,7 +935,21 @@ async fn preflight_fixvox_managed_transcription(
         }
     };
 
-    let response = match reqwest::Client::new()
+    let client = match fixvox_cloud::fixvox_http_client() {
+        Ok(client) => client,
+        Err(error) => {
+            return Some(ProviderTranscriptionOutcome::ProviderError {
+                code: error.code,
+                message: error.message,
+                provider: Some(config.provider.clone()),
+                model: Some(config.model.clone()),
+                latency_ms: Some(elapsed_ms(started_at)),
+                request_id: None,
+                fixvox_metadata: None,
+            });
+        }
+    };
+    let response = match client
         .post(fixvox_cloud::preflight_endpoint(&config.backend_base_url))
         .header("X-Device-Id", config.device_id.clone())
         .json(&body)
@@ -1070,7 +1084,21 @@ async fn transcribe_fixvox_managed_audio(
         form = form.text("language", language);
     }
 
-    let response = match reqwest::Client::new()
+    let client = match fixvox_cloud::fixvox_http_client() {
+        Ok(client) => client,
+        Err(error) => {
+            return ProviderTranscriptionOutcome::ProviderError {
+                code: error.code,
+                message: error.message,
+                provider: Some(config.provider),
+                model: Some(config.model),
+                latency_ms: Some(elapsed_ms(started_at)),
+                request_id: None,
+                fixvox_metadata: None,
+            };
+        }
+    };
+    let response = match client
         .post(&preview.endpoint)
         .header("X-Device-Id", config.device_id.clone())
         .multipart(form)
@@ -1283,7 +1311,16 @@ async fn apply_fixvox_managed_postprocess(
         }
     };
 
-    let http_response = match reqwest::Client::new()
+    let client = match fixvox_cloud::fixvox_http_client() {
+        Ok(client) => client,
+        Err(_) => {
+            return with_post_process_evidence(
+                response,
+                base_evidence(true, true, raw_text.len(), None, None, None),
+            );
+        }
+    };
+    let http_response = match client
         .post(&preview.endpoint)
         .header(header::CONTENT_TYPE, "application/json")
         .header("X-Device-Id", config.device_id.clone())

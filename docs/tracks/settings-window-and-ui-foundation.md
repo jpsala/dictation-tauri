@@ -101,6 +101,17 @@ Operativa live-app: para que JP pruebe sin ventanas de terminal ni foco robado, 
 
 Para cualquier superficie de diseño durable, o cuando JP lo pida, usar el flujo documentado en `docs/topics/ui-design-and-impeccable.md`: screenshot real, prompt v0 acotado, critique/polish Impeccable, implementacion manual, screenshot/checks y feedback JP antes de ampliar alcance.
 
+## Update 2026-06-28: Settings secciones + HeroUI CSS
+
+JP reporto tres problemas: Settings tardaba demasiado en renderizar, solo Hotkeys aparecia habilitada en el sidebar, y dentro de Hotkeys aparecian varias secciones superpuestas. Se corrigio el modelo de navegacion y el costo CSS:
+
+- `src/settings/SettingsSurface.tsx` ahora tiene `selectedSection`: todas las secciones del sidebar son navegables y se renderiza **solo un panel seleccionado** por vez. Hotkeys y Cloud tienen panel real; General/Dock/Delivery/Presets/About muestran placeholder compacto hasta que haya controles reales.
+- Cloud dejo de renderizarse debajo de Hotkeys; esto evita que contenido de secciones distintas compita por la misma grilla compacta de `720x480`.
+- El estado Cloud se carga solo al abrir la seccion Cloud, no durante el primer render de Hotkeys.
+- `src/settings/settings-heroui.css` dejo de importar `@tailwindcss`/`@heroui/styles` completos en runtime. La superficie usa CSS local escopado porque actualmente no usa componentes HeroUI reales; la importacion global completa era trabajo extra y podia afectar first paint/layout.
+- Research web documentado en `docs/topics/ui-design-and-impeccable.md`: HeroUI v3 es CSS-first, permite imports selectivos de estilos, usa `className`/BEM/CSS variables, y React Aria Tabs separa selected vs disabled.
+- Checks: `npm run test:pipeline -- tests/settings` y `npm run build` OK.
+
 ## Proximo Paso
 
 Siguiente lote recomendado:
@@ -108,6 +119,7 @@ Siguiente lote recomendado:
 1. Que JP pruebe la instancia viva desde `artifacts/live-app/20260626-hotkey-recorder-alt3-final/tauri-dev.log`; preferencia actual queda en `Alt+3` por pedido explicito.
 2. Si se agregan mas combinaciones soportadas, mantener validacion/registro/persistencia host-owned y reutilizar el copy de errores/conflictos de `src/settings/hotkey-edit-copy.ts`.
 3. No reintroducir listas de alternativas para la hotkey principal; mantener un solo campo editable.
+4. Si Settings vuelve a usar componentes HeroUI, importar estilos de forma selectiva y validar screenshot Tauri 720x480 antes de ampliar alcance.
 
 ## Guardrails
 

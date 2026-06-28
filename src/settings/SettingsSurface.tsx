@@ -8,17 +8,31 @@ import {
   type TauriHotkeyRegistrationApplyResult,
   type TauriHotkeyRegistrationPreview,
 } from "../desktop-control/tauri-host-control";
+import {
+  activateFixvoxDevice,
+  getFixvoxCloudStatus,
+  refreshFixvoxPolicy,
+  registerFixvoxDevice,
+  shouldConfirmFixvoxCloudOperation,
+  summarizeFixvoxCloudStatus,
+  type FixvoxCloudStatus,
+  type FixvoxCloudOperation,
+} from "./fixvox-cloud-control";
 import { formatHotkeyEditReason } from "./hotkey-edit-copy";
 import { nativeHotkeyEditContract } from "./hotkey-edit-contract";
+import "./settings-heroui.css";
 
 const sections = [
   { id: "general", label: "General", state: "Later" },
   { id: "hotkeys", label: "Hotkeys", state: "Active" },
+  { id: "cloud", label: "Cloud", state: "New" },
   { id: "dock", label: "Dock", state: "Later" },
   { id: "delivery", label: "Delivery", state: "Later" },
   { id: "presets", label: "Presets", state: "Later" },
   { id: "about", label: "About", state: "Later" },
 ] as const;
+
+type SettingsSectionId = (typeof sections)[number]["id"];
 
 type HotkeyRow = {
   id: string;
@@ -33,7 +47,7 @@ type EditorNotice = {
   message: string;
 };
 
-type BusyAction = "preview" | "apply";
+type BusyAction = "preview" | "apply" | FixvoxCloudOperation | "status";
 
 type CaptureState = "idle" | "recording";
 
@@ -56,10 +70,16 @@ export function SettingsSurface() {
   });
   const [busyAction, setBusyAction] = useState<BusyAction | undefined>();
   const [captureState, setCaptureState] = useState<CaptureState>("idle");
-
-  useEffect(() => {
-    void import("./settings-heroui.css");
-  }, []);
+  const [cloudStatus, setCloudStatus] = useState<FixvoxCloudStatus | undefined>();
+  const [cloudNotice, setCloudNotice] = useState<EditorNotice>({
+    tone: "idle",
+    message: "Local cloud status loads from host-owned app data.",
+  });
+  const [inviteCode, setInviteCode] = useState("");
+  const [selectedSection, setSelectedSection] = useState<SettingsSectionId>("hotkeys");
+  const selectedSectionMeta = sections.find((section) => section.id === selectedSection) ?? sections[1];
+  const settingsHeading = sectionHeading(selectedSectionMeta.id);
+  const settingsSummary = sectionSummary(selectedSectionMeta.id);
 
   useEffect(() => {
     if (!tauriRuntime) {
@@ -77,6 +97,14 @@ export function SettingsSurface() {
         setEditingShortcut("Alt+Space");
       });
   }, [tauriRuntime]);
+
+  useEffect(() => {
+    if (!tauriRuntime || selectedSection !== "cloud") {
+      return;
+    }
+
+    void loadCloudStatus();
+  }, [tauriRuntime, selectedSection]);
 
   useEffect(() => {
     if (!tauriRuntime) {
@@ -289,6 +317,69 @@ export function SettingsSurface() {
     }
   }
 
+  async function loadCloudStatus() {
+    setBusyAction("status");
+    try {
+      const status = await getFixvoxCloudStatus();
+      setCloudStatus(status);
+      setCloudNotice({
+        tone: status ? "success" : "warning",
+        message: summarizeFixvoxCloudStatus(status),
+      });
+    } catch (error) {
+      setCloudNotice({
+        tone: "danger",
+        message: `Cloud status failed: ${formatHotkeyEditReason(error)}`,
+      });
+    } finally {
+      setBusyAction(undefined);
+    }
+  }
+
+  async function runCloudOperation(operation: FixvoxCloudOperation) {
+    const code = inviteCode.trim();
+    if (operation === "activate" && !code) {
+      setCloudNotice({ tone: "warning", message: "Enter an invite code before activation." });
+      return;
+    }
+
+    if (!shouldConfirmFixvoxCloudOperation(operation, code)) {
+      setCloudNotice({ tone: "warning", message: "Cloud operation cancelled before contact." });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      operation === "activate"
+        ? "Activate this Fixvox Tauri device against Fixvox Cloud using this invite code?"
+        : "Contact Fixvox Cloud now to update this device state?",
+    );
+    if (!confirmed) {
+      setCloudNotice({ tone: "idle", message: "Cloud operation cancelled." });
+      return;
+    }
+
+    setBusyAction(operation);
+    try {
+      const status = operation === "activate"
+        ? await activateFixvoxDevice(code)
+        : operation === "register"
+          ? await registerFixvoxDevice()
+          : await refreshFixvoxPolicy();
+      setCloudStatus(status);
+      setCloudNotice({ tone: "success", message: summarizeFixvoxCloudStatus(status) });
+      if (operation === "activate") {
+        setInviteCode("");
+      }
+    } catch (error) {
+      setCloudNotice({
+        tone: "danger",
+        message: `Fixvox Cloud ${operation} failed: ${formatHotkeyEditReason(error)}`,
+      });
+    } finally {
+      setBusyAction(undefined);
+    }
+  }
+
   return (
     <main className="settings-window-shell" aria-label="Dictation settings" data-theme="quiet-dark">
       <aside className="settings-sidebar" aria-label="Settings sections">
@@ -302,14 +393,14 @@ export function SettingsSurface() {
 
         <nav className="settings-nav-list">
           {sections.map((section) => {
-            const isActive = section.id === "hotkeys";
+            const isActive = section.id === selectedSection;
             return (
               <button
                 key={section.id}
                 type="button"
                 className="settings-nav-item"
                 aria-current={isActive ? "page" : undefined}
-                disabled={!isActive}
+                onClick={() => setSelectedSection(section.id)}
               >
                 <span>{section.label}</span>
                 <small>{section.state}</small>
@@ -319,18 +410,17 @@ export function SettingsSurface() {
         </nav>
       </aside>
 
-      <section className="settings-content" aria-labelledby="settings-hotkeys-title">
+      <section className="settings-content" aria-labelledby={`settings-${selectedSection}-title`}>
         <header className="settings-header">
           <div className="settings-title-block">
-            <p className="settings-path">Settings / Hotkeys</p>
-            <h1 id="settings-hotkeys-title">Keyboard shortcuts</h1>
-            <p>
-              Host-owned runtime bindings.
-            </p>
+            <p className="settings-path">Settings / {selectedSectionMeta.label}</p>
+            <h1 id={`settings-${selectedSection}-title`}>{settingsHeading}</h1>
+            <p>{settingsSummary}</p>
           </div>
-          <span className="settings-status-badge">Persistent edit</span>
+          <span className="settings-status-badge">{selectedSectionMeta.state}</span>
         </header>
 
+        {selectedSection === "hotkeys" ? (
         <section className="settings-panel" aria-labelledby="settings-current-bindings-title">
           <div className="settings-panel-header">
             <div>
@@ -401,9 +491,149 @@ export function SettingsSurface() {
             </ol>
           </section>
         </section>
+        ) : selectedSection === "cloud" ? (
+        <section className="settings-panel settings-cloud-panel" aria-labelledby="settings-cloud-title">
+          <div className="settings-panel-header">
+            <div>
+              <h2 id="settings-cloud-title">Fixvox Cloud</h2>
+              <p>Device, activation, policy/preflight and managed runtime.</p>
+            </div>
+            <span className="settings-panel-count">{cloudStatus?.deviceRegistered ? "Linked" : "Local"}</span>
+          </div>
+
+          <div className="settings-hotkey-list" aria-label="Fixvox Cloud status">
+            <div className="settings-hotkey-row">
+              <div className="settings-hotkey-copy">
+                <strong>Device status</strong>
+                <span>{summarizeFixvoxCloudStatus(cloudStatus)}</span>
+              </div>
+              <div className="settings-hotkey-value" aria-label="Fixvox Cloud device status">
+                <kbd>{cloudStatus?.deviceIdRedacted ?? "Not linked"}</kbd>
+                <small>{cloudStatus?.installIdRedacted ? "redacted" : "local"}</small>
+              </div>
+            </div>
+            <div className="settings-hotkey-row">
+              <div className="settings-hotkey-copy">
+                <strong>Policy</strong>
+                <span>{cloudStatus?.backendBaseUrl ?? "https://auth-fixvox.jpsala.dev"}</span>
+              </div>
+              <div className="settings-hotkey-value" aria-label="Fixvox Cloud policy status">
+                <kbd>{cloudStatus?.policyLabel ?? "Activation needed"}</kbd>
+                <small>{cloudStatus?.policyId ?? "pending"}</small>
+              </div>
+            </div>
+          </div>
+
+          <section className="settings-hotkey-editor" aria-labelledby="settings-cloud-activation-title">
+            <div className="settings-hotkey-editor-topline">
+              <div className="settings-hotkey-editor-copy">
+                <div className="settings-native-plan-heading">
+                  <h3 id="settings-cloud-activation-title">Device activation</h3>
+                  <span>Cloud gated</span>
+                </div>
+                <p>Invite-code activation is host-owned and asks before contacting Fixvox Cloud.</p>
+              </div>
+            </div>
+
+            <input
+              className="settings-hotkey-recorder settings-cloud-invite-input"
+              value={inviteCode}
+              onChange={(event) => setInviteCode(event.target.value)}
+              placeholder="Enter invite code"
+              aria-label="Fixvox Cloud invite code"
+              disabled={!tauriRuntime || Boolean(busyAction)}
+            />
+
+            <div className="settings-hotkey-editor-actions">
+              <button
+                type="button"
+                className="settings-editor-button settings-editor-button-secondary"
+                disabled={!tauriRuntime || Boolean(busyAction)}
+                onClick={() => void loadCloudStatus()}
+              >
+                {busyAction === "status" ? "Reading" : "Refresh local status"}
+              </button>
+              <button
+                type="button"
+                className="settings-editor-button settings-editor-button-secondary"
+                disabled={!tauriRuntime || Boolean(busyAction)}
+                onClick={() => void runCloudOperation("refresh")}
+              >
+                {busyAction === "refresh" ? "Refreshing" : "Refresh policy"}
+              </button>
+              <button
+                type="button"
+                className="settings-editor-button settings-editor-button-primary"
+                disabled={!tauriRuntime || Boolean(busyAction) || !inviteCode.trim()}
+                onClick={() => void runCloudOperation("activate")}
+              >
+                {busyAction === "activate" ? "Activating" : "Activate device"}
+              </button>
+            </div>
+
+            <div className="settings-hotkey-editor-feedback" data-tone={cloudNotice.tone}>
+              <span>IDs redacted</span>
+              <span>{cloudStatus?.statePath ?? "Host-owned app data"}</span>
+              <span>{cloudStatus?.lastRegisterErrorCode ?? "No cloud error"}</span>
+              <strong>{cloudNotice.message}</strong>
+            </div>
+          </section>
+        </section>
+        ) : (
+        <section className="settings-panel settings-planned-panel" aria-labelledby={`settings-${selectedSection}-planned-title`}>
+          <div className="settings-panel-header">
+            <div>
+              <h2 id={`settings-${selectedSection}-planned-title`}>{selectedSectionMeta.label}</h2>
+              <p>This section is available for navigation, but its controls are intentionally not implemented yet.</p>
+            </div>
+            <span className="settings-panel-count">Planned</span>
+          </div>
+          <p className="settings-readonly-note">
+            Settings renders one selected section at a time to keep the window fast and avoid hidden panels overlapping compact desktop layouts.
+          </p>
+        </section>
+        )}
       </section>
     </main>
   );
+}
+
+function sectionHeading(sectionId: SettingsSectionId): string {
+  switch (sectionId) {
+    case "hotkeys":
+      return "Keyboard shortcuts";
+    case "cloud":
+      return "Fixvox Cloud";
+    case "general":
+      return "General";
+    case "dock":
+      return "Dock";
+    case "delivery":
+      return "Delivery";
+    case "presets":
+      return "Presets";
+    case "about":
+      return "About";
+  }
+}
+
+function sectionSummary(sectionId: SettingsSectionId): string {
+  switch (sectionId) {
+    case "hotkeys":
+      return "Host-owned runtime bindings.";
+    case "cloud":
+      return "Device, activation, policy/preflight and managed runtime.";
+    case "general":
+      return "Base app preferences will live here after the hotkey and cloud flows are stable.";
+    case "dock":
+      return "Dock behavior remains controlled by the native shell until this section gets real controls.";
+    case "delivery":
+      return "Insertion, copy fallback and observer settings are planned, not editable from Settings yet.";
+    case "presets":
+      return "Assistant and transform presets stay in the companion flow until this surface is designed.";
+    case "about":
+      return "Build, diagnostics and support metadata are planned for a later compact panel.";
+  }
 }
 
 function shortcutFromKeyboardEvent(event: KeyboardEvent): string | undefined {

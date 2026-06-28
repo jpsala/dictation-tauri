@@ -26,14 +26,15 @@ primary_refs:
 
 ## Norte
 
-Dictation Tauri debe reemplazar el runtime desktop hecho en el runtime desktop legacy de Fixvox por Rust/Tauri, pero puede usar la misma infraestructura cloud de Fixvox cuando sea conveniente.
+Dictation Tauri debe reemplazar el runtime desktop hecho en el runtime desktop legacy de Fixvox por Rust/Tauri, usando Fixvox Cloud como control-plane canonico para device, activation, policy/preflight y managed runtime.
 
-La regla no es "copiar codigo Fixvox" ni "evitar Fixvox". La regla es:
+Decision 2026-06-27: este repo es el nuevo cliente desktop de Fixvox, no un producto cloud separado. La regla no es "copiar codigo Fixvox" ni "evitar Fixvox". La regla es:
 
 - adoptar lo que ya funciona en Fixvox como producto/runtime;
 - redisenar la frontera desktop en Rust/Tauri;
 - usar contratos cloud estables en vez de acoplarse a internals Bun;
-- hacer algo distinto solo cuando Tauri/Rust, packaging, seguridad o simplicidad lo justifiquen.
+- hacer algo distinto solo cuando Tauri/Rust, packaging, seguridad o simplicidad lo justifiquen;
+- mantener un canal de release Tauri separado mientras el cliente Fixvox legacy/Electrobun pueda seguir usando sus artifacts.
 
 ## Hallazgo Actual
 
@@ -131,6 +132,8 @@ Para speech, el body es multipart OpenAI-compatible:
 
 ### Telemetry y headers utiles
 
+Cliente desktop debe enviar `User-Agent: fixvox-tauri/<version>` en llamadas a Fixvox Cloud. Smoke real 2026-06-28 mostro que Cloudflare puede devolver `403 error code: 1010` a requests sin User-Agent aunque el invite code sea valido; con User-Agent estable, `/v2/device/activate` y `/v2/device/register` devolvieron policy `pro` correctamente.
+
 El proxy devuelve headers que Dictation Tauri deberia conservar en `HostTranscriptionResponse`/reports redacted:
 
 - `X-Fixvox-Request-Id`
@@ -200,7 +203,7 @@ Formato: `installId`, `deviceId`, ultimo resultado de registro (`lastRegisterOk`
 
 ## Camino De Implementacion
 
-La spec guia es `specs/009-fixvox-cloud-runtime-port/`.
+La spec guia historica es `specs/009-fixvox-cloud-runtime-port/`. La track viva para el nuevo goal instalable/cloud es `docs/tracks/fixvox-tauri-cloud-release.md`.
 
 Orden recomendado:
 
@@ -213,3 +216,6 @@ Orden recomendado:
 7. Agregar preflight antes de provider real managed.
 8. Hacer smoke manual gated con audio ignorado.
 9. Recién despues, sumar postprocess cloud y delivery/hotkey.
+10. Crear installer Windows local reproducible con identidad `Fixvox Tauri`, app id separado `dev.jpsala.fixvox-tauri` y bundle NSIS local bajo `src-tauri/target/release/bundle/nsis/`.
+11. Completar activation/policy snapshot como cliente Fixvox Tauri.
+12. Publicar artifact separado para Tauri en el release repo de Fixvox solo con aprobacion explicita; no pisar el canal/update artifacts Fixvox legacy/Electrobun.

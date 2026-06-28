@@ -34,7 +34,8 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:dev:hidden": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-tauri-dev-hidden.ps1",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "release:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-windows.ps1"
   },
   "dependencies": {
     "@heroui/react": "^3.2.1",

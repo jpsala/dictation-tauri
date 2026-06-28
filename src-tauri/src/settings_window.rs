@@ -15,7 +15,7 @@ pub fn configure_settings_window<R: Runtime>(app: &AppHandle<R>) {
 
 pub fn show_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     eprintln!("[dictation-tauri][settings] show requested");
-    let window = get_or_create_settings_window(app)
+    let window = create_fresh_settings_window(app)
         .map_err(|error| format!("settings window unavailable: {error}"))?;
 
     window
@@ -34,15 +34,13 @@ pub fn show_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<()
     Ok(())
 }
 
-fn get_or_create_settings_window<R: Runtime>(
-    app: &AppHandle<R>,
-) -> tauri::Result<WebviewWindow<R>> {
+fn create_fresh_settings_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<WebviewWindow<R>> {
     if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
-        eprintln!("[dictation-tauri][settings] using existing window");
-        return Ok(window);
+        eprintln!("[dictation-tauri][settings] destroying stale window before open");
+        window.destroy()?;
     }
 
-    eprintln!("[dictation-tauri][settings] creating missing window");
+    eprintln!("[dictation-tauri][settings] creating fresh window");
     let window = tauri::WebviewWindowBuilder::new(
         app,
         SETTINGS_WINDOW_LABEL,
@@ -56,23 +54,20 @@ fn get_or_create_settings_window<R: Runtime>(
     .shadow(true)
     .focused(true)
     .skip_taskbar(false)
-    .visible(false)
+    .visible(true)
     .build()?;
 
     attach_hide_on_close(window.clone());
-    eprintln!("[dictation-tauri][settings] created missing window");
+    eprintln!("[dictation-tauri][settings] created fresh window");
     Ok(window)
 }
 
 fn attach_hide_on_close<R: Runtime>(window: WebviewWindow<R>) {
     let settings_window = window.clone();
     window.on_window_event(move |event| {
-        if let WindowEvent::CloseRequested { api, .. } = event {
-            eprintln!("[dictation-tauri][settings] close requested, hiding window");
-            api.prevent_close();
-            if let Err(error) = settings_window.hide() {
-                eprintln!("[dictation-tauri][settings] hide-on-close failed: {error}");
-            }
+        if let WindowEvent::CloseRequested { .. } = event {
+            eprintln!("[dictation-tauri][settings] close requested, allowing destroy");
+            drop(settings_window.clone());
         }
     });
 }

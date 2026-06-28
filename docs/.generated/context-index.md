@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-27T20:35:21.019Z
+Generated: 2026-06-28T04:47:54.157Z
 
 ## Topics
 
@@ -31,6 +31,7 @@ Generated: 2026-06-27T20:35:21.019Z
 
 - archived/low: [Prompt Para Proxima Sesion Archivado](../tracks/archive/next-session-prompt-2026-06-20.md) - updated 2026-06-20
 - archived/medium: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md) - updated 2026-06-07
+- active/high: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md) - updated 2026-06-28
 - active/high: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md) - updated 2026-06-10
 - active/high: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md) - updated 2026-06-26
 - active/high: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md) - updated 2026-06-27
@@ -61,12 +62,13 @@ Generated: 2026-06-27T20:35:21.019Z
 
 ## Aliases
 
-| Dictation Tauri | Nombre operativo del proyecto en `C:\dev\dictation-tauri`. |
+| Dictation Tauri | Nombre operativo del repo en `C:\dev\dictation-tauri`; desde 2026-06-27 se entiende como el nuevo cliente desktop/Tauri de Fixvox. |
 | Nuestro proyecto | Alias conversacional para Dictation Tauri, el repo actual en `C:\dev\dictation-tauri`. |
 | Proyecto canonico | Fixvox en `C:\dev\fixvox`. Fuente de verdad sobre lo que funciona hoy en dictado, runtime de voz, backend/proxy, policies, variables de entorno, benchmarks y aprendizajes de producto. No se porta literal ni se copian sus internals legacy. |
 | Proyecto Tauri | `C:\dev\copicu`. Fuente de verdad tecnica moderna para stack Tauri, ventanas, custom chrome, superficies, Mantine, temas, settings, global shortcuts, tray, foco/paste en Windows, checks visuales y estructura de app desktop. |
 | Copicu | Nombre del proyecto Tauri de referencia en `C:\dev\copicu`. |
-| Fixvox | Nombre del proyecto canonico en `C:\dev\fixvox`. |
+| Fixvox | Nombre del producto/proyecto canonico en `C:\dev\fixvox`; Fixvox Cloud es el control-plane canonico para el nuevo cliente Tauri. |
+| Fixvox Tauri | Nombre objetivo del cliente instalable que saldra de este repo usando Fixvox Cloud para device, activation, policies y managed runtime. |
 | AOS | Agentic OS (AOS), sistema liviano de memoria, docs, topics, specs y skills. |
 | Working Memory | `docs/WORKING_MEMORY.md`, estado vivo y corto del proyecto. |
 | Topic | Documento recuperable en `docs/topics/` con frontmatter y triggers. |

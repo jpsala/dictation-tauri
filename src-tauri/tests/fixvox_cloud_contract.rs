@@ -50,6 +50,24 @@ impl PreflightHttpClient for FakeRegisterClient {
     }
 }
 
+struct SequentialDeviceClient {
+    endpoints: RefCell<Vec<String>>,
+    bodies: RefCell<Vec<serde_json::Value>>,
+    responses: RefCell<Vec<serde_json::Value>>,
+}
+
+impl DeviceRegisterHttpClient for SequentialDeviceClient {
+    fn post_json(
+        &self,
+        endpoint: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, FixvoxCloudError> {
+        self.endpoints.borrow_mut().push(endpoint.to_string());
+        self.bodies.borrow_mut().push(body);
+        Ok(self.responses.borrow_mut().remove(0))
+    }
+}
+
 #[test]
 fn parses_fixvox_contract_fixtures_without_network() {
     let register: DeviceRegisterResponseFixture = fixture(include_str!(
@@ -267,6 +285,200 @@ fn persists_redacted_register_error_without_losing_existing_device_id() {
         Some("Backend unavailable.")
     );
     assert!(state.transport_policy.is_none());
+}
+
+#[test]
+fn cloud_status_generates_durable_install_id_without_leaking_device_id() {
+    let appdata_root = unique_temp_state_path("fixvox-cloud-status-root");
+    let state_path = appdata_root
+        .join("dictation-tauri")
+        .join("fixvox-device-state.json");
+    let appdata_root = appdata_root.to_string_lossy().to_string();
+
+    let status = get_fixvox_cloud_status_with_env(&|key| match key {
+        "APPDATA" => Some(appdata_root.clone()),
+        _ => None,
+    })
+    .expect("cloud status should generate initial device state");
+
+    assert!(status.install_id_present);
+    assert!(status.install_id_redacted.unwrap().starts_with("instal"));
+    assert!(!status.device_registered);
+    assert!(status.device_id_redacted.is_none());
+    assert!(!status.last_register_ok);
+    assert!(state_path.exists());
+
+    let restored = read_device_state(&state_path)
+        .expect("generated state should be readable")
+        .expect("generated state should exist");
+    assert!(restored.install_id.starts_with("install_"));
+    assert!(restored.device_id.is_none());
+
+    let _ = std::fs::remove_file(state_path);
+}
+
+#[test]
+fn builds_device_activate_request_contract_shape() {
+    let request = build_device_activate_request(DeviceActivateInput {
+        install_id: " install_test_123 ".to_string(),
+        device_id: Some(" dev_test_1234567890abcdef ".to_string()),
+        invite_code: " FIXVOX-INVITE-123 ".to_string(),
+        version: "0.1.0".to_string(),
+        platform: "windows".to_string(),
+        arch: "x86_64".to_string(),
+        hostname: "devbox".to_string(),
+        ts: "2026-06-27T00:00:00Z".to_string(),
+    })
+    .expect("activation request should be valid");
+    let body = serde_json::to_value(request).expect("request should serialize");
+
+    assert_eq!(body["installId"], "install_test_123");
+    assert_eq!(body["deviceId"], "dev_test_1234567890abcdef");
+    assert_eq!(body["inviteCode"], "FIXVOX-INVITE-123");
+    assert_eq!(body["platform"], "windows");
+}
+
+#[test]
+fn register_command_helper_persists_policy_snapshot_and_redacts_ids() {
+    let appdata_root = unique_temp_state_path("fixvox-cloud-register-helper-root");
+    let state_path = appdata_root
+        .join("dictation-tauri")
+        .join("fixvox-device-state.json");
+    let appdata_root = appdata_root.to_string_lossy().to_string();
+    let client = FakeRegisterClient {
+        endpoint: RefCell::new(None),
+        body: RefCell::new(None),
+        response: fixture(include_str!(
+            "../../specs/009-fixvox-cloud-runtime-port/fixtures/register.response.json"
+        )),
+    };
+
+    let status = register_fixvox_device_with_client_and_env(&client, &|key| match key {
+        "APPDATA" => Some(appdata_root.clone()),
+        "FIXVOX_INSTALL_ID" => Some("install_command_helper_123456".to_string()),
+        _ => None,
+    })
+    .expect("register helper should persist fake cloud response");
+
+    assert_eq!(
+        client.endpoint.borrow().as_deref(),
+        Some("https://auth-fixvox.jpsala.dev/v2/device/register")
+    );
+    let body = client.body.borrow();
+    let body = body.as_ref().expect("register body should be captured");
+    assert_eq!(body["installId"], "install_command_helper_123456");
+    assert!(status.device_registered);
+    assert_ne!(
+        status.device_id_redacted.as_deref(),
+        Some("dev_test_1234567890abcdef")
+    );
+    assert_eq!(status.policy_id.as_deref(), Some("alpha-basic"));
+    assert_eq!(status.policy_label.as_deref(), Some("Alpha Basic"));
+    assert_eq!(status.transport_policy.as_ref().unwrap()["mode"], "managed");
+
+    let raw = std::fs::read_to_string(&state_path).expect("state should be written");
+    assert!(raw.contains("dev_test_1234567890abcdef"));
+    assert!(!format!("{status:?}").contains("dev_test_1234567890abcdef"));
+
+    let _ = std::fs::remove_file(state_path);
+}
+
+#[test]
+fn activate_helper_posts_invite_code_and_persists_snapshot_without_network() {
+    let appdata_root = unique_temp_state_path("fixvox-cloud-activate-helper-root");
+    let state_path = appdata_root
+        .join("dictation-tauri")
+        .join("fixvox-device-state.json");
+    let appdata_root = appdata_root.to_string_lossy().to_string();
+    let client = SequentialDeviceClient {
+        endpoints: RefCell::new(Vec::new()),
+        bodies: RefCell::new(Vec::new()),
+        responses: RefCell::new(vec![
+            serde_json::json!({
+                "ok": true,
+                "deviceId": "dev_test_1234567890abcdef",
+                "activated": true,
+                "policyId": "alpha-full",
+                "policyLabel": "Alpha Full"
+            }),
+            fixture(include_str!(
+                "../../specs/009-fixvox-cloud-runtime-port/fixtures/register.response.json"
+            )),
+        ]),
+    };
+
+    let status = activate_fixvox_device_with_client_and_env(
+        &client,
+        &|key| match key {
+            "APPDATA" => Some(appdata_root.clone()),
+            "FIXVOX_INSTALL_ID" => Some("install_activate_helper_123456".to_string()),
+            _ => None,
+        },
+        "FIXVOX-INVITE-123".to_string(),
+    )
+    .expect("activation helper should persist fake cloud response");
+
+    let endpoints = client.endpoints.borrow();
+    assert_eq!(
+        endpoints.as_slice(),
+        [
+            "https://auth-fixvox.jpsala.dev/v2/device/activate",
+            "https://auth-fixvox.jpsala.dev/v2/device/register",
+        ]
+    );
+    let bodies = client.bodies.borrow();
+    assert_eq!(bodies[0]["installId"], "install_activate_helper_123456");
+    assert_eq!(bodies[0]["inviteCode"], "FIXVOX-INVITE-123");
+    assert_eq!(bodies[1]["deviceId"], "dev_test_1234567890abcdef");
+    assert!(status.device_registered);
+    assert_eq!(status.policy_id.as_deref(), Some("alpha-basic"));
+    assert!(!format!("{status:?}").contains("dev_test_1234567890abcdef"));
+
+    let raw = std::fs::read_to_string(&state_path).expect("state should be written");
+    assert!(raw.contains("dev_test_1234567890abcdef"));
+
+    let _ = std::fs::remove_file(state_path);
+}
+
+#[test]
+fn refresh_policy_helper_reuses_register_contract_without_network() {
+    let appdata_root = unique_temp_state_path("fixvox-cloud-refresh-helper-root");
+    let state_path = appdata_root
+        .join("dictation-tauri")
+        .join("fixvox-device-state.json");
+    let appdata_root = appdata_root.to_string_lossy().to_string();
+    let initial_state = FixvoxDeviceState {
+        install_id: "install_existing_refresh_123456".to_string(),
+        device_id: Some("dev_existing_refresh_abcdef".to_string()),
+        last_register_ok: true,
+        last_register_error_code: None,
+        last_register_error_message: None,
+        policy_id: Some("alpha-old".to_string()),
+        policy_label: Some("Alpha Old".to_string()),
+        transport_policy: None,
+    };
+    persist_device_state(&state_path, &initial_state).expect("initial state should persist");
+    let client = FakeRegisterClient {
+        endpoint: RefCell::new(None),
+        body: RefCell::new(None),
+        response: fixture(include_str!(
+            "../../specs/009-fixvox-cloud-runtime-port/fixtures/register.response.json"
+        )),
+    };
+
+    let status = refresh_fixvox_policy_with_client_and_env(&client, &|key| match key {
+        "APPDATA" => Some(appdata_root.clone()),
+        _ => None,
+    })
+    .expect("refresh helper should update policy from fake cloud response");
+
+    let body = client.body.borrow();
+    let body = body.as_ref().expect("refresh body should be captured");
+    assert_eq!(body["deviceId"], "dev_existing_refresh_abcdef");
+    assert_eq!(status.policy_id.as_deref(), Some("alpha-basic"));
+    assert!(status.device_registered);
+
+    let _ = std::fs::remove_file(state_path);
 }
 
 #[test]

@@ -2,7 +2,7 @@
 
 Estado vivo del proyecto. Mantener corto.
 
-Ultima actualizacion manual: 2026-06-26 (regla operativa: app Tauri activa y actualizada durante trabajo de producto).
+Ultima actualizacion manual: 2026-06-28 (Fixvox Tauri activation Pro + User-Agent Cloudflare 1010 diagnosticado).
 
 ## Regla
 
@@ -24,6 +24,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Datos de dictado | decided | `docs/topics/privacy-and-dictation-data.md` | Modo personal/dev permisivo; no imprimir ni commitear secretos. |
 | AOS/docs | active | `docs/topics/agentic-os.md` | Mantener `docs/tracks/`, `docs/skills/`, junction y audit verde. |
 | Settings/UI foundation | active | `docs/tracks/settings-window-and-ui-foundation.md`, `docs/topics/ui-design-and-impeccable.md` | Base compacta secciones + Hotkeys con un unico campo recorder persistente implementado; preferencia actual quedó Alt+3 por pedido de JP. |
+| Fixvox Tauri cloud/release | active | `docs/tracks/fixvox-tauri-cloud-release.md`, `docs/topics/fixvox-cloud-runtime-port.md` | Pro activation real ya diagnosticada: Cloudflare 1010 sin User-Agent; Rust Fixvox client usa `fixvox-tauri/<version>` y state local quedo Pro. Settings white-window gotcha sigue monitoreado. |
 
 ## Spec Activa
 
@@ -50,11 +51,13 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | MVP y recursos | `docs/tracks/mvp-and-reference-resources.md` | Continuidad de recursos Fixvox y fases. |
 | Estudio de fuentes | `docs/tracks/source-project-study-plan.md` | Plan vivo para Copicu/Fixvox. |
 | Settings/UI foundation | `docs/tracks/settings-window-and-ui-foundation.md` | Decision HeroUI v3 y handoff para pantalla Settings real. |
+| Fixvox Tauri cloud/release | `docs/tracks/fixvox-tauri-cloud-release.md` | Plan para convertir este repo en cliente desktop Fixvox instalable, activable y policy-driven contra Fixvox Cloud. |
 
 ## Decisiones Vigentes
 
 - Stack base: React, Vite, TypeScript strict, npm, Tauri v2, Rust 2021 y Playwright.
 - Decision 2026-06-27: los unicos proyectos fuente activos son `C:\dev\copicu` y `C:\dev\fixvox`; no usar worktrees/rutas viejas como referencia.
+- Decision 2026-06-27: Dictation Tauri es el nuevo cliente desktop de Fixvox; Fixvox Cloud es el control-plane canonico para device, activation, policy/preflight y managed runtime.
 - `C:\dev\copicu` es canon tecnico para Tauri/UI/settings/Windows desktop mechanics.
 - `C:\dev\fixvox` / Fixvox es canon funcional para dictado, runtime, backend/proxy, policies/env y benchmarks; no se porta literal.
 - MVP 0-3: app base, pipeline simulado, audio sintetico/STT dry-run con shell de provider real, microfono real.
@@ -104,6 +107,8 @@ npm run tauri:dev:hidden -- -StopExisting
 ```
 
 ## Proximo Paso Probable
+
+Post-`013`: ademas de Settings/hotkeys, JP definio el nuevo goal de hacer este repo instalable como Fixvox Tauri en otras PCs usando Fixvox Cloud como control-plane. La track activa es `docs/tracks/fixvox-tauri-cloud-release.md`; T001/T002 bootstrap ya dejo identidad `Fixvox Tauri`, bundle NSIS local y script `npm run release:windows` generando `src-tauri/target/release/bundle/nsis/Fixvox Tauri_0.1.0_x64-setup.exe` sin publicar. T003 ya expone comandos Tauri `get_fixvox_cloud_status`/`register_fixvox_device`/`refresh_fixvox_policy`, genera `install_id` durable si falta y devuelve ids redactados. T004 provider-free agrega `activate_fixvox_device(inviteCode)` y Settings `Fixvox Cloud` con status/policy/invite input y `window.confirm` antes de contactar cloud; no se uso invite real. Siguiente orden: real activation smoke solo con aprobacion/invite, policy snapshot/capabilities, managed transcription sin BYOK local y release artifact separado para no pisar el canal Fixvox Electrobun legacy.
 
 Post-`013`: el foco activo paso a Settings real sobre una ventana normal. Estado vivo actual: HeroUI v3 fue investigado y aceptado, `Settings` desde tray abre una ventana Tauri normal, y la base visual compacta de secciones + Hotkeys ya gusta a JP tras rediseño con screenshot real/Impeccable/v0. El control editable compacto de Hotkeys ahora es un solo campo recorder: foco/click en la hotkey actual -> `Press new shortcut...` -> presionar la combinacion; el host valida/guarda por ruta host-owned, mantiene rollback/verify visible, no registra shortcuts globales desde renderer, persiste en `hotkey-preferences.v1.json` bajo app data y paso smoke visible con `Alt+3`. Preferencia actual quedó en `Alt+3` por pedido explícito de JP y CUA visible. Regla operativa activa: para uso en vivo de JP, arrancar/reiniciar con `npm run tauri:dev:hidden -- -StopExisting` para no abrir terminales ni robar foco; instancia actual loguea en `artifacts/live-app/20260626-hotkey-alt3-visible/tauri-dev.log`.
 

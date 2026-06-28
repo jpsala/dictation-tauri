@@ -1,21 +1,22 @@
-@import "tailwindcss";
-@import "@heroui/styles";
-
-@layer base {
-  .settings-window-shell {
-    --settings-bg: oklch(0.118 0.018 235);
-    --settings-bg-deep: oklch(0.088 0.016 235);
-    --settings-panel: oklch(0.17 0.018 235);
-    --settings-panel-soft: oklch(0.205 0.018 235);
-    --settings-text: oklch(0.955 0.01 235);
-    --settings-muted: oklch(0.72 0.018 235);
-    --settings-dim: oklch(0.55 0.018 235);
-    --settings-line: oklch(1 0 0 / 10%);
-    --settings-line-strong: oklch(1 0 0 / 16%);
-    --settings-accent: oklch(0.64 0.16 35);
-    --settings-accent-soft: oklch(0.64 0.16 35 / 14%);
-    --settings-focus: oklch(0.64 0.16 35 / 34%);
-  }
+/*
+ * Settings deliberately uses scoped product CSS instead of loading the full
+ * HeroUI stylesheet. HeroUI v3 docs recommend selective styles when component
+ * CSS is needed; this surface currently uses local semantic markup only, so a
+ * global @heroui/styles import slows first paint and can affect compact layout.
+ */
+.settings-window-shell {
+  --settings-bg: oklch(0.118 0.018 235);
+  --settings-bg-deep: oklch(0.088 0.016 235);
+  --settings-panel: oklch(0.17 0.018 235);
+  --settings-panel-soft: oklch(0.205 0.018 235);
+  --settings-text: oklch(0.955 0.01 235);
+  --settings-muted: oklch(0.72 0.018 235);
+  --settings-dim: oklch(0.55 0.018 235);
+  --settings-line: oklch(1 0 0 / 10%);
+  --settings-line-strong: oklch(1 0 0 / 16%);
+  --settings-accent: oklch(0.64 0.16 35);
+  --settings-accent-soft: oklch(0.64 0.16 35 / 14%);
+  --settings-focus: oklch(0.64 0.16 35 / 34%);
 }
 
 .settings-window-shell {
@@ -153,7 +154,7 @@
   gap: 5px;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
   padding: 8px 16px;
 }
 
@@ -514,6 +515,18 @@
   opacity: 0.58;
 }
 
+.settings-cloud-panel {
+  margin-top: 6px;
+}
+
+.settings-cloud-invite-input {
+  width: 100%;
+}
+
+.settings-cloud-invite-input::placeholder {
+  color: var(--settings-dim);
+}
+
 .settings-hotkey-candidates {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -637,8 +650,13 @@
 }
 
 .settings-hotkey-editor-feedback strong {
+  grid-column: 1 / -1;
+  overflow: visible;
+  overflow-wrap: anywhere;
   color: var(--settings-text);
   font-weight: 780;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .settings-hotkey-editor-feedback[data-tone="success"] strong {

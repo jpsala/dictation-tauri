@@ -4,12 +4,13 @@ Aliases y terminos recurrentes del proyecto.
 
 | Termino | Significado |
 | --- | --- |
-| Dictation Tauri | Nombre operativo del proyecto en `C:\dev\dictation-tauri`. |
+| Dictation Tauri | Nombre operativo del repo en `C:\dev\dictation-tauri`; desde 2026-06-27 se entiende como el nuevo cliente desktop/Tauri de Fixvox. |
 | Nuestro proyecto | Alias conversacional para Dictation Tauri, el repo actual en `C:\dev\dictation-tauri`. |
 | Proyecto canonico | Fixvox en `C:\dev\fixvox`. Fuente de verdad sobre lo que funciona hoy en dictado, runtime de voz, backend/proxy, policies, variables de entorno, benchmarks y aprendizajes de producto. No se porta literal ni se copian sus internals legacy. |
 | Proyecto Tauri | `C:\dev\copicu`. Fuente de verdad tecnica moderna para stack Tauri, ventanas, custom chrome, superficies, Mantine, temas, settings, global shortcuts, tray, foco/paste en Windows, checks visuales y estructura de app desktop. |
 | Copicu | Nombre del proyecto Tauri de referencia en `C:\dev\copicu`. |
-| Fixvox | Nombre del proyecto canonico en `C:\dev\fixvox`. |
+| Fixvox | Nombre del producto/proyecto canonico en `C:\dev\fixvox`; Fixvox Cloud es el control-plane canonico para el nuevo cliente Tauri. |
+| Fixvox Tauri | Nombre objetivo del cliente instalable que saldra de este repo usando Fixvox Cloud para device, activation, policies y managed runtime. |
 | AOS | Agentic OS (AOS), sistema liviano de memoria, docs, topics, specs y skills. |
 | Working Memory | `docs/WORKING_MEMORY.md`, estado vivo y corto del proyecto. |
 | Topic | Documento recuperable en `docs/topics/` con frontmatter y triggers. |

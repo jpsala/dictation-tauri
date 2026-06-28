@@ -9,13 +9,14 @@ describe("SettingsSurface", () => {
 
     expect(html).toContain("Keyboard shortcuts");
     expect(html).toContain("General");
+    expect(html).toContain("Cloud");
     expect(html).toContain("Dock");
     expect(html).toContain("Delivery");
     expect(html).toContain("Presets");
     expect(html).toContain("Dictation key");
     expect(html).toContain("Paste last");
     expect(html).toContain("Cancel recording");
-    expect(html).toContain("Persistent edit");
+    expect(html).toContain("Active");
     expect(html).toContain("Dictation key editor");
     expect(html).toContain("Alt+Space");
     expect(html).toContain("Check current shortcut");
@@ -32,6 +33,12 @@ describe("SettingsSurface", () => {
     expect(html).toContain("Rollback");
     expect(html).toContain("Verify");
     expect(html).toContain("save to local preference storage");
+    expect(html).not.toContain("Device activation");
+    expect(html).not.toContain("Enter invite code");
+    expect(html).not.toContain("Activate device");
+    expect(html).not.toContain("Refresh local status");
+    expect(html).not.toContain("Refresh policy");
+    expect(html).not.toContain("IDs redacted");
 
     expect(html).not.toContain("Show dock on startup");
     expect(html).not.toContain("Preset routing");
@@ -58,6 +65,13 @@ describe("SettingsSurface", () => {
     expect(source).toContain("shortcutFromKeyboardEvent");
     expect(source).toContain("await applyCandidate(shortcut)");
     expect(source).toContain("Press new shortcut…");
+    expect(source).toContain("onClick={() => setSelectedSection(section.id)}");
+    expect(source).not.toContain("disabled={!isActive}");
+    expect(source).toContain("selectedSection === \"hotkeys\"");
+    expect(source).toContain("selectedSection === \"cloud\"");
+    expect(source).toContain("getFixvoxCloudStatus");
+    expect(source).toContain("activateFixvoxDevice");
+    expect(source).toContain("window.confirm");
     expect(source).not.toContain("void applyCandidate(candidate.shortcut)");
     expect(source).not.toContain("Save ${editingShortcut}");
   });

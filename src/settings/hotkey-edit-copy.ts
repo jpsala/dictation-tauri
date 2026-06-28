@@ -29,6 +29,21 @@ export function formatHotkeyEditReason(reason: unknown): string {
     return reason.message;
   }
 
+  if (typeof reason === "object") {
+    const record = reason as Record<string, unknown>;
+    const message = typeof record.message === "string" ? record.message : undefined;
+    const code = typeof record.code === "string" ? record.code : undefined;
+    if (message && code) {
+      return `${message} (${code})`;
+    }
+    if (message) {
+      return message;
+    }
+    if (code) {
+      return hotkeyEditReasonCopy[code] ?? code.replaceAll("_", " ");
+    }
+  }
+
   const reasonText = String(reason);
   return hotkeyEditReasonCopy[reasonText] ?? reasonText.replaceAll("_", " ");
 }

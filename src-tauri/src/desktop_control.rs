@@ -1471,6 +1471,7 @@ mod tests {
                 source: "global_hotkey",
                 action: "pressed",
                 shortcut: "Alt+Space",
+                target_snapshot: None,
             }
         );
 
@@ -1493,6 +1494,7 @@ mod tests {
                 source: "global_hotkey",
                 action: "cancel",
                 shortcut: "Escape",
+                target_snapshot: None,
             }
         );
     }

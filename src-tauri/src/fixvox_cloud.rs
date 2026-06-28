@@ -1,10 +1,15 @@
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 pub(crate) const PREFERRED_FIXVOX_BACKEND_URL: &str = "https://auth-fixvox.jpsala.dev";
 pub(crate) const STALE_FIXVOX_BACKEND_URL: &str = "https://fixvox-api.jpsala.dev";
+pub(crate) const FIXVOX_TAURI_USER_AGENT: &str =
+    concat!("fixvox-tauri/", env!("CARGO_PKG_VERSION"));
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct FixvoxCloudConfig {
@@ -19,10 +24,29 @@ pub(crate) struct FixvoxCloudRuntimeConfig {
     pub(crate) device_id: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct FixvoxCloudError {
     pub(crate) code: String,
     pub(crate) message: String,
+    pub(crate) redacted: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FixvoxCloudStatus {
+    pub(crate) backend_base_url: String,
+    pub(crate) state_path: String,
+    pub(crate) install_id_present: bool,
+    pub(crate) install_id_redacted: Option<String>,
+    pub(crate) device_registered: bool,
+    pub(crate) device_id_redacted: Option<String>,
+    pub(crate) last_register_ok: bool,
+    pub(crate) last_register_error_code: Option<String>,
+    pub(crate) last_register_error_message: Option<String>,
+    pub(crate) policy_id: Option<String>,
+    pub(crate) policy_label: Option<String>,
+    pub(crate) transport_policy: Option<serde_json::Value>,
     pub(crate) redacted: bool,
 }
 
@@ -49,6 +73,31 @@ pub(crate) struct DeviceRegisterInput {
     pub(crate) ts: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DeviceActivateRequest {
+    pub(crate) install_id: String,
+    pub(crate) device_id: Option<String>,
+    pub(crate) invite_code: String,
+    pub(crate) version: String,
+    pub(crate) platform: String,
+    pub(crate) arch: String,
+    pub(crate) hostname: String,
+    pub(crate) ts: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct DeviceActivateInput {
+    pub(crate) install_id: String,
+    pub(crate) device_id: Option<String>,
+    pub(crate) invite_code: String,
+    pub(crate) version: String,
+    pub(crate) platform: String,
+    pub(crate) arch: String,
+    pub(crate) hostname: String,
+    pub(crate) ts: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DeviceRegisterResponseFixture {
@@ -66,6 +115,18 @@ pub(crate) struct DeviceRegisterResponseFixture {
 }
 
 pub(crate) type DeviceRegisterSnapshot = DeviceRegisterResponseFixture;
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DeviceActivateResponseFixture {
+    pub(crate) ok: bool,
+    pub(crate) device_id: String,
+    pub(crate) activated: bool,
+    pub(crate) policy_id: String,
+    pub(crate) policy_label: String,
+}
+
+pub(crate) type DeviceActivateSnapshot = DeviceActivateResponseFixture;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,6 +147,18 @@ pub(crate) trait DeviceRegisterHttpClient {
         endpoint: &str,
         body: serde_json::Value,
     ) -> Result<serde_json::Value, FixvoxCloudError>;
+}
+
+pub(crate) fn fixvox_http_client() -> Result<reqwest::Client, FixvoxCloudError> {
+    reqwest::Client::builder()
+        .user_agent(FIXVOX_TAURI_USER_AGENT)
+        .build()
+        .map_err(|_| {
+            error(
+                "FIXVOX_HTTP_CLIENT_FAILED",
+                "Fixvox HTTP client could not be initialized.",
+            )
+        })
 }
 
 pub(crate) trait PreflightHttpClient {
@@ -326,25 +399,99 @@ pub(crate) fn build_device_register_request(
     })
 }
 
+pub(crate) fn build_device_activate_request(
+    input: DeviceActivateInput,
+) -> Result<DeviceActivateRequest, FixvoxCloudError> {
+    let invite_code = clean_env_value(Some(input.invite_code)).ok_or_else(|| {
+        error(
+            "FIXVOX_INVITE_CODE_MISSING",
+            "Fixvox activation requires an invite code.",
+        )
+    })?;
+
+    if input.install_id.trim().is_empty() {
+        return Err(error(
+            "FIXVOX_INSTALL_ID_MISSING",
+            "Fixvox activation requires an install id.",
+        ));
+    }
+
+    Ok(DeviceActivateRequest {
+        install_id: input.install_id.trim().to_string(),
+        device_id: input
+            .device_id
+            .and_then(|value| clean_env_value(Some(value))),
+        invite_code,
+        version: input.version.trim().to_string(),
+        platform: input.platform.trim().to_string(),
+        arch: input.arch.trim().to_string(),
+        hostname: input.hostname.trim().to_string(),
+        ts: input.ts.trim().to_string(),
+    })
+}
+
 pub(crate) fn register_device_with_client(
     client: &dyn DeviceRegisterHttpClient,
     config: &FixvoxCloudRuntimeConfig,
     input: DeviceRegisterInput,
 ) -> Result<DeviceRegisterSnapshot, FixvoxCloudError> {
-    let endpoint = join_url(&config.backend_base_url, "/v2/device/register");
-    let request = build_device_register_request(input)?;
-    let body = serde_json::to_value(request).map_err(|_| {
-        error(
-            "FIXVOX_DEVICE_REGISTER_SERIALIZE_FAILED",
-            "Fixvox device register request could not be serialized.",
-        )
-    })?;
-    let response = client.post_json(&endpoint, body)?;
+    post_device_snapshot_with_client(
+        client,
+        &join_url(&config.backend_base_url, "/v2/device/register"),
+        serde_json::to_value(build_device_register_request(input)?).map_err(|_| {
+            error(
+                "FIXVOX_DEVICE_REGISTER_SERIALIZE_FAILED",
+                "Fixvox device register request could not be serialized.",
+            )
+        })?,
+        "FIXVOX_DEVICE_REGISTER_RESPONSE_INVALID",
+    )
+}
+
+pub(crate) fn activate_device_with_client(
+    client: &dyn DeviceRegisterHttpClient,
+    config: &FixvoxCloudRuntimeConfig,
+    input: DeviceActivateInput,
+) -> Result<DeviceActivateSnapshot, FixvoxCloudError> {
+    post_device_activation_with_client(
+        client,
+        &join_url(&config.backend_base_url, "/v2/device/activate"),
+        serde_json::to_value(build_device_activate_request(input)?).map_err(|_| {
+            error(
+                "FIXVOX_DEVICE_ACTIVATE_SERIALIZE_FAILED",
+                "Fixvox device activation request could not be serialized.",
+            )
+        })?,
+    )
+}
+
+fn post_device_snapshot_with_client(
+    client: &dyn DeviceRegisterHttpClient,
+    endpoint: &str,
+    body: serde_json::Value,
+    invalid_code: &str,
+) -> Result<DeviceRegisterSnapshot, FixvoxCloudError> {
+    let response = client.post_json(endpoint, body)?;
 
     serde_json::from_value(response).map_err(|_| {
         error(
-            "FIXVOX_DEVICE_REGISTER_RESPONSE_INVALID",
-            "Fixvox device register response did not match the expected contract.",
+            invalid_code,
+            "Fixvox device response did not match the expected contract.",
+        )
+    })
+}
+
+fn post_device_activation_with_client(
+    client: &dyn DeviceRegisterHttpClient,
+    endpoint: &str,
+    body: serde_json::Value,
+) -> Result<DeviceActivateSnapshot, FixvoxCloudError> {
+    let response = client.post_json(endpoint, body)?;
+
+    serde_json::from_value(response).map_err(|_| {
+        error(
+            "FIXVOX_DEVICE_ACTIVATE_RESPONSE_INVALID",
+            "Fixvox device activation response did not match the expected contract.",
         )
     })
 }
@@ -510,6 +657,47 @@ pub(crate) fn build_device_state_from_register_error(
     }
 }
 
+pub(crate) fn build_device_state_from_activate(
+    config: &FixvoxCloudRuntimeConfig,
+    snapshot: &DeviceActivateSnapshot,
+) -> FixvoxDeviceState {
+    FixvoxDeviceState {
+        install_id: config.install_id.clone(),
+        device_id: Some(snapshot.device_id.clone()),
+        last_register_ok: snapshot.ok,
+        last_register_error_code: None,
+        last_register_error_message: None,
+        policy_id: Some(snapshot.policy_id.clone()),
+        policy_label: Some(snapshot.policy_label.clone()),
+        transport_policy: None,
+    }
+}
+
+pub(crate) fn build_initial_device_state(
+    config: &FixvoxCloudRuntimeConfig,
+    previous: Option<FixvoxDeviceState>,
+) -> FixvoxDeviceState {
+    let previous_policy = previous.as_ref();
+
+    FixvoxDeviceState {
+        install_id: config.install_id.clone(),
+        device_id: config
+            .device_id
+            .clone()
+            .or_else(|| previous_policy.and_then(|state| state.device_id.clone())),
+        last_register_ok: previous_policy
+            .map(|state| state.last_register_ok)
+            .unwrap_or(false),
+        last_register_error_code: previous_policy
+            .and_then(|state| state.last_register_error_code.clone()),
+        last_register_error_message: previous_policy
+            .and_then(|state| state.last_register_error_message.clone()),
+        policy_id: previous_policy.and_then(|state| state.policy_id.clone()),
+        policy_label: previous_policy.and_then(|state| state.policy_label.clone()),
+        transport_policy: previous_policy.and_then(|state| state.transport_policy.clone()),
+    }
+}
+
 pub(crate) fn persist_device_state(
     path: &Path,
     state: &FixvoxDeviceState,
@@ -558,6 +746,437 @@ pub(crate) fn read_device_state(
             "Fixvox device state did not match the expected contract.",
         )
     })
+}
+
+pub(crate) fn get_fixvox_cloud_status_with_env(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    let (path, state, backend_base_url) = resolve_or_create_device_state(env_lookup)?;
+    Ok(build_cloud_status(path, state, backend_base_url))
+}
+
+pub(crate) fn register_fixvox_device_with_client_and_env(
+    client: &dyn DeviceRegisterHttpClient,
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    register_or_refresh_device_with_client(client, env_lookup)
+}
+
+pub(crate) fn refresh_fixvox_policy_with_client_and_env(
+    client: &dyn DeviceRegisterHttpClient,
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    register_or_refresh_device_with_client(client, env_lookup)
+}
+
+pub(crate) fn activate_fixvox_device_with_client_and_env(
+    client: &dyn DeviceRegisterHttpClient,
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+    invite_code: String,
+) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    activate_device_with_client_and_env(client, env_lookup, invite_code)
+}
+
+#[tauri::command]
+pub fn get_fixvox_cloud_status() -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    get_fixvox_cloud_status_with_env(&read_env_value)
+}
+
+#[tauri::command]
+pub async fn register_fixvox_device() -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    register_or_refresh_device_with_reqwest(&read_env_value).await
+}
+
+#[tauri::command]
+pub async fn refresh_fixvox_policy() -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    register_or_refresh_device_with_reqwest(&read_env_value).await
+}
+
+#[tauri::command]
+pub async fn activate_fixvox_device(
+    invite_code: String,
+) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    activate_device_with_reqwest(&read_env_value, invite_code).await
+}
+
+fn register_or_refresh_device_with_client(
+    client: &dyn DeviceRegisterHttpClient,
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    let (path, state, backend_base_url) = resolve_or_create_device_state(env_lookup)?;
+    let config = FixvoxCloudRuntimeConfig {
+        backend_base_url,
+        install_id: state.install_id.clone(),
+        device_id: state.device_id.clone(),
+    };
+    let input = build_device_register_input(&config, env_lookup);
+    let snapshot = register_device_with_client(client, &config, input)?;
+    let next_state = build_device_state_from_register(&config, &snapshot);
+    persist_device_state(&path, &next_state)?;
+
+    Ok(build_cloud_status(
+        path,
+        next_state,
+        config.backend_base_url.clone(),
+    ))
+}
+
+fn activate_device_with_client_and_env(
+    client: &dyn DeviceRegisterHttpClient,
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+    invite_code: String,
+) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    let (path, state, backend_base_url) = resolve_or_create_device_state(env_lookup)?;
+    let config = FixvoxCloudRuntimeConfig {
+        backend_base_url,
+        install_id: state.install_id.clone(),
+        device_id: state.device_id.clone(),
+    };
+    let input = build_device_activate_input(&config, env_lookup, invite_code);
+    let activation = activate_device_with_client(client, &config, input)?;
+    let activated_config = FixvoxCloudRuntimeConfig {
+        backend_base_url: config.backend_base_url.clone(),
+        install_id: config.install_id.clone(),
+        device_id: Some(activation.device_id.clone()),
+    };
+    let activation_state = build_device_state_from_activate(&activated_config, &activation);
+    persist_device_state(&path, &activation_state)?;
+
+    let register_input = build_device_register_input(&activated_config, env_lookup);
+    let snapshot = register_device_with_client(client, &activated_config, register_input)?;
+    let next_state = build_device_state_from_register(&activated_config, &snapshot);
+    persist_device_state(&path, &next_state)?;
+
+    Ok(build_cloud_status(
+        path,
+        next_state,
+        activated_config.backend_base_url.clone(),
+    ))
+}
+
+async fn register_or_refresh_device_with_reqwest(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    let (path, state, backend_base_url) = resolve_or_create_device_state(env_lookup)?;
+    let config = FixvoxCloudRuntimeConfig {
+        backend_base_url,
+        install_id: state.install_id.clone(),
+        device_id: state.device_id.clone(),
+    };
+    let input = build_device_register_input(&config, env_lookup);
+    let snapshot = register_device_with_reqwest(&config, input).await?;
+    let next_state = build_device_state_from_register(&config, &snapshot);
+    persist_device_state(&path, &next_state)?;
+
+    Ok(build_cloud_status(
+        path,
+        next_state,
+        config.backend_base_url.clone(),
+    ))
+}
+
+async fn activate_device_with_reqwest(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+    invite_code: String,
+) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    let (path, state, backend_base_url) = resolve_or_create_device_state(env_lookup)?;
+    let config = FixvoxCloudRuntimeConfig {
+        backend_base_url,
+        install_id: state.install_id.clone(),
+        device_id: state.device_id.clone(),
+    };
+    let input = build_device_activate_input(&config, env_lookup, invite_code);
+    let activation = activate_device_with_reqwest_request(&config, input).await?;
+    let activated_config = FixvoxCloudRuntimeConfig {
+        backend_base_url: config.backend_base_url.clone(),
+        install_id: config.install_id.clone(),
+        device_id: Some(activation.device_id.clone()),
+    };
+    let activation_state = build_device_state_from_activate(&activated_config, &activation);
+    persist_device_state(&path, &activation_state)?;
+
+    let register_input = build_device_register_input(&activated_config, env_lookup);
+    let snapshot = register_device_with_reqwest(&activated_config, register_input).await?;
+    let next_state = build_device_state_from_register(&activated_config, &snapshot);
+    persist_device_state(&path, &next_state)?;
+
+    Ok(build_cloud_status(
+        path,
+        next_state,
+        activated_config.backend_base_url.clone(),
+    ))
+}
+
+async fn register_device_with_reqwest(
+    config: &FixvoxCloudRuntimeConfig,
+    input: DeviceRegisterInput,
+) -> Result<DeviceRegisterSnapshot, FixvoxCloudError> {
+    let endpoint = join_url(&config.backend_base_url, "/v2/device/register");
+    let body = serde_json::to_value(build_device_register_request(input)).map_err(|_| {
+        error(
+            "FIXVOX_REGISTER_REQUEST_SERIALIZE_FAILED",
+            "Fixvox device registration request could not be serialized.",
+        )
+    })?;
+
+    post_device_snapshot_with_reqwest(
+        endpoint,
+        body,
+        "FIXVOX_BACKEND_UNAVAILABLE",
+        "Fixvox Cloud is unavailable for device registration.",
+        "FIXVOX_REGISTER_FAILED",
+        "Fixvox Cloud rejected device registration.",
+        "FIXVOX_REGISTER_RESPONSE_INVALID",
+    )
+    .await
+}
+
+async fn activate_device_with_reqwest_request(
+    config: &FixvoxCloudRuntimeConfig,
+    input: DeviceActivateInput,
+) -> Result<DeviceActivateSnapshot, FixvoxCloudError> {
+    let endpoint = join_url(&config.backend_base_url, "/v2/device/activate");
+    let body = serde_json::to_value(build_device_activate_request(input)).map_err(|_| {
+        error(
+            "FIXVOX_ACTIVATE_REQUEST_SERIALIZE_FAILED",
+            "Fixvox device activation request could not be serialized.",
+        )
+    })?;
+
+    post_device_activation_with_reqwest(
+        endpoint,
+        body,
+        "FIXVOX_BACKEND_UNAVAILABLE",
+        "Fixvox Cloud is unavailable for device activation.",
+        "FIXVOX_ACTIVATE_FAILED",
+        "Fixvox Cloud rejected device activation.",
+    )
+    .await
+}
+
+async fn post_device_snapshot_with_reqwest(
+    endpoint: String,
+    body: serde_json::Value,
+    unavailable_code: &str,
+    unavailable_message: &str,
+    rejected_code: &str,
+    rejected_message: &str,
+    invalid_response_code: &str,
+) -> Result<DeviceRegisterSnapshot, FixvoxCloudError> {
+    let response = fixvox_http_client()?
+        .post(endpoint)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|_| error(unavailable_code, unavailable_message))?;
+
+    if !response.status().is_success() {
+        return Err(error_from_response(response, rejected_code, rejected_message).await);
+    }
+
+    response
+        .json::<DeviceRegisterSnapshot>()
+        .await
+        .map_err(|_| {
+            error(
+                invalid_response_code,
+                "Fixvox Cloud device response was invalid.",
+            )
+        })
+}
+
+async fn post_device_activation_with_reqwest(
+    endpoint: String,
+    body: serde_json::Value,
+    unavailable_code: &str,
+    unavailable_message: &str,
+    rejected_code: &str,
+    rejected_message: &str,
+) -> Result<DeviceActivateSnapshot, FixvoxCloudError> {
+    let response = fixvox_http_client()?
+        .post(endpoint)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|_| error(unavailable_code, unavailable_message))?;
+
+    if !response.status().is_success() {
+        return Err(error_from_response(response, rejected_code, rejected_message).await);
+    }
+
+    response
+        .json::<DeviceActivateSnapshot>()
+        .await
+        .map_err(|_| {
+            error(
+                "FIXVOX_ACTIVATE_RESPONSE_INVALID",
+                "Fixvox Cloud device activation response was invalid.",
+            )
+        })
+}
+
+async fn error_from_response(
+    response: reqwest::Response,
+    code: &str,
+    fallback_message: &str,
+) -> FixvoxCloudError {
+    let message = response
+        .text()
+        .await
+        .ok()
+        .and_then(|body| extract_cloud_error_message(&body))
+        .unwrap_or_else(|| fallback_message.to_string());
+
+    error(code, &message)
+}
+
+fn extract_cloud_error_message(body: &str) -> Option<String> {
+    let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
+    let message = parsed
+        .pointer("/error/message")
+        .and_then(|value| value.as_str())
+        .or_else(|| parsed.get("error").and_then(|value| value.as_str()))?;
+    clean_env_value(Some(message.to_string()))
+}
+
+fn resolve_or_create_device_state(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<(PathBuf, FixvoxDeviceState, String), FixvoxCloudError> {
+    let path = resolve_device_state_path(env_lookup)?;
+    let existing = read_device_state(&path)?;
+    let backend_base_url = resolve_backend_base_url(env_lookup)?;
+    let env_install_id = first_clean_env_value(env_lookup, &["FIXVOX_INSTALL_ID"]);
+    let env_device_id = first_clean_env_value(env_lookup, &["FIXVOX_DEVICE_ID"]);
+
+    let install_id = env_install_id
+        .or_else(|| {
+            existing
+                .as_ref()
+                .map(|state| state.install_id.clone())
+                .filter(|value| !value.trim().is_empty())
+        })
+        .unwrap_or_else(generate_install_id);
+
+    let config = FixvoxCloudRuntimeConfig {
+        backend_base_url: backend_base_url.clone(),
+        install_id,
+        device_id: env_device_id
+            .or_else(|| existing.as_ref().and_then(|state| state.device_id.clone())),
+    };
+    let state = build_initial_device_state(&config, existing);
+    persist_device_state(&path, &state)?;
+
+    Ok((path, state, backend_base_url))
+}
+
+fn build_cloud_status(
+    path: PathBuf,
+    state: FixvoxDeviceState,
+    backend_base_url: String,
+) -> FixvoxCloudStatus {
+    FixvoxCloudStatus {
+        backend_base_url,
+        state_path: path.to_string_lossy().to_string(),
+        install_id_present: !state.install_id.trim().is_empty(),
+        install_id_redacted: redact_identifier(Some(&state.install_id)),
+        device_registered: state
+            .device_id
+            .as_ref()
+            .map(|device_id| !device_id.trim().is_empty())
+            .unwrap_or(false),
+        device_id_redacted: redact_identifier(state.device_id.as_deref()),
+        last_register_ok: state.last_register_ok,
+        last_register_error_code: state.last_register_error_code,
+        last_register_error_message: state.last_register_error_message,
+        policy_id: state.policy_id,
+        policy_label: state.policy_label,
+        transport_policy: state.transport_policy,
+        redacted: true,
+    }
+}
+
+fn build_device_register_input(
+    config: &FixvoxCloudRuntimeConfig,
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> DeviceRegisterInput {
+    DeviceRegisterInput {
+        install_id: config.install_id.clone(),
+        device_id: config.device_id.clone(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        platform: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+        hostname: first_clean_env_value(env_lookup, &["COMPUTERNAME", "HOSTNAME"])
+            .unwrap_or_else(|| "unknown".to_string()),
+        ts: current_unix_timestamp_string(),
+    }
+}
+
+fn build_device_activate_input(
+    config: &FixvoxCloudRuntimeConfig,
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+    invite_code: String,
+) -> DeviceActivateInput {
+    DeviceActivateInput {
+        install_id: config.install_id.clone(),
+        device_id: config.device_id.clone(),
+        invite_code,
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        platform: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+        hostname: first_clean_env_value(env_lookup, &["COMPUTERNAME", "HOSTNAME"])
+            .unwrap_or_else(|| "unknown".to_string()),
+        ts: current_unix_timestamp_string(),
+    }
+}
+
+fn generate_install_id() -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    format!("install_{now:x}_{:x}", std::process::id())
+}
+
+fn current_unix_timestamp_string() -> String {
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    format!("unix:{seconds}")
+}
+
+fn first_clean_env_value(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+    keys: &[&str],
+) -> Option<String> {
+    keys.iter().find_map(|key| clean_env_value(env_lookup(key)))
+}
+
+fn read_env_value(key: &str) -> Option<String> {
+    std::env::var(key).ok()
+}
+
+fn redact_identifier(value: Option<&str>) -> Option<String> {
+    let value = value?.trim();
+    if value.is_empty() {
+        return None;
+    }
+
+    let chars: Vec<char> = value.chars().collect();
+    if chars.len() <= 8 {
+        return Some("[redacted]".to_string());
+    }
+
+    let prefix: String = chars.iter().take(6).collect();
+    let suffix: String = chars
+        .iter()
+        .rev()
+        .take(4)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    Some(format!("{prefix}…{suffix}"))
 }
 
 pub(crate) fn build_managed_stt_request_preview(
