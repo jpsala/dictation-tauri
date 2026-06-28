@@ -21,7 +21,7 @@ export type DictationKeyState = {
 
 export type DictationKeyDecision =
   | { action: "start"; latchMode: "hold" | "toggle" }
-  | { action: "stop"; reason: "hold_release" | "toggle_press" | "stop_submit" }
+  | { action: "stop"; reason: "hold_release" | "toggle_press" | "stop_submit" | "repeat_press_after_missed_release" }
   | { action: "cancel"; reason: "escape" }
   | { action: "ignore"; reason: string }
   | { action: "defer_stop_until_started" };
@@ -58,11 +58,13 @@ export function resolveDictationKeyEvent(
     return resolveCancel(state, event, options.activeSessionCanCancel ?? false);
   }
 
+  const holdThresholdMs = options.holdThresholdMs ?? defaultHoldThresholdMs;
+
   if (event.kind === "pressed") {
-    return resolvePress(state, event);
+    return resolvePress(state, event, holdThresholdMs);
   }
 
-  return resolveRelease(state, event, options.holdThresholdMs ?? defaultHoldThresholdMs);
+  return resolveRelease(state, event, holdThresholdMs);
 }
 
 export function markDictationKeyStarted(
@@ -108,6 +110,7 @@ export function dictationKeyDecisionToControlAction(
 function resolvePress(
   state: DictationKeyState,
   event: DictationKeyEvent,
+  holdThresholdMs: number,
 ): DictationKeyResolution {
   if (state.status === "latched_recording") {
     return {
@@ -119,7 +122,25 @@ function resolvePress(
     };
   }
 
-  if (state.status === "pressing" || state.status === "hold_recording") {
+  if (state.status === "hold_recording") {
+    const heldForMs = elapsedMs(state.pressedAt, event.receivedAt);
+    if (heldForMs >= Math.max(holdThresholdMs * 2, 600)) {
+      return {
+        state: {
+          ...rememberEvent(state, event),
+          status: "stopping",
+        },
+        decision: { action: "stop", reason: "repeat_press_after_missed_release" },
+      };
+    }
+
+    return {
+      state: rememberEvent(state, event),
+      decision: { action: "ignore", reason: "already_pressed" },
+    };
+  }
+
+  if (state.status === "pressing") {
     return {
       state: rememberEvent(state, event),
       decision: { action: "ignore", reason: "already_pressed" },

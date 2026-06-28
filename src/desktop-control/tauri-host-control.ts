@@ -134,6 +134,35 @@ export async function applyTauriHotkeyRegistration(
   );
 }
 
+export async function drainTauriGlobalHotkeyEvents(
+  handler: TauriGlobalHotkeyHandler,
+  options: TauriGlobalHotkeyListenerOptions = {},
+): Promise<void> {
+  if (!isTauri()) {
+    return;
+  }
+
+  const pending = await invoke<TauriGlobalHotkeyPayload[]>(
+    "drain_desktop_control_hotkey_events",
+  );
+  for (const payload of pending) {
+    const dictationKeyEvent = createDictationKeyEventFromTauriHotkey(payload, options);
+    if (dictationKeyEvent) {
+      await handler(dictationKeyEvent);
+    }
+  }
+}
+
+export async function setTauriGlobalHotkeyListenerReady(
+  ready: boolean,
+): Promise<void> {
+  if (!isTauri()) {
+    return;
+  }
+
+  await invoke("set_desktop_control_hotkey_listener_ready", { ready });
+}
+
 export async function listenForTauriGlobalHotkey(
   handler: TauriGlobalHotkeyHandler,
   options: TauriGlobalHotkeyListenerOptions = {},

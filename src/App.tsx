@@ -38,8 +38,10 @@ import {
 } from "./model-gateway/runtime-transcription";
 import { createCapturedAudioPipelineRequest } from "./pipeline/ports";
 import {
+  drainTauriGlobalHotkeyEvents,
   listenForTauriGlobalHotkey,
   listenForTauriHostCommands,
+  setTauriGlobalHotkeyListenerReady,
   tauriGlobalHotkeyShortcut,
   type TauriGlobalHotkeyConfig,
   type TauriHostCommandPayload,
@@ -1858,7 +1860,11 @@ export function App() {
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
-    void listenForTauriGlobalHotkey(async (event) => {
+    const handleGlobalHotkey = async (event: Parameters<typeof resolveDictationKeyEvent>[1]) => {
+      if (disposed) {
+        return;
+      }
+
       const resolution = resolveDictationKeyEvent(
         dictationKeyStateRef.current,
         event,
@@ -1951,18 +1957,22 @@ export function App() {
         stopped,
         "Dictation key release did not produce a captured artifact.",
       );
-    }).then((nextUnlisten) => {
+    };
+
+    void listenForTauriGlobalHotkey(handleGlobalHotkey).then((nextUnlisten) => {
       if (disposed) {
         nextUnlisten?.();
         return;
       }
 
       unlisten = nextUnlisten;
+      void drainTauriGlobalHotkeyEvents(handleGlobalHotkey).catch(() => undefined);
     });
 
     return () => {
       disposed = true;
       unlisten?.();
+      void setTauriGlobalHotkeyListenerReady(false).catch(() => undefined);
     };
   }, [desktopSession]);
 

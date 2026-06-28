@@ -76,6 +76,45 @@ describe("dictation key hold/tap resolver", () => {
     });
   });
 
+  it("recovers from a missed release by stopping hold recording on a later press", () => {
+    const holdRecording: DictationKeyState = {
+      status: "hold_recording",
+      pressedAt: "2026-06-23T15:01:00.000Z",
+      activeSessionId: "desktop-session-missed-release",
+      lastEventId: "tap-press-without-release",
+    };
+
+    const stopped = resolveDictationKeyEvent(
+      holdRecording,
+      event("pressed", "2026-06-23T15:01:02.000Z", { eventId: "next-press" }),
+      { holdThresholdMs: thresholdMs },
+    );
+
+    expect(stopped.decision).toEqual({
+      action: "stop",
+      reason: "repeat_press_after_missed_release",
+    });
+    expect(stopped.state.status).toBe("stopping");
+  });
+
+  it("does not treat immediate repeated press events as missed-release recovery", () => {
+    const holdRecording: DictationKeyState = {
+      status: "hold_recording",
+      pressedAt: "2026-06-23T15:01:00.000Z",
+      activeSessionId: "desktop-session-key-repeat",
+      lastEventId: "tap-press",
+    };
+
+    const repeated = resolveDictationKeyEvent(
+      holdRecording,
+      event("pressed", "2026-06-23T15:01:00.100Z", { eventId: "repeat-press" }),
+      { holdThresholdMs: thresholdMs },
+    );
+
+    expect(repeated.decision).toEqual({ action: "ignore", reason: "already_pressed" });
+    expect(repeated.state.status).toBe("hold_recording");
+  });
+
   it("stops a latched recording on the next press", () => {
     const latched: DictationKeyState = {
       status: "latched_recording",

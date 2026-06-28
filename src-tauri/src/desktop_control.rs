@@ -1,8 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
-use tauri::Manager;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex, OnceLock,
+};
+use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -24,6 +27,8 @@ pub const ALT_SPACE_GATE_ENV: &str = "DICTATION_TAURI_ALLOW_ALT_SPACE";
 pub const HOTKEY_PREFERENCE_FILE: &str = "hotkey-preferences.v1.json";
 
 static CURRENT_HOTKEY: OnceLock<Mutex<EffectiveDictationHotkey>> = OnceLock::new();
+static HOTKEY_LISTENER_READY: AtomicBool = AtomicBool::new(false);
+static PENDING_HOTKEY_EVENTS: OnceLock<Mutex<Vec<DesktopControlHotkeyPayload>>> = OnceLock::new();
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EffectiveDictationHotkey {
@@ -109,6 +114,28 @@ pub fn set_desktop_control_escape_cancel_enabled(enabled: bool) -> bool {
 #[tauri::command]
 pub fn set_desktop_control_hotkey_capture_enabled(enabled: bool) -> bool {
     native_alt_space::set_alt_space_capture_enabled(enabled)
+}
+
+#[tauri::command]
+pub fn set_desktop_control_hotkey_listener_ready(ready: bool) {
+    HOTKEY_LISTENER_READY.store(ready, Ordering::SeqCst);
+}
+
+#[tauri::command]
+pub fn drain_desktop_control_hotkey_events() -> Vec<DesktopControlHotkeyPayload> {
+    HOTKEY_LISTENER_READY.store(true, Ordering::SeqCst);
+    let events: Vec<DesktopControlHotkeyPayload> = PENDING_HOTKEY_EVENTS
+        .get_or_init(|| Mutex::new(Vec::new()))
+        .lock()
+        .map(|mut events| events.drain(..).collect())
+        .unwrap_or_default();
+    if !events.is_empty() {
+        eprintln!(
+            "[dictation-tauri][hotkey] drained pending events count={}",
+            events.len()
+        );
+    }
+    events
 }
 
 #[tauri::command]
@@ -666,7 +693,12 @@ fn register_effective_hotkey<R: tauri::Runtime>(
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             app.global_shortcut()
                 .register(hotkey.shortcut)
-                .map_err(|error| error.to_string())
+                .map_err(|error| error.to_string())?;
+            eprintln!(
+                "[dictation-tauri][hotkey] registered global shortcut={}",
+                hotkey.shortcut
+            );
+            Ok(())
         }
     }
 }
@@ -721,10 +753,13 @@ fn verify_effective_hotkey<R: tauri::Runtime>(
 pub fn register_desktop_control_hotkey<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use tauri::Emitter;
     use tauri_plugin_global_shortcut::ShortcutState;
 
     let hotkey = resolve_effective_dictation_hotkey_from_app(app);
+    eprintln!(
+        "[dictation-tauri][hotkey] effective shortcut={} backend={:?} requested={:?} fallback={:?}",
+        hotkey.shortcut, hotkey.backend, hotkey.requested_shortcut, hotkey.fallback_reason
+    );
     remember_current_hotkey(hotkey);
     native_escape_cancel::register_escape_cancel_hook(app)?;
     native_paste_last::register_paste_last_hook(app, PASTE_LAST_SAFE_HOTKEY)?;
@@ -739,8 +774,17 @@ pub fn register_desktop_control_hotkey<R: tauri::Runtime>(
             .with_handler(move |app, shortcut, event| {
                 let active_hotkey = current_effective_hotkey();
                 if !shortcut.matches(active_hotkey.modifiers, active_hotkey.code) {
+                    eprintln!(
+                        "[dictation-tauri][hotkey] ignored shortcut event shortcut={} active={}",
+                        shortcut, active_hotkey.shortcut
+                    );
                     return;
                 }
+
+                eprintln!(
+                    "[dictation-tauri][hotkey] event shortcut={} state={:?}",
+                    active_hotkey.shortcut, event.state
+                );
 
                 let payload = if event.state == ShortcutState::Pressed {
                     Some(desktop_control_hotkey_pressed_payload(active_hotkey))
@@ -755,7 +799,7 @@ pub fn register_desktop_control_hotkey<R: tauri::Runtime>(
                         payload.target_snapshot =
                             crate::desktop_delivery::capture_desktop_delivery_target().ok();
                     }
-                    let _ = app.emit(DESKTOP_CONTROL_HOTKEY_EVENT, payload);
+                    emit_desktop_control_hotkey_payload(app, payload);
                 }
             })
             .build(),
@@ -766,6 +810,109 @@ pub fn register_desktop_control_hotkey<R: tauri::Runtime>(
     }
 
     Ok(())
+}
+
+fn emit_desktop_control_hotkey_payload<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    payload: DesktopControlHotkeyPayload,
+) {
+    if !HOTKEY_LISTENER_READY.load(Ordering::SeqCst) {
+        if let Ok(mut pending) = PENDING_HOTKEY_EVENTS
+            .get_or_init(|| Mutex::new(Vec::new()))
+            .lock()
+        {
+            if pending.len() >= 8 {
+                pending.remove(0);
+            }
+            pending.push(payload.clone());
+        }
+        eprintln!(
+            "[dictation-tauri][hotkey] queued pre-listener event action={} shortcut={}",
+            payload.action, payload.shortcut
+        );
+        if payload.action == "pressed" {
+            schedule_wake_dock_window_for_hotkey(app);
+        }
+    }
+
+    if let Err(error) = app.emit(DESKTOP_CONTROL_HOTKEY_EVENT, payload) {
+        eprintln!("[dictation-tauri][hotkey] emit failed: {error}");
+    }
+}
+
+fn schedule_wake_dock_window_for_hotkey<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let app = app.clone();
+    if let Err(error) = app
+        .clone()
+        .run_on_main_thread(move || wake_dock_window_for_hotkey(&app))
+    {
+        eprintln!("[dictation-tauri][hotkey] wake scheduling failed: {error}");
+    }
+}
+
+fn wake_dock_window_for_hotkey<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(crate::dock_shell::DOCK_WINDOW_LABEL) {
+        if let Err(error) = focus_dock_window_for_hotkey(&window) {
+            eprintln!("[dictation-tauri][hotkey] wake focus failed: {error}");
+        } else {
+            eprintln!("[dictation-tauri][hotkey] woke dock window for pending listener");
+        }
+    }
+}
+
+#[cfg(windows)]
+fn focus_dock_window_for_hotkey<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> Result<(), String> {
+    use windows_sys::Win32::{
+        Foundation::HWND,
+        System::Threading::{AttachThreadInput, GetCurrentThreadId},
+        UI::WindowsAndMessaging::{
+            BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
+            ShowWindow, SW_SHOW,
+        },
+    };
+
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    let raw_hwnd = hwnd.0 as HWND;
+
+    unsafe {
+        ShowWindow(raw_hwnd, SW_SHOW);
+        let current_thread_id = GetCurrentThreadId();
+        let target_thread_id = GetWindowThreadProcessId(raw_hwnd, std::ptr::null_mut());
+        let foreground_hwnd = GetForegroundWindow();
+        let foreground_thread_id = if foreground_hwnd.is_null() {
+            0
+        } else {
+            GetWindowThreadProcessId(foreground_hwnd, std::ptr::null_mut())
+        };
+        let attached_target = target_thread_id != 0
+            && target_thread_id != current_thread_id
+            && AttachThreadInput(current_thread_id, target_thread_id, 1) != 0;
+        let attached_foreground = foreground_thread_id != 0
+            && foreground_thread_id != current_thread_id
+            && foreground_thread_id != target_thread_id
+            && AttachThreadInput(current_thread_id, foreground_thread_id, 1) != 0;
+
+        BringWindowToTop(raw_hwnd);
+        SetForegroundWindow(raw_hwnd);
+
+        if attached_foreground {
+            AttachThreadInput(current_thread_id, foreground_thread_id, 0);
+        }
+        if attached_target {
+            AttachThreadInput(current_thread_id, target_thread_id, 0);
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn focus_dock_window_for_hotkey<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> Result<(), String> {
+    window.set_focus().map_err(|error| error.to_string())
 }
 
 #[cfg(not(desktop))]

@@ -48,11 +48,13 @@ describe("App global hotkey dictation-key seam", () => {
 
   it("keeps the App hotkey listener on the dictation-key resolver path", () => {
     const source = readFileSync("src/App.tsx", "utf8");
-    const listenerStart = source.indexOf("void listenForTauriGlobalHotkey");
-    const listenerBlock = source.slice(listenerStart, listenerStart + 1600);
+    const listenerStart = source.indexOf("const handleGlobalHotkey");
+    const listenerEnd = source.indexOf("void listenForTauriGlobalHotkey", listenerStart);
+    const listenerBlock = source.slice(listenerStart, listenerEnd + 700);
 
     expect(listenerBlock).toContain("resolveDictationKeyEvent");
     expect(listenerBlock).toContain("desktopSession.handle");
+    expect(listenerBlock).toContain("drainTauriGlobalHotkeyEvents(handleGlobalHotkey)");
     expect(listenerBlock).toContain('source: "global_hotkey"');
     expect(listenerBlock).not.toContain("desktopSession.toggle");
     expect(listenerBlock).not.toContain("canStart");

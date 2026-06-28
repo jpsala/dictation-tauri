@@ -45,6 +45,8 @@ pub fn run() {
             desktop_control::apply_desktop_control_hotkey_registration,
             desktop_control::set_desktop_control_escape_cancel_enabled,
             desktop_control::set_desktop_control_hotkey_capture_enabled,
+            desktop_control::set_desktop_control_hotkey_listener_ready,
+            desktop_control::drain_desktop_control_hotkey_events,
             selection_capture::capture_selection_context,
             result_history::append_result_history_entry,
             result_history::list_result_history_entries,
