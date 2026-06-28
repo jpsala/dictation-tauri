@@ -222,10 +222,16 @@ fn resolve_dock_position<R: Runtime>(
     window: &WebviewWindow<R>,
     layout: DockShellLayout,
 ) -> Result<DockPosition, Box<dyn Error>> {
-    let work_area = resolve_work_area(app, window)?;
+    let drag_area = resolve_work_area(app, window)?;
+    let default_area = resolve_default_work_area(app, window)?;
     let saved = read_saved_dock_position(app).ok().flatten();
 
-    Ok(resolve_saved_or_default_position(saved, work_area, layout))
+    Ok(resolve_saved_or_default_position_with_default_area(
+        saved,
+        default_area,
+        drag_area,
+        layout,
+    ))
 }
 
 fn resolve_state_position<R: Runtime>(
@@ -255,15 +261,7 @@ fn resolve_work_area<R: Runtime>(
     app: &AppHandle<R>,
     window: &WebviewWindow<R>,
 ) -> Result<DockWorkArea, Box<dyn Error>> {
-    let monitor = window
-        .current_monitor()?
-        .or(app.primary_monitor()?)
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                "No monitor available for Dictation Dock",
-            )
-        })?;
+    let monitor = resolve_monitor(app, window)?;
     let position = monitor.position();
     let size = monitor.size();
 
@@ -273,6 +271,37 @@ fn resolve_work_area<R: Runtime>(
         width: size.width as i32,
         height: size.height as i32,
     })
+}
+
+fn resolve_default_work_area<R: Runtime>(
+    app: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+) -> Result<DockWorkArea, Box<dyn Error>> {
+    let monitor = resolve_monitor(app, window)?;
+    let work_area = monitor.work_area();
+
+    Ok(DockWorkArea {
+        x: work_area.position.x,
+        y: work_area.position.y,
+        width: work_area.size.width as i32,
+        height: work_area.size.height as i32,
+    })
+}
+
+fn resolve_monitor<R: Runtime>(
+    app: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+) -> Result<tauri::Monitor, Box<dyn Error>> {
+    window
+        .current_monitor()?
+        .or(app.primary_monitor()?)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "No monitor available for Dictation Dock",
+            )
+            .into()
+        })
 }
 
 fn current_dock_position<R: Runtime>(app: &AppHandle<R>) -> Result<DockPosition, Box<dyn Error>> {
@@ -403,14 +432,30 @@ fn expanded_layout(width: i32, height: i32) -> DockShellLayout {
     }
 }
 
+#[cfg(test)]
 pub fn resolve_saved_or_default_position(
     saved: Option<DockPosition>,
     work_area: DockWorkArea,
     layout: DockShellLayout,
 ) -> DockPosition {
+    resolve_saved_or_default_position_with_default_area(saved, work_area, work_area, layout)
+}
+
+fn resolve_saved_or_default_position_with_default_area(
+    saved: Option<DockPosition>,
+    default_area: DockWorkArea,
+    drag_area: DockWorkArea,
+    layout: DockShellLayout,
+) -> DockPosition {
     saved
-        .map(|position| clamp_dock_position(position, work_area, layout))
-        .unwrap_or_else(|| calculate_bottom_center_position(work_area, layout))
+        .map(|position| clamp_dock_position(position, drag_area, layout))
+        .unwrap_or_else(|| {
+            clamp_dock_position(
+                calculate_bottom_center_position(default_area, layout),
+                drag_area,
+                layout,
+            )
+        })
 }
 
 pub fn calculate_bottom_center_position(
