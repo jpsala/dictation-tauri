@@ -655,7 +655,11 @@ function getAppSurface(): "dock" | "companion" | "settings" {
   }
 
   const surface = new URLSearchParams(window.location.search).get("surface");
-  return surface === "companion" || surface === "settings" ? surface : "dock";
+  if (surface === "companion" || surface === "settings") {
+    return surface;
+  }
+
+  return window.location.hash === "#settings" ? "settings" : "dock";
 }
 
 type CompanionSurfaceViewProps = {

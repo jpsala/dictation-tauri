@@ -44,6 +44,23 @@
         "focus": true,
         "skipTaskbar": false,
         "visible": false
+      },
+      {
+        "label": "settings",
+        "title": "Dictation Tauri Settings",
+        "url": "index.html#settings",
+        "width": 720,
+        "height": 480,
+        "minWidth": 620,
+        "minHeight": 420,
+        "resizable": true,
+        "decorations": true,
+        "transparent": false,
+        "shadow": true,
+        "alwaysOnTop": false,
+        "focus": true,
+        "skipTaskbar": false,
+        "visible": false
       }
     ],
     "security": {
