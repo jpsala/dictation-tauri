@@ -137,6 +137,16 @@ function truncateHistoryPreview(text: string, maxLength: number): string {
   return `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
+export function createDockCompanionSyncKey(
+  snapshot: DockCompanionSnapshot,
+): string {
+  if (!snapshot.visible) {
+    return "hidden";
+  }
+
+  return JSON.stringify(snapshot);
+}
+
 export function createEmptyDockCompanionSnapshot(): DockCompanionSnapshot {
   return {
     schemaVersion: 1,

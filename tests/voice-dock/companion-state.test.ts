@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DesktopDictationSession } from "../../src/desktop-control/types";
 import {
   createDockCompanionSnapshot,
+  createDockCompanionSyncKey,
   createEmptyDockCompanionSnapshot,
   dockCompanionCommandEvent,
   dockCompanionStateEvent,
@@ -106,6 +107,31 @@ describe("dock companion state", () => {
 
     expect(snapshot.visible).toBe(false);
     expect(snapshot.status).toMatchObject({ phase: "idle", statusText: "Ready" });
+  });
+
+  it("keeps hidden sync stable across unrelated dock state changes", () => {
+    const hiddenIdle = createDockCompanionSnapshot({
+      voiceDockState: createVoiceDockState({ state: "idle" }),
+      resultHistoryOpen: false,
+      resultHistoryEntries: [],
+      settingsPanelOpen: false,
+    });
+    const hiddenRecording = createDockCompanionSnapshot({
+      voiceDockState: createVoiceDockState(session({ state: "recording" })),
+      resultHistoryOpen: false,
+      resultHistoryEntries: [],
+      settingsPanelOpen: false,
+    });
+    const visibleHistory = createDockCompanionSnapshot({
+      voiceDockState: createVoiceDockState(session({ state: "recording" })),
+      resultHistoryOpen: true,
+      resultHistoryEntries: [],
+      settingsPanelOpen: false,
+    });
+
+    expect(createDockCompanionSyncKey(hiddenIdle)).toBe("hidden");
+    expect(createDockCompanionSyncKey(hiddenRecording)).toBe("hidden");
+    expect(createDockCompanionSyncKey(visibleHistory)).not.toBe("hidden");
   });
 
   it("exposes stable Tauri event names and empty snapshot", () => {
