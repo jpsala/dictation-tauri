@@ -59,8 +59,10 @@ describe("SettingsSurface", () => {
     expect(source).toContain("desktop-control://hotkey-capture");
     expect(source).toContain("set_desktop_control_hotkey_capture_enabled");
     expect(source).toContain("startShortcutCapture");
-    expect(source).toContain("onMouseDown={() => void startShortcutCapture()}");
-    expect(source).toContain("onFocus={() => void startShortcutCapture()}");
+    expect(source).toContain("onClick={() => void startShortcutCapture()}");
+    expect(source).toContain("captureState === \"recording\" || captureArmedRef.current");
+    expect(source).not.toContain("onMouseDown={() => void startShortcutCapture()}");
+    expect(source).not.toContain("onFocus={() => void startShortcutCapture()}");
     expect(source).toContain("handleShortcutCaptureKeyDown");
     expect(source).toContain("shortcutFromKeyboardEvent");
     expect(source).toContain("await applyCandidate(shortcut)");
