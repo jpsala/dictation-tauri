@@ -152,7 +152,8 @@ mod platform {
         UI::{
             Input::KeyboardAndMouse::{
                 SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
-                VIRTUAL_KEY, VK_CONTROL, VK_RETURN, VK_V,
+                KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RETURN, VK_RWIN,
+                VK_SHIFT, VK_V,
             },
             WindowsAndMessaging::{
                 BringWindowToTop, EnumChildWindows, GetClassNameW, GetForegroundWindow,
@@ -259,29 +260,48 @@ mod platform {
         }
 
         let hwnd = parse_hwnd(&target.frame_hwnd)?;
-        let observable_before = read_observable_window_text(hwnd);
-        let previous_clipboard = read_clipboard_text();
-        write_clipboard_text(&text)?;
-
-        let paste_result = (|| {
+        let skip_bounded_observer = should_skip_bounded_observer(&target);
+        let observable_before = if skip_bounded_observer {
+            None
+        } else {
+            read_observable_window_text(hwnd)
+        };
+        let direct_result = (|| {
             focus_window(hwnd);
             thread::sleep(Duration::from_millis(80));
-            send_ctrl_v()?;
+            release_modifier_keys()?;
+            thread::sleep(Duration::from_millis(20));
+            send_unicode_text(&text)?;
             if press_enter_after_paste {
                 thread::sleep(Duration::from_millis(80));
                 send_enter()?;
             }
-            thread::sleep(clipboard_restore_delay(&target));
+            thread::sleep(direct_input_settle_delay(&target));
+            release_modifier_keys()?;
             Ok::<(), String>(())
         })();
 
-        if let Some(previous) = previous_clipboard {
-            let _ = write_clipboard_text(&previous);
-        }
+        let used_clipboard_fallback = match direct_result {
+            Ok(()) => false,
+            Err(error) if allow_clipboard_paste_fallback() => {
+                eprintln!(
+                    "[dictation-tauri][desktop-delivery] direct unicode input failed; using explicit clipboard fallback: {error}"
+                );
+                deliver_text_with_clipboard(&text, &target, hwnd, press_enter_after_paste)?;
+                true
+            }
+            Err(error) => {
+                return Err(format!(
+                    "Direct text input failed before clipboard fallback was used: {error}. Set DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK=true to allow temporary clipboard paste fallback."
+                ));
+            }
+        };
 
-        paste_result?;
-
-        let observable_after = read_observable_window_text(hwnd);
+        let observable_after = if skip_bounded_observer {
+            None
+        } else {
+            read_observable_window_text(hwnd)
+        };
         let observed = did_observe_inserted_text(
             &text,
             observable_before.as_deref(),
@@ -294,18 +314,81 @@ mod platform {
             } else {
                 "paste_sent"
             },
-            reason: if observed {
-                "Paste insertion was verified by a bounded Win32 text observer on the saved target."
+            reason: if observed && used_clipboard_fallback {
+                "Clipboard fallback insertion was verified by a bounded Win32 text observer on the saved target."
+                    .to_string()
+            } else if observed {
+                "Direct text input was verified by a bounded Win32 text observer on the saved target without using the clipboard."
+                    .to_string()
+            } else if used_clipboard_fallback && press_enter_after_paste {
+                "Clipboard fallback paste and Enter commands were sent to the saved foreground target without observation."
+                    .to_string()
+            } else if used_clipboard_fallback {
+                "Clipboard fallback paste command was sent to the saved foreground target without observation."
                     .to_string()
             } else if press_enter_after_paste {
-                "Paste and Enter commands were sent to the saved foreground target without observation."
+                "Direct text input and Enter were sent to the saved foreground target without using the clipboard or observation."
                     .to_string()
             } else {
-                "Paste command was sent to the saved foreground target without observation."
+                "Direct text input was sent to the saved foreground target without using the clipboard or observation."
                     .to_string()
             },
             target,
         })
+    }
+
+    fn deliver_text_with_clipboard(
+        text: &str,
+        target: &DesktopDeliveryTarget,
+        hwnd: HWND,
+        press_enter_after_paste: bool,
+    ) -> Result<(), String> {
+        let previous_clipboard = read_clipboard_text();
+        write_clipboard_text(text)?;
+
+        let paste_result = (|| {
+            focus_window(hwnd);
+            thread::sleep(Duration::from_millis(80));
+            release_modifier_keys()?;
+            send_ctrl_v()?;
+            if press_enter_after_paste {
+                thread::sleep(Duration::from_millis(80));
+                send_enter()?;
+            }
+            thread::sleep(clipboard_restore_delay(target));
+            Ok::<(), String>(())
+        })();
+
+        if let Some(previous) = previous_clipboard {
+            let _ = write_clipboard_text(&previous);
+        }
+
+        paste_result
+    }
+
+    fn allow_clipboard_paste_fallback() -> bool {
+        std::env::var("DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK")
+            .map(|value| {
+                matches!(
+                    value.to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false)
+    }
+
+    fn should_skip_bounded_observer(target: &DesktopDeliveryTarget) -> bool {
+        let class_name = target.window_class.to_ascii_lowercase();
+        class_name.contains("chrome_widgetwin")
+            || class_name.contains("chrome_renderwidgethosthwnd")
+    }
+
+    fn direct_input_settle_delay(target: &DesktopDeliveryTarget) -> Duration {
+        if should_skip_bounded_observer(target) {
+            return Duration::from_millis(80);
+        }
+
+        Duration::from_millis(80)
     }
 
     fn clipboard_restore_delay(target: &DesktopDeliveryTarget) -> Duration {
@@ -434,6 +517,36 @@ mod platform {
         }
     }
 
+    fn release_modifier_keys() -> Result<(), String> {
+        send_keyboard_inputs(
+            &mut [
+                key_input(VK_SHIFT, true),
+                key_input(VK_CONTROL, true),
+                key_input(VK_MENU, true),
+                key_input(VK_LWIN, true),
+                key_input(VK_RWIN, true),
+            ],
+            "Modifier keys could not be released before text delivery.",
+        )
+    }
+
+    fn send_unicode_text(text: &str) -> Result<(), String> {
+        for chunk in text.encode_utf16().collect::<Vec<_>>().chunks(512) {
+            let mut inputs = Vec::with_capacity(chunk.len() * 2);
+            for code_unit in chunk {
+                inputs.push(unicode_input(*code_unit, false));
+                inputs.push(unicode_input(*code_unit, true));
+            }
+            send_keyboard_inputs(
+                &mut inputs,
+                "Direct text input could not be sent without the clipboard.",
+            )?;
+            thread::sleep(Duration::from_millis(1));
+        }
+
+        Ok(())
+    }
+
     fn send_ctrl_v() -> Result<(), String> {
         send_keyboard_inputs(
             &mut [
@@ -474,6 +587,21 @@ mod platform {
             Ok(())
         } else {
             Err("Enter key could not be sent after paste.".to_string())
+        }
+    }
+
+    fn unicode_input(code_unit: u16, key_up: bool) -> INPUT {
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: 0,
+                    wScan: code_unit,
+                    dwFlags: KEYEVENTF_UNICODE | if key_up { KEYEVENTF_KEYUP } else { 0 },
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
         }
     }
 
