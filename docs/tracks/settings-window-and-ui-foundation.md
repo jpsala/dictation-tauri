@@ -109,6 +109,7 @@ Como parte del release/cloud local hardening, la seccion Cloud de `SettingsSurfa
 - `SettingsSurface` muestra badge/headline/detail, policy/capabilities, next step y error redacted; `statePath` se reduce a `fixvox-device-state.json · host app data` para no filtrar rutas personales completas.
 - Acciones disponibles: `Refresh local status`, `Repair device link`, `Refresh policy`, `Activate device`; las operaciones cloud siguen con `window.confirm` antes de contactar Fixvox Cloud.
 - Tests: `tests/settings/fixvox-cloud-control.test.ts` cubre health/errores redacted; checks pasaron: `npm run test:pipeline -- tests/settings`, `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`, `npm run build`, `cd src-tauri && cargo fmt --check && cargo check`.
+- Smoke visual CUA 2026-06-29: Settings abrio por `show_settings_window`, Cloud renderizo `Ready for managed dictation`, policy `Pro`, capabilities `managed STT · advanced settings · debug hidden · fresh`, next-step accionable, `Repair device link` visible y path reducido a `fixvox-device-state.json · host app data`; report redacted en `artifacts/ui-spikes/settings-cloud-smoke/20260629-settings-cloud-smoke/report.json`.
 - Commit: `1bcb2ec fix: harden fixvox cloud settings ux`.
 
 ## Update 2026-06-28: Settings secciones + HeroUI CSS
@@ -126,7 +127,7 @@ JP reporto tres problemas: Settings tardaba demasiado en renderizar, solo Hotkey
 
 Siguiente lote recomendado:
 
-1. Que JP pruebe la instancia viva desde `artifacts/live-app/20260629-162841/tauri-dev.log`; preferencia actual historica quedo en `Alt+3` por pedido explicito.
+1. Que JP pruebe la instancia viva desde `artifacts/live-app/20260629-settings-cloud-smoke/tauri-dev.log`; preferencia actual historica quedo en `Alt+3` por pedido explicito.
 2. Si hay friccion en Cloud Settings, corregir copy/estado local sin llamadas cloud reales nuevas salvo aprobacion; mantener errores e IDs redacted.
 3. Si se agregan mas combinaciones soportadas, mantener validacion/registro/persistencia host-owned y reutilizar el copy de errores/conflictos de `src/settings/hotkey-edit-copy.ts`.
 4. No reintroducir listas de alternativas para la hotkey principal; mantener un solo campo editable.
