@@ -16,7 +16,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Producto/MVP dictado | decided | `docs/topics/product-direction.md` | Respetar MVP 0-3. |
 | Fuentes de referencia | active | `docs/topics/source-project-map.md` | Usar como mapa adopt/adapt/reference bajo demanda. |
 | Fixtures/STT | active | `docs/topics/automation-and-reference-fixtures.md` | Diseñar harness propio antes de pruebas manuales. |
-| Backend/model routing | decided + effective-runtime-parity-closed | `docs/topics/backend-and-model-routing.md`, `docs/topics/fixvox-cloud-runtime-port.md`, `docs/tracks/fixvox-effective-runtime-parity.md` | STT/postprocess runtime, runtimePolicy persistido/refrescado, preflight cache/prewarm + soft-timeout in-flight, audio prep VAD/MP3/no-speech y smokes redacted cerrados. |
+| Backend/model routing | decided + effective-runtime-parity-archived | `docs/topics/backend-and-model-routing.md`, `docs/topics/fixvox-cloud-runtime-port.md`, `docs/tracks/archive/fixvox-effective-runtime-parity.md` | STT/postprocess runtime, runtimePolicy persistido/refrescado, preflight cache/prewarm + soft-timeout in-flight, audio prep VAD/MP3/no-speech y smokes redacted cerrados. |
 | UI/design | seeded | `PRODUCT.md`, `DESIGN.md` | Usar antes de cualquier UI durable. |
 | Pipeline simulado | mvp1-complete | `specs/002-simulated-pipeline/tasks.md` | Mantener como baseline para MVP 2. |
 | Audio sintetico/STT | mvp2-dry-run-complete | `specs/003-synthetic-audio-stt/tasks.md` | T031 queda opcional/local si se decide correr provider real. |
@@ -42,7 +42,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `010-desktop-dictation-control-delivery` | complete incl. T046 and E2E: `Ctrl+Shift+F9` -> fresh WAV -> Fixvox managed STT -> review visible -> copy fallback changed clipboard | `specs/010-desktop-dictation-control-delivery/tasks.md` |
 | `011-selection-transform-and-recovery-ergonomics` | active post-selection smoke: fixture-first routing/transforms, safe paste-last, explicit host command boundary, redacted target metadata, best-effort UIA selected-text read, and T039 product IPC smoke passed; replace-selection remains gated | `specs/011-selection-transform-and-recovery-ergonomics/tasks.md` |
 | `012-fixvox-dock-dictation-key` | complete through larger parity follow-ups: Skin4-like dock, Rust/Tauri shell, tray/context menu, default native Alt+Space with fallback, synced/actionable companion window first-slice, bounded result history, side-by-side smoke, and real `paste_sent`/controlled `paste_observed` E2E | `specs/012-fixvox-dock-dictation-key/tasks.md` |
-| `013-fixvox-text-runtime-parity` | pure primitives/materialization complete; follow-up runtime parity batches committed (`1310a08`, `c7cf731`, `e11ffb2`) close provider/model/prompt/request/postprocess, Windows cargo tests, runtimePolicy persistence and preflight cache/prewarm. Current uncommitted closeout adds audio prep VAD/MP3/no-speech, soft-timeout/preflight in-flight, smoke real redacted, and real dev runtimePolicy refresh. | `specs/013-fixvox-text-runtime-parity/tasks.md`, `docs/tracks/fixvox-effective-runtime-parity.md` |
+| `013-fixvox-text-runtime-parity` | complete + archived runtime parity closeout: provider/model/prompt/request/postprocess, Windows cargo tests, runtimePolicy persistence/refresh, preflight cache/prewarm/soft-timeout, audio prep VAD/MP3/no-speech and smoke real redacted. | `specs/013-fixvox-text-runtime-parity/tasks.md`, `docs/tracks/archive/fixvox-effective-runtime-parity.md` |
 
 ## Tracks Activas
 
@@ -52,7 +52,6 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Estudio de fuentes | `docs/tracks/source-project-study-plan.md` | Plan vivo para Copicu/Fixvox. |
 | Settings/UI foundation | `docs/tracks/settings-window-and-ui-foundation.md` | Decision HeroUI v3 y handoff para pantalla Settings real. |
 | Fixvox Tauri cloud/release | `docs/tracks/fixvox-tauri-cloud-release.md` | Plan para convertir este repo en cliente desktop Fixvox instalable, activable y policy-driven contra Fixvox Cloud. |
-| Fixvox effective runtime parity | `docs/tracks/fixvox-effective-runtime-parity.md` | Audio prep Fixvox-equivalent (VAD/MP3/no-speech), soft-timeout/preflight in-flight, smoke managed redacted y runtimePolicy dev refresh cerrados; queda closeout/commit y posible archive. |
 
 ## Decisiones Vigentes
 
@@ -109,7 +108,7 @@ npm run tauri:dev:hidden -- -StopExisting
 
 ## Proximo Paso Probable
 
-Fixvox effective runtime parity: audio prep Fixvox-equivalent + smoke real redacted, soft-timeout/preflight in-flight y refresh real de `runtimePolicy` dev quedaron cerrados. Evidencia smoke: `artifacts/microphone-capture/reports/fixvox-audio-prep-smoke-1782759207774-summary.json` (`whisper-large-v3-turbo`, prompt hash/length, preflight cached/prewarmed, MP3 compression ratio, STT latency, postprocess skipped, total). Nuevo closeout: `runtime_transcription.rs` marca `inFlightSoftTimedOut`/`trustedPolicyFallback` si supera 1000ms y el device state local Pro ya tiene `policySnapshot.runtimePolicy` presente. Proximo: commit/closeout documental y archivar/cerrar track si JP no pide otro smoke.
+Fixvox effective runtime parity quedo cerrado y archivado en `docs/tracks/archive/fixvox-effective-runtime-parity.md` como parity suficiente para dictado normal. Evidencia smoke: `artifacts/microphone-capture/reports/fixvox-audio-prep-smoke-1782759207774-summary.json`; commit closeout `66d84b6`. Reabrir solo si JP pide otro smoke/parity gap puntual.
 
 Post-`013`: ademas de Settings/hotkeys, JP definio el nuevo goal de hacer este repo instalable como Fixvox Tauri en otras PCs usando Fixvox Cloud como control-plane. La track activa es `docs/tracks/fixvox-tauri-cloud-release.md`; T001-T006 ya cubren identidad, bundle NSIS, device/status/activation, policy snapshot/capabilities, managed runtime sin fallback BYOK silencioso y fixes de PC limpia. Alpha prerelease separado publicado: `fixvox-tauri-v0.1.0-20260629114744` (SHA256 documentado en track). JP pauso la prueba en otra PC. Batch local actual cerró UX de Cloud Settings: health/next-step/errors redacted + `Repair device link`/refresh; siguiente orden: seguir puliendo uso vivo local o reactivar validacion externa con aprobacion antes de republish.
 

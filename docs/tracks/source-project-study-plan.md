@@ -62,7 +62,7 @@ Estudio actual 2026-06-29:
 - [x] Fixvox/dictado: leer `docs/navigation/features/voice-dock.md`, `src/app/backend/voice-dock-window.ts`, `src/app/backend/voice-dock-output.ts`, `src/app/backend/speech-to-text.ts`, `src/app/backend/text-postprocess*`/prompts si existen y `src/app/backend/hotkeys.ts`; comparar contra `src/desktop-control`, `src/capture`, `src/host-runtime`, `src/fixvox-text-runtime`, `src/delivery` y `src-tauri/src/desktop_delivery.rs`. Resultado: tabla 2026-06-29 agregada en `docs/topics/source-project-map.md`.
 - [x] Armar tabla de diferencias por etapa: before-start target capture, recording, stop/submit, STT, postprocess, delivery, recovery, history/evidence, browser targets.
 - [x] Actualizar `docs/topics/source-project-map.md` con hallazgos adopt/adapt/reference y gaps concretos antes de abrir nueva spec o tocar producto.
-- [x] Si salen gaps implementables grandes, crear o actualizar spec/track antes de tocar producto; si son hotfixes chicos, hacer batch TDD con app Tauri real. Gaps grandes detectados: runtime effective parity STT/postprocess, target assurance resolver, VAD/MP3 audio prep, evidencia por etapa. Track creada: `docs/tracks/fixvox-effective-runtime-parity.md`.
+- [x] Si salen gaps implementables grandes, crear o actualizar spec/track antes de tocar producto; si son hotfixes chicos, hacer batch TDD con app Tauri real. Gaps grandes detectados: runtime effective parity STT/postprocess, target assurance resolver, VAD/MP3 audio prep, evidencia por etapa. Track cerrada/archivada: `docs/tracks/archive/fixvox-effective-runtime-parity.md`.
 
 ## Referencias
 
