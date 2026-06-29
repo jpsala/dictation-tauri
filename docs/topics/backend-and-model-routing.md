@@ -102,6 +102,8 @@ Usar Opcion C, pero promoviendo el adapter proxied/managed de Fixvox a camino pr
 
 Dictation Tauri mantiene un `ModelGateway`/host boundary propio, pero el runtime real recomendado debe resolver primero la ruta managed cloud cuando exista backend/device valido. El adapter directo local queda para BYOK/dev y para aislar fallas durante desarrollo.
 
+Correccion 2026-06-29: el problema pendiente ya no es solo elegir managed vs directo. Hay que resolver el **plan efectivo** igual que Fixvox: provider/model/prompt de STT, language, request fields y postprocess enabled/provider/model/prompt deben salir de policy/cache/control-plane, no de React ni de defaults Rust. En la policy real de JP Fixvox usa `whisper-large-v3-turbo` y postprocess off; Dictation Tauri no debe caer a `whisper-large-v3` ni correr chat-completions extra.
+
 ## Decision Cerrada
 
 Dictation Tauri usara un `ModelGateway` propio e hibrido.
@@ -110,8 +112,9 @@ Orden actualizado:
 
 1. Adapter mock para tests de pipeline y provider-free smoke.
 2. Adapter directo local Groq ya implementado como BYOK/dev fallback explicito desde Rust/Tauri, nunca desde React.
-3. Adapter managed cloud Fixvox como camino principal siguiente: device registration, preflight, `X-Device-Id`, `/v1/audio/transcriptions`, headers `X-Fixvox-*` y fail-closed si no hay lane managed.
-4. Postprocess managed via `/v1/chat/completions` despues de estabilizar STT cloud.
+3. Adapter managed cloud Fixvox como camino principal: device registration, preflight, `X-Device-Id`, `/v1/audio/transcriptions`, headers `X-Fixvox-*` y fail-closed si no hay lane managed.
+4. Postprocess managed via `/v1/chat/completions` solo cuando la policy efectiva lo habilite; no como default hardcodeado.
+5. `DictationRuntimePlan` host-owned como contrato previo a llamar proveedores: mismo plan que Fixvox para STT/postprocess y evidencia redacted de diferencias.
 
 Contrato minimo:
 

@@ -2,7 +2,7 @@
 
 Estado vivo del proyecto. Mantener corto.
 
-Ultima actualizacion manual: 2026-06-28 (Fixvox Tauri activation Pro + User-Agent Cloudflare 1010 diagnosticado).
+Ultima actualizacion manual: 2026-06-29 (gap critico: Fixvox effective runtime parity STT/postprocess; Tauri usa defaults/hardcodes distintos).
 
 ## Regla
 
@@ -16,7 +16,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Producto/MVP dictado | decided | `docs/topics/product-direction.md` | Respetar MVP 0-3. |
 | Fuentes de referencia | active | `docs/topics/source-project-map.md` | Usar como mapa adopt/adapt/reference bajo demanda. |
 | Fixtures/STT | active | `docs/topics/automation-and-reference-fixtures.md` | Diseñar harness propio antes de pruebas manuales. |
-| Backend/model routing | decided | `docs/topics/backend-and-model-routing.md`, `docs/topics/fixvox-cloud-runtime-port.md` | Post-008: promover Fixvox managed cloud desde Rust/Tauri; directo Groq queda BYOK/dev fallback. |
+| Backend/model routing | decided + parity-gap | `docs/topics/backend-and-model-routing.md`, `docs/topics/fixvox-cloud-runtime-port.md`, `docs/tracks/fixvox-effective-runtime-parity.md` | Siguiente: resolver provider/model/prompt/postprocess desde policy/cache Fixvox efectiva; no hardcodes React/defaults Rust. |
 | UI/design | seeded | `PRODUCT.md`, `DESIGN.md` | Usar antes de cualquier UI durable. |
 | Pipeline simulado | mvp1-complete | `specs/002-simulated-pipeline/tasks.md` | Mantener como baseline para MVP 2. |
 | Audio sintetico/STT | mvp2-dry-run-complete | `specs/003-synthetic-audio-stt/tasks.md` | T031 queda opcional/local si se decide correr provider real. |
@@ -42,7 +42,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `010-desktop-dictation-control-delivery` | complete incl. T046 and E2E: `Ctrl+Shift+F9` -> fresh WAV -> Fixvox managed STT -> review visible -> copy fallback changed clipboard | `specs/010-desktop-dictation-control-delivery/tasks.md` |
 | `011-selection-transform-and-recovery-ergonomics` | active post-selection smoke: fixture-first routing/transforms, safe paste-last, explicit host command boundary, redacted target metadata, best-effort UIA selected-text read, and T039 product IPC smoke passed; replace-selection remains gated | `specs/011-selection-transform-and-recovery-ergonomics/tasks.md` |
 | `012-fixvox-dock-dictation-key` | complete through larger parity follow-ups: Skin4-like dock, Rust/Tauri shell, tray/context menu, default native Alt+Space with fallback, synced/actionable companion window first-slice, bounded result history, side-by-side smoke, and real `paste_sent`/controlled `paste_observed` E2E | `specs/012-fixvox-dock-dictation-key/tasks.md` |
-| `013-fixvox-text-runtime-parity` | complete: pure Fixvox text primitives copied/adapted, TS/Tauri request policy carries postprocess, Rust managed runtime calls `/v1/chat/completions` when enabled, delivery uses materialized final text with raw fallback and redacted evidence; managed smoke passes STT + postprocess after harness was corrected to use the Fixvox wrapper | `specs/013-fixvox-text-runtime-parity/tasks.md` |
+| `013-fixvox-text-runtime-parity` | complete for pure primitives/materialization, but 2026-06-29 audit found effective runtime gap: Tauri may use `whisper-large-v3`, miss STT prompt/timestamps/temperature, and force postprocess while Fixvox policy uses `whisper-large-v3-turbo` + postprocess off. Next track fixes runtime plan parity. | `specs/013-fixvox-text-runtime-parity/tasks.md`, `docs/tracks/fixvox-effective-runtime-parity.md` |
 
 ## Tracks Activas
 
@@ -52,6 +52,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Estudio de fuentes | `docs/tracks/source-project-study-plan.md` | Plan vivo para Copicu/Fixvox. |
 | Settings/UI foundation | `docs/tracks/settings-window-and-ui-foundation.md` | Decision HeroUI v3 y handoff para pantalla Settings real. |
 | Fixvox Tauri cloud/release | `docs/tracks/fixvox-tauri-cloud-release.md` | Plan para convertir este repo en cliente desktop Fixvox instalable, activable y policy-driven contra Fixvox Cloud. |
+| Fixvox effective runtime parity | `docs/tracks/fixvox-effective-runtime-parity.md` | Proxima implementacion: hacer que STT/postprocess efectivo matchee Fixvox real de JP antes de tocar target/delivery/audio prep. |
 
 ## Decisiones Vigentes
 
@@ -107,6 +108,8 @@ npm run tauri:dev:hidden -- -StopExisting
 ```
 
 ## Proximo Paso Probable
+
+Nueva sesion pedida por JP: trabajar las diferencias entre Fixvox y Dictation Tauri en el proceso de dictado. Arrancar comparando `C:\dev\fixvox` contra este repo en flujo end-to-end: target capture, start/stop semantics, recording/audio prep, STT, postprocess/materializacion, delivery/recovery, observabilidad/evidencia y edge cases de navegador/clipboard.
 
 Post-`013`: ademas de Settings/hotkeys, JP definio el nuevo goal de hacer este repo instalable como Fixvox Tauri en otras PCs usando Fixvox Cloud como control-plane. La track activa es `docs/tracks/fixvox-tauri-cloud-release.md`; T001-T006 ya cubren identidad `Fixvox Tauri`, bundle NSIS local, device identity/status/activation, policy snapshot/capabilities, managed runtime sin fallback BYOK silencioso y fixes de PC limpia. Alpha prerelease separado publicado: `fixvox-tauri-v0.1.0-20260629114744` en `jpsala/fixvox-releases` con asset `Fixvox-Tauri-Setup.exe` (SHA256 documentado en track). Siguiente orden: validar install/activation/dictation desde otra PC/entorno limpio y solo republish/subir nuevo asset con aprobacion explicita.
 
@@ -170,6 +173,8 @@ Post-`013`: el foco activo paso a Settings real sobre una ventana normal. Estado
 56. Continuacion `aos-gol`: se agrego smoke local tipo PC limpia sin instalar `scripts/packaged-clean-smoke.ps1` / `npm run packaged-clean:smoke -- -AllowDesktopSideEffects`. Passing runs `artifacts/release/packaged-clean-smoke/20260629-packaged-clean-first-run-nocdp/report.json` y post-fix `20260629-packaged-clean-post-redaction-fix/report.json`: exe empaquetado arranca desde working dir sin `.env`, con `APPDATA/LOCALAPPDATA` aislados, sin BYOK/device env, crea device state con `installId` y sin `deviceId` pre-activation, configura dock y evita `Alt+Space` usando `Ctrl+Shift+F9`. Con aprobacion JP tambien se instalo el asset publicado en carpeta aislada, se activo Pro contra Fixvox Cloud con invite local y se smokeo dictado managed sin BYOK (`artifacts/release/installed-smoke/20260629-installed-release-smoke/installed-dictation-report.json`). Se corrigio bug de redaccion: request IDs ahora se materializan como `redacted-request-id`; build local nuevo no publicado SHA256 `1ecaa89a503bd1a93f4b894e6b2dc811357cfb53eaaebae71e3a309da968ea12`. Gotcha: CDP/WebView2 remote debugging en packaged smoke hace fallar setup del WebView en este host; usar checks por proceso/log/appdata. Checks: installed smoke, packaged-clean smoke, release:windows.
 57. Hotfix live por feedback JP: habia instancia dev con dock `about:blank`/no visible y Settings negra. Root cause: Vite dev server bloqueado transformando modulos mientras observaba artifacts vivos + Settings on-demand quedaba `about:blank`. Fix: `vite.config.ts` ignora `artifacts/**`/targets, Settings vuelve como WebView preconfigurada oculta `index.html#settings`, renderer detecta hash y close hace hide. Instancia viva `20260629-live-fixed-dock-settings` pid 24424: dock `Ready`, `show_settings_window` OK y Settings renderiza `Settings / Hotkeys`.
 58. Hotfix browser paste confirmado por JP: dictado, dock y `Alt+Shift+X` no pegaban en inputs de browser porque el delivery mandaba `Escape` antes de `Ctrl+V`, lo que en Chromium sacaba foco del textarea/input (`activeElement=BODY`). Se quito `Escape` completamente de la ruta de paste y se dejo delay extra de clipboard para Chromium; tambien `Alt+Shift+X` captura target snapshot en keydown para no recapturar despues del blur. Run live `20260629-no-escape-before-paste`; JP confirmo que funciona bien.
+59. Follow-up clipboard cerrado: `src-tauri/src/desktop_delivery.rs` ya no usa portapapeles por default para dictado/`Alt+Shift+X`; primero envia texto por `SendInput` Unicode directo y solo permite fallback clipboard + `Ctrl+V` si se setea `DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK=true`. `Copy transcript` sigue mutando clipboard solo por accion manual explicita. Checks: desktop-control focused, build, cargo check.
+60. Follow-up performance browser: JP confirmo `Alt+Shift+X` funcionando, pero paste en navegador estaba lento. Root cause probable: tras direct Unicode se seguia corriendo el observer Win32 bounded (`WM_GETTEXT`/enumeracion) y un settle especial Chromium; para `Chrome_WidgetWin_*`/`Chrome_RenderWidgetHostHWND` ahora se salta el observer bounded no util y queda settle directo corto. Instancia live reiniciada `20260629-browser-direct-input-fast`; JP confirmo que ya quedo bien. Checks: desktop-delivery-rust, desktop-control, build, cargo check.
 
 ## Promocion De Memoria
 

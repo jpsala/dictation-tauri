@@ -4,6 +4,8 @@
 
 **Organization**: Fewest practical checkpoints. Each checkpoint should be reviewable, tested, and reversible with one commit. Process parity work should prefer copying/extracting Fixvox behavior over inventing replacements.
 
+> 2026-06-29 correction: this spec completed parity for pure text primitives/materialization and optional managed postprocess plumbing, but not the **effective runtime plan** used by the live app. JP's Fixvox policy currently resolves STT to `whisper-large-v3-turbo`, uses a technical STT prompt, and has raw postprocess disabled; Dictation Tauri may still default to `whisper-large-v3`, omit STT prompt/timestamps/temperature, and force postprocess in `src/App.tsx`. Follow-up implementation track: `docs/tracks/fixvox-effective-runtime-parity.md`.
+
 ## Phase 1: Checkpoint 1 — Lock Fixvox Process Contract
 
 **Goal**: Know exactly what Fixvox currently does for normal dictation text from recording stop to final materialized output.

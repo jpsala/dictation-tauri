@@ -1,7 +1,7 @@
 ---
 status: active
 started: 2026-06-07
-updated: 2026-06-27
+updated: 2026-06-29
 priority: high
 topic: docs/topics/source-project-map.md
 related:
@@ -43,11 +43,11 @@ El inventario y las decisiones largas ya viven en `docs/topics/source-project-ma
 
 ## Proximo Trabajo
 
-Estudio actual 2026-06-27:
+Estudio actual 2026-06-29:
 
-1. Mapear `C:\dev\copicu` para patrones Tauri/React/Rust utiles: ventanas normales, custom chrome, tray, shortcuts, settings, focus/paste y checks visuales.
-2. Mapear `C:\dev\fixvox` para comportamiento funcional: dock, hotkeys, STT/postprocess, prompts, policy, telemetry, recovery y backend/proxy.
-3. Registrar aprendizajes aplicables en `docs/topics/source-project-map.md` antes de portar codigo o comportamiento.
+1. Comparar `C:\dev\fixvox` contra Dictation Tauri en el proceso de dictado end-to-end: target capture, start/stop semantics, recording/audio prep, STT, postprocess/materializacion, delivery/recovery, observabilidad/evidencia y edge cases de navegador/clipboard.
+2. Registrar diferencias como tabla adopt/adapt/reference en `docs/topics/source-project-map.md` o una spec nueva si el gap requiere implementacion grande.
+3. Mantener Copicu como referencia tecnica solo si aparece un gap de shell Tauri/Windows; no distraer el estudio funcional de Fixvox.
 4. Todo cambio en Dictation Tauri debe seguir siendo implementacion propia y testeada aca.
 
 ## Primer Mapa 2026-06-27
@@ -59,10 +59,10 @@ Estudio actual 2026-06-27:
 
 ## Tasks Para Continuar Esta Sesion
 
-- [ ] Copicu/Tauri: leer codigo puntual de `src-tauri/src/surface_registry.rs`, `src-tauri/src/window_state.rs`, `src-tauri/src/hotkeys.rs`, `src-tauri/src/lib.rs` y `src/ui/window/`; extraer solo patrones que apliquen a Settings/ventanas/hotkeys de Dictation Tauri.
-- [ ] Fixvox/voz: leer `docs/navigation/features/hotkeys.md`, `docs/navigation/features/voice-dock.md`, `src/app/backend/hotkeys.ts`, `src/app/backend/voice-dock-window.ts`, `src/app/backend/speech-to-text.ts` y `src/app/backend/voice-dock-output.ts`; comparar contra lo ya implementado aca.
-- [ ] Actualizar `docs/topics/source-project-map.md` con hallazgos adopt/adapt/reference y gaps concretos antes de abrir nueva spec o tocar producto.
-- [ ] Si el siguiente lote sigue en Settings/hotkeys, mantener `docs/tracks/settings-window-and-ui-foundation.md` como handoff de implementacion y validar con app Tauri real, no solo Vite/browser.
+- [x] Fixvox/dictado: leer `docs/navigation/features/voice-dock.md`, `src/app/backend/voice-dock-window.ts`, `src/app/backend/voice-dock-output.ts`, `src/app/backend/speech-to-text.ts`, `src/app/backend/text-postprocess*`/prompts si existen y `src/app/backend/hotkeys.ts`; comparar contra `src/desktop-control`, `src/capture`, `src/host-runtime`, `src/fixvox-text-runtime`, `src/delivery` y `src-tauri/src/desktop_delivery.rs`. Resultado: tabla 2026-06-29 agregada en `docs/topics/source-project-map.md`.
+- [x] Armar tabla de diferencias por etapa: before-start target capture, recording, stop/submit, STT, postprocess, delivery, recovery, history/evidence, browser targets.
+- [x] Actualizar `docs/topics/source-project-map.md` con hallazgos adopt/adapt/reference y gaps concretos antes de abrir nueva spec o tocar producto.
+- [x] Si salen gaps implementables grandes, crear o actualizar spec/track antes de tocar producto; si son hotfixes chicos, hacer batch TDD con app Tauri real. Gaps grandes detectados: runtime effective parity STT/postprocess, target assurance resolver, VAD/MP3 audio prep, evidencia por etapa. Track creada: `docs/tracks/fixvox-effective-runtime-parity.md`.
 
 ## Referencias
 
