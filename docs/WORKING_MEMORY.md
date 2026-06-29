@@ -2,7 +2,7 @@
 
 Estado vivo del proyecto. Mantener corto.
 
-Ultima actualizacion manual: 2026-06-29 (Cloud Settings UX hardening local: health/next-step/actionable errors + repair/refresh; runtime parity sigue cerrado).
+Ultima actualizacion manual: 2026-06-29 (Settings/Dock/Cloud local: Cloud UX hardening + hotkey recorder capture de-duped; runtime parity sigue cerrado).
 
 ## Regla
 
@@ -175,6 +175,7 @@ Post-`013`: el foco activo paso a Settings real sobre una ventana normal. Estado
 59. Follow-up clipboard cerrado: `src-tauri/src/desktop_delivery.rs` ya no usa portapapeles por default para dictado/`Alt+Shift+X`; primero envia texto por `SendInput` Unicode directo y solo permite fallback clipboard + `Ctrl+V` si se setea `DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK=true`. `Copy transcript` sigue mutando clipboard solo por accion manual explicita. Checks: desktop-control focused, build, cargo check.
 60. Follow-up performance browser: JP confirmo `Alt+Shift+X` funcionando, pero paste en navegador estaba lento. Root cause probable: tras direct Unicode se seguia corriendo el observer Win32 bounded (`WM_GETTEXT`/enumeracion) y un settle especial Chromium; para `Chrome_WidgetWin_*`/`Chrome_RenderWidgetHostHWND` ahora se salta el observer bounded no util y queda settle directo corto. Instancia live reiniciada `20260629-browser-direct-input-fast`; JP confirmo que ya quedo bien. Checks: desktop-delivery-rust, desktop-control, build, cargo check.
 61. `aos-gol 3 y 4`: prueba en otra PC queda pausada; se cerró hardening local de Cloud Settings para activation/policy/errors: health derivado (`Ready`, activation needed, stale, managed blocked, refresh failed), next-step visible, error redacted, `statePath` reducido a app-data basename y accion `Repair device link` host-owned además de status/refresh/activate. Smoke visual CUA Cloud paso en run `20260629-settings-cloud-smoke` con Settings/Cloud en `Ready`, policy Pro, capabilities fresh y acciones visibles; report redacted `artifacts/ui-spikes/settings-cloud-smoke/20260629-settings-cloud-smoke/report.json`. Checks: settings, settings+voice-dock+desktop-control, build, cargo fmt/check.
+62. Pulido local Settings/Dock/Cloud: el recorder de Hotkeys ya no arma captura por `mousedown`/`focus` y ahora evita rearmados duplicados con guard ref mientras esta recording/armed; esto reduce activaciones dobles al editar la hotkey en Settings. Commit `710f24d fix: harden settings hotkey capture`. Checks: `npm run test:pipeline -- tests/settings`, `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`, `npm run build`.
 
 ## Promocion De Memoria
 
