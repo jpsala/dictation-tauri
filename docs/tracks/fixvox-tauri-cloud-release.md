@@ -39,7 +39,7 @@ Decision de producto 2026-06-27: Dictation Tauri es el nuevo cliente desktop de 
 
 ## Proximo Paso
 
-Bootstrap inicial completado: installer local reproducible + release channel separado documentado para Tauri. Device identity/status host-owned y Settings activation estan implementados. Smoke real autorizado por JP diagnostico Cloudflare 1010 sin User-Agent; con `fixvox-tauri/<version>` el device local quedo Pro. T005 ya agrega snapshot/capabilities policy-driven y T006 ya endurece el runtime para preferir device state persistido y no caer silenciosamente a BYOK; queda pendiente un smoke real/redacted en PC nueva o entorno equivalente antes de llamar cerrado el release path.
+Bootstrap inicial completado: installer local reproducible + release channel separado documentado para Tauri. Device identity/status host-owned y Settings activation estan implementados. Smoke real autorizado por JP diagnostico Cloudflare 1010 sin User-Agent; con `fixvox-tauri/<version>` el device local quedo Pro. T005 ya agrega snapshot/capabilities policy-driven y T006 ya endurece el runtime para preferir device state persistido y no caer silenciosamente a BYOK. El smoke instalado local aislado ya paso; JP dejo la prueba en otra PC en pausa. Batch local actual: UX de Cloud en Settings endurecida con health/next-step/actionable errors y repair/refresh, sin publish ni llamadas cloud reales nuevas. Pendiente: validacion externa cuando JP la reactive.
 
 ## Release Bootstrap Inicial
 
@@ -162,6 +162,25 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 - Guardrails:
   - Audio/transcripts reales quedan en artifacts/app data ignorados y no se commitean.
 
+### T008 — UX local de activation/policy/errors
+
+- Estado: done
+- Tipo: implementation/ux
+- Objetivo: antes de volver a otra PC o publish, Settings debe explicar estados cloud accionables sin filtrar IDs/rutas ni permitir fallback BYOK silencioso.
+- Pasos:
+  1. Derivar health local: open-in-Tauri, local setup, activation needed, cloud refresh failed, policy stale, managed blocked o ready.
+  2. Mostrar status/next-step/capabilities con errores redacted y path de state reducido a app-data basename.
+  3. Agregar accion host-owned `Repair device link` ademas de local status, refresh policy y activate.
+  4. Mantener confirmacion antes de contactar Fixvox Cloud.
+- Checks:
+  - `npm run test:pipeline -- tests/settings`
+  - `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`
+  - `npm run build`
+- Guardrails:
+  - No llamadas cloud reales nuevas en este batch.
+  - No publicar/subir assets.
+  - No mostrar invite codes, device IDs completos, transcripts ni rutas personales completas.
+
 ### T007 — Publicar release artifact descargable
 
 - Estado: pending
@@ -192,6 +211,7 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 - 2026-06-29 validacion de continuidad: `npm run test:pipeline`, `npm run build`, `cd src-tauri && cargo fmt --check && cargo check`, `npm run release:windows`, `bun scripts/context-index.ts && bun scripts/agent-context-audit.ts` OK. `gh release view` confirmo prerelease + assets `Fixvox-Tauri-Setup.exe` y `.sha256.txt`; el `.sha256.txt` publicado coincide con `4dd4670d3a2a46fa5a605718abaab8f1891b619a6e0f7345bf30b8043f69f74c`. Build local regenerado queda solo local y no se republish sin aprobacion. `cargo test --lib` sigue bloqueado por `STATUS_ENTRYPOINT_NOT_FOUND` conocido.
 - 2026-06-29 smoke local tipo PC limpia sin instalar: se agrego `scripts/packaged-clean-smoke.ps1` / `npm run packaged-clean:smoke -- -AllowDesktopSideEffects`, que lanza `src-tauri/target/release/dictation-tauri.exe` con `APPDATA/LOCALAPPDATA` aislados, working dir sin `.env`, sin `GROQ_API_KEY`/device env y shortcut `Ctrl+Shift+F9` para no interceptar `Alt+Space`. Passing runs: `artifacts/release/packaged-clean-smoke/20260629-packaged-clean-first-run-nocdp/report.json` contra exe local previo y `artifacts/release/packaged-clean-smoke/20260629-packaged-clean-post-redaction-fix/report.json` contra build local post-fix; verifica que el exe empaquetado queda vivo, configura dock, crea `fixvox-device-state.json` con `installId` y sin `deviceId` antes de activation, y no lee dotenv del repo. Tambien se descargo el asset publicado a temp y el SHA256 remoto coincide con `4dd4670d3a2a46fa5a605718abaab8f1891b619a6e0f7345bf30b8043f69f74c`, sin instalar ni republish. Gotcha: no usar `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`/CDP en este smoke empaquetado; en este host hace fallar setup del WebView con `failed to receive message from webview`.
 - 2026-06-29 smoke instalado local aprobado por JP: se descargo el asset publicado `Fixvox-Tauri-Setup.exe`, se verifico SHA256 `4dd4670d3a2a46fa5a605718abaab8f1891b619a6e0f7345bf30b8043f69f74c`, se instalo silenciosamente en carpeta aislada bajo `artifacts/release/installed-smoke/20260629-installed-release-smoke/install`, se activo un device Pro contra Fixvox Cloud con invite local sin imprimir IDs/codes (`activation-report.json`) y se ejecuto dictado E2E con el exe instalado, `APPDATA/LOCALAPPDATA` aislados, sin `.env`/BYOK/device env y `Ctrl+Shift+F9`: managed STT + postprocess + paste al target controlado paso con `targetTextLength=10`, clipboard restaurado y report redacted en `installed-dictation-report.json`. Durante el smoke se encontro que el redacted report local conservaba request IDs completos; se corrigio `redact_request_id` para siempre materializar `redacted-request-id`, se saneo el artifact local y se genero un nuevo installer local no publicado con SHA256 `1ecaa89a503bd1a93f4b894e6b2dc811357cfb53eaaebae71e3a309da968ea12`.
+- 2026-06-29 UX hardening local: `src/settings/fixvox-cloud-control.ts` deriva health accionable para activation/policy/errors; `SettingsSurface` muestra badge/headline/next-step/capabilities, reduce `statePath` a `fixvox-device-state.json · host app data`, expone `Repair device link` host-owned y conserva `window.confirm` antes de operaciones cloud. Checks: `npm run test:pipeline -- tests/settings`, `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`, `npm run build`, `cd src-tauri && cargo fmt --check && cargo check`.
 - Infra release actual Fixvox: `C:/dev/infra/docs/runbooks/cloud-services.md` seccion `Fixvox — Releases / Auto-update`.
 - Policy/control-plane canonico: `C:/dev/fixvox/.specify/specs/003-settings-policy-control-plane/spec.md`.
 - Installer checklist canonico: `C:/dev/fixvox/.specify/specs/007-windows-release-installer/spec.md`.
