@@ -50,7 +50,7 @@ Para Dictation Tauri, la ruta deseada es:
 Dictation Tauri -> Rust/Tauri host -> Fixvox Worker -> Groq
 ```
 
-Estado corregido 2026-06-29: Dictation Tauri ya tiene camino managed cloud en Rust/Tauri para STT y chat postprocess, y mantiene Groq directo como BYOK/dev fallback. El gap actual no es solo transporte, sino **runtime efectivo**: Tauri no esta resolviendo exactamente la misma policy/cache que Fixvox para provider/model/prompt/postprocess, por lo que puede usar `whisper-large-v3` en vez de `whisper-large-v3-turbo` y correr postprocess cuando Fixvox lo saltea.
+Estado corregido 2026-06-29: Dictation Tauri ya tiene camino managed cloud en Rust/Tauri para STT y chat postprocess, y mantiene Groq directo como BYOK/dev fallback explicito. El gap de **runtime efectivo** tambien quedo cerrado para dictado normal: Tauri resuelve provider/model/prompt/postprocess desde policy/cache/runtimePolicy host-owned, usa `whisper-large-v3-turbo` para policy Pro efectiva, respeta postprocess disabled cuando Fixvox lo saltea, aplica preflight cache/prewarm + soft-timeout in-flight, VAD/no-speech y MP3 para audios largos.
 
 El camino directo sigue siendo util como BYOK/dev fallback, pero no debe ser default silencioso ni fuente de verdad si queremos compartir infraestructura, costos, policy y telemetria con Fixvox.
 
@@ -212,7 +212,7 @@ Orden recomendado:
 7. Agregar preflight antes de provider real managed.
 8. Hacer smoke manual gated con audio ignorado.
 9. Sumar postprocess cloud y delivery/hotkey.
-10. Corregir runtime effective parity: resolver provider/model/prompt/postprocess desde la misma policy/cache efectiva que Fixvox; no hardcodear postprocess en React ni defaults Rust si hay policy valida.
+10. Runtime effective parity cerrado para dictado normal: resolver provider/model/prompt/postprocess desde la misma policy/cache efectiva que Fixvox; no hardcodear postprocess en React ni defaults Rust si hay policy valida.
 11. Crear installer Windows local reproducible con identidad `Fixvox Tauri`, app id separado `dev.jpsala.fixvox-tauri` y bundle NSIS local bajo `src-tauri/target/release/bundle/nsis/`.
 12. Completar activation/policy snapshot como cliente Fixvox Tauri.
 13. Publicar artifact separado para Tauri en el release repo de Fixvox solo con aprobacion explicita; no pisar el canal/update artifacts Fixvox legacy/Electrobun.

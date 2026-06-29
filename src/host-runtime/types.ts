@@ -43,6 +43,39 @@ export type HostTranscriptionRequest = {
   postProcess?: HostPostProcessPolicy;
 };
 
+export type HostAudioPrepEvidence = {
+  originalBytes: number;
+  uploadBytes: number;
+  uploadMimeType: "audio/wav" | "audio/mpeg" | string;
+  uploadSource: "wav" | "ffmpeg-mp3" | string;
+  uploadFileName: "recording.wav" | "recording.mp3" | string;
+  compressionMs: number;
+  compressionRatio?: string;
+  audioDurationMs: number;
+  voiceActivity: {
+    durationMs: number;
+    frameCount: number;
+    voicedFrameCount: number;
+    voicedMs: number;
+    rmsPpm: number;
+    peakPpm: number;
+    hasSpeech: boolean;
+  };
+  noSpeechReason?: string;
+  redacted: true;
+};
+
+export type ManagedPreflightEvidence = {
+  cached: boolean;
+  prewarmed: boolean;
+  latencyMs?: number;
+  cacheAgeMs?: number;
+  requestId?: string;
+  inFlightSoftTimedOut?: boolean;
+  trustedPolicyFallback?: boolean;
+  redacted: true;
+};
+
 export type RedactedFixvoxResponseMetadata = {
   fixvoxRequestId?: string;
   providerRequestId?: string;
@@ -72,6 +105,8 @@ export type HostTranscriptionResponse =
       latencyMs: number;
       requestId?: string;
       fixvoxMetadata?: RedactedFixvoxResponseMetadata;
+      audioPrep?: HostAudioPrepEvidence;
+      preflight?: ManagedPreflightEvidence;
       postProcess?: HostPostProcessEvidence;
       redacted: true;
     }
@@ -90,6 +125,8 @@ export type HostTranscriptionResponse =
       latencyMs?: number;
       requestId?: string;
       fixvoxMetadata?: RedactedFixvoxResponseMetadata;
+      audioPrep?: HostAudioPrepEvidence;
+      preflight?: ManagedPreflightEvidence;
       retryable: boolean;
       redacted: true;
     };
