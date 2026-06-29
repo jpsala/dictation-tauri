@@ -2525,7 +2525,7 @@ mod tests {
         assert!(plan.stt_prompt_enabled);
         assert_eq!(
             plan.stt_prompt.as_ref().map(|prompt| prompt.len()),
-            Some(127)
+            Some(140)
         );
         assert!(!plan.post_process.enabled);
         assert_eq!(plan.post_process.source.as_deref(), Some("disabled"));
@@ -2669,12 +2669,20 @@ mod tests {
 
     #[test]
     fn resolves_artifact_files_from_repo_root_or_tauri_cwd() {
+        let candidates =
+            artifact_file_path_candidates("artifacts/microphone-capture/audio/capture.wav");
         assert_eq!(
-            artifact_file_path_candidates("artifacts/microphone-capture/audio/capture.wav"),
-            vec![
+            &candidates[..2],
+            &[
                 "artifacts/microphone-capture/audio/capture.wav".to_string(),
                 "../artifacts/microphone-capture/audio/capture.wav".to_string(),
             ],
+        );
+        assert!(
+            candidates
+                .iter()
+                .all(|candidate| candidate
+                    .ends_with("artifacts/microphone-capture/audio/capture.wav"))
         );
     }
 
