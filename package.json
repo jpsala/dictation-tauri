@@ -16,6 +16,7 @@
     "runtime-transcription:groq:dry-run": "bun scripts/runtime-transcription.ts --mode groq-dry-run --dry-run",
     "desktop-control:e2e": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-dictation-e2e.ps1",
     "dock-companion:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dock-companion-smoke.ps1",
+    "packaged-clean:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/packaged-clean-smoke.ps1",
     "hotkey-reregistration:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hotkey-reregistration-smoke.ps1",
     "selection-capture:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/selection-capture-smoke.ps1",
     "context:index": "bun scripts/context-index.ts",
