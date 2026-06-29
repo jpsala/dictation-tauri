@@ -70,19 +70,20 @@ export async function captureTauriDesktopDeliveryTarget(
   invoke: TauriInvoke,
 ): Promise<TauriDesktopDeliveryTarget | undefined> {
   try {
-    const cachedTarget = await invoke<TauriDesktopDeliveryTarget | undefined>(
-      "get_cached_desktop_delivery_target",
-    );
-    if (cachedTarget?.inputLike) {
-      return cachedTarget;
+    const target = await invoke<TauriDesktopDeliveryTarget>("capture_desktop_delivery_target");
+    if (target.inputLike) {
+      return target;
     }
   } catch {
-    // Fall back to capturing the current foreground target below.
+    // Fall back to a previously cached editable target below. This preserves tray/menu
+    // flows where opening the menu can temporarily steal foreground away from the input.
   }
 
   try {
-    const target = await invoke<TauriDesktopDeliveryTarget>("capture_desktop_delivery_target");
-    return target.inputLike ? target : undefined;
+    const cachedTarget = await invoke<TauriDesktopDeliveryTarget | undefined>(
+      "get_cached_desktop_delivery_target",
+    );
+    return cachedTarget?.inputLike ? cachedTarget : undefined;
   } catch {
     return undefined;
   }

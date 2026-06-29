@@ -1039,7 +1039,10 @@ mod native_escape_cancel {
 
 #[cfg(windows)]
 mod native_paste_last {
-    use crate::tray::{HostCommandPayload, HOST_COMMAND_EVENT};
+    use crate::{
+        desktop_delivery::{self, DesktopDeliveryTarget},
+        tray::{HostCommandPayload, HOST_COMMAND_EVENT},
+    };
     use std::error::Error;
     use std::ptr::null_mut;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -1058,14 +1061,16 @@ mod native_paste_last {
 
     const VK_X: u32 = 0x58;
 
-    static EVENT_SENDER: OnceLock<Mutex<Option<mpsc::Sender<()>>>> = OnceLock::new();
+    static EVENT_SENDER: OnceLock<Mutex<Option<mpsc::Sender<Option<DesktopDeliveryTarget>>>>> =
+        OnceLock::new();
     static X_DOWN: AtomicBool = AtomicBool::new(false);
+    static PENDING_TARGET: OnceLock<Mutex<Option<DesktopDeliveryTarget>>> = OnceLock::new();
 
     pub fn register_paste_last_hook<R: tauri::Runtime>(
         app: &tauri::AppHandle<R>,
         _shortcut_label: &'static str,
     ) -> Result<(), Box<dyn Error>> {
-        let (tx, rx) = mpsc::channel::<()>();
+        let (tx, rx) = mpsc::channel::<Option<DesktopDeliveryTarget>>();
         let sender = EVENT_SENDER.get_or_init(|| Mutex::new(None));
         *sender
             .lock()
@@ -1073,13 +1078,14 @@ mod native_paste_last {
 
         let app_handle = app.clone();
         std::thread::spawn(move || {
-            while rx.recv().is_ok() {
+            while let Ok(target_snapshot) = rx.recv() {
                 let _ = app_handle.emit(
                     HOST_COMMAND_EVENT,
                     HostCommandPayload {
                         source: "global_hotkey",
                         command: "paste_last_safe",
                         preset_id: None,
+                        target_snapshot,
                     },
                 );
             }
@@ -1112,12 +1118,16 @@ mod native_paste_last {
             let is_x = keyboard.vkCode == VK_X;
 
             if is_x && is_down && exact_alt_shift_combo() {
+                let target = desktop_delivery::capture_desktop_delivery_target().ok();
+                if let Ok(mut pending) = PENDING_TARGET.get_or_init(|| Mutex::new(None)).lock() {
+                    *pending = target;
+                }
                 X_DOWN.store(true, Ordering::SeqCst);
+                send_event_immediately_after_releasing_modifiers();
                 return 1;
             }
 
             if is_x && is_up && X_DOWN.swap(false, Ordering::SeqCst) {
-                send_event_when_modifiers_released();
                 return 1;
             }
         }
@@ -1138,16 +1148,8 @@ mod native_paste_last {
         unsafe { (GetAsyncKeyState(vk) & 0x8000u16 as i16) != 0 }
     }
 
-    fn send_event_when_modifiers_released() {
+    fn send_event_immediately_after_releasing_modifiers() {
         std::thread::spawn(|| {
-            for _ in 0..50 {
-                if !is_key_down(VK_MENU as i32) && !is_key_down(VK_SHIFT as i32) {
-                    send_event();
-                    return;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
-
             synthesize_alt_shift_up();
             std::thread::sleep(std::time::Duration::from_millis(20));
             send_event();
@@ -1162,10 +1164,15 @@ mod native_paste_last {
     }
 
     fn send_event() {
+        let target_snapshot = PENDING_TARGET
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .ok()
+            .and_then(|mut pending| pending.take());
         if let Some(lock) = EVENT_SENDER.get() {
             if let Ok(guard) = lock.lock() {
                 if let Some(sender) = guard.as_ref() {
-                    let _ = sender.send(());
+                    let _ = sender.send(target_snapshot);
                 }
             }
         }

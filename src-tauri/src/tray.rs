@@ -31,6 +31,8 @@ pub struct HostCommandPayload {
     pub source: &'static str,
     pub command: &'static str,
     pub preset_id: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_snapshot: Option<crate::desktop_delivery::DesktopDeliveryTarget>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -88,6 +90,7 @@ pub fn host_command_payload(action: HostMenuAction) -> Option<HostCommandPayload
         source: "tray_or_context_menu",
         command,
         preset_id,
+        target_snapshot: None,
     })
 }
 
@@ -263,6 +266,7 @@ mod tests {
                 source: "tray_or_context_menu",
                 command: "start",
                 preset_id: None,
+                target_snapshot: None,
             })
         );
         assert_eq!(
@@ -271,6 +275,7 @@ mod tests {
                 source: "tray_or_context_menu",
                 command: "stop",
                 preset_id: None,
+                target_snapshot: None,
             })
         );
         assert_eq!(
@@ -279,6 +284,7 @@ mod tests {
                 source: "tray_or_context_menu",
                 command: "select_preset",
                 preset_id: Some("rewrite"),
+                target_snapshot: None,
             })
         );
         assert_eq!(host_command_payload(HostMenuAction::ShowDock), None);

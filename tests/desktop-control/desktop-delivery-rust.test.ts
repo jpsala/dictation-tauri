@@ -2,13 +2,29 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("Windows desktop delivery native paste", () => {
-  it("dismisses an Alt+Space system menu before sending Ctrl+V", () => {
+  it("pastes without sending Escape first", () => {
     const source = readFileSync("src-tauri/src/desktop_delivery.rs", "utf8");
 
-    expect(source).toContain("VK_ESCAPE");
-    expect(source).toContain("fn dismiss_transient_menu_before_paste()");
-    expect(source.indexOf("dismiss_transient_menu_before_paste()?"))
-      .toBeLessThan(source.indexOf("send_ctrl_v()?"));
+    expect(source).not.toContain("VK_ESCAPE");
+    expect(source).not.toContain("dismiss_transient_menu_before_paste");
+    expect(source).not.toContain("should_dismiss_transient_menu_before_paste");
+    expect(source).toContain("send_ctrl_v()?");
+    expect(source.indexOf("focus_window(hwnd)")).toBeLessThan(
+      source.indexOf("send_ctrl_v()?"),
+    );
+  });
+
+  it("waits longer before restoring the clipboard for Chromium hosts", () => {
+    const source = readFileSync("src-tauri/src/desktop_delivery.rs", "utf8");
+
+    expect(source).toContain("fn clipboard_restore_delay");
+    expect(source).toContain("chrome_widgetwin");
+    expect(source).toContain("Duration::from_millis(700)");
+    expect(source.indexOf("send_ctrl_v()?")).toBeLessThan(
+      source.indexOf("thread::sleep(clipboard_restore_delay(&target))"),
+    );
+    expect(source.indexOf("thread::sleep(clipboard_restore_delay(&target))"))
+      .toBeLessThan(source.indexOf("write_clipboard_text(&previous)"));
   });
 
   it("keeps paste observation native, gated, and redaction-safe", () => {

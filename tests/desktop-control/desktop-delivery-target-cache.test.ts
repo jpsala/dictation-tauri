@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("desktop delivery target cache", () => {
-  it("caches the foreground target before tray menu commands can steal focus", () => {
+  it("keeps a cached target fallback for tray/menu commands that steal focus", () => {
     const deliverySource = readFileSync("src-tauri/src/desktop_delivery.rs", "utf8");
     const traySource = readFileSync("src-tauri/src/tray.rs", "utf8");
     const libSource = readFileSync("src-tauri/src/lib.rs", "utf8");
@@ -19,8 +19,9 @@ describe("desktop delivery target cache", () => {
     expect(libSource).toContain("desktop_delivery::start_delivery_target_watcher");
     expect(libSource).toContain("desktop_delivery::get_cached_desktop_delivery_target");
     expect(tauriDeliverySource).toContain("get_cached_desktop_delivery_target");
-    expect(tauriDeliverySource.indexOf("get_cached_desktop_delivery_target")).toBeLessThan(
-      tauriDeliverySource.indexOf("capture_desktop_delivery_target"),
+    expect(tauriDeliverySource.indexOf("capture_desktop_delivery_target")).toBeLessThan(
+      tauriDeliverySource.indexOf("get_cached_desktop_delivery_target"),
     );
+    expect(tauriDeliverySource).toContain("Fall back to a previously cached editable target");
   });
 });

@@ -61,6 +61,7 @@ export type TauriHostCommandPayload = {
   source?: "tray_or_context_menu" | "global_hotkey";
   command?: TauriHostCommand;
   presetId?: "rewrite" | "shorten" | "bulletize";
+  targetSnapshot?: TauriDesktopDeliveryTarget;
 };
 
 export type TauriGlobalHotkeyListenerOptions = {
