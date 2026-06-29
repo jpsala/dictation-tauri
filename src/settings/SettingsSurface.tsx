@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -80,6 +80,7 @@ export function SettingsSurface() {
   });
   const [inviteCode, setInviteCode] = useState("");
   const [selectedSection, setSelectedSection] = useState<SettingsSectionId>("hotkeys");
+  const captureArmedRef = useRef(false);
   const selectedSectionMeta = sections.find((section) => section.id === selectedSection) ?? sections[1];
   const settingsHeading = sectionHeading(selectedSectionMeta.id);
   const settingsSummary = sectionSummary(selectedSectionMeta.id);
@@ -121,6 +122,7 @@ export function SettingsSurface() {
         return;
       }
 
+      captureArmedRef.current = false;
       void invoke<boolean>("set_desktop_control_hotkey_capture_enabled", { enabled: false });
       setCaptureState("idle");
       setEditingShortcut(event.payload.shortcut);
@@ -135,6 +137,7 @@ export function SettingsSurface() {
 
     return () => {
       disposed = true;
+      captureArmedRef.current = false;
       unlisten?.();
       void invoke<boolean>("set_desktop_control_hotkey_capture_enabled", { enabled: false });
     };
@@ -234,6 +237,11 @@ export function SettingsSurface() {
       return;
     }
 
+    if (captureState === "recording" || captureArmedRef.current) {
+      return;
+    }
+
+    captureArmedRef.current = true;
     setPreview(undefined);
     setApplyResult(undefined);
     try {
@@ -244,6 +252,7 @@ export function SettingsSurface() {
         message: "Press the new shortcut now. Esc cancels.",
       });
     } catch (error) {
+      captureArmedRef.current = false;
       setNotice({
         tone: "danger",
         message: `Host capture failed: ${formatHotkeyEditReason(error)}`,
@@ -260,6 +269,7 @@ export function SettingsSurface() {
     event.stopPropagation();
 
     if (event.key === "Escape") {
+      captureArmedRef.current = false;
       void invoke<boolean>("set_desktop_control_hotkey_capture_enabled", { enabled: false });
       setCaptureState("idle");
       setEditingShortcut(dictationShortcut);
@@ -279,6 +289,7 @@ export function SettingsSurface() {
       return;
     }
 
+    captureArmedRef.current = false;
     void invoke<boolean>("set_desktop_control_hotkey_capture_enabled", { enabled: false });
     setCaptureState("idle");
     setEditingShortcut(shortcut);
@@ -464,8 +475,6 @@ export function SettingsSurface() {
               className="settings-hotkey-recorder"
               data-recording={captureState === "recording"}
               disabled={!tauriRuntime || Boolean(busyAction)}
-              onMouseDown={() => void startShortcutCapture()}
-              onFocus={() => void startShortcutCapture()}
               onClick={() => void startShortcutCapture()}
               onKeyDown={(event) => void handleShortcutCaptureKeyDown(event)}
               aria-label={`Dictation key shortcut: ${editingShortcut}. Click, then press a new shortcut.`}
