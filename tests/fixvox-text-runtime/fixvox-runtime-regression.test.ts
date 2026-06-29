@@ -1,15 +1,53 @@
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_V2_VOICE_POST_PROCESS_PROMPT,
   buildFixvoxManagedSpeechRequestPreview,
   buildRawVoicePostProcessSystemPrompt,
   materializeFixvoxNormalDictationOutput,
+  resolveDictationRuntimePlanFromPolicyCache,
   resolveEffectiveFixvoxVoiceRuntime,
   resolveFixvoxTextRuntimeRoute,
   sanitizeRawVoicePostProcessOutput,
 } from "../../src/fixvox-text-runtime";
 
 describe("Fixvox text runtime regressions", () => {
+  it("resolves JP's redacted Fixvox Pro policy into the effective dictation runtime plan", () => {
+    const policy = JSON.parse(
+      readFileSync(
+        "specs/013-fixvox-text-runtime-parity/fixtures/fixvox-pro-effective-policy.redacted.json",
+        "utf8",
+      ),
+    );
+    const plan = resolveDictationRuntimePlanFromPolicyCache(policy);
+    const promptHash = createHash("sha256").update(plan.stt.prompt ?? "").digest("hex");
+
+    expect(plan).toMatchObject({
+      policyId: "pro",
+      voiceRoutingProfileId: "pro-stt-only",
+      routeLabel: "pro-stt-only",
+      language: null,
+      stt: {
+        provider: "groq",
+        model: "whisper-large-v3-turbo",
+        promptEnabled: true,
+      },
+      postProcess: {
+        enabled: false,
+        provider: null,
+        model: null,
+        prompt: null,
+        source: "disabled",
+      },
+    });
+    expect(plan.stt.prompt).toContain("Conservá comandos");
+    expect({ promptLength: plan.stt.prompt?.length ?? 0, promptHash: promptHash.slice(0, 12) }).toEqual({
+      promptLength: 134,
+      promptHash: "bdb324541940",
+    });
+  });
+
   it("does not duplicate safety rules and supports explicit cleanup levels", () => {
     const once = buildRawVoicePostProcessSystemPrompt(DEFAULT_V2_VOICE_POST_PROCESS_PROMPT);
     const twice = buildRawVoicePostProcessSystemPrompt(once);

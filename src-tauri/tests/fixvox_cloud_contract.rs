@@ -456,6 +456,7 @@ fn refresh_policy_helper_reuses_register_contract_without_network() {
         policy_id: Some("alpha-old".to_string()),
         policy_label: Some("Alpha Old".to_string()),
         transport_policy: None,
+        policy_snapshot: None,
     };
     persist_device_state(&state_path, &initial_state).expect("initial state should persist");
     let client = FakeRegisterClient {
@@ -559,8 +560,9 @@ fn managed_stt_uses_device_id_header_and_never_vendor_bearer() {
         },
         ManagedSttInput {
             audio_file_name: "capture.wav".to_string(),
-            model: "whisper-large-v3".to_string(),
+            model: "whisper-large-v3-turbo".to_string(),
             language: Some("es".to_string()),
+            prompt: Some("prompt fixture".to_string()),
         },
     )
     .expect("managed STT request preview should be constructable without network");
@@ -578,12 +580,19 @@ fn managed_stt_uses_device_id_header_and_never_vendor_bearer() {
         .headers
         .iter()
         .all(|(name, _)| !name.eq_ignore_ascii_case("authorization")));
-    assert!(preview.multipart_fields.contains(&"file".to_string()));
-    assert!(preview.multipart_fields.contains(&"model".to_string()));
-    assert!(preview.multipart_fields.contains(&"language".to_string()));
-    assert!(preview
-        .multipart_fields
-        .contains(&"response_format".to_string()));
+    assert_eq!(
+        preview.multipart_fields,
+        vec![
+            "file".to_string(),
+            "model".to_string(),
+            "language".to_string(),
+            "prompt".to_string(),
+            "response_format".to_string(),
+            "timestamp_granularities[]".to_string(),
+            "timestamp_granularities[]".to_string(),
+            "temperature".to_string(),
+        ],
+    );
 }
 
 #[test]

@@ -256,6 +256,109 @@ function resolvePostProcessSource(options: {
   return options.source ?? "policy";
 }
 
+export type DictationRuntimePlan = EffectiveFixvoxVoiceRuntime & {
+  language: string | null;
+};
+
+export type DictationRuntimePolicyCacheInput = {
+  policyId?: string | null;
+  policy_id?: string | null;
+  transcript?: {
+    provider?: string | null;
+    model?: string | null;
+    prompt?: string | null;
+    language?: string | null;
+  } | null;
+  voicePolicy?: {
+    enableSttPrompt?: boolean | null;
+    enableRawPostProcess?: boolean | null;
+    postProcessPrompt?: string | null;
+  } | null;
+  voiceRouting?: {
+    label?: string | null;
+    runtime?: {
+      sttPromptEnabled?: boolean | null;
+      postProcessEnabled?: boolean | null;
+    } | null;
+    speech?: {
+      provider?: string | null;
+      model?: string | null;
+    } | null;
+  } | null;
+  speech?: {
+    transcription?: {
+      provider?: string | null;
+      model?: string | null;
+    } | null;
+    language?: {
+      value?: string | null;
+    } | null;
+  } | null;
+  prompts?: {
+    transcriptBase?: { text?: string | null } | null;
+    postProcessBase?: { text?: string | null } | null;
+  } | null;
+  userSettingsDefaults?: {
+    transcript?: { language?: string | null } | null;
+  } | null;
+};
+
+// Source: copied/adapted from Fixvox managed-runtime.ts + voice-execution-plan.ts.
+// Resolves the effective host-owned dictation runtime from a cached policy snapshot.
+export function resolveDictationRuntimePlanFromPolicyCache(
+  policy: DictationRuntimePolicyCacheInput,
+): DictationRuntimePlan {
+  const policyId = cleanPolicyString(policy.policyId ?? policy.policy_id);
+  const voiceRuntime = policy.voiceRouting?.runtime;
+  const sttPromptEnabled = voiceRuntime?.sttPromptEnabled ?? policy.voicePolicy?.enableSttPrompt ?? true;
+  const postProcessEnabled = voiceRuntime?.postProcessEnabled ?? policy.voicePolicy?.enableRawPostProcess ?? false;
+  const transcriptPrompt = cleanPolicyString(
+    policy.prompts?.transcriptBase?.text ?? policy.transcript?.prompt,
+  );
+  const postProcessPrompt = cleanPolicyString(
+    policy.prompts?.postProcessBase?.text ?? policy.voicePolicy?.postProcessPrompt,
+  );
+  const model = cleanPolicyString(
+    policy.voiceRouting?.speech?.model ??
+      policy.speech?.transcription?.model ??
+      policy.transcript?.model,
+  ) ?? (policyId === "pro" ? "whisper-large-v3-turbo" : "whisper-large-v3");
+  const provider = cleanPolicyString(
+    policy.voiceRouting?.speech?.provider ??
+      policy.speech?.transcription?.provider ??
+      policy.transcript?.provider,
+  ) ?? "groq";
+  const language = cleanPolicyString(
+    policy.speech?.language?.value ??
+      policy.transcript?.language ??
+      policy.userSettingsDefaults?.transcript?.language,
+  );
+
+  return {
+    ...resolveEffectiveFixvoxVoiceRuntime({
+      policyId,
+      routeLabel: cleanPolicyString(policy.voiceRouting?.label),
+      stt: {
+        provider,
+        model,
+        promptEnabled: sttPromptEnabled,
+        prompt: sttPromptEnabled ? transcriptPrompt : null,
+      },
+      postProcess: {
+        enabled: postProcessEnabled,
+        prompt: postProcessPrompt,
+        source: "policy",
+      },
+    }),
+    language,
+  };
+}
+
+function cleanPolicyString(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
 export type FixvoxTextRuntimeRoute = "dictation" | "post-process";
 
 export type FixvoxTextRuntimeRouteInput = {

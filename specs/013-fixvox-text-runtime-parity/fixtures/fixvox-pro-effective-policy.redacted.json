@@ -1,0 +1,41 @@
+{
+  "policyId": "pro",
+  "policyLabel": "Pro",
+  "transcript": {
+    "provider": "groq",
+    "model": "whisper-large-v3-turbo",
+    "prompt": "Transcribí en español. [fixture redacted] Conservá comandos, modelos, paquetes, archivos, URLs, emails, números y mayúsculas técnicas."
+  },
+  "voicePolicy": {
+    "enableSttPrompt": true,
+    "enableRawPostProcess": false,
+    "postProcessPrompt": "[redacted postprocess prompt fixture]"
+  },
+  "voiceRouting": {
+    "label": "pro-stt-only",
+    "runtime": {
+      "sttPromptEnabled": true,
+      "postProcessEnabled": false
+    },
+    "speech": {
+      "provider": "groq",
+      "model": "whisper-large-v3-turbo"
+    }
+  },
+  "speech": {
+    "language": {
+      "value": "",
+      "policy": "default"
+    }
+  },
+  "prompts": {
+    "transcriptBase": {
+      "text": "Transcribí en español. [fixture redacted] Conservá comandos, modelos, paquetes, archivos, URLs, emails, números y mayúsculas técnicas.",
+      "policy": "locked"
+    },
+    "postProcessBase": {
+      "text": "[redacted postprocess prompt fixture]",
+      "policy": "locked"
+    }
+  }
+}
