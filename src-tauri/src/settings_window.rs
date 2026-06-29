@@ -2,7 +2,7 @@ use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindow, WindowEvent}
 
 pub const SETTINGS_WINDOW_LABEL: &str = "settings";
 const SETTINGS_WINDOW_TITLE: &str = "Dictation Tauri Settings";
-const SETTINGS_WINDOW_URL: &str = "index.html?surface=settings";
+const SETTINGS_WINDOW_URL: &str = "index.html#settings";
 
 pub fn configure_settings_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
@@ -15,8 +15,13 @@ pub fn configure_settings_window<R: Runtime>(app: &AppHandle<R>) {
 
 pub fn show_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     eprintln!("[dictation-tauri][settings] show requested");
-    let window = create_fresh_settings_window(app)
-        .map_err(|error| format!("settings window unavailable: {error}"))?;
+    let window = if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
+        eprintln!("[dictation-tauri][settings] reusing configured window");
+        window
+    } else {
+        create_fresh_settings_window(app)
+            .map_err(|error| format!("settings window unavailable: {error}"))?
+    };
 
     window
         .show()
@@ -35,12 +40,7 @@ pub fn show_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<()
 }
 
 fn create_fresh_settings_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<WebviewWindow<R>> {
-    if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
-        eprintln!("[dictation-tauri][settings] destroying stale window before open");
-        window.destroy()?;
-    }
-
-    eprintln!("[dictation-tauri][settings] creating fresh window");
+    eprintln!("[dictation-tauri][settings] creating fresh window fallback");
     let window = tauri::WebviewWindowBuilder::new(
         app,
         SETTINGS_WINDOW_LABEL,
@@ -54,20 +54,23 @@ fn create_fresh_settings_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result
     .shadow(true)
     .focused(true)
     .skip_taskbar(false)
-    .visible(true)
+    .visible(false)
     .build()?;
 
     attach_hide_on_close(window.clone());
-    eprintln!("[dictation-tauri][settings] created fresh window");
+    eprintln!("[dictation-tauri][settings] created fresh window fallback");
     Ok(window)
 }
 
 fn attach_hide_on_close<R: Runtime>(window: WebviewWindow<R>) {
     let settings_window = window.clone();
     window.on_window_event(move |event| {
-        if let WindowEvent::CloseRequested { .. } = event {
-            eprintln!("[dictation-tauri][settings] close requested, allowing destroy");
-            drop(settings_window.clone());
+        if let WindowEvent::CloseRequested { api, .. } = event {
+            eprintln!("[dictation-tauri][settings] close requested, hiding window");
+            api.prevent_close();
+            if let Err(error) = settings_window.hide() {
+                eprintln!("[dictation-tauri][settings] hide on close failed: {error}");
+            }
         }
     });
 }

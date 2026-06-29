@@ -12,5 +12,8 @@ export default defineConfig({
     warmup: {
       clientFiles: ["./src/main.tsx"],
     },
+    watch: {
+      ignored: ["**/artifacts/**", "**/src-tauri/target/**", "**/target/**"],
+    },
   },
 });
