@@ -33,6 +33,8 @@ Hacer que Dictation Tauri ejecute transcripcion y postproceso exactamente como e
 
 Implementacion 2026-06-29: el primer batch de effective runtime parity quedo aplicado en codigo y tests provider-free. La UI React ya no hardcodea `pro-post-process`; el runtime Tauri/Rust resuelve un `DictationRuntimePlan` host-owned desde policy/cache (`FIXVOX_CACHED_POLICY_JSON`/path o snapshot persistido), usa modelo/prompt/language de ese plan para managed STT, y solo habilita `/v1/chat/completions` cuando la policy lo pide. Para policy `pro` sin payload completo, el fallback host-owned usa `whisper-large-v3-turbo` y postprocess disabled; para prompt completo necesita policy/cache completo o env/path explicitamente host-owned.
 
+Implementacion 2026-06-29 follow-up: el refresh/register de policy ahora preserva un `runtimePolicy` completo dentro de `policySnapshot` (incluye transcript/voicePolicy/voiceRouting/speech/prompts si los devuelve cloud) para que el host pueda resolver prompt/model/postprocess sin overrides React. Tambien se porto el cache de preflight managed de transcripcion con TTL 60s y prewarm fire-and-forget al iniciar captura nativa; el stop path reutiliza un allow cacheado si coincide backend/install/device/usageKind.
+
 Descubrimiento 2026-06-29: el parity de `013-fixvox-text-runtime-parity` copio bien los primitivos puros de texto, pero no cerro la parity del **runtime efectivo**.
 
 Fixvox real en esta maquina (`%APPDATA%/fixvox/main.db`, `settings.cached_policy.v1`, policy `pro`) esta usando:
@@ -44,19 +46,16 @@ Fixvox real en esta maquina (`%APPDATA%/fixvox/main.db`, `settings.cached_policy
 - Postprocess: `voicePolicy.enableRawPostProcess=false` para el perfil efectivo actual; no debe correr chat-completions salvo que la policy/ruta lo habilite.
 - Performance: `managed-execution-gate` prewarm/cache para transcription preflight; VAD local antes de upload; MP3 compression para audios largos.
 
-Dictation Tauri hoy difiere en puntos que afectan calidad y velocidad:
+Dictation Tauri todavia difiere en puntos que afectan performance/calidad:
 
-- `src-tauri/src/runtime_transcription.rs` cae a default `whisper-large-v3` si no hay `FIXVOX_STT_MODEL`, en vez de resolver el modelo efectivo de Fixvox policy/cache.
-- Managed STT no manda prompt efectivo, timestamps word/segment ni `temperature=0`.
-- `src/App.tsx` fuerza `postProcess.enabled=true` y `voiceRoutingProfileId="pro-post-process"`, aunque Fixvox actual tiene postprocess off.
-- El preflight managed en Rust sigue sin el prewarm/cache equivalente de Fixvox; quedo como siguiente batch porque este cierre priorizo plan/request/postprocess.
-- Audio prep aun no tiene VAD/MP3 parity.
+- Falta smoke real de latencia y el in-flight soft-timeout exacto de Fixvox para preflight managed; el cache TTL 60s y prewarm ya estan.
+- Audio prep aun no tiene VAD/MP3/no-speech parity.
 
-Causa raiz: dos fuentes de verdad. Fixvox resuelve runtime desde cached policy/control-plane + voice routing; Dictation Tauri mezcla defaults Rust/env y un hardcode React de postprocess.
+Causa raiz original: dos fuentes de verdad. Fixvox resuelve runtime desde cached policy/control-plane + voice routing; Dictation Tauri mezclaba defaults Rust/env y un hardcode React de postprocess. Esa parte quedo corregida para STT/postprocess provider-free; queda cerrar audio prep y smoke real.
 
 ## Proximo Paso
 
-Abrir el siguiente Small Batch con objetivo unico: **preflight/cache + policy payload completo** para que la latencia y la disponibilidad del prompt efectivo no dependan de overrides dev. No tocar delivery/target hasta cerrar ese batch; audio prep VAD/MP3 puede entrar como batch separado.
+Abrir el siguiente Small Batch con objetivo unico: **audio prep Fixvox-equivalent + smoke real redacted**. No tocar delivery/target; cerrar VAD/MP3/no-speech y medir el flow completo con audio controlado.
 
 ### Batch 2026-06-29 Cerrado
 
@@ -74,24 +73,33 @@ cd src-tauri && cargo fmt --check && cargo check
 cd src-tauri && cargo check --tests
 ```
 
-Nota: `cargo test --lib ...` y `cargo test --test fixvox_cloud_contract ...` siguen bloqueados en este host por `STATUS_ENTRYPOINT_NOT_FOUND`, gotcha ya conocido; `cargo check --tests` compila esos tests.
+Nota: `cargo test --lib` y `cargo test --test fixvox_cloud_contract` ya corren en Windows despues del fix de manifest Common Controls v6 (`c7cf731`).
+
+### Batch 2026-06-29 Follow-up Cerrado
+
+- **Policy payload completo**: `src-tauri/src/fixvox_cloud.rs` persiste `policySnapshot.runtimePolicy` desde register/refresh para conservar transcript/voicePolicy/voiceRouting/prompts si cloud los devuelve; `runtime_transcription.rs` lo prefiere sobre `transportPolicy` legacy.
+- **Preflight cache/prewarm**: `runtime_transcription.rs` agrega cache de allow managed transcription por backend/install/device/usageKind con TTL 60s; `src/capture/native-tauri-gateway.ts` dispara `prewarm_fixvox_managed_transcription` al arrancar captura nativa.
+- **Tests**: cargo unit/contract tests ahora cubren cache hit/expiry/denial y persistencia de runtime policy completo.
+
+Checks ejecutados:
+
+```powershell
+cd src-tauri && cargo test --lib -- --nocapture
+cd src-tauri && cargo test --test fixvox_cloud_contract -- --nocapture
+npm run test:pipeline -- tests/fixvox-text-runtime tests/host-runtime tests/desktop-control
+npm run build
+cd src-tauri && cargo fmt --check && cargo check --tests
+bun scripts/context-index.ts
+bun scripts/agent-context-audit.ts
+```
 
 ### Tareas Propuestas Para La Proxima Sesion
 
-1. **RED/GREEN — Preflight performance parity**
-   - Portar cache/prewarm de managed transcription preflight equivalente a Fixvox (`TRANSCRIPTION_PREFLIGHT_CACHE_TTL_MS=60_000`, in-flight behavior seguro).
-   - Prewarm al iniciar grabacion para que stop no pague toda la latencia.
-   - Reportar si el gate fue cached/prewarmed en evidencia redacted.
-
-2. **RED/GREEN — Policy refresh payload completo**
-   - Asegurar que `refresh_fixvox_policy`/device state persista el runtime policy completo necesario para STT prompt/postprocess, no solo `transportPolicy` legacy mínimo.
-   - Mantener `FIXVOX_CACHED_POLICY_JSON`/path como fixture/dev override host-owned, no como dependencia de React.
-
-3. **RED/GREEN — Audio prep Fixvox-equivalent**
+1. **RED/GREEN — Audio prep Fixvox-equivalent**
    - Portar VAD local antes de upload y compresion MP3 para audios largos.
    - Evidencia redacted: upload source/mime/bytes, duration, compression ratio y no-speech reason.
 
-4. **VALIDACION — Smoke managed redacted**
+2. **VALIDACION — Smoke managed redacted**
    - Hacer un smoke gated con audio controlado y reporte redacted: modelo usado, prompt hash/length, STT latency, postprocess skipped/ran, total end-to-end.
    - Comparar contra Fixvox local/logs sin imprimir transcript ni secretos.
 

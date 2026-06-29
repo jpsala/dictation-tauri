@@ -19,7 +19,9 @@ export class NativeTauriCaptureGateway implements CaptureGateway {
   }
 
   async startCapture(): Promise<CaptureMetadata> {
-    return invoke<CaptureMetadata>("start_native_microphone_capture");
+    const metadata = await invoke<CaptureMetadata>("start_native_microphone_capture");
+    void invoke("prewarm_fixvox_managed_transcription").catch(() => undefined);
+    return metadata;
   }
 
   async getCaptureLevel(): Promise<NativeCaptureLevel> {

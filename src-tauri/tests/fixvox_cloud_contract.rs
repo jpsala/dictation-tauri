@@ -483,6 +483,93 @@ fn refresh_policy_helper_reuses_register_contract_without_network() {
 }
 
 #[test]
+fn refresh_policy_persists_full_runtime_policy_payload_for_host_resolution() {
+    let appdata_root = unique_temp_state_path("fixvox-cloud-refresh-runtime-policy-root");
+    let state_path = appdata_root
+        .join("dictation-tauri")
+        .join("fixvox-device-state.json");
+    let appdata_root = appdata_root.to_string_lossy().to_string();
+    let initial_state = FixvoxDeviceState {
+        install_id: "install_existing_runtime_policy_123456".to_string(),
+        device_id: Some("dev_existing_runtime_policy_abcdef".to_string()),
+        last_register_ok: true,
+        last_register_error_code: None,
+        last_register_error_message: None,
+        policy_id: Some("pro".to_string()),
+        policy_label: Some("Pro".to_string()),
+        transport_policy: None,
+        policy_snapshot: None,
+    };
+    persist_device_state(&state_path, &initial_state).expect("initial state should persist");
+    let client = FakeRegisterClient {
+        endpoint: RefCell::new(None),
+        body: RefCell::new(None),
+        response: serde_json::json!({
+            "ok": true,
+            "deviceId": "dev_existing_runtime_policy_abcdef",
+            "activated": true,
+            "policyId": "pro",
+            "policyLabel": "Pro",
+            "auth": { "required": false, "providers": [] },
+            "features": { "speech": true, "chat": true, "managedTranscription": true },
+            "defaults": { "sttModel": "whisper-large-v3" },
+            "limits": { "transcriptionSecondsPerDay": 3600 },
+            "telemetry": { "level": "basic" },
+            "transportPolicy": { "mode": "managed", "speechProvider": "groq" },
+            "transcript": {
+                "provider": "groq",
+                "model": "whisper-large-v3-turbo",
+                "prompt": "redacted technical Spanish STT prompt"
+            },
+            "voicePolicy": {
+                "enableSttPrompt": true,
+                "enableRawPostProcess": false,
+                "postProcessPrompt": "redacted postprocess prompt"
+            },
+            "voiceRouting": {
+                "label": "pro-stt-only",
+                "runtime": { "sttPromptEnabled": true, "postProcessEnabled": false },
+                "speech": { "provider": "groq", "model": "whisper-large-v3-turbo" }
+            }
+        }),
+    };
+
+    let status = refresh_fixvox_policy_with_client_and_env(&client, &|key| match key {
+        "APPDATA" => Some(appdata_root.clone()),
+        _ => None,
+    })
+    .expect("refresh helper should persist full fake cloud response");
+
+    let runtime_policy = status
+        .policy_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.runtime_policy.as_ref())
+        .expect("runtime policy should be persisted for host-owned resolution");
+    assert_eq!(
+        runtime_policy["transcript"]["model"],
+        "whisper-large-v3-turbo"
+    );
+    assert_eq!(runtime_policy["voicePolicy"]["enableRawPostProcess"], false);
+    assert_eq!(runtime_policy["voiceRouting"]["label"], "pro-stt-only");
+
+    let restored = read_device_state(&state_path)
+        .expect("state should be readable")
+        .expect("state should exist");
+    let persisted_runtime_policy = restored
+        .policy_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.runtime_policy.as_ref())
+        .expect("persisted state should include runtime policy");
+    assert_eq!(persisted_runtime_policy["transcript"]["provider"], "groq");
+    assert_eq!(
+        persisted_runtime_policy["voiceRouting"]["speech"]["model"],
+        "whisper-large-v3-turbo"
+    );
+
+    let _ = std::fs::remove_file(state_path);
+}
+
+#[test]
 fn builds_and_posts_preflight_request_without_network() {
     let client = FakeRegisterClient {
         endpoint: RefCell::new(None),
