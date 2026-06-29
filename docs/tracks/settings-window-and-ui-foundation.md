@@ -1,7 +1,7 @@
 ---
 status: active
 started: 2026-06-25
-updated: 2026-06-26
+updated: 2026-06-29
 priority: high
 owner: JP/Pi
 related:
@@ -60,7 +60,7 @@ JP rechazo el primer Settings real por ser demasiado grande. Se reencuadro el tr
 - Comando Rust `show_settings_window` en `src-tauri/src/settings_window.rs`.
 - Tray `Settings` abre la ventana normal directamente desde Rust (`src-tauri/src/tray.rs`).
 - Se retiro del UI todo lo no-hotkeys: presets, dock toggles, delivery toggles y preview grande.
-- Hotkeys ahora tiene un unico campo editor persistente: foco/click en la hotkey actual -> `Press new shortcut...` -> presionar combinacion. El host valida/registra/persiste en `hotkey-preferences.v1.json` bajo app data Tauri; el renderer no registra shortcuts globales.
+- Hotkeys ahora tiene un unico campo editor persistente: click en la hotkey actual -> `Press new shortcut...` -> presionar combinacion. El host valida/registra/persiste en `hotkey-preferences.v1.json` bajo app data Tauri; el renderer no registra shortcuts globales. El recorder evita captura por mero focus/mousedown y de-dupea rearmados mientras esta armed/recording.
 - Tests actuales: `tests/settings/settings-surface.test.tsx`, `tests/settings/hotkey-edit-contract.test.ts`, `tests/settings/hotkey-edit-copy.test.ts` y guards host en `tests/desktop-control/tauri-host-control.test.ts`.
 - Captura de JP mostro fallas claras del layout: colapso indebido a 720px, badge HeroUI gigante, marca pegada y scroll visible. Parche inmediato: breakpoint bajo `620px` y badge CSS propio chico en vez de `Chip` de HeroUI.
 - Screenshot aprobado del spike visual queda solo como referencia historica, no como direccion de densidad: `artifacts/ui-spikes/heroui-settings/settings-dark-spike.png`.
@@ -122,6 +122,16 @@ JP reporto tres problemas: Settings tardaba demasiado en renderizar, solo Hotkey
 - `src/settings/settings-heroui.css` dejo de importar `@tailwindcss`/`@heroui/styles` completos en runtime. La superficie usa CSS local escopado porque actualmente no usa componentes HeroUI reales; la importacion global completa era trabajo extra y podia afectar first paint/layout.
 - Research web documentado en `docs/topics/ui-design-and-impeccable.md`: HeroUI v3 es CSS-first, permite imports selectivos de estilos, usa `className`/BEM/CSS variables, y React Aria Tabs separa selected vs disabled.
 - Checks: `npm run test:pipeline -- tests/settings` y `npm run build` OK.
+
+## Update 2026-06-29: Hotkey recorder capture hardening
+
+Pulido local posterior al smoke de Cloud Settings:
+
+- `SettingsSurface` dejo de armar captura del recorder en `onMouseDown` y `onFocus`; ahora solo inicia por click explicito y mantiene `onKeyDown` para la combinacion.
+- Se agrego guard con `captureArmedRef` para no rearmar captura mientras el host ya esta armed/recording, evitando dobles invocaciones del comando `set_desktop_control_hotkey_capture_enabled`.
+- Tests actualizados: `tests/settings/settings-surface.test.tsx` protege que no vuelva el armado por focus/mousedown.
+- Checks: `npm run test:pipeline -- tests/settings`, `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`, `npm run build`.
+- Commit: `710f24d fix: harden settings hotkey capture`.
 
 ## Proximo Paso
 
