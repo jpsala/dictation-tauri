@@ -1,5 +1,5 @@
 ---
-status: active
+status: archived
 started: 2026-06-29
 updated: 2026-06-29
 priority: high
@@ -57,9 +57,9 @@ Dictation Tauri todavia difiere en puntos que afectan performance/calidad:
 
 Causa raiz original: dos fuentes de verdad. Fixvox resuelve runtime desde cached policy/control-plane + voice routing; Dictation Tauri mezclaba defaults Rust/env y un hardcode React de postprocess. Esa parte quedo corregida para STT/postprocess provider-free y este batch cerro audio prep + smoke real redacted.
 
-## Proximo Paso
+## Cierre
 
-Audio prep Fixvox-equivalent, soft-timeout/preflight in-flight y refresh real de `runtimePolicy` en device state dev quedaron cerrados. Proximo paso sugerido: closeout documental/commit y luego cerrar o archivar esta track como parity suficiente, salvo que JP pida otro smoke real.
+Archivada el 2026-06-29 como parity suficiente para dictado normal. Audio prep Fixvox-equivalent, soft-timeout/preflight in-flight, refresh real de `runtimePolicy` en device state dev y smoke real redacted quedaron cerrados y commiteados (`66d84b6 fix: close fixvox effective runtime parity`). La continuidad activa pasa a `docs/tracks/fixvox-tauri-cloud-release.md`; reabrir solo si JP pide otro smoke/parity gap puntual.
 
 ### Batch 2026-06-29 Cerrado
 
