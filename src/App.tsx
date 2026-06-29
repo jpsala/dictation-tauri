@@ -59,6 +59,7 @@ import type {
 } from "./pipeline/types";
 import {
   createDockCompanionSnapshot,
+  createDockCompanionSyncKey,
   createEmptyDockCompanionSnapshot,
   createVoiceDockState,
   dockCompanionCommandEvent,
@@ -1015,6 +1016,7 @@ export function App() {
   const [resultHistoryOpen, setResultHistoryOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const persistedHistoryEntryIdRef = useRef<string | undefined>(undefined);
+  const companionSyncKeyRef = useRef<string | undefined>(undefined);
   const hostCommandHandlerRef = useRef<
     ((payload: ResolvedTauriHostCommandPayload) => void | Promise<void>) | undefined
   >(undefined);
@@ -1515,6 +1517,12 @@ export function App() {
       return;
     }
 
+    const syncKey = createDockCompanionSyncKey(companionSnapshot);
+    if (companionSyncKeyRef.current === syncKey) {
+      return;
+    }
+    companionSyncKeyRef.current = syncKey;
+
     const command = companionSnapshot.visible ? "show_companion" : "hide_companion";
     void invoke(command)
       .then(() =>
@@ -1522,7 +1530,9 @@ export function App() {
           ? emitTo("dock-companion", dockCompanionStateEvent, companionSnapshot)
           : undefined,
       )
-      .catch(() => undefined);
+      .catch(() => {
+        companionSyncKeyRef.current = undefined;
+      });
   }, [companionSnapshot]);
 
   async function loadResultHistory() {

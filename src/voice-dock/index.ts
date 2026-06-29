@@ -16,6 +16,7 @@ export {
 } from "./visual-semantics";
 export {
   createDockCompanionSnapshot,
+  createDockCompanionSyncKey,
   createEmptyDockCompanionSnapshot,
   dockCompanionCommandEvent,
   dockCompanionStateEvent,
