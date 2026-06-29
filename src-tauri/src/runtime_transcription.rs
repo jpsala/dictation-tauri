@@ -3,8 +3,10 @@ use std::{
     env, fs,
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
+    process::Command,
     sync::{Mutex, OnceLock},
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    thread,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use crate::fixvox_cloud;
@@ -20,8 +22,20 @@ const DEFAULT_MODEL: &str = "whisper-large-v3";
 const DEFAULT_PRO_STT_MODEL: &str = "whisper-large-v3-turbo";
 const GROQ_TRANSCRIPTION_ENDPOINT: &str = "https://api.groq.com/openai/v1/audio/transcriptions";
 const TRANSCRIPTION_PREFLIGHT_CACHE_TTL_MS: u64 = 60_000;
+const TRANSCRIPTION_PREFLIGHT_IN_FLIGHT_SOFT_TIMEOUT_MS: u64 = 1_000;
+const VAD_FRAME_MS: u64 = 50;
+const VAD_MIN_VOICED_MS: u64 = 150;
+const VAD_RMS_THRESHOLD: f64 = 0.002;
+const VAD_PEAK_THRESHOLD: f64 = 0.006;
+const AUDIO_COMPRESSION_MIN_BYTES: usize = 160_000;
+const AUDIO_COMPRESSION_MIN_DURATION_MS: u64 = 4_000;
+const POST_STT_NO_SPEECH_THRESHOLD: f64 = 0.85;
+const POST_STT_WEAK_NO_SPEECH_THRESHOLD: f64 = 0.7;
+const POST_STT_LOW_LOGPROB_THRESHOLD: f64 = -1.0;
 
 static TRANSCRIPTION_PREFLIGHT_CACHE: OnceLock<Mutex<Option<CachedPreflightDecision>>> =
+    OnceLock::new();
+static TRANSCRIPTION_PREFLIGHT_IN_FLIGHT: OnceLock<Mutex<Option<InFlightPreflightDecision>>> =
     OnceLock::new();
 
 #[derive(Serialize)]
@@ -152,6 +166,90 @@ pub struct RedactedFixvoxResponseMetadata {
     redacted: bool,
 }
 
+#[derive(Clone, Serialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HostAudioPrepEvidence {
+    original_bytes: usize,
+    upload_bytes: usize,
+    upload_mime_type: String,
+    upload_source: String,
+    upload_file_name: String,
+    compression_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    compression_ratio: Option<String>,
+    audio_duration_ms: u64,
+    voice_activity: HostVoiceActivityEvidence,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    no_speech_reason: Option<String>,
+    redacted: bool,
+}
+
+#[derive(Clone, Serialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HostVoiceActivityEvidence {
+    duration_ms: u64,
+    frame_count: u64,
+    voiced_frame_count: u64,
+    voiced_ms: u64,
+    rms_ppm: u64,
+    peak_ppm: u64,
+    has_speech: bool,
+}
+
+#[derive(Clone, Serialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedPreflightEvidence {
+    cached: bool,
+    prewarmed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latency_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_age_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    request_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    in_flight_soft_timed_out: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trusted_policy_fallback: Option<bool>,
+    redacted: bool,
+}
+
+#[derive(Clone, Debug)]
+struct SpeechUploadPayload {
+    bytes: Vec<u8>,
+    mime_type: &'static str,
+    file_name: String,
+    source: String,
+    original_bytes: usize,
+    compression_ms: u64,
+    compression_ratio: Option<String>,
+    voice_activity: HostVoiceActivityEvidence,
+    audio_duration_ms: u64,
+}
+
+impl SpeechUploadPayload {
+    fn evidence(&self, no_speech_reason: Option<String>) -> HostAudioPrepEvidence {
+        HostAudioPrepEvidence {
+            original_bytes: self.original_bytes,
+            upload_bytes: self.bytes.len(),
+            upload_mime_type: self.mime_type.to_string(),
+            upload_source: self.source.clone(),
+            upload_file_name: self.file_name.clone(),
+            compression_ms: self.compression_ms,
+            compression_ratio: self.compression_ratio.clone(),
+            audio_duration_ms: self.audio_duration_ms,
+            voice_activity: self.voice_activity.clone(),
+            no_speech_reason,
+            redacted: true,
+        }
+    }
+}
+
+struct ManagedPreflightCheck {
+    outcome: Option<ProviderTranscriptionOutcome>,
+    evidence: ManagedPreflightEvidence,
+}
+
 #[allow(dead_code)]
 #[derive(Serialize, Debug, PartialEq, Eq)]
 #[serde(tag = "status", rename_all = "kebab-case")]
@@ -170,6 +268,10 @@ pub enum HostTranscriptionResponse {
         request_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         fixvox_metadata: Option<RedactedFixvoxResponseMetadata>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        audio_prep: Option<HostAudioPrepEvidence>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        preflight: Option<ManagedPreflightEvidence>,
         #[serde(skip_serializing_if = "Option::is_none")]
         post_process: Option<HostPostProcessEvidence>,
         redacted: bool,
@@ -203,6 +305,10 @@ pub enum HostTranscriptionResponse {
         request_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         fixvox_metadata: Option<RedactedFixvoxResponseMetadata>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        audio_prep: Option<HostAudioPrepEvidence>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        preflight: Option<ManagedPreflightEvidence>,
         retryable: bool,
         redacted: bool,
     },
@@ -218,6 +324,10 @@ pub enum HostTranscriptionResponse {
         request_id: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         fixvox_metadata: Option<RedactedFixvoxResponseMetadata>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        audio_prep: Option<HostAudioPrepEvidence>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        preflight: Option<ManagedPreflightEvidence>,
         retryable: bool,
         redacted: bool,
     },
@@ -263,6 +373,32 @@ struct CachedPreflightDecision {
     allowed: bool,
     cached_at_ms: u64,
     request_id: Option<String>,
+    prewarmed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct InFlightPreflightDecision {
+    key: PreflightCacheKey,
+    started_at_ms: u64,
+    prewarmed: bool,
+}
+
+#[derive(Debug)]
+struct PreflightInFlightOwner {
+    key: PreflightCacheKey,
+    started_at_ms: u64,
+}
+
+impl Drop for PreflightInFlightOwner {
+    fn drop(&mut self) {
+        clear_preflight_in_flight_if_owner(&self.key, self.started_at_ms);
+    }
+}
+
+enum PreflightInFlightAction {
+    Start(PreflightInFlightOwner),
+    Wait(InFlightPreflightDecision),
+    Bypass(ManagedPreflightEvidence),
 }
 
 #[allow(dead_code)]
@@ -270,6 +406,16 @@ struct CachedPreflightDecision {
 enum ProviderTranscriptionOutcome {
     Ok {
         text: String,
+        provider: String,
+        model: String,
+        latency_ms: u64,
+        request_id: Option<String>,
+        fixvox_metadata: Option<fixvox_cloud::FixvoxResponseMetadata>,
+    },
+    NoSpeech {
+        reason: String,
+        no_speech_probability: Option<String>,
+        average_log_probability: Option<String>,
         provider: String,
         model: String,
         latency_ms: u64,
@@ -291,6 +437,13 @@ enum ProviderTranscriptionOutcome {
 #[derive(Deserialize)]
 struct GroqTranscriptionResponseBody {
     text: Option<String>,
+    segments: Option<Vec<WhisperSegmentBody>>,
+}
+
+#[derive(Deserialize)]
+struct WhisperSegmentBody {
+    avg_logprob: Option<f64>,
+    no_speech_prob: Option<f64>,
 }
 
 struct ManagedCloudReadiness {
@@ -320,7 +473,10 @@ pub async fn transcribe_captured_audio(
 pub async fn prewarm_fixvox_managed_transcription() -> Result<(), RedactedHostRuntimeError> {
     let config =
         read_managed_runtime_config(&read_host_env_value, &prewarm_transcription_request())?;
-    match preflight_fixvox_managed_transcription(&config).await {
+    match preflight_fixvox_managed_transcription(&config, true)
+        .await
+        .outcome
+    {
         Some(ProviderTranscriptionOutcome::ProviderError { code, message, .. }) => {
             Err(error(&code, &message))
         }
@@ -328,7 +484,9 @@ pub async fn prewarm_fixvox_managed_transcription() -> Result<(), RedactedHostRu
             "CANCELLED",
             "Fixvox managed transcription prewarm was cancelled.",
         )),
-        Some(ProviderTranscriptionOutcome::Ok { .. }) | None => Ok(()),
+        Some(ProviderTranscriptionOutcome::NoSpeech { .. })
+        | Some(ProviderTranscriptionOutcome::Ok { .. })
+        | None => Ok(()),
     }
 }
 
@@ -633,25 +791,6 @@ async fn transcribe_captured_audio_with_provider_call(
         }
     };
 
-    if let Some(config) = managed_config.as_ref() {
-        if let Some(outcome) = preflight_fixvox_managed_transcription(config).await {
-            let response = map_provider_outcome_to_host_response(outcome, &request);
-            if let Err(write_error) = write_host_artifacts(&response, &request) {
-                return HostTranscriptionResponse::ProviderError {
-                    error: write_error,
-                    provider: response_provider(&response),
-                    model: response_model(&response),
-                    latency_ms: response_latency_ms(&response),
-                    request_id: response_request_id(&response),
-                    fixvox_metadata: response_fixvox_metadata(&response).cloned(),
-                    retryable: true,
-                    redacted: true,
-                };
-            }
-            return response;
-        }
-    }
-
     let audio_file_path = match resolve_existing_artifact_file_path(&request.audio_path) {
         Some(path) => path,
         None => {
@@ -680,19 +819,96 @@ async fn transcribe_captured_audio_with_provider_call(
         }
     };
 
+    let upload_payload = prepare_speech_upload_payload(Path::new(&audio_file_path), audio);
+    let audio_prep = upload_payload.evidence(None);
+    if !upload_payload.voice_activity.has_speech {
+        let response = HostTranscriptionResponse::Empty {
+            error: error("NO_SPEECH_DETECTED", "No speech detected in recording."),
+            report_path: Some(create_report_path(&request.run_id)),
+            provider: managed_config
+                .as_ref()
+                .map(|config| config.provider.clone())
+                .or_else(|| direct_config.as_ref().map(|config| config.provider.clone()))
+                .unwrap_or_else(|| DEFAULT_PROVIDER.to_string()),
+            model: managed_config
+                .as_ref()
+                .map(|config| config.model.clone())
+                .or_else(|| direct_config.as_ref().map(|config| config.model.clone()))
+                .unwrap_or_else(|| DEFAULT_MODEL.to_string()),
+            latency_ms: 0,
+            request_id: None,
+            fixvox_metadata: None,
+            audio_prep: Some(
+                upload_payload.evidence(Some("local_voice_activity_no_speech".to_string())),
+            ),
+            preflight: None,
+            retryable: true,
+            redacted: true,
+        };
+        if let Err(write_error) = write_host_artifacts(&response, &request) {
+            return HostTranscriptionResponse::ProviderError {
+                error: write_error,
+                provider: response_provider(&response),
+                model: response_model(&response),
+                latency_ms: response_latency_ms(&response),
+                request_id: response_request_id(&response),
+                fixvox_metadata: response_fixvox_metadata(&response).cloned(),
+                audio_prep: response_audio_prep(&response).cloned(),
+                preflight: response_preflight(&response).cloned(),
+                retryable: true,
+                redacted: true,
+            };
+        }
+        return response;
+    }
+
+    let mut preflight_evidence = None;
+    if let Some(config) = managed_config.as_ref() {
+        let check = preflight_fixvox_managed_transcription(config, false).await;
+        preflight_evidence = Some(check.evidence.clone());
+        if let Some(outcome) = check.outcome {
+            let response = map_provider_outcome_to_host_response(
+                outcome,
+                &request,
+                Some(audio_prep.clone()),
+                preflight_evidence.clone(),
+            );
+            if let Err(write_error) = write_host_artifacts(&response, &request) {
+                return HostTranscriptionResponse::ProviderError {
+                    error: write_error,
+                    provider: response_provider(&response),
+                    model: response_model(&response),
+                    latency_ms: response_latency_ms(&response),
+                    request_id: response_request_id(&response),
+                    fixvox_metadata: response_fixvox_metadata(&response).cloned(),
+                    audio_prep: response_audio_prep(&response).cloned(),
+                    preflight: response_preflight(&response).cloned(),
+                    retryable: true,
+                    redacted: true,
+                };
+            }
+            return response;
+        }
+    }
+
     let managed_config_for_postprocess = managed_config.clone();
     let outcome = if let Some(config) = managed_config {
-        transcribe_fixvox_managed_audio(config, &request, audio).await
+        transcribe_fixvox_managed_audio(config, &request, upload_payload).await
     } else {
         transcribe_groq_audio(
             direct_config.expect("direct config should be present for direct BYOK"),
             &request,
-            audio,
+            upload_payload,
         )
         .await
     };
     let response = apply_fixvox_managed_postprocess(
-        map_provider_outcome_to_host_response(outcome, &request),
+        map_provider_outcome_to_host_response(
+            outcome,
+            &request,
+            Some(audio_prep),
+            preflight_evidence,
+        ),
         managed_config_for_postprocess.as_ref(),
         &request,
     )
@@ -706,6 +922,8 @@ async fn transcribe_captured_audio_with_provider_call(
             latency_ms: response_latency_ms(&response),
             request_id: response_request_id(&response),
             fixvox_metadata: response_fixvox_metadata(&response).cloned(),
+            audio_prep: response_audio_prep(&response).cloned(),
+            preflight: response_preflight(&response).cloned(),
             retryable: true,
             redacted: true,
         };
@@ -1125,10 +1343,346 @@ fn first_env_value(
     keys.iter().find_map(|key| env_lookup(key))
 }
 
+fn prepare_speech_upload_payload(audio_file_path: &Path, audio: Vec<u8>) -> SpeechUploadPayload {
+    let original_bytes = audio.len();
+    let voice_activity = analyze_wav_voice_activity(&audio);
+    let audio_duration_ms = voice_activity.duration_ms;
+    if original_bytes < AUDIO_COMPRESSION_MIN_BYTES
+        || audio_duration_ms < AUDIO_COMPRESSION_MIN_DURATION_MS
+    {
+        return SpeechUploadPayload {
+            bytes: audio,
+            mime_type: "audio/wav",
+            file_name: "recording.wav".to_string(),
+            source: "wav".to_string(),
+            original_bytes,
+            compression_ms: 0,
+            compression_ratio: None,
+            voice_activity,
+            audio_duration_ms,
+        };
+    }
+
+    let started_at = Instant::now();
+    let mp3_path = audio_file_path.with_extension(format!(
+        "{}.stt.mp3",
+        audio_file_path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("wav")
+    ));
+
+    let compression_result = Command::new("ffmpeg")
+        .arg("-y")
+        .arg("-hide_banner")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-i")
+        .arg(audio_file_path)
+        .arg("-ac")
+        .arg("1")
+        .arg("-ar")
+        .arg("16000")
+        .arg("-codec:a")
+        .arg("libmp3lame")
+        .arg("-b:a")
+        .arg("48k")
+        .arg(&mp3_path)
+        .output();
+
+    if let Ok(output) = compression_result {
+        if output.status.success() {
+            if let Ok(mp3_bytes) = fs::read(&mp3_path) {
+                if !mp3_bytes.is_empty() && mp3_bytes.len() < original_bytes {
+                    let _ = fs::remove_file(&mp3_path);
+                    return SpeechUploadPayload {
+                        compression_ms: elapsed_ms(started_at),
+                        compression_ratio: Some(format_ratio(mp3_bytes.len(), original_bytes)),
+                        bytes: mp3_bytes,
+                        mime_type: "audio/mpeg",
+                        file_name: "recording.mp3".to_string(),
+                        source: "ffmpeg-mp3".to_string(),
+                        original_bytes,
+                        voice_activity,
+                        audio_duration_ms,
+                    };
+                }
+            }
+        }
+    }
+    let _ = fs::remove_file(&mp3_path);
+
+    SpeechUploadPayload {
+        bytes: audio,
+        mime_type: "audio/wav",
+        file_name: "recording.wav".to_string(),
+        source: "wav".to_string(),
+        original_bytes,
+        compression_ms: elapsed_ms(started_at),
+        compression_ratio: None,
+        voice_activity,
+        audio_duration_ms,
+    }
+}
+
+fn format_ratio(upload_bytes: usize, original_bytes: usize) -> String {
+    if original_bytes == 0 {
+        return "0.0000".to_string();
+    }
+    format!("{:.4}", upload_bytes as f64 / original_bytes as f64)
+}
+
+fn analyze_wav_voice_activity(wav_bytes: &[u8]) -> HostVoiceActivityEvidence {
+    let Some(pcm) = read_wav_pcm_data(wav_bytes) else {
+        let duration_ms = estimate_wav_duration_ms(wav_bytes);
+        return HostVoiceActivityEvidence {
+            duration_ms,
+            frame_count: 0,
+            voiced_frame_count: 0,
+            voiced_ms: 0,
+            rms_ppm: 0,
+            peak_ppm: 0,
+            has_speech: !wav_bytes.is_empty(),
+        };
+    };
+
+    let bytes_per_sample = (pcm.bits_per_sample / 8).max(1) as usize;
+    let min_frame_bytes = bytes_per_sample * pcm.channels.max(1) as usize;
+    let frame_bytes = min_frame_bytes.max(
+        ((pcm.sample_rate as u64
+            * pcm.channels.max(1) as u64
+            * bytes_per_sample as u64
+            * VAD_FRAME_MS)
+            / 1000) as usize,
+    );
+    let mut total_squares = 0.0_f64;
+    let mut total_samples = 0_u64;
+    let mut peak = 0.0_f64;
+    let mut frame_count = 0_u64;
+    let mut voiced_frame_count = 0_u64;
+
+    let data_end = pcm
+        .data_offset
+        .saturating_add(pcm.data_size)
+        .min(wav_bytes.len());
+    let mut frame_offset = 0_usize;
+    while frame_offset < pcm.data_size {
+        let frame_end = pcm.data_size.min(frame_offset.saturating_add(frame_bytes));
+        let mut frame_squares = 0.0_f64;
+        let mut frame_samples = 0_u64;
+        let mut frame_peak = 0.0_f64;
+        let mut offset = pcm.data_offset.saturating_add(frame_offset);
+        let absolute_frame_end = pcm.data_offset.saturating_add(frame_end).min(data_end);
+        while offset + 1 < absolute_frame_end {
+            let sample =
+                i16::from_le_bytes([wav_bytes[offset], wav_bytes[offset + 1]]) as f64 / 32768.0;
+            let abs = sample.abs();
+            frame_peak = frame_peak.max(abs);
+            frame_squares += sample * sample;
+            frame_samples += 1;
+            offset += bytes_per_sample;
+        }
+        if frame_samples > 0 {
+            let frame_rms = (frame_squares / frame_samples as f64).sqrt();
+            if frame_rms >= VAD_RMS_THRESHOLD || frame_peak >= VAD_PEAK_THRESHOLD {
+                voiced_frame_count += 1;
+            }
+            frame_count += 1;
+            total_squares += frame_squares;
+            total_samples += frame_samples;
+            peak = peak.max(frame_peak);
+        }
+        frame_offset = frame_offset.saturating_add(frame_bytes);
+    }
+
+    let voiced_ms = voiced_frame_count.saturating_mul(VAD_FRAME_MS);
+    let rms = if total_samples > 0 {
+        (total_squares / total_samples as f64).sqrt()
+    } else {
+        0.0
+    };
+    HostVoiceActivityEvidence {
+        duration_ms: estimate_wav_duration_ms(wav_bytes),
+        frame_count,
+        voiced_frame_count,
+        voiced_ms,
+        rms_ppm: float_to_ppm(rms),
+        peak_ppm: float_to_ppm(peak),
+        has_speech: voiced_ms >= VAD_MIN_VOICED_MS,
+    }
+}
+
+struct WavPcmData {
+    data_offset: usize,
+    data_size: usize,
+    sample_rate: u32,
+    bits_per_sample: u16,
+    channels: u16,
+}
+
+fn read_wav_pcm_data(wav_bytes: &[u8]) -> Option<WavPcmData> {
+    if wav_bytes.len() < 44
+        || read_ascii(wav_bytes, 0, 4)? != "RIFF"
+        || read_ascii(wav_bytes, 8, 4)? != "WAVE"
+    {
+        return None;
+    }
+
+    let mut offset = 12_usize;
+    let mut sample_rate = 0_u32;
+    let mut bits_per_sample = 0_u16;
+    let mut channels = 0_u16;
+    let mut data_offset = 0_usize;
+    let mut data_size = 0_usize;
+    while offset + 8 <= wav_bytes.len() {
+        let chunk_id = read_ascii(wav_bytes, offset, 4)?;
+        let chunk_size = read_u32_le(wav_bytes, offset + 4)? as usize;
+        let chunk_data_offset = offset + 8;
+        if chunk_data_offset.saturating_add(chunk_size) > wav_bytes.len() {
+            break;
+        }
+        if chunk_id == "fmt " {
+            channels = read_u16_le(wav_bytes, chunk_data_offset + 2)?;
+            sample_rate = read_u32_le(wav_bytes, chunk_data_offset + 4)?;
+            bits_per_sample = read_u16_le(wav_bytes, chunk_data_offset + 14)?;
+        } else if chunk_id == "data" {
+            data_offset = chunk_data_offset;
+            data_size = chunk_size;
+        }
+        offset = offset
+            .saturating_add(8)
+            .saturating_add(chunk_size)
+            .saturating_add(chunk_size % 2);
+    }
+
+    if data_offset == 0
+        || data_size == 0
+        || sample_rate == 0
+        || bits_per_sample != 16
+        || channels == 0
+    {
+        return None;
+    }
+
+    Some(WavPcmData {
+        data_offset,
+        data_size,
+        sample_rate,
+        bits_per_sample,
+        channels,
+    })
+}
+
+fn estimate_wav_duration_ms(wav_bytes: &[u8]) -> u64 {
+    if wav_bytes.is_empty() {
+        return 0;
+    }
+    if wav_bytes.len() >= 44
+        && read_ascii(wav_bytes, 0, 4).as_deref() == Some("RIFF")
+        && read_ascii(wav_bytes, 8, 4).as_deref() == Some("WAVE")
+    {
+        let byte_rate = read_u32_le(wav_bytes, 28).unwrap_or(0);
+        if byte_rate > 0 {
+            let mut offset = 12_usize;
+            while offset + 8 <= wav_bytes.len() {
+                let Some(chunk_id) = read_ascii(wav_bytes, offset, 4) else {
+                    break;
+                };
+                let Some(chunk_size_u32) = read_u32_le(wav_bytes, offset + 4) else {
+                    break;
+                };
+                let chunk_size = chunk_size_u32 as usize;
+                if chunk_id == "data" {
+                    return ((chunk_size as u64).saturating_mul(1000)) / byte_rate as u64;
+                }
+                offset = offset
+                    .saturating_add(8)
+                    .saturating_add(chunk_size)
+                    .saturating_add(chunk_size % 2);
+            }
+            let payload_bytes = wav_bytes.len().saturating_sub(44) as u64;
+            return payload_bytes.saturating_mul(1000) / byte_rate as u64;
+        }
+    }
+    let payload_bytes = wav_bytes.len().saturating_sub(44) as u64;
+    payload_bytes.saturating_mul(1000) / 32_000
+}
+
+fn read_ascii(bytes: &[u8], offset: usize, length: usize) -> Option<String> {
+    if offset.checked_add(length)? > bytes.len() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&bytes[offset..offset + length]).to_string())
+}
+
+fn read_u16_le(bytes: &[u8], offset: usize) -> Option<u16> {
+    if offset + 2 > bytes.len() {
+        return None;
+    }
+    Some(u16::from_le_bytes([bytes[offset], bytes[offset + 1]]))
+}
+
+fn read_u32_le(bytes: &[u8], offset: usize) -> Option<u32> {
+    if offset + 4 > bytes.len() {
+        return None;
+    }
+    Some(u32::from_le_bytes([
+        bytes[offset],
+        bytes[offset + 1],
+        bytes[offset + 2],
+        bytes[offset + 3],
+    ]))
+}
+
+fn float_to_ppm(value: f64) -> u64 {
+    (value.max(0.0) * 1_000_000.0).round() as u64
+}
+
+fn should_discard_provider_no_speech(
+    text: &str,
+    no_speech_probability: Option<f64>,
+    average_log_probability: Option<f64>,
+) -> Option<&'static str> {
+    let short_text = text.replace(char::is_whitespace, " ").trim().len() <= 40;
+    if no_speech_probability.is_some_and(|value| value >= POST_STT_NO_SPEECH_THRESHOLD)
+        && short_text
+    {
+        return Some("high_no_speech_probability");
+    }
+    if no_speech_probability.is_some_and(|value| value >= POST_STT_WEAK_NO_SPEECH_THRESHOLD)
+        && average_log_probability.is_some_and(|value| value <= POST_STT_LOW_LOGPROB_THRESHOLD)
+        && short_text
+    {
+        return Some("weak_no_speech_low_confidence");
+    }
+    None
+}
+
+fn average_segment_number(segments: Option<&[WhisperSegmentBody]>, key: &str) -> Option<f64> {
+    let values: Vec<f64> = segments
+        .unwrap_or(&[])
+        .iter()
+        .filter_map(|segment| match key {
+            "no_speech_prob" => segment.no_speech_prob,
+            "avg_logprob" => segment.avg_logprob,
+            _ => None,
+        })
+        .filter(|value| value.is_finite())
+        .collect();
+    if values.is_empty() {
+        return None;
+    }
+    Some(values.iter().sum::<f64>() / values.len() as f64)
+}
+
+fn format_optional_probability(value: Option<f64>) -> Option<String> {
+    value.map(|value| format!("{value:.4}"))
+}
+
 async fn transcribe_groq_audio(
     config: HostRuntimeConfig,
     request: &HostTranscriptionRequest,
-    audio: Vec<u8>,
+    upload_payload: SpeechUploadPayload,
 ) -> ProviderTranscriptionOutcome {
     let model = request
         .model
@@ -1141,12 +1695,31 @@ async fn transcribe_groq_audio(
         .or_else(|| config.language.clone())
         .filter(|value| !value.trim().is_empty());
     let started_at = Instant::now();
-    let file_name = file_name_from_audio_path(&request.audio_path);
+    let file_name = upload_payload.file_name.clone();
 
-    let file_part = reqwest::multipart::Part::bytes(audio).file_name(file_name);
+    let file_part = match reqwest::multipart::Part::bytes(upload_payload.bytes)
+        .file_name(file_name)
+        .mime_str(upload_payload.mime_type)
+    {
+        Ok(part) => part,
+        Err(error) => {
+            return ProviderTranscriptionOutcome::ProviderError {
+                code: "GROQ_AUDIO_PART_FAILED".to_string(),
+                message: error.to_string(),
+                provider: Some(config.provider),
+                model: Some(model),
+                latency_ms: Some(elapsed_ms(started_at)),
+                request_id: None,
+                fixvox_metadata: None,
+            };
+        }
+    };
     let mut form = reqwest::multipart::Form::new()
         .text("model", model.clone())
-        .text("response_format", "json")
+        .text("response_format", "verbose_json")
+        .text("timestamp_granularities[]", "word")
+        .text("timestamp_granularities[]", "segment")
+        .text("temperature", "0")
         .part("file", file_part);
 
     if let Some(language) = language {
@@ -1210,7 +1783,32 @@ async fn transcribe_groq_audio(
 
     let text = if content_type.contains("application/json") {
         match response.json::<GroqTranscriptionResponseBody>().await {
-            Ok(body) => body.text.unwrap_or_default(),
+            Ok(body) => {
+                let text = body.text.unwrap_or_default();
+                let no_speech_probability =
+                    average_segment_number(body.segments.as_deref(), "no_speech_prob");
+                let average_log_probability =
+                    average_segment_number(body.segments.as_deref(), "avg_logprob");
+                if let Some(reason) = should_discard_provider_no_speech(
+                    &text,
+                    no_speech_probability,
+                    average_log_probability,
+                ) {
+                    return ProviderTranscriptionOutcome::NoSpeech {
+                        reason: reason.to_string(),
+                        no_speech_probability: format_optional_probability(no_speech_probability),
+                        average_log_probability: format_optional_probability(
+                            average_log_probability,
+                        ),
+                        provider: config.provider,
+                        model,
+                        latency_ms,
+                        request_id,
+                        fixvox_metadata: None,
+                    };
+                }
+                text
+            }
             Err(error) => {
                 return ProviderTranscriptionOutcome::ProviderError {
                     code: "GROQ_RESPONSE_PARSE_FAILED".to_string(),
@@ -1266,24 +1864,43 @@ fn current_time_ms() -> u64 {
         .unwrap_or(0)
 }
 
+#[cfg(test)]
 fn preflight_cache_allows_at(key: &PreflightCacheKey, now_ms: u64) -> bool {
+    preflight_cache_hit_at(key, now_ms).is_some()
+}
+
+fn preflight_cache_hit_at(
+    key: &PreflightCacheKey,
+    now_ms: u64,
+) -> Option<ManagedPreflightEvidence> {
     let cache = TRANSCRIPTION_PREFLIGHT_CACHE.get_or_init(|| Mutex::new(None));
     let Ok(guard) = cache.lock() else {
-        return false;
+        return None;
     };
-    let Some(cached) = guard.as_ref() else {
-        return false;
-    };
+    let cached = guard.as_ref()?;
+    let cache_age_ms = now_ms.saturating_sub(cached.cached_at_ms);
+    if !cached.allowed || &cached.key != key || cache_age_ms > TRANSCRIPTION_PREFLIGHT_CACHE_TTL_MS
+    {
+        return None;
+    }
 
-    cached.allowed
-        && &cached.key == key
-        && now_ms.saturating_sub(cached.cached_at_ms) <= TRANSCRIPTION_PREFLIGHT_CACHE_TTL_MS
+    Some(ManagedPreflightEvidence {
+        cached: true,
+        prewarmed: cached.prewarmed,
+        latency_ms: None,
+        cache_age_ms: Some(cache_age_ms),
+        request_id: redact_request_id(cached.request_id.clone()),
+        in_flight_soft_timed_out: None,
+        trusted_policy_fallback: None,
+        redacted: true,
+    })
 }
 
 fn remember_preflight_decision_at(
     key: PreflightCacheKey,
     decision: &fixvox_cloud::PreflightDecision,
     now_ms: u64,
+    prewarmed: bool,
 ) {
     if !decision.ok || !decision.allowed {
         return;
@@ -1296,6 +1913,7 @@ fn remember_preflight_decision_at(
             allowed: true,
             cached_at_ms: now_ms,
             request_id: decision.request_id.clone(),
+            prewarmed,
         });
     }
 }
@@ -1308,13 +1926,152 @@ fn clear_preflight_cache_for_tests() {
     }
 }
 
+#[cfg(test)]
+fn clear_preflight_in_flight_for_tests() {
+    let in_flight = TRANSCRIPTION_PREFLIGHT_IN_FLIGHT.get_or_init(|| Mutex::new(None));
+    if let Ok(mut guard) = in_flight.lock() {
+        *guard = None;
+    }
+}
+
+fn begin_or_join_preflight_in_flight_at(
+    key: &PreflightCacheKey,
+    now_ms: u64,
+    prewarm: bool,
+    allow_trusted_policy_fallback: bool,
+) -> PreflightInFlightAction {
+    let in_flight = TRANSCRIPTION_PREFLIGHT_IN_FLIGHT.get_or_init(|| Mutex::new(None));
+    let Ok(mut guard) = in_flight.lock() else {
+        return PreflightInFlightAction::Start(PreflightInFlightOwner {
+            key: key.clone(),
+            started_at_ms: now_ms,
+        });
+    };
+
+    if let Some(existing) = guard.as_ref() {
+        if &existing.key == key {
+            if allow_trusted_policy_fallback {
+                let age_ms = now_ms.saturating_sub(existing.started_at_ms);
+                if age_ms > TRANSCRIPTION_PREFLIGHT_IN_FLIGHT_SOFT_TIMEOUT_MS {
+                    return PreflightInFlightAction::Bypass(
+                        preflight_in_flight_soft_timeout_evidence(existing, age_ms, prewarm),
+                    );
+                }
+            }
+            return PreflightInFlightAction::Wait(existing.clone());
+        }
+    }
+
+    *guard = Some(InFlightPreflightDecision {
+        key: key.clone(),
+        started_at_ms: now_ms,
+        prewarmed: prewarm,
+    });
+    PreflightInFlightAction::Start(PreflightInFlightOwner {
+        key: key.clone(),
+        started_at_ms: now_ms,
+    })
+}
+
+fn wait_for_preflight_in_flight_or_soft_timeout(
+    existing: &InFlightPreflightDecision,
+    allow_trusted_policy_fallback: bool,
+) -> Option<ManagedPreflightEvidence> {
+    loop {
+        let now_ms = current_time_ms();
+        if let Some(evidence) = preflight_cache_hit_at(&existing.key, now_ms) {
+            return Some(evidence);
+        }
+
+        if allow_trusted_policy_fallback {
+            let age_ms = now_ms.saturating_sub(existing.started_at_ms);
+            if age_ms > TRANSCRIPTION_PREFLIGHT_IN_FLIGHT_SOFT_TIMEOUT_MS {
+                return Some(preflight_in_flight_soft_timeout_evidence(
+                    existing, age_ms, false,
+                ));
+            }
+        }
+
+        if !preflight_in_flight_matches(existing) {
+            return None;
+        }
+
+        thread::sleep(Duration::from_millis(25));
+    }
+}
+
+fn preflight_in_flight_matches(existing: &InFlightPreflightDecision) -> bool {
+    let in_flight = TRANSCRIPTION_PREFLIGHT_IN_FLIGHT.get_or_init(|| Mutex::new(None));
+    let Ok(guard) = in_flight.lock() else {
+        return false;
+    };
+    guard.as_ref() == Some(existing)
+}
+
+fn preflight_in_flight_soft_timeout_evidence(
+    existing: &InFlightPreflightDecision,
+    age_ms: u64,
+    current_call_prewarm: bool,
+) -> ManagedPreflightEvidence {
+    ManagedPreflightEvidence {
+        cached: false,
+        prewarmed: existing.prewarmed || current_call_prewarm,
+        latency_ms: None,
+        cache_age_ms: Some(age_ms),
+        request_id: None,
+        in_flight_soft_timed_out: Some(true),
+        trusted_policy_fallback: Some(true),
+        redacted: true,
+    }
+}
+
+fn clear_preflight_in_flight_if_owner(key: &PreflightCacheKey, started_at_ms: u64) {
+    let in_flight = TRANSCRIPTION_PREFLIGHT_IN_FLIGHT.get_or_init(|| Mutex::new(None));
+    let Ok(mut guard) = in_flight.lock() else {
+        return;
+    };
+    let is_owner = guard
+        .as_ref()
+        .map(|existing| &existing.key == key && existing.started_at_ms == started_at_ms)
+        .unwrap_or(false);
+    if is_owner {
+        *guard = None;
+    }
+}
+
 async fn preflight_fixvox_managed_transcription(
     config: &ManagedHostRuntimeConfig,
-) -> Option<ProviderTranscriptionOutcome> {
+    prewarm: bool,
+) -> ManagedPreflightCheck {
     let cache_key = preflight_cache_key(config);
-    if preflight_cache_allows_at(&cache_key, current_time_ms()) {
-        return None;
+    if let Some(evidence) = preflight_cache_hit_at(&cache_key, current_time_ms()) {
+        return ManagedPreflightCheck {
+            outcome: None,
+            evidence,
+        };
     }
+
+    let _in_flight_owner = loop {
+        match begin_or_join_preflight_in_flight_at(&cache_key, current_time_ms(), prewarm, true) {
+            PreflightInFlightAction::Start(owner) => break owner,
+            PreflightInFlightAction::Bypass(evidence) => {
+                return ManagedPreflightCheck {
+                    outcome: None,
+                    evidence,
+                };
+            }
+            PreflightInFlightAction::Wait(existing) => {
+                if let Some(evidence) =
+                    wait_for_preflight_in_flight_or_soft_timeout(&existing, true)
+                {
+                    return ManagedPreflightCheck {
+                        outcome: None,
+                        evidence,
+                    };
+                }
+            }
+        }
+    };
 
     let started_at = Instant::now();
     let request = match fixvox_cloud::build_preflight_request(fixvox_cloud::PreflightInput {
@@ -1325,44 +2082,60 @@ async fn preflight_fixvox_managed_transcription(
     }) {
         Ok(request) => request,
         Err(reason) => {
-            return Some(ProviderTranscriptionOutcome::ProviderError {
-                code: reason.code,
-                message: reason.message,
-                provider: Some(config.provider.clone()),
-                model: Some(config.model.clone()),
-                latency_ms: Some(elapsed_ms(started_at)),
-                request_id: None,
-                fixvox_metadata: None,
-            });
+            return preflight_error_check(
+                ProviderTranscriptionOutcome::ProviderError {
+                    code: reason.code,
+                    message: reason.message,
+                    provider: Some(config.provider.clone()),
+                    model: Some(config.model.clone()),
+                    latency_ms: Some(elapsed_ms(started_at)),
+                    request_id: None,
+                    fixvox_metadata: None,
+                },
+                prewarm,
+                Some(elapsed_ms(started_at)),
+                None,
+            );
         }
     };
     let body = match serde_json::to_value(request) {
         Ok(body) => body,
         Err(_) => {
-            return Some(ProviderTranscriptionOutcome::ProviderError {
-                code: "FIXVOX_PREFLIGHT_SERIALIZE_FAILED".to_string(),
-                message: "Fixvox managed preflight request could not be serialized.".to_string(),
-                provider: Some(config.provider.clone()),
-                model: Some(config.model.clone()),
-                latency_ms: Some(elapsed_ms(started_at)),
-                request_id: None,
-                fixvox_metadata: None,
-            });
+            return preflight_error_check(
+                ProviderTranscriptionOutcome::ProviderError {
+                    code: "FIXVOX_PREFLIGHT_SERIALIZE_FAILED".to_string(),
+                    message: "Fixvox managed preflight request could not be serialized."
+                        .to_string(),
+                    provider: Some(config.provider.clone()),
+                    model: Some(config.model.clone()),
+                    latency_ms: Some(elapsed_ms(started_at)),
+                    request_id: None,
+                    fixvox_metadata: None,
+                },
+                prewarm,
+                Some(elapsed_ms(started_at)),
+                None,
+            );
         }
     };
 
     let client = match fixvox_cloud::fixvox_http_client() {
         Ok(client) => client,
         Err(error) => {
-            return Some(ProviderTranscriptionOutcome::ProviderError {
-                code: error.code,
-                message: error.message,
-                provider: Some(config.provider.clone()),
-                model: Some(config.model.clone()),
-                latency_ms: Some(elapsed_ms(started_at)),
-                request_id: None,
-                fixvox_metadata: None,
-            });
+            return preflight_error_check(
+                ProviderTranscriptionOutcome::ProviderError {
+                    code: error.code,
+                    message: error.message,
+                    provider: Some(config.provider.clone()),
+                    model: Some(config.model.clone()),
+                    latency_ms: Some(elapsed_ms(started_at)),
+                    request_id: None,
+                    fixvox_metadata: None,
+                },
+                prewarm,
+                Some(elapsed_ms(started_at)),
+                None,
+            );
         }
     };
     let response = match client
@@ -1374,15 +2147,20 @@ async fn preflight_fixvox_managed_transcription(
     {
         Ok(response) => response,
         Err(error) => {
-            return Some(ProviderTranscriptionOutcome::ProviderError {
-                code: "FIXVOX_PREFLIGHT_REQUEST_FAILED".to_string(),
-                message: error.to_string(),
-                provider: Some(config.provider.clone()),
-                model: Some(config.model.clone()),
-                latency_ms: Some(elapsed_ms(started_at)),
-                request_id: None,
-                fixvox_metadata: None,
-            });
+            return preflight_error_check(
+                ProviderTranscriptionOutcome::ProviderError {
+                    code: "FIXVOX_PREFLIGHT_REQUEST_FAILED".to_string(),
+                    message: error.to_string(),
+                    provider: Some(config.provider.clone()),
+                    model: Some(config.model.clone()),
+                    latency_ms: Some(elapsed_ms(started_at)),
+                    request_id: None,
+                    fixvox_metadata: None,
+                },
+                prewarm,
+                Some(elapsed_ms(started_at)),
+                None,
+            );
         }
     };
 
@@ -1395,15 +2173,20 @@ async fn preflight_fixvox_managed_transcription(
     let response_body = match response.text().await {
         Ok(body) => body,
         Err(error) => {
-            return Some(ProviderTranscriptionOutcome::ProviderError {
-                code: "FIXVOX_PREFLIGHT_RESPONSE_READ_FAILED".to_string(),
-                message: error.to_string(),
-                provider: Some(config.provider.clone()),
-                model: Some(config.model.clone()),
-                latency_ms: Some(latency_ms),
-                request_id: None,
-                fixvox_metadata: None,
-            });
+            return preflight_error_check(
+                ProviderTranscriptionOutcome::ProviderError {
+                    code: "FIXVOX_PREFLIGHT_RESPONSE_READ_FAILED".to_string(),
+                    message: error.to_string(),
+                    provider: Some(config.provider.clone()),
+                    model: Some(config.model.clone()),
+                    latency_ms: Some(latency_ms),
+                    request_id: None,
+                    fixvox_metadata: None,
+                },
+                prewarm,
+                Some(latency_ms),
+                None,
+            );
         }
     };
 
@@ -1413,60 +2196,110 @@ async fn preflight_fixvox_managed_transcription(
     {
         Some(decision) => decision,
         None => {
-            return Some(ProviderTranscriptionOutcome::ProviderError {
-                code: "FIXVOX_PREFLIGHT_RESPONSE_PARSE_FAILED".to_string(),
-                message: "Fixvox managed preflight response did not match the expected contract."
+            return preflight_error_check(
+                ProviderTranscriptionOutcome::ProviderError {
+                    code: "FIXVOX_PREFLIGHT_RESPONSE_PARSE_FAILED".to_string(),
+                    message:
+                        "Fixvox managed preflight response did not match the expected contract."
+                            .to_string(),
+                    provider: Some(config.provider.clone()),
+                    model: Some(config.model.clone()),
+                    latency_ms: Some(latency_ms),
+                    request_id: None,
+                    fixvox_metadata: None,
+                },
+                prewarm,
+                Some(latency_ms),
+                None,
+            );
+        }
+    };
+    let redacted_request_id = redact_request_id(decision.request_id.clone());
+
+    if !status.is_success() {
+        return preflight_error_check(
+            ProviderTranscriptionOutcome::ProviderError {
+                code: format!("FIXVOX_PREFLIGHT_HTTP_{}", status.as_u16()),
+                message: format!(
+                    "Fixvox managed preflight returned HTTP {} {}.",
+                    status.as_u16(),
+                    status_text
+                ),
+                provider: Some(config.provider.clone()),
+                model: Some(config.model.clone()),
+                latency_ms: Some(latency_ms),
+                request_id: decision.request_id,
+                fixvox_metadata: None,
+            },
+            prewarm,
+            Some(latency_ms),
+            redacted_request_id,
+        );
+    }
+
+    if !decision.ok || !decision.allowed {
+        return preflight_error_check(
+            ProviderTranscriptionOutcome::ProviderError {
+                code: fixvox_cloud::preflight_denial_error_code(&decision),
+                message: "Fixvox managed preflight denied transcription before provider execution."
                     .to_string(),
                 provider: Some(config.provider.clone()),
                 model: Some(config.model.clone()),
                 latency_ms: Some(latency_ms),
-                request_id: None,
+                request_id: decision.request_id,
                 fixvox_metadata: None,
-            });
-        }
-    };
-
-    if !status.is_success() {
-        return Some(ProviderTranscriptionOutcome::ProviderError {
-            code: format!("FIXVOX_PREFLIGHT_HTTP_{}", status.as_u16()),
-            message: format!(
-                "Fixvox managed preflight returned HTTP {} {}.",
-                status.as_u16(),
-                status_text
-            ),
-            provider: Some(config.provider.clone()),
-            model: Some(config.model.clone()),
-            latency_ms: Some(latency_ms),
-            request_id: decision.request_id,
-            fixvox_metadata: None,
-        });
+            },
+            prewarm,
+            Some(latency_ms),
+            redacted_request_id,
+        );
     }
 
-    if !decision.ok || !decision.allowed {
-        return Some(ProviderTranscriptionOutcome::ProviderError {
-            code: fixvox_cloud::preflight_denial_error_code(&decision),
-            message: "Fixvox managed preflight denied transcription before provider execution."
-                .to_string(),
-            provider: Some(config.provider.clone()),
-            model: Some(config.model.clone()),
+    remember_preflight_decision_at(cache_key, &decision, current_time_ms(), prewarm);
+
+    ManagedPreflightCheck {
+        outcome: None,
+        evidence: ManagedPreflightEvidence {
+            cached: false,
+            prewarmed: prewarm,
             latency_ms: Some(latency_ms),
-            request_id: decision.request_id,
-            fixvox_metadata: None,
-        });
+            cache_age_ms: None,
+            request_id: redacted_request_id,
+            in_flight_soft_timed_out: None,
+            trusted_policy_fallback: None,
+            redacted: true,
+        },
     }
+}
 
-    remember_preflight_decision_at(cache_key, &decision, current_time_ms());
-
-    None
+fn preflight_error_check(
+    outcome: ProviderTranscriptionOutcome,
+    prewarmed: bool,
+    latency_ms: Option<u64>,
+    request_id: Option<String>,
+) -> ManagedPreflightCheck {
+    ManagedPreflightCheck {
+        outcome: Some(outcome),
+        evidence: ManagedPreflightEvidence {
+            cached: false,
+            prewarmed,
+            latency_ms,
+            cache_age_ms: None,
+            request_id,
+            in_flight_soft_timed_out: None,
+            trusted_policy_fallback: None,
+            redacted: true,
+        },
+    }
 }
 
 async fn transcribe_fixvox_managed_audio(
     config: ManagedHostRuntimeConfig,
-    request: &HostTranscriptionRequest,
-    audio: Vec<u8>,
+    _request: &HostTranscriptionRequest,
+    upload_payload: SpeechUploadPayload,
 ) -> ProviderTranscriptionOutcome {
     let started_at = Instant::now();
-    let file_name = file_name_from_audio_path(&request.audio_path);
+    let file_name = upload_payload.file_name.clone();
     let preview = match fixvox_cloud::build_managed_stt_request_preview(
         fixvox_cloud::FixvoxCloudConfig {
             backend_base_url: config.backend_base_url.clone(),
@@ -1493,7 +2326,23 @@ async fn transcribe_fixvox_managed_audio(
         }
     };
 
-    let file_part = reqwest::multipart::Part::bytes(audio).file_name(file_name);
+    let file_part = match reqwest::multipart::Part::bytes(upload_payload.bytes)
+        .file_name(file_name)
+        .mime_str(upload_payload.mime_type)
+    {
+        Ok(part) => part,
+        Err(error) => {
+            return ProviderTranscriptionOutcome::ProviderError {
+                code: "FIXVOX_AUDIO_PART_FAILED".to_string(),
+                message: error.to_string(),
+                provider: Some(config.provider),
+                model: Some(config.model),
+                latency_ms: Some(elapsed_ms(started_at)),
+                request_id: None,
+                fixvox_metadata: None,
+            };
+        }
+    };
     let mut form = reqwest::multipart::Form::new()
         .text("model", config.model.clone())
         .part("file", file_part);
@@ -1629,15 +2478,43 @@ async fn transcribe_fixvox_managed_audio(
         }
     } else {
         fixvox_cloud::ManagedSttParsedResponse {
-            text: text_body,
+            text: text_body.clone(),
             model: None,
         }
     };
 
+    let parsed_segments = if content_type.contains("application/json") {
+        serde_json::from_str::<GroqTranscriptionResponseBody>(&text_body)
+            .ok()
+            .and_then(|body| body.segments)
+    } else {
+        None
+    };
+    let no_speech_probability =
+        average_segment_number(parsed_segments.as_deref(), "no_speech_prob");
+    let average_log_probability = average_segment_number(parsed_segments.as_deref(), "avg_logprob");
+    let resolved_model = parsed.model.unwrap_or(config.model);
+    if let Some(reason) = should_discard_provider_no_speech(
+        &parsed.text,
+        no_speech_probability,
+        average_log_probability,
+    ) {
+        return ProviderTranscriptionOutcome::NoSpeech {
+            reason: reason.to_string(),
+            no_speech_probability: format_optional_probability(no_speech_probability),
+            average_log_probability: format_optional_probability(average_log_probability),
+            provider: config.provider,
+            model: resolved_model,
+            latency_ms,
+            request_id,
+            fixvox_metadata: Some(metadata),
+        };
+    }
+
     ProviderTranscriptionOutcome::Ok {
         text: parsed.text,
         provider: config.provider,
-        model: parsed.model.unwrap_or(config.model),
+        model: resolved_model,
         latency_ms,
         request_id,
         fixvox_metadata: Some(metadata),
@@ -1857,6 +2734,8 @@ fn with_ok_text_and_post_process_evidence(
             latency_ms,
             request_id,
             fixvox_metadata,
+            audio_prep,
+            preflight,
             ..
         } => HostTranscriptionResponse::Ok {
             text: if replacement_text.is_empty() {
@@ -1871,6 +2750,8 @@ fn with_ok_text_and_post_process_evidence(
             latency_ms,
             request_id,
             fixvox_metadata,
+            audio_prep,
+            preflight,
             post_process: Some(evidence),
             redacted: true,
         },
@@ -1971,6 +2852,8 @@ fn find_final_marker_index(raw: &str) -> Option<usize> {
 fn map_provider_outcome_to_host_response(
     outcome: ProviderTranscriptionOutcome,
     request: &HostTranscriptionRequest,
+    audio_prep: Option<HostAudioPrepEvidence>,
+    preflight: Option<ManagedPreflightEvidence>,
 ) -> HostTranscriptionResponse {
     match outcome {
         ProviderTranscriptionOutcome::Ok {
@@ -1994,6 +2877,8 @@ fn map_provider_outcome_to_host_response(
                     latency_ms,
                     request_id: redact_request_id(request_id),
                     fixvox_metadata,
+                    audio_prep,
+                    preflight,
                     retryable: true,
                     redacted: true,
                 };
@@ -2008,7 +2893,44 @@ fn map_provider_outcome_to_host_response(
                 latency_ms,
                 request_id: redact_request_id(request_id),
                 fixvox_metadata,
+                audio_prep,
+                preflight,
                 post_process: None,
+                redacted: true,
+            }
+        }
+        ProviderTranscriptionOutcome::NoSpeech {
+            reason,
+            no_speech_probability,
+            average_log_probability,
+            provider,
+            model,
+            latency_ms,
+            request_id,
+            fixvox_metadata,
+        } => {
+            let detail = match (no_speech_probability, average_log_probability) {
+                (Some(no_speech), Some(logprob)) => format!(
+                    "Speech provider marked recording as no speech ({reason}; no_speech_prob={no_speech}; avg_logprob={logprob})."
+                ),
+                (Some(no_speech), None) => format!(
+                    "Speech provider marked recording as no speech ({reason}; no_speech_prob={no_speech})."
+                ),
+                _ => "Speech provider marked recording as no speech.".to_string(),
+            };
+            HostTranscriptionResponse::Empty {
+                error: error("PROVIDER_NO_SPEECH_DETECTED", &detail),
+                report_path: Some(create_report_path(&request.run_id)),
+                provider: redact_host_text(&provider),
+                model: redact_host_text(&model),
+                latency_ms,
+                request_id: redact_request_id(request_id),
+                fixvox_metadata: fixvox_metadata
+                    .as_ref()
+                    .map(redact_fixvox_response_metadata),
+                audio_prep,
+                preflight,
+                retryable: true,
                 redacted: true,
             }
         }
@@ -2029,6 +2951,8 @@ fn map_provider_outcome_to_host_response(
             fixvox_metadata: fixvox_metadata
                 .as_ref()
                 .map(redact_fixvox_response_metadata),
+            audio_prep,
+            preflight,
             retryable: true,
             redacted: true,
         },
@@ -2079,6 +3003,14 @@ fn create_redacted_report(
             serde_json::to_value(metadata).unwrap_or(serde_json::Value::Null);
     }
 
+    if let Some(audio_prep) = response_audio_prep(response) {
+        report["audioPrep"] = serde_json::to_value(audio_prep).unwrap_or(serde_json::Value::Null);
+    }
+
+    if let Some(preflight) = response_preflight(response) {
+        report["preflight"] = serde_json::to_value(preflight).unwrap_or(serde_json::Value::Null);
+    }
+
     if let Some(post_process) = response_post_process(response) {
         report["postProcess"] =
             serde_json::to_value(post_process).unwrap_or(serde_json::Value::Null);
@@ -2097,6 +3029,28 @@ fn response_post_process(response: &HostTranscriptionResponse) -> Option<&HostPo
         | HostTranscriptionResponse::SetupError { .. }
         | HostTranscriptionResponse::ProviderError { .. }
         | HostTranscriptionResponse::Empty { .. }
+        | HostTranscriptionResponse::Cancelled { .. } => None,
+    }
+}
+
+fn response_audio_prep(response: &HostTranscriptionResponse) -> Option<&HostAudioPrepEvidence> {
+    match response {
+        HostTranscriptionResponse::Ok { audio_prep, .. }
+        | HostTranscriptionResponse::ProviderError { audio_prep, .. }
+        | HostTranscriptionResponse::Empty { audio_prep, .. } => audio_prep.as_ref(),
+        HostTranscriptionResponse::MissingAudio { .. }
+        | HostTranscriptionResponse::SetupError { .. }
+        | HostTranscriptionResponse::Cancelled { .. } => None,
+    }
+}
+
+fn response_preflight(response: &HostTranscriptionResponse) -> Option<&ManagedPreflightEvidence> {
+    match response {
+        HostTranscriptionResponse::Ok { preflight, .. }
+        | HostTranscriptionResponse::ProviderError { preflight, .. }
+        | HostTranscriptionResponse::Empty { preflight, .. } => preflight.as_ref(),
+        HostTranscriptionResponse::MissingAudio { .. }
+        | HostTranscriptionResponse::SetupError { .. }
         | HostTranscriptionResponse::Cancelled { .. } => None,
     }
 }
@@ -2269,15 +3223,6 @@ fn response_report_path(response: &HostTranscriptionResponse) -> Option<String> 
         | HostTranscriptionResponse::MissingAudio { .. }
         | HostTranscriptionResponse::Cancelled { .. } => None,
     }
-}
-
-fn file_name_from_audio_path(audio_path: &str) -> String {
-    normalize_path(audio_path)
-        .split('/')
-        .filter(|segment| !segment.is_empty())
-        .last()
-        .unwrap_or("captured-audio.wav")
-        .to_string()
 }
 
 fn resolve_existing_artifact_file_path(artifact_path: &str) -> Option<String> {
@@ -2510,6 +3455,15 @@ fn sanitize_run_id(run_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    static PREFLIGHT_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn preflight_test_guard() -> std::sync::MutexGuard<'static, ()> {
+        PREFLIGHT_TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("preflight test lock should not be poisoned")
+    }
 
     #[test]
     fn readiness_reports_missing_and_configured_groq_without_secret_leakage() {
@@ -2962,6 +3916,8 @@ mod tests {
                 fixvox_metadata: None,
             },
             &request,
+            None,
+            None,
         );
         assert!(matches!(
             empty,
@@ -2980,6 +3936,8 @@ mod tests {
                 fixvox_metadata: None,
             },
             &request,
+            None,
+            None,
         );
 
         assert!(matches!(
@@ -2996,7 +3954,9 @@ mod tests {
 
     #[test]
     fn preflight_cache_reuses_allowed_decision_for_matching_key_within_ttl() {
+        let _guard = preflight_test_guard();
         clear_preflight_cache_for_tests();
+        clear_preflight_in_flight_for_tests();
         let config = test_managed_config();
         let key = preflight_cache_key(&config);
         let decision = fixvox_cloud::PreflightDecision {
@@ -3010,8 +3970,13 @@ mod tests {
             limits: None,
         };
 
-        remember_preflight_decision_at(key.clone(), &decision, 1_000);
+        remember_preflight_decision_at(key.clone(), &decision, 1_000, true);
 
+        let hit = preflight_cache_hit_at(&key, 1_100).expect("prewarmed cache should hit");
+        assert!(hit.cached);
+        assert!(hit.prewarmed);
+        assert_eq!(hit.cache_age_ms, Some(100));
+        assert_eq!(hit.request_id.as_deref(), Some("redacted-request-id"));
         assert!(preflight_cache_allows_at(
             &key,
             1_000 + TRANSCRIPTION_PREFLIGHT_CACHE_TTL_MS
@@ -3032,7 +3997,9 @@ mod tests {
 
     #[test]
     fn preflight_cache_does_not_remember_denials() {
+        let _guard = preflight_test_guard();
         clear_preflight_cache_for_tests();
+        clear_preflight_in_flight_for_tests();
         let key = preflight_cache_key(&test_managed_config());
         let decision = fixvox_cloud::PreflightDecision {
             ok: true,
@@ -3045,10 +4012,77 @@ mod tests {
             limits: None,
         };
 
-        remember_preflight_decision_at(key.clone(), &decision, 1_000);
+        remember_preflight_decision_at(key.clone(), &decision, 1_000, false);
 
         assert!(!preflight_cache_allows_at(&key, 1_001));
         clear_preflight_cache_for_tests();
+    }
+
+    #[test]
+    fn preflight_in_flight_reuses_cached_prewarm_before_soft_timeout() {
+        let _guard = preflight_test_guard();
+        clear_preflight_cache_for_tests();
+        clear_preflight_in_flight_for_tests();
+        let key = preflight_cache_key(&test_managed_config());
+        let owner = match begin_or_join_preflight_in_flight_at(&key, 1_000, true, true) {
+            PreflightInFlightAction::Start(owner) => owner,
+            _ => panic!("first preflight should own in-flight marker"),
+        };
+        let waiting = match begin_or_join_preflight_in_flight_at(&key, 1_050, false, true) {
+            PreflightInFlightAction::Wait(existing) => existing,
+            _ => panic!("matching preflight should join in-flight marker before timeout"),
+        };
+        let decision = fixvox_cloud::PreflightDecision {
+            ok: true,
+            allowed: true,
+            mode: Some("managed".to_string()),
+            usage_kind: Some("transcription".to_string()),
+            request_id: Some("preflight_req_cached".to_string()),
+            deny_code: None,
+            deny_message: None,
+            limits: None,
+        };
+        remember_preflight_decision_at(key.clone(), &decision, current_time_ms(), true);
+
+        let evidence = wait_for_preflight_in_flight_or_soft_timeout(&waiting, true)
+            .expect("waiting preflight should reuse the completed prewarm cache");
+        assert!(evidence.cached);
+        assert!(evidence.prewarmed);
+        assert_eq!(evidence.in_flight_soft_timed_out, None);
+        assert_eq!(evidence.trusted_policy_fallback, None);
+        drop(owner);
+        clear_preflight_cache_for_tests();
+        clear_preflight_in_flight_for_tests();
+    }
+
+    #[test]
+    fn preflight_in_flight_soft_timeout_uses_trusted_policy_fallback() {
+        let _guard = preflight_test_guard();
+        clear_preflight_cache_for_tests();
+        clear_preflight_in_flight_for_tests();
+        let key = preflight_cache_key(&test_managed_config());
+        let owner = match begin_or_join_preflight_in_flight_at(&key, 1_000, true, true) {
+            PreflightInFlightAction::Start(owner) => owner,
+            _ => panic!("first preflight should own in-flight marker"),
+        };
+
+        let evidence = match begin_or_join_preflight_in_flight_at(
+            &key,
+            1_000 + TRANSCRIPTION_PREFLIGHT_IN_FLIGHT_SOFT_TIMEOUT_MS + 1,
+            false,
+            true,
+        ) {
+            PreflightInFlightAction::Bypass(evidence) => evidence,
+            _ => panic!("stale in-flight preflight should be bypassed with trusted policy"),
+        };
+
+        assert!(!evidence.cached);
+        assert!(evidence.prewarmed);
+        assert_eq!(evidence.cache_age_ms, Some(1_001));
+        assert_eq!(evidence.in_flight_soft_timed_out, Some(true));
+        assert_eq!(evidence.trusted_policy_fallback, Some(true));
+        drop(owner);
+        clear_preflight_in_flight_for_tests();
     }
 
     #[test]
@@ -3070,6 +4104,8 @@ mod tests {
                 }),
             },
             &request,
+            None,
+            None,
         );
 
         let HostTranscriptionResponse::Ok {
@@ -3111,6 +4147,8 @@ mod tests {
         let response = map_provider_outcome_to_host_response(
             ProviderTranscriptionOutcome::Cancelled,
             &test_request("cancelled-run"),
+            None,
+            None,
         );
 
         assert!(matches!(
@@ -3119,6 +4157,85 @@ mod tests {
                 retryable: false,
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn local_voice_activity_matches_fixvox_thresholds() {
+        let silent = create_test_wav_bytes(1_000, 0.0);
+        let silent_activity = analyze_wav_voice_activity(&silent);
+        assert_eq!(silent_activity.duration_ms, 1_000);
+        assert_eq!(silent_activity.voiced_ms, 0);
+        assert!(!silent_activity.has_speech);
+
+        let quiet_speech = create_test_wav_bytes(1_000, 0.008);
+        let quiet_activity = analyze_wav_voice_activity(&quiet_speech);
+        assert!(quiet_activity.voiced_ms >= VAD_MIN_VOICED_MS);
+        assert!(quiet_activity.has_speech);
+    }
+
+    #[test]
+    fn audio_prep_keeps_short_wav_and_records_redacted_evidence() {
+        let wav = create_test_wav_bytes(1_000, 0.008);
+        let payload = prepare_speech_upload_payload(Path::new("recording.wav"), wav);
+        let evidence = payload.evidence(None);
+
+        assert_eq!(payload.source, "wav");
+        assert_eq!(payload.mime_type, "audio/wav");
+        assert_eq!(payload.file_name, "recording.wav");
+        assert_eq!(evidence.upload_bytes, evidence.original_bytes);
+        assert_eq!(evidence.compression_ratio, None);
+        assert_eq!(evidence.audio_duration_ms, 1_000);
+        assert!(evidence.voice_activity.has_speech);
+        assert!(evidence.redacted);
+    }
+
+    #[test]
+    fn audio_prep_uses_ffmpeg_mp3_for_long_audio_when_available() {
+        if Command::new("ffmpeg").arg("-version").output().is_err() {
+            return;
+        }
+        let temp_path = std::env::temp_dir().join(format!(
+            "dictation-tauri-audio-prep-{}.wav",
+            current_time_ms()
+        ));
+        let wav = create_test_wav_bytes(5_000, 0.02);
+        fs::write(&temp_path, &wav).expect("test wav should be writable");
+        let payload = prepare_speech_upload_payload(&temp_path, wav.clone());
+        let _ = fs::remove_file(&temp_path);
+        let _ = fs::remove_file(temp_path.with_extension("wav.stt.mp3"));
+
+        assert_eq!(payload.source, "ffmpeg-mp3");
+        assert_eq!(payload.mime_type, "audio/mpeg");
+        assert_eq!(payload.file_name, "recording.mp3");
+        assert!(payload.bytes.len() < wav.len());
+        assert!(payload.compression_ratio.is_some());
+    }
+
+    #[test]
+    fn provider_no_speech_response_maps_to_empty_with_reason() {
+        let response = map_provider_outcome_to_host_response(
+            ProviderTranscriptionOutcome::NoSpeech {
+                reason: "high_no_speech_probability".to_string(),
+                no_speech_probability: Some("0.9100".to_string()),
+                average_log_probability: Some("-0.2000".to_string()),
+                provider: "fixvox-cloud".to_string(),
+                model: "whisper-large-v3-turbo".to_string(),
+                latency_ms: 123,
+                request_id: Some("provider_req_123".to_string()),
+                fixvox_metadata: None,
+            },
+            &test_request("provider-no-speech"),
+            None,
+            None,
+        );
+
+        assert!(matches!(
+            response,
+            HostTranscriptionResponse::Empty { ref error, provider, model, .. }
+                if error.code == "PROVIDER_NO_SPEECH_DETECTED"
+                    && provider == "fixvox-cloud"
+                    && model == "whisper-large-v3-turbo"
         ));
     }
 
@@ -3199,6 +4316,122 @@ mod tests {
             stt_prompt: None,
             post_process: None,
         }
+    }
+
+    fn create_test_wav_bytes(duration_ms: u64, amplitude: f32) -> Vec<u8> {
+        let sample_rate = 16_000_u32;
+        let channels = 1_u16;
+        let bits_per_sample = 16_u16;
+        let sample_count = (sample_rate as u64 * duration_ms / 1_000) as usize;
+        let byte_rate = sample_rate * channels as u32 * (bits_per_sample as u32 / 8);
+        let block_align = channels * (bits_per_sample / 8);
+        let data_size = sample_count * block_align as usize;
+        let mut bytes = Vec::with_capacity(44 + data_size);
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&(36 + data_size as u32).to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend_from_slice(b"fmt ");
+        bytes.extend_from_slice(&16_u32.to_le_bytes());
+        bytes.extend_from_slice(&1_u16.to_le_bytes());
+        bytes.extend_from_slice(&channels.to_le_bytes());
+        bytes.extend_from_slice(&sample_rate.to_le_bytes());
+        bytes.extend_from_slice(&byte_rate.to_le_bytes());
+        bytes.extend_from_slice(&block_align.to_le_bytes());
+        bytes.extend_from_slice(&bits_per_sample.to_le_bytes());
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&(data_size as u32).to_le_bytes());
+        let sample_value = (amplitude.clamp(0.0, 1.0) * i16::MAX as f32) as i16;
+        for index in 0..sample_count {
+            let value = if index % 2 == 0 {
+                sample_value
+            } else {
+                -sample_value
+            };
+            bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes
+    }
+
+    #[test]
+    #[ignore]
+    fn fixvox_audio_prep_managed_smoke_real_redacted() {
+        if std::env::var("DICTATION_TAURI_FIXVOX_AUDIO_PREP_SMOKE")
+            .ok()
+            .as_deref()
+            != Some("1")
+        {
+            panic!(
+                "set DICTATION_TAURI_FIXVOX_AUDIO_PREP_SMOKE=1 for the gated real managed smoke"
+            );
+        }
+        let audio_path = std::env::var("DICTATION_TAURI_FIXVOX_AUDIO_PREP_SMOKE_AUDIO")
+            .unwrap_or_else(|_| {
+                "artifacts/microphone-capture/audio/fixvox-audio-prep-smoke.wav".to_string()
+            });
+        let run_id = format!("fixvox-audio-prep-smoke-{}", current_time_ms());
+        let request = HostTranscriptionRequest {
+            run_id: run_id.clone(),
+            audio_path,
+            provider: None,
+            model: None,
+            language: None,
+            mode: "real".to_string(),
+            allow_provider_call: true,
+            post_process: None,
+        };
+        let config = read_managed_runtime_config(&read_host_env_value, &request)
+            .expect("managed runtime config should resolve for smoke");
+        let _ =
+            tauri::async_runtime::block_on(preflight_fixvox_managed_transcription(&config, true));
+        let started_at = Instant::now();
+        let response = tauri::async_runtime::block_on(
+            transcribe_captured_audio_with_provider_call(request.clone(), &read_host_env_value),
+        );
+        let total_ms = elapsed_ms(started_at);
+        let status = match &response {
+            HostTranscriptionResponse::Ok { .. } => "ok",
+            HostTranscriptionResponse::MissingAudio { .. } => "missing-audio",
+            HostTranscriptionResponse::SetupError { .. } => "setup-error",
+            HostTranscriptionResponse::ProviderError { .. } => "provider-error",
+            HostTranscriptionResponse::Empty { .. } => "empty",
+            HostTranscriptionResponse::Cancelled { .. } => "cancelled",
+        };
+        let prompt = config.stt_prompt.as_deref().unwrap_or("");
+        let summary = serde_json::json!({
+            "ok": matches!(response, HostTranscriptionResponse::Ok { .. }),
+            "status": status,
+            "runId": run_id,
+            "model": response_model(&response),
+            "prompt": {
+                "length": prompt.len(),
+                "hash": if prompt.is_empty() { None } else { Some(redacted_text_hash(prompt)) },
+                "redacted": true
+            },
+            "preflight": response_preflight(&response),
+            "audioPrep": response_audio_prep(&response),
+            "sttLatencyMs": response_latency_ms(&response),
+            "postProcess": response_post_process(&response),
+            "totalMs": total_ms,
+            "transcriptLength": match &response { HostTranscriptionResponse::Ok { text, .. } => text.len(), _ => 0 },
+            "hostReportPath": response_report_path(&response),
+            "rawProviderPayloadStored": false,
+            "redacted": true
+        });
+        let summary_path = format!("{}{}-summary.json", REPORT_ROOT, sanitize_run_id(&run_id));
+        let summary_file_path = writable_artifact_file_path(&summary_path);
+        if let Some(parent) = Path::new(&summary_file_path).parent() {
+            fs::create_dir_all(parent).expect("summary directory should be writable");
+        }
+        fs::write(
+            &summary_file_path,
+            serde_json::to_string_pretty(&summary).expect("summary should serialize"),
+        )
+        .expect("summary should be writable");
+        println!(
+            "fixvox_audio_prep_smoke_summary={}",
+            normalize_path(&summary_path)
+        );
+        assert!(matches!(response, HostTranscriptionResponse::Ok { .. }));
     }
 
     fn test_request(run_id: &str) -> HostTranscriptionRequest {
