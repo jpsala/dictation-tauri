@@ -24,12 +24,34 @@ pub(crate) struct FixvoxCloudRuntimeConfig {
     pub(crate) device_id: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FixvoxCloudError {
     pub(crate) code: String,
     pub(crate) message: String,
     pub(crate) redacted: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FixvoxPolicyCapabilities {
+    pub(crate) can_use_managed_transcription: bool,
+    pub(crate) can_see_advanced_settings: bool,
+    pub(crate) can_use_debug_tools: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FixvoxPolicySnapshot {
+    pub(crate) policy_id: Option<String>,
+    pub(crate) policy_label: Option<String>,
+    pub(crate) features: Option<serde_json::Value>,
+    pub(crate) capabilities: FixvoxPolicyCapabilities,
+    pub(crate) transport_policy: Option<serde_json::Value>,
+    pub(crate) fetched_at: String,
+    pub(crate) trust: String,
+    pub(crate) stale: bool,
+    pub(crate) error: Option<FixvoxCloudError>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -47,6 +69,8 @@ pub(crate) struct FixvoxCloudStatus {
     pub(crate) policy_id: Option<String>,
     pub(crate) policy_label: Option<String>,
     pub(crate) transport_policy: Option<serde_json::Value>,
+    pub(crate) policy_snapshot: Option<FixvoxPolicySnapshot>,
+    pub(crate) capabilities: FixvoxPolicyCapabilities,
     pub(crate) redacted: bool,
 }
 
@@ -139,6 +163,8 @@ pub(crate) struct FixvoxDeviceState {
     pub(crate) policy_id: Option<String>,
     pub(crate) policy_label: Option<String>,
     pub(crate) transport_policy: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) policy_snapshot: Option<FixvoxPolicySnapshot>,
 }
 
 pub(crate) trait DeviceRegisterHttpClient {
@@ -629,6 +655,7 @@ pub(crate) fn build_device_state_from_register(
     config: &FixvoxCloudRuntimeConfig,
     snapshot: &DeviceRegisterSnapshot,
 ) -> FixvoxDeviceState {
+    let policy_snapshot = build_policy_snapshot_from_register(snapshot);
     FixvoxDeviceState {
         install_id: config.install_id.clone(),
         device_id: Some(snapshot.device_id.clone()),
@@ -638,6 +665,7 @@ pub(crate) fn build_device_state_from_register(
         policy_id: Some(snapshot.policy_id.clone()),
         policy_label: Some(snapshot.policy_label.clone()),
         transport_policy: Some(snapshot.transport_policy.clone()),
+        policy_snapshot: Some(policy_snapshot),
     }
 }
 
@@ -654,6 +682,7 @@ pub(crate) fn build_device_state_from_register_error(
         policy_id: None,
         policy_label: None,
         transport_policy: None,
+        policy_snapshot: Some(build_policy_snapshot_from_error(register_error)),
     }
 }
 
@@ -670,6 +699,7 @@ pub(crate) fn build_device_state_from_activate(
         policy_id: Some(snapshot.policy_id.clone()),
         policy_label: Some(snapshot.policy_label.clone()),
         transport_policy: None,
+        policy_snapshot: Some(build_policy_snapshot_from_activation(snapshot)),
     }
 }
 
@@ -678,6 +708,27 @@ pub(crate) fn build_initial_device_state(
     previous: Option<FixvoxDeviceState>,
 ) -> FixvoxDeviceState {
     let previous_policy = previous.as_ref();
+    let policy_id = previous_policy.and_then(|state| state.policy_id.clone());
+    let policy_label = previous_policy.and_then(|state| state.policy_label.clone());
+    let transport_policy = previous_policy.and_then(|state| state.transport_policy.clone());
+    let policy_snapshot = previous_policy
+        .and_then(|state| state.policy_snapshot.clone())
+        .or_else(|| {
+            build_policy_snapshot_from_legacy_state(
+                policy_id.clone(),
+                policy_label.clone(),
+                transport_policy.clone(),
+                previous_policy
+                    .map(|state| state.last_register_ok)
+                    .unwrap_or(false),
+                previous_policy.and_then(|state| {
+                    state
+                        .last_register_error_code
+                        .clone()
+                        .zip(state.last_register_error_message.clone())
+                }),
+            )
+        });
 
     FixvoxDeviceState {
         install_id: config.install_id.clone(),
@@ -692,10 +743,218 @@ pub(crate) fn build_initial_device_state(
             .and_then(|state| state.last_register_error_code.clone()),
         last_register_error_message: previous_policy
             .and_then(|state| state.last_register_error_message.clone()),
-        policy_id: previous_policy.and_then(|state| state.policy_id.clone()),
-        policy_label: previous_policy.and_then(|state| state.policy_label.clone()),
-        transport_policy: previous_policy.and_then(|state| state.transport_policy.clone()),
+        policy_id,
+        policy_label,
+        transport_policy,
+        policy_snapshot,
     }
+}
+
+pub(crate) fn build_policy_snapshot_from_register(
+    snapshot: &DeviceRegisterSnapshot,
+) -> FixvoxPolicySnapshot {
+    let policy_id = clean_env_value(Some(snapshot.policy_id.clone()));
+    let policy_label = clean_env_value(Some(snapshot.policy_label.clone()));
+    let features = Some(snapshot.features.clone());
+    let transport_policy = Some(snapshot.transport_policy.clone());
+    FixvoxPolicySnapshot {
+        capabilities: derive_policy_capabilities(
+            policy_id.as_deref(),
+            features.as_ref(),
+            transport_policy.as_ref(),
+        ),
+        policy_id,
+        policy_label,
+        features,
+        transport_policy,
+        fetched_at: current_unix_timestamp_string(),
+        trust: if snapshot.ok { "fresh" } else { "error" }.to_string(),
+        stale: false,
+        error: None,
+    }
+}
+
+pub(crate) fn build_policy_snapshot_from_activation(
+    snapshot: &DeviceActivateSnapshot,
+) -> FixvoxPolicySnapshot {
+    let policy_id = clean_env_value(Some(snapshot.policy_id.clone()));
+    let policy_label = clean_env_value(Some(snapshot.policy_label.clone()));
+    FixvoxPolicySnapshot {
+        capabilities: derive_policy_capabilities(policy_id.as_deref(), None, None),
+        policy_id,
+        policy_label,
+        features: None,
+        transport_policy: None,
+        fetched_at: current_unix_timestamp_string(),
+        trust: "activation-pending-refresh".to_string(),
+        stale: true,
+        error: None,
+    }
+}
+
+pub(crate) fn build_policy_snapshot_from_error(
+    register_error: &FixvoxCloudError,
+) -> FixvoxPolicySnapshot {
+    FixvoxPolicySnapshot {
+        policy_id: None,
+        policy_label: None,
+        features: None,
+        capabilities: default_policy_capabilities(),
+        transport_policy: None,
+        fetched_at: current_unix_timestamp_string(),
+        trust: "error".to_string(),
+        stale: true,
+        error: Some(register_error.clone()),
+    }
+}
+
+fn build_policy_snapshot_from_legacy_state(
+    policy_id: Option<String>,
+    policy_label: Option<String>,
+    transport_policy: Option<serde_json::Value>,
+    last_register_ok: bool,
+    register_error: Option<(String, String)>,
+) -> Option<FixvoxPolicySnapshot> {
+    if policy_id.is_none() && transport_policy.is_none() && register_error.is_none() {
+        return None;
+    }
+
+    let error = register_error.map(|(code, message)| FixvoxCloudError {
+        code,
+        message,
+        redacted: true,
+    });
+
+    Some(FixvoxPolicySnapshot {
+        capabilities: if last_register_ok {
+            derive_policy_capabilities(policy_id.as_deref(), None, transport_policy.as_ref())
+        } else {
+            default_policy_capabilities()
+        },
+        policy_id,
+        policy_label,
+        features: None,
+        transport_policy,
+        fetched_at: current_unix_timestamp_string(),
+        trust: if last_register_ok { "legacy" } else { "error" }.to_string(),
+        stale: !last_register_ok,
+        error,
+    })
+}
+
+pub(crate) fn default_policy_capabilities() -> FixvoxPolicyCapabilities {
+    FixvoxPolicyCapabilities {
+        can_use_managed_transcription: false,
+        can_see_advanced_settings: false,
+        can_use_debug_tools: false,
+    }
+}
+
+pub(crate) fn derive_policy_capabilities(
+    policy_id: Option<&str>,
+    features: Option<&serde_json::Value>,
+    transport_policy: Option<&serde_json::Value>,
+) -> FixvoxPolicyCapabilities {
+    let normalized_policy = policy_id.unwrap_or_default().trim().to_ascii_lowercase();
+    let explicit_managed =
+        feature_bool(features, &["managedTranscription", "managed_transcription"]).or_else(|| {
+            feature_bool(
+                features,
+                &[
+                    "canUseManagedTranscription",
+                    "can_use_managed_transcription",
+                ],
+            )
+        });
+    let managed_by_transport = transport_policy
+        .map(|policy| policy_mentions(policy, &["proxied", "managed", "fixvox-cloud", "groq"]))
+        .unwrap_or(false)
+        && !transport_policy
+            .map(|policy| policy_mentions(policy, &["disabled", "deny", "blocked"]))
+            .unwrap_or(false);
+    let can_use_managed_transcription = explicit_managed.unwrap_or_else(|| {
+        managed_by_transport
+            || matches!(
+                normalized_policy.as_str(),
+                "alpha-basic" | "alpha-full" | "pro"
+            )
+    });
+
+    let can_see_advanced_settings =
+        feature_bool(features, &["advancedSettings", "advanced_settings"])
+            .unwrap_or_else(|| matches!(normalized_policy.as_str(), "alpha-full" | "pro"));
+    let can_use_debug_tools =
+        feature_bool(features, &["debugTools", "debug_tools"]).unwrap_or(false);
+
+    FixvoxPolicyCapabilities {
+        can_use_managed_transcription,
+        can_see_advanced_settings,
+        can_use_debug_tools,
+    }
+}
+
+pub(crate) fn policy_allows_managed_transcription(
+    state: &FixvoxDeviceState,
+) -> Result<(), FixvoxCloudError> {
+    if !state.last_register_ok {
+        return Err(error(
+            "FIXVOX_POLICY_UNTRUSTED",
+            "Fixvox policy is not confirmed; refresh or activate the device before managed transcription.",
+        ));
+    }
+
+    let Some(snapshot) = state.policy_snapshot.as_ref() else {
+        let legacy_capabilities = derive_policy_capabilities(
+            state.policy_id.as_deref(),
+            None,
+            state.transport_policy.as_ref(),
+        );
+        if legacy_capabilities.can_use_managed_transcription {
+            return Ok(());
+        }
+        return Err(error(
+            "FIXVOX_POLICY_MISSING",
+            "Fixvox policy snapshot is missing; refresh policy before managed transcription.",
+        ));
+    };
+
+    if snapshot.stale || snapshot.error.is_some() || snapshot.trust == "error" {
+        return Err(error(
+            "FIXVOX_POLICY_STALE",
+            "Fixvox policy snapshot is stale or failed; refresh policy before managed transcription.",
+        ));
+    }
+
+    if !snapshot.capabilities.can_use_managed_transcription {
+        return Err(error(
+            "FIXVOX_MANAGED_TRANSCRIPTION_DISABLED",
+            "Fixvox policy does not allow managed transcription for this device.",
+        ));
+    }
+
+    Ok(())
+}
+
+fn feature_bool(features: Option<&serde_json::Value>, keys: &[&str]) -> Option<bool> {
+    let features = features?;
+    for key in keys {
+        if let Some(value) = features.get(*key).and_then(|value| value.as_bool()) {
+            return Some(value);
+        }
+        if let Some(value) = features
+            .get("capabilities")
+            .and_then(|capabilities| capabilities.get(*key))
+            .and_then(|value| value.as_bool())
+        {
+            return Some(value);
+        }
+    }
+    None
+}
+
+fn policy_mentions(value: &serde_json::Value, needles: &[&str]) -> bool {
+    let haystack = value.to_string().to_ascii_lowercase();
+    needles.iter().any(|needle| haystack.contains(needle))
 }
 
 pub(crate) fn persist_device_state(
@@ -810,7 +1069,14 @@ fn register_or_refresh_device_with_client(
         device_id: state.device_id.clone(),
     };
     let input = build_device_register_input(&config, env_lookup);
-    let snapshot = register_device_with_client(client, &config, input)?;
+    let snapshot = match register_device_with_client(client, &config, input) {
+        Ok(snapshot) => snapshot,
+        Err(register_error) => {
+            let error_state = build_device_state_from_register_error(&config, &register_error);
+            persist_device_state(&path, &error_state)?;
+            return Err(register_error);
+        }
+    };
     let next_state = build_device_state_from_register(&config, &snapshot);
     persist_device_state(&path, &next_state)?;
 
@@ -843,7 +1109,15 @@ fn activate_device_with_client_and_env(
     persist_device_state(&path, &activation_state)?;
 
     let register_input = build_device_register_input(&activated_config, env_lookup);
-    let snapshot = register_device_with_client(client, &activated_config, register_input)?;
+    let snapshot = match register_device_with_client(client, &activated_config, register_input) {
+        Ok(snapshot) => snapshot,
+        Err(register_error) => {
+            let error_state =
+                build_device_state_from_register_error(&activated_config, &register_error);
+            persist_device_state(&path, &error_state)?;
+            return Err(register_error);
+        }
+    };
     let next_state = build_device_state_from_register(&activated_config, &snapshot);
     persist_device_state(&path, &next_state)?;
 
@@ -864,7 +1138,14 @@ async fn register_or_refresh_device_with_reqwest(
         device_id: state.device_id.clone(),
     };
     let input = build_device_register_input(&config, env_lookup);
-    let snapshot = register_device_with_reqwest(&config, input).await?;
+    let snapshot = match register_device_with_reqwest(&config, input).await {
+        Ok(snapshot) => snapshot,
+        Err(register_error) => {
+            let error_state = build_device_state_from_register_error(&config, &register_error);
+            persist_device_state(&path, &error_state)?;
+            return Err(register_error);
+        }
+    };
     let next_state = build_device_state_from_register(&config, &snapshot);
     persist_device_state(&path, &next_state)?;
 
@@ -896,7 +1177,15 @@ async fn activate_device_with_reqwest(
     persist_device_state(&path, &activation_state)?;
 
     let register_input = build_device_register_input(&activated_config, env_lookup);
-    let snapshot = register_device_with_reqwest(&activated_config, register_input).await?;
+    let snapshot = match register_device_with_reqwest(&activated_config, register_input).await {
+        Ok(snapshot) => snapshot,
+        Err(register_error) => {
+            let error_state =
+                build_device_state_from_register_error(&activated_config, &register_error);
+            persist_device_state(&path, &error_state)?;
+            return Err(register_error);
+        }
+    };
     let next_state = build_device_state_from_register(&activated_config, &snapshot);
     persist_device_state(&path, &next_state)?;
 
@@ -1074,6 +1363,12 @@ fn build_cloud_status(
     state: FixvoxDeviceState,
     backend_base_url: String,
 ) -> FixvoxCloudStatus {
+    let capabilities = state
+        .policy_snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.capabilities.clone())
+        .unwrap_or_else(default_policy_capabilities);
+
     FixvoxCloudStatus {
         backend_base_url,
         state_path: path.to_string_lossy().to_string(),
@@ -1091,6 +1386,8 @@ fn build_cloud_status(
         policy_id: state.policy_id,
         policy_label: state.policy_label,
         transport_policy: state.transport_policy,
+        policy_snapshot: state.policy_snapshot,
+        capabilities,
         redacted: true,
     }
 }
@@ -1409,5 +1706,82 @@ fn error(code: &str, message: &str) -> FixvoxCloudError {
         code: code.to_string(),
         message: message.to_string(),
         redacted: true,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn alpha_basic_policy_snapshot_allows_managed_but_keeps_advanced_hidden() {
+        let snapshot = DeviceRegisterSnapshot {
+            ok: true,
+            device_id: "dev_test_alpha".to_string(),
+            activated: true,
+            policy_id: "alpha-basic".to_string(),
+            policy_label: "Alpha Basic".to_string(),
+            auth: json!({ "required": false }),
+            features: json!({ "managedTranscription": true }),
+            defaults: json!({}),
+            limits: json!({}),
+            telemetry: json!({}),
+            transport_policy: json!({ "speech": { "mode": "proxied", "provider": "groq" } }),
+        };
+
+        let policy = build_policy_snapshot_from_register(&snapshot);
+
+        assert!(policy.capabilities.can_use_managed_transcription);
+        assert!(!policy.capabilities.can_see_advanced_settings);
+        assert!(!policy.capabilities.can_use_debug_tools);
+        assert_eq!(policy.trust, "fresh");
+        assert!(!policy.stale);
+    }
+
+    #[test]
+    fn pro_policy_snapshot_exposes_advanced_capabilities() {
+        let snapshot = DeviceRegisterSnapshot {
+            ok: true,
+            device_id: "dev_test_pro".to_string(),
+            activated: true,
+            policy_id: "pro".to_string(),
+            policy_label: "Pro".to_string(),
+            auth: json!({ "required": false }),
+            features: json!({ "managedTranscription": true, "debugTools": true }),
+            defaults: json!({}),
+            limits: json!({}),
+            telemetry: json!({}),
+            transport_policy: json!({ "speech": { "mode": "proxied", "provider": "groq" } }),
+        };
+
+        let policy = build_policy_snapshot_from_register(&snapshot);
+
+        assert!(policy.capabilities.can_use_managed_transcription);
+        assert!(policy.capabilities.can_see_advanced_settings);
+        assert!(policy.capabilities.can_use_debug_tools);
+    }
+
+    #[test]
+    fn failed_policy_refresh_is_not_treated_as_confirmed_policy() {
+        let state = FixvoxDeviceState {
+            install_id: "install_test".to_string(),
+            device_id: Some("dev_test".to_string()),
+            last_register_ok: false,
+            last_register_error_code: Some("FIXVOX_REGISTER_FAILED".to_string()),
+            last_register_error_message: Some("redacted".to_string()),
+            policy_id: None,
+            policy_label: None,
+            transport_policy: None,
+            policy_snapshot: Some(build_policy_snapshot_from_error(&error(
+                "FIXVOX_REGISTER_FAILED",
+                "redacted",
+            ))),
+        };
+
+        let denied = policy_allows_managed_transcription(&state)
+            .expect_err("failed assignment should fail closed");
+
+        assert_eq!(denied.code, "FIXVOX_POLICY_UNTRUSTED");
     }
 }

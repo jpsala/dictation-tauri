@@ -39,7 +39,7 @@ Decision de producto 2026-06-27: Dictation Tauri es el nuevo cliente desktop de 
 
 ## Proximo Paso
 
-Bootstrap inicial completado: installer local reproducible + release channel separado documentado para Tauri. Device identity/status host-owned y Settings activation estan implementados. Smoke real autorizado por JP diagnostico Cloudflare 1010 sin User-Agent; con `fixvox-tauri/<version>` el device local quedo Pro. Siguiente: T005 policy snapshot/capabilities y luego T006 managed transcription sin BYOK en PC nueva.
+Bootstrap inicial completado: installer local reproducible + release channel separado documentado para Tauri. Device identity/status host-owned y Settings activation estan implementados. Smoke real autorizado por JP diagnostico Cloudflare 1010 sin User-Agent; con `fixvox-tauri/<version>` el device local quedo Pro. T005 ya agrega snapshot/capabilities policy-driven y T006 ya endurece el runtime para preferir device state persistido y no caer silenciosamente a BYOK; queda pendiente un smoke real/redacted en PC nueva o entorno equivalente antes de llamar cerrado el release path.
 
 ## Release Bootstrap Inicial
 
@@ -129,7 +129,7 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 
 ### T005 — Policy snapshot y capabilities runtime/UI
 
-- Estado: pending
+- Estado: done
 - Tipo: implementation
 - Objetivo: comportarse como Fixvox: cloud policy manda, UI solo refleja.
 - Pasos:
@@ -145,7 +145,7 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 
 ### T006 — Managed transcription sin BYOK en PC nueva
 
-- Estado: pending
+- Estado: implementation-done / smoke-real-pending
 - Tipo: smoke/implementation
 - Objetivo: PC instalada + activada dicta usando Fixvox Cloud sin `GROQ_API_KEY` local.
 - Pasos:
@@ -186,6 +186,7 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 - 2026-06-28 incidencia abierta: Settings window blanca recurrente en WebView Tauri despues de ciclos de open/close/activation. Ver seccion `Incidencias / Gotchas Activos`; workaround parcial con navigate forced no alcanzo para cerrarla.
 - 2026-06-28 activation real autorizada por JP: leer `.env` y probar invite pro revelo que Cloudflare devolvia `403 error code: 1010` cuando el request HTTP no llevaba `User-Agent`. Con `User-Agent: fixvox-tauri/0.1.0` el invite pro activó OK y register devolvio `policyId=pro`, `policyLabel=Pro`, `transportPolicy` proxied para Groq. Se agrego `FIXVOX_TAURI_USER_AGENT` al cliente Rust reqwest para activation/register/preflight/managed STT/postprocess y se sincronizo el device state local a Pro.
 - 2026-06-27 checks: `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`, `npm run build`, `cd src-tauri && cargo fmt --check && cargo check`, `bun scripts/context-index.ts`, `bun scripts/agent-context-audit.ts` OK (audit con warnings conocidos de contexto grande/prefijo 013 duplicado).
+- 2026-06-29 T005/T006 implementation: `FixvoxDeviceState` ahora persiste `policySnapshot` con capabilities (`canUseManagedTranscription`, `canSeeAdvancedSettings`, `canUseDebugTools`), Settings refleja capabilities basic/advanced, runtime valida policy host-side antes de preflight/provider, device state persistido gana sobre env manual y managed mode falla cerrado sin fallback silencioso a Groq BYOK. Checks OK: `npm run test:pipeline`, `npm run build`, `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`, `cd src-tauri && cargo fmt --check && cargo check`. `cargo test fixvox_cloud::tests --lib` sigue bloqueado por `STATUS_ENTRYPOINT_NOT_FOUND` conocido en este entorno.
 - Infra release actual Fixvox: `C:/dev/infra/docs/runbooks/cloud-services.md` seccion `Fixvox — Releases / Auto-update`.
 - Policy/control-plane canonico: `C:/dev/fixvox/.specify/specs/003-settings-policy-control-plane/spec.md`.
 - Installer checklist canonico: `C:/dev/fixvox/.specify/specs/007-windows-release-installer/spec.md`.

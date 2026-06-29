@@ -129,6 +129,7 @@ export type HostRuntimeEnv = {
   FIXVOX_API_BASE_URL?: string;
   PROXY_BASE_URL?: string;
   FIXVOX_DEVICE_ID?: string;
+  FIXVOX_INSTALL_ID?: string;
   FIXVOX_STT_MODEL?: string;
   FIXVOX_STT_LANGUAGE?: string;
 };
