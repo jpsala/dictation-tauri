@@ -1,5 +1,23 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
+export type FixvoxPolicyCapabilities = {
+  canUseManagedTranscription: boolean;
+  canSeeAdvancedSettings: boolean;
+  canUseDebugTools: boolean;
+};
+
+export type FixvoxPolicySnapshot = {
+  policyId?: string;
+  policyLabel?: string;
+  features?: unknown;
+  capabilities: FixvoxPolicyCapabilities;
+  transportPolicy?: unknown;
+  fetchedAt: string;
+  trust: string;
+  stale: boolean;
+  error?: { code: string; message: string; redacted: true };
+};
+
 export type FixvoxCloudStatus = {
   backendBaseUrl: string;
   statePath: string;
@@ -13,6 +31,8 @@ export type FixvoxCloudStatus = {
   policyId?: string;
   policyLabel?: string;
   transportPolicy?: unknown;
+  policySnapshot?: FixvoxPolicySnapshot;
+  capabilities?: FixvoxPolicyCapabilities;
   redacted: boolean;
 };
 
@@ -65,7 +85,24 @@ export function summarizeFixvoxCloudStatus(status: FixvoxCloudStatus | undefined
     return "Install identity ready; activation is still required.";
   }
 
-  return `Device linked${status.policyLabel ? ` · ${status.policyLabel}` : ""}.`;
+  const managedCopy = status.capabilities?.canUseManagedTranscription
+    ? "Managed transcription ready"
+    : "Managed transcription blocked";
+  return `Device linked${status.policyLabel ? ` · ${status.policyLabel}` : ""} · ${managedCopy}.`;
+}
+
+export function summarizeFixvoxPolicyCapabilities(status: FixvoxCloudStatus | undefined): string {
+  if (!status?.capabilities) {
+    return "Capabilities pending policy refresh.";
+  }
+
+  const parts = [
+    status.capabilities.canUseManagedTranscription ? "managed STT" : "no managed STT",
+    status.capabilities.canSeeAdvancedSettings ? "advanced settings" : "basic settings",
+    status.capabilities.canUseDebugTools ? "debug tools" : "debug hidden",
+  ];
+  const trust = status.policySnapshot?.stale ? "stale" : status.policySnapshot?.trust ?? "pending";
+  return `${parts.join(" · ")} · ${trust}`;
 }
 
 export function shouldConfirmFixvoxCloudOperation(

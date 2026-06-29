@@ -351,15 +351,15 @@ fn create_managed_cloud_readiness(
 fn resolve_fixvox_device_id(
     env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
 ) -> Option<String> {
-    first_env_value(env_lookup, &["FIXVOX_DEVICE_ID"])
-        .or_else(|| read_persisted_fixvox_device_id(env_lookup))
+    read_persisted_fixvox_device_id(env_lookup)
+        .or_else(|| first_env_value(env_lookup, &["FIXVOX_DEVICE_ID"]))
 }
 
 fn resolve_fixvox_install_id(
     env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
 ) -> Option<String> {
-    first_env_value(env_lookup, &["FIXVOX_INSTALL_ID"])
-        .or_else(|| read_persisted_fixvox_install_id(env_lookup))
+    read_persisted_fixvox_install_id(env_lookup)
+        .or_else(|| first_env_value(env_lookup, &["FIXVOX_INSTALL_ID"]))
 }
 
 fn read_persisted_fixvox_device_id(
@@ -490,7 +490,7 @@ async fn transcribe_captured_audio_with_provider_call(
         })
         .unwrap_or(false);
 
-    let mut direct_config = if use_direct_byok {
+    let direct_config = if use_direct_byok {
         match read_host_runtime_config(env_lookup) {
             Ok(config) => Some(config),
             Err(reason) => {
@@ -528,24 +528,18 @@ async fn transcribe_captured_audio_with_provider_call(
     } else {
         match read_managed_runtime_config(env_lookup, &request) {
             Ok(config) => Some(config),
-            Err(reason) => match read_host_runtime_config(env_lookup) {
-                Ok(config) => {
-                    direct_config = Some(config);
-                    None
-                }
-                Err(_) => {
-                    return HostTranscriptionResponse::SetupError {
-                        error: reason,
-                        provider: Some("fixvox-cloud".to_string()),
-                        model: request
-                            .model
-                            .clone()
-                            .or_else(|| Some(DEFAULT_MODEL.to_string())),
-                        retryable: true,
-                        redacted: true,
-                    };
-                }
-            },
+            Err(reason) => {
+                return HostTranscriptionResponse::SetupError {
+                    error: reason,
+                    provider: Some("fixvox-cloud".to_string()),
+                    model: request
+                        .model
+                        .clone()
+                        .or_else(|| Some(DEFAULT_MODEL.to_string())),
+                    retryable: true,
+                    redacted: true,
+                };
+            }
         }
     };
 
@@ -671,6 +665,10 @@ fn read_managed_runtime_config(
             "Managed Fixvox transcription requires a registered device id.",
         )
     })?;
+    if let Some(state) = read_persisted_fixvox_device_state(env_lookup) {
+        fixvox_cloud::policy_allows_managed_transcription(&state)
+            .map_err(|reason| error(&reason.code, &reason.message))?;
+    }
     let model = request
         .model
         .clone()
@@ -2177,6 +2175,51 @@ mod tests {
     }
 
     #[test]
+    fn managed_runtime_prefers_persisted_device_identity_over_env_manual_values() {
+        let appdata = "target/runtime-transcription-persisted-identity";
+        let _ = fs::remove_dir_all(appdata);
+        write_policy_state(appdata, "install_persisted", "dev_persisted", true);
+
+        let request = test_request("managed-persisted-identity");
+        let config = read_managed_runtime_config(
+            &|key| match key {
+                "APPDATA" => Some(appdata.to_string()),
+                "FIXVOX_BACKEND_URL" => Some("https://auth-fixvox.jpsala.dev".to_string()),
+                "FIXVOX_INSTALL_ID" => Some("install_env_should_not_win".to_string()),
+                "FIXVOX_DEVICE_ID" => Some("dev_env_should_not_win".to_string()),
+                _ => None,
+            },
+            &request,
+        )
+        .expect("persisted device state should configure managed runtime");
+
+        assert_eq!(config.install_id, "install_persisted");
+        assert_eq!(config.device_id, "dev_persisted");
+    }
+
+    #[test]
+    fn managed_runtime_fails_closed_when_policy_disables_managed_even_with_byok_available() {
+        let appdata = "target/runtime-transcription-policy-denied";
+        let _ = fs::remove_dir_all(appdata);
+        write_policy_state(appdata, "install_denied", "dev_denied", false);
+
+        let request = test_request("managed-policy-denied");
+        let denied = read_managed_runtime_config(
+            &|key| match key {
+                "APPDATA" => Some(appdata.to_string()),
+                "FIXVOX_BACKEND_URL" => Some("https://auth-fixvox.jpsala.dev".to_string()),
+                "GROQ_API_KEY" => Some("gsk_test_secret_must_not_leak".to_string()),
+                _ => None,
+            },
+            &request,
+        )
+        .expect_err("managed runtime should fail closed instead of falling back to BYOK");
+
+        assert_eq!(denied.code, "FIXVOX_MANAGED_TRANSCRIPTION_DISABLED");
+        assert!(!denied.message.to_ascii_lowercase().contains("gsk"));
+    }
+
+    #[test]
     fn resolves_artifact_files_from_repo_root_or_tauri_cwd() {
         assert_eq!(
             artifact_file_path_candidates("artifacts/microphone-capture/audio/capture.wav"),
@@ -2374,6 +2417,71 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    fn write_policy_state(appdata: &str, install_id: &str, device_id: &str, managed_allowed: bool) {
+        let state = fixvox_cloud::FixvoxDeviceState {
+            install_id: install_id.to_string(),
+            device_id: Some(device_id.to_string()),
+            last_register_ok: true,
+            last_register_error_code: None,
+            last_register_error_message: None,
+            policy_id: Some(
+                if managed_allowed {
+                    "alpha-basic"
+                } else {
+                    "blocked"
+                }
+                .to_string(),
+            ),
+            policy_label: Some(
+                if managed_allowed {
+                    "Alpha Basic"
+                } else {
+                    "Blocked"
+                }
+                .to_string(),
+            ),
+            transport_policy: Some(serde_json::json!({
+                "speech": { "mode": if managed_allowed { "proxied" } else { "disabled" } }
+            })),
+            policy_snapshot: Some(fixvox_cloud::FixvoxPolicySnapshot {
+                policy_id: Some(
+                    if managed_allowed {
+                        "alpha-basic"
+                    } else {
+                        "blocked"
+                    }
+                    .to_string(),
+                ),
+                policy_label: Some(
+                    if managed_allowed {
+                        "Alpha Basic"
+                    } else {
+                        "Blocked"
+                    }
+                    .to_string(),
+                ),
+                features: Some(serde_json::json!({ "managedTranscription": managed_allowed })),
+                capabilities: fixvox_cloud::FixvoxPolicyCapabilities {
+                    can_use_managed_transcription: managed_allowed,
+                    can_see_advanced_settings: false,
+                    can_use_debug_tools: false,
+                },
+                transport_policy: Some(serde_json::json!({
+                    "speech": { "mode": if managed_allowed { "proxied" } else { "disabled" } }
+                })),
+                fetched_at: "test".to_string(),
+                trust: "fresh".to_string(),
+                stale: false,
+                error: None,
+            }),
+        };
+        let path = Path::new(appdata)
+            .join("dictation-tauri")
+            .join("fixvox-device-state.json");
+        fixvox_cloud::persist_device_state(&path, &state)
+            .expect("test device state should be persisted");
     }
 
     fn test_request(run_id: &str) -> HostTranscriptionRequest {

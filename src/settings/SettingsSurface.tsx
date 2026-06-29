@@ -15,6 +15,7 @@ import {
   registerFixvoxDevice,
   shouldConfirmFixvoxCloudOperation,
   summarizeFixvoxCloudStatus,
+  summarizeFixvoxPolicyCapabilities,
   type FixvoxCloudStatus,
   type FixvoxCloudOperation,
 } from "./fixvox-cloud-control";
@@ -520,6 +521,16 @@ export function SettingsSurface() {
               <div className="settings-hotkey-value" aria-label="Fixvox Cloud policy status">
                 <kbd>{cloudStatus?.policyLabel ?? "Activation needed"}</kbd>
                 <small>{cloudStatus?.policyId ?? "pending"}</small>
+              </div>
+            </div>
+            <div className="settings-hotkey-row">
+              <div className="settings-hotkey-copy">
+                <strong>Capabilities</strong>
+                <span>{summarizeFixvoxPolicyCapabilities(cloudStatus)}</span>
+              </div>
+              <div className="settings-hotkey-value" aria-label="Fixvox Cloud capabilities">
+                <kbd>{cloudStatus?.capabilities?.canUseManagedTranscription ? "Managed STT" : "Blocked"}</kbd>
+                <small>{cloudStatus?.capabilities?.canSeeAdvancedSettings ? "advanced" : "basic"}</small>
               </div>
             </div>
           </div>
