@@ -152,7 +152,7 @@ mod platform {
         UI::{
             Input::KeyboardAndMouse::{
                 SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
-                VIRTUAL_KEY, VK_CONTROL, VK_ESCAPE, VK_MENU, VK_RETURN, VK_V,
+                VIRTUAL_KEY, VK_CONTROL, VK_RETURN, VK_V,
             },
             WindowsAndMessaging::{
                 BringWindowToTop, EnumChildWindows, GetClassNameW, GetForegroundWindow,
@@ -266,14 +266,12 @@ mod platform {
         let paste_result = (|| {
             focus_window(hwnd);
             thread::sleep(Duration::from_millis(80));
-            dismiss_transient_menu_before_paste()?;
-            thread::sleep(Duration::from_millis(60));
             send_ctrl_v()?;
             if press_enter_after_paste {
                 thread::sleep(Duration::from_millis(80));
                 send_enter()?;
             }
-            thread::sleep(Duration::from_millis(160));
+            thread::sleep(clipboard_restore_delay(&target));
             Ok::<(), String>(())
         })();
 
@@ -308,6 +306,18 @@ mod platform {
             },
             target,
         })
+    }
+
+    fn clipboard_restore_delay(target: &DesktopDeliveryTarget) -> Duration {
+        if target
+            .window_class
+            .to_ascii_lowercase()
+            .contains("chrome_widgetwin")
+        {
+            return Duration::from_millis(700);
+        }
+
+        Duration::from_millis(160)
     }
 
     fn did_observe_inserted_text(text: &str, before: Option<&str>, after: Option<&str>) -> bool {
@@ -422,17 +432,6 @@ mod platform {
                 AttachThreadInput(current_thread_id, target_thread_id, 0);
             }
         }
-    }
-
-    fn dismiss_transient_menu_before_paste() -> Result<(), String> {
-        send_keyboard_inputs(
-            &mut [
-                key_input(VK_MENU, true),
-                key_input(VK_ESCAPE, false),
-                key_input(VK_ESCAPE, true),
-            ],
-            "Transient menu could not be dismissed before paste.",
-        )
     }
 
     fn send_ctrl_v() -> Result<(), String> {

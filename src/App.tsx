@@ -1354,8 +1354,9 @@ export function App() {
   }
 
   async function pasteLastToForegroundTarget(forced?: {
-    summary: SimulatedRunSummary;
-    text: string;
+    summary?: SimulatedRunSummary;
+    text?: string;
+    targetSnapshot?: TauriDesktopDeliveryTarget;
   }) {
     const summary = forced?.summary ?? pipelineUi.summary;
     const latestResult = latestResultFromPipelineSummary(summary);
@@ -1390,7 +1391,9 @@ export function App() {
     }
 
     if (isTauri()) {
-      savedDeliveryTargetRef.current = await captureTauriDesktopDeliveryTarget(invoke);
+      savedDeliveryTargetRef.current = forced?.targetSnapshot?.inputLike
+        ? forced.targetSnapshot
+        : await captureTauriDesktopDeliveryTarget(invoke);
     }
 
     if (!desktopDelivery) {
@@ -1605,7 +1608,7 @@ export function App() {
         }
         break;
       case "paste_last_safe":
-        void pasteLastToForegroundTarget();
+        void pasteLastToForegroundTarget({ targetSnapshot: payload.targetSnapshot });
         break;
       default:
         handleVoiceDockCommand(payload.command);
