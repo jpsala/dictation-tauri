@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  deriveFixvoxCloudHealth,
+  formatFixvoxStateLocation,
   shouldConfirmFixvoxCloudOperation,
+  summarizeFixvoxCloudProblem,
   summarizeFixvoxCloudStatus,
   summarizeFixvoxPolicyCapabilities,
   type FixvoxCloudStatus,
@@ -43,6 +46,14 @@ describe("Fixvox cloud settings contract", () => {
     expect(copy).toBe("Device linked · Alpha Basic · Managed transcription ready.");
     expect(copy).not.toContain("dev_test_1234567890abcdef");
     expect(summarizeFixvoxPolicyCapabilities(status)).toBe("managed STT · basic settings · debug hidden · fresh");
+    expect(deriveFixvoxCloudHealth(status)).toMatchObject({
+      tone: "success",
+      badge: "Ready",
+      activationLabel: "Linked",
+      policyLabel: "Alpha Basic",
+      managedLabel: "Managed ready",
+    });
+    expect(formatFixvoxStateLocation(status.statePath)).toBe("fixvox-device-state.json · host app data");
   });
 
   it("summarizes pro/full policy capabilities without raw transport payloads", () => {
@@ -76,6 +87,51 @@ describe("Fixvox cloud settings contract", () => {
 
     expect(summarizeFixvoxPolicyCapabilities(status)).toBe("managed STT · advanced settings · debug tools · fresh");
     expect(JSON.stringify(status)).not.toContain("gsk_");
+  });
+
+  it("turns stale, blocked or failed policy state into actionable redacted UX copy", () => {
+    const failed: FixvoxCloudStatus = {
+      backendBaseUrl: "https://auth-fixvox.jpsala.dev",
+      statePath: "C:/Users/JP/AppData/Roaming/dictation-tauri/fixvox-device-state.json",
+      installIdPresent: true,
+      installIdRedacted: "instal…1234",
+      deviceRegistered: true,
+      deviceIdRedacted: "dev_te…cdef",
+      lastRegisterOk: false,
+      lastRegisterErrorCode: "fixvox_preflight_denied",
+      lastRegisterErrorMessage: "quota or policy denied",
+      policyId: "pro",
+      policyLabel: "Pro",
+      capabilities: {
+        canUseManagedTranscription: true,
+        canSeeAdvancedSettings: true,
+        canUseDebugTools: false,
+      },
+      policySnapshot: {
+        policyId: "pro",
+        policyLabel: "Pro",
+        capabilities: {
+          canUseManagedTranscription: true,
+          canSeeAdvancedSettings: true,
+          canUseDebugTools: false,
+        },
+        fetchedAt: "2026-06-28T00:00:00Z",
+        trust: "error",
+        stale: true,
+        error: { code: "cloudflare_1010", message: "request blocked", redacted: true },
+      },
+      redacted: true,
+    };
+
+    expect(deriveFixvoxCloudHealth(undefined)).toMatchObject({ tone: "warning", badge: "Open in Tauri" });
+    expect(deriveFixvoxCloudHealth(failed)).toMatchObject({
+      tone: "danger",
+      badge: "Needs attention",
+      managedLabel: "Managed cached",
+      nextAction: "Retry Refresh policy; if it repeats, check network or invite/account state.",
+    });
+    expect(summarizeFixvoxCloudProblem(failed)).toBe("cloudflare_1010: request blocked");
+    expect(JSON.stringify(deriveFixvoxCloudHealth(failed))).not.toContain("dev_test_1234567890abcdef");
   });
 
   it("keeps real cloud operations behind explicit user confirmation", () => {

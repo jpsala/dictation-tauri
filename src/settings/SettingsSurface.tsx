@@ -10,11 +10,13 @@ import {
 } from "../desktop-control/tauri-host-control";
 import {
   activateFixvoxDevice,
+  deriveFixvoxCloudHealth,
+  formatFixvoxStateLocation,
   getFixvoxCloudStatus,
   refreshFixvoxPolicy,
   registerFixvoxDevice,
   shouldConfirmFixvoxCloudOperation,
-  summarizeFixvoxCloudStatus,
+  summarizeFixvoxCloudProblem,
   summarizeFixvoxPolicyCapabilities,
   type FixvoxCloudStatus,
   type FixvoxCloudOperation,
@@ -182,6 +184,9 @@ export function SettingsSurface() {
           : `Already verified: ${applyResult.effectiveConfig.shortcut}.`
     : "Apply waits for preview.";
   const candidateChanged = editingShortcut !== dictationShortcut;
+  const cloudHealth = deriveFixvoxCloudHealth(cloudStatus);
+  const cloudProblem = summarizeFixvoxCloudProblem(cloudStatus);
+  const cloudStateLocation = formatFixvoxStateLocation(cloudStatus?.statePath);
 
   async function previewCandidate(nextShortcut = editingShortcut) {
     setBusyAction("preview");
@@ -323,9 +328,10 @@ export function SettingsSurface() {
     try {
       const status = await getFixvoxCloudStatus();
       setCloudStatus(status);
+      const health = deriveFixvoxCloudHealth(status);
       setCloudNotice({
-        tone: status ? "success" : "warning",
-        message: summarizeFixvoxCloudStatus(status),
+        tone: health.tone,
+        message: health.detail,
       });
     } catch (error) {
       setCloudNotice({
@@ -367,7 +373,8 @@ export function SettingsSurface() {
           ? await registerFixvoxDevice()
           : await refreshFixvoxPolicy();
       setCloudStatus(status);
-      setCloudNotice({ tone: "success", message: summarizeFixvoxCloudStatus(status) });
+      const health = deriveFixvoxCloudHealth(status);
+      setCloudNotice({ tone: health.tone, message: health.detail });
       if (operation === "activate") {
         setInviteCode("");
       }
@@ -499,18 +506,18 @@ export function SettingsSurface() {
               <h2 id="settings-cloud-title">Fixvox Cloud</h2>
               <p>Device, activation, policy/preflight and managed runtime.</p>
             </div>
-            <span className="settings-panel-count">{cloudStatus?.deviceRegistered ? "Linked" : "Local"}</span>
+            <span className="settings-panel-count">{cloudHealth.badge}</span>
           </div>
 
           <div className="settings-hotkey-list" aria-label="Fixvox Cloud status">
-            <div className="settings-hotkey-row">
+            <div className="settings-hotkey-row" data-health={cloudHealth.tone}>
               <div className="settings-hotkey-copy">
-                <strong>Device status</strong>
-                <span>{summarizeFixvoxCloudStatus(cloudStatus)}</span>
+                <strong>{cloudHealth.headline}</strong>
+                <span>{cloudHealth.detail}</span>
               </div>
               <div className="settings-hotkey-value" aria-label="Fixvox Cloud device status">
-                <kbd>{cloudStatus?.deviceIdRedacted ?? "Not linked"}</kbd>
-                <small>{cloudStatus?.installIdRedacted ? "redacted" : "local"}</small>
+                <kbd>{cloudHealth.activationLabel}</kbd>
+                <small>{cloudStatus?.deviceIdRedacted ?? cloudStatus?.installIdRedacted ?? "local"}</small>
               </div>
             </div>
             <div className="settings-hotkey-row">
@@ -519,8 +526,8 @@ export function SettingsSurface() {
                 <span>{cloudStatus?.backendBaseUrl ?? "https://auth-fixvox.jpsala.dev"}</span>
               </div>
               <div className="settings-hotkey-value" aria-label="Fixvox Cloud policy status">
-                <kbd>{cloudStatus?.policyLabel ?? "Activation needed"}</kbd>
-                <small>{cloudStatus?.policyId ?? "pending"}</small>
+                <kbd>{cloudHealth.policyLabel}</kbd>
+                <small>{cloudStatus?.policyId ?? cloudStatus?.policySnapshot?.trust ?? "pending"}</small>
               </div>
             </div>
             <div className="settings-hotkey-row">
@@ -529,8 +536,18 @@ export function SettingsSurface() {
                 <span>{summarizeFixvoxPolicyCapabilities(cloudStatus)}</span>
               </div>
               <div className="settings-hotkey-value" aria-label="Fixvox Cloud capabilities">
-                <kbd>{cloudStatus?.capabilities?.canUseManagedTranscription ? "Managed STT" : "Blocked"}</kbd>
+                <kbd>{cloudHealth.managedLabel}</kbd>
                 <small>{cloudStatus?.capabilities?.canSeeAdvancedSettings ? "advanced" : "basic"}</small>
+              </div>
+            </div>
+            <div className="settings-hotkey-row">
+              <div className="settings-hotkey-copy">
+                <strong>Next step</strong>
+                <span>{cloudHealth.nextAction}</span>
+              </div>
+              <div className="settings-hotkey-value" aria-label="Fixvox Cloud next step">
+                <kbd>{cloudProblem}</kbd>
+                <small>{cloudStatus?.policySnapshot?.stale ? "stale" : "checked"}</small>
               </div>
             </div>
           </div>
@@ -568,6 +585,14 @@ export function SettingsSurface() {
                 type="button"
                 className="settings-editor-button settings-editor-button-secondary"
                 disabled={!tauriRuntime || Boolean(busyAction)}
+                onClick={() => void runCloudOperation("register")}
+              >
+                {busyAction === "register" ? "Repairing" : "Repair device link"}
+              </button>
+              <button
+                type="button"
+                className="settings-editor-button settings-editor-button-secondary"
+                disabled={!tauriRuntime || Boolean(busyAction)}
                 onClick={() => void runCloudOperation("refresh")}
               >
                 {busyAction === "refresh" ? "Refreshing" : "Refresh policy"}
@@ -584,8 +609,8 @@ export function SettingsSurface() {
 
             <div className="settings-hotkey-editor-feedback" data-tone={cloudNotice.tone}>
               <span>IDs redacted</span>
-              <span>{cloudStatus?.statePath ?? "Host-owned app data"}</span>
-              <span>{cloudStatus?.lastRegisterErrorCode ?? "No cloud error"}</span>
+              <span>{cloudStateLocation}</span>
+              <span>{cloudProblem}</span>
               <strong>{cloudNotice.message}</strong>
             </div>
           </section>
