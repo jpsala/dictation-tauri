@@ -48,6 +48,8 @@ pub(crate) struct FixvoxPolicySnapshot {
     pub(crate) features: Option<serde_json::Value>,
     pub(crate) capabilities: FixvoxPolicyCapabilities,
     pub(crate) transport_policy: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) runtime_policy: Option<serde_json::Value>,
     pub(crate) fetched_at: String,
     pub(crate) trust: String,
     pub(crate) stale: bool,
@@ -136,6 +138,18 @@ pub(crate) struct DeviceRegisterResponseFixture {
     pub(crate) limits: serde_json::Value,
     pub(crate) telemetry: serde_json::Value,
     pub(crate) transport_policy: serde_json::Value,
+    #[serde(default)]
+    pub(crate) transcript: Option<serde_json::Value>,
+    #[serde(default)]
+    pub(crate) voice_policy: Option<serde_json::Value>,
+    #[serde(default)]
+    pub(crate) voice_routing: Option<serde_json::Value>,
+    #[serde(default)]
+    pub(crate) speech: Option<serde_json::Value>,
+    #[serde(default)]
+    pub(crate) prompts: Option<serde_json::Value>,
+    #[serde(default)]
+    pub(crate) user_settings_defaults: Option<serde_json::Value>,
 }
 
 pub(crate) type DeviceRegisterSnapshot = DeviceRegisterResponseFixture;
@@ -764,6 +778,7 @@ pub(crate) fn build_policy_snapshot_from_register(
             features.as_ref(),
             transport_policy.as_ref(),
         ),
+        runtime_policy: Some(build_runtime_policy_from_register(snapshot)),
         policy_id,
         policy_label,
         features,
@@ -773,6 +788,45 @@ pub(crate) fn build_policy_snapshot_from_register(
         stale: false,
         error: None,
     }
+}
+
+fn build_runtime_policy_from_register(snapshot: &DeviceRegisterSnapshot) -> serde_json::Value {
+    let mut policy = serde_json::Map::new();
+    policy.insert(
+        "policyId".to_string(),
+        serde_json::Value::String(snapshot.policy_id.clone()),
+    );
+    policy.insert(
+        "policyLabel".to_string(),
+        serde_json::Value::String(snapshot.policy_label.clone()),
+    );
+    policy.insert("features".to_string(), snapshot.features.clone());
+    policy.insert("defaults".to_string(), snapshot.defaults.clone());
+    policy.insert(
+        "transportPolicy".to_string(),
+        snapshot.transport_policy.clone(),
+    );
+
+    if let Some(value) = snapshot.transcript.clone() {
+        policy.insert("transcript".to_string(), value);
+    }
+    if let Some(value) = snapshot.voice_policy.clone() {
+        policy.insert("voicePolicy".to_string(), value);
+    }
+    if let Some(value) = snapshot.voice_routing.clone() {
+        policy.insert("voiceRouting".to_string(), value);
+    }
+    if let Some(value) = snapshot.speech.clone() {
+        policy.insert("speech".to_string(), value);
+    }
+    if let Some(value) = snapshot.prompts.clone() {
+        policy.insert("prompts".to_string(), value);
+    }
+    if let Some(value) = snapshot.user_settings_defaults.clone() {
+        policy.insert("userSettingsDefaults".to_string(), value);
+    }
+
+    serde_json::Value::Object(policy)
 }
 
 pub(crate) fn build_policy_snapshot_from_activation(
@@ -786,6 +840,7 @@ pub(crate) fn build_policy_snapshot_from_activation(
         policy_label,
         features: None,
         transport_policy: None,
+        runtime_policy: None,
         fetched_at: current_unix_timestamp_string(),
         trust: "activation-pending-refresh".to_string(),
         stale: true,
@@ -802,6 +857,7 @@ pub(crate) fn build_policy_snapshot_from_error(
         features: None,
         capabilities: default_policy_capabilities(),
         transport_policy: None,
+        runtime_policy: None,
         fetched_at: current_unix_timestamp_string(),
         trust: "error".to_string(),
         stale: true,
@@ -835,6 +891,7 @@ fn build_policy_snapshot_from_legacy_state(
         policy_id,
         policy_label,
         features: None,
+        runtime_policy: transport_policy.clone(),
         transport_policy,
         fetched_at: current_unix_timestamp_string(),
         trust: if last_register_ok { "legacy" } else { "error" }.to_string(),
@@ -1738,6 +1795,12 @@ mod tests {
             limits: json!({}),
             telemetry: json!({}),
             transport_policy: json!({ "speech": { "mode": "proxied", "provider": "groq" } }),
+            transcript: None,
+            voice_policy: None,
+            voice_routing: None,
+            speech: None,
+            prompts: None,
+            user_settings_defaults: None,
         };
 
         let policy = build_policy_snapshot_from_register(&snapshot);
@@ -1763,6 +1826,12 @@ mod tests {
             limits: json!({}),
             telemetry: json!({}),
             transport_policy: json!({ "speech": { "mode": "proxied", "provider": "groq" } }),
+            transcript: None,
+            voice_policy: None,
+            voice_routing: None,
+            speech: None,
+            prompts: None,
+            user_settings_defaults: None,
         };
 
         let policy = build_policy_snapshot_from_register(&snapshot);

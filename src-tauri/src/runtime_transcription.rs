@@ -3,7 +3,8 @@ use std::{
     env, fs,
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
-    time::Instant,
+    sync::{Mutex, OnceLock},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use crate::fixvox_cloud;
@@ -18,6 +19,10 @@ const DEFAULT_PROVIDER: &str = "groq";
 const DEFAULT_MODEL: &str = "whisper-large-v3";
 const DEFAULT_PRO_STT_MODEL: &str = "whisper-large-v3-turbo";
 const GROQ_TRANSCRIPTION_ENDPOINT: &str = "https://api.groq.com/openai/v1/audio/transcriptions";
+const TRANSCRIPTION_PREFLIGHT_CACHE_TTL_MS: u64 = 60_000;
+
+static TRANSCRIPTION_PREFLIGHT_CACHE: OnceLock<Mutex<Option<CachedPreflightDecision>>> =
+    OnceLock::new();
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -244,6 +249,22 @@ struct ManagedHostRuntimeConfig {
     post_process: Option<HostPostProcessPolicy>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PreflightCacheKey {
+    backend_base_url: String,
+    install_id: String,
+    device_id: String,
+    usage_kind: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CachedPreflightDecision {
+    key: PreflightCacheKey,
+    allowed: bool,
+    cached_at_ms: u64,
+    request_id: Option<String>,
+}
+
 #[allow(dead_code)]
 #[derive(Debug)]
 enum ProviderTranscriptionOutcome {
@@ -293,6 +314,35 @@ pub async fn transcribe_captured_audio(
     }
 
     transcribe_captured_audio_without_provider_call(request, &read_host_env_value)
+}
+
+#[tauri::command]
+pub async fn prewarm_fixvox_managed_transcription() -> Result<(), RedactedHostRuntimeError> {
+    let config =
+        read_managed_runtime_config(&read_host_env_value, &prewarm_transcription_request())?;
+    match preflight_fixvox_managed_transcription(&config).await {
+        Some(ProviderTranscriptionOutcome::ProviderError { code, message, .. }) => {
+            Err(error(&code, &message))
+        }
+        Some(ProviderTranscriptionOutcome::Cancelled) => Err(error(
+            "CANCELLED",
+            "Fixvox managed transcription prewarm was cancelled.",
+        )),
+        Some(ProviderTranscriptionOutcome::Ok { .. }) | None => Ok(()),
+    }
+}
+
+fn prewarm_transcription_request() -> HostTranscriptionRequest {
+    HostTranscriptionRequest {
+        run_id: "prewarm-managed-transcription".to_string(),
+        audio_path: format!("{}prewarm.wav", AUDIO_ROOT),
+        provider: None,
+        model: None,
+        language: None,
+        mode: "real".to_string(),
+        allow_provider_call: true,
+        post_process: None,
+    }
 }
 
 fn create_runtime_transcription_readiness(
@@ -795,7 +845,7 @@ fn read_dictation_policy_json(
     read_persisted_fixvox_device_state(env_lookup).and_then(|state| {
         state
             .policy_snapshot
-            .and_then(|snapshot| snapshot.transport_policy)
+            .and_then(|snapshot| snapshot.runtime_policy.or(snapshot.transport_policy))
             .or(state.transport_policy)
     })
 }
@@ -1200,9 +1250,72 @@ async fn transcribe_groq_audio(
     }
 }
 
+fn preflight_cache_key(config: &ManagedHostRuntimeConfig) -> PreflightCacheKey {
+    PreflightCacheKey {
+        backend_base_url: config.backend_base_url.clone(),
+        install_id: config.install_id.clone(),
+        device_id: config.device_id.clone(),
+        usage_kind: "transcription".to_string(),
+    }
+}
+
+fn current_time_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().try_into().unwrap_or(u64::MAX))
+        .unwrap_or(0)
+}
+
+fn preflight_cache_allows_at(key: &PreflightCacheKey, now_ms: u64) -> bool {
+    let cache = TRANSCRIPTION_PREFLIGHT_CACHE.get_or_init(|| Mutex::new(None));
+    let Ok(guard) = cache.lock() else {
+        return false;
+    };
+    let Some(cached) = guard.as_ref() else {
+        return false;
+    };
+
+    cached.allowed
+        && &cached.key == key
+        && now_ms.saturating_sub(cached.cached_at_ms) <= TRANSCRIPTION_PREFLIGHT_CACHE_TTL_MS
+}
+
+fn remember_preflight_decision_at(
+    key: PreflightCacheKey,
+    decision: &fixvox_cloud::PreflightDecision,
+    now_ms: u64,
+) {
+    if !decision.ok || !decision.allowed {
+        return;
+    }
+
+    let cache = TRANSCRIPTION_PREFLIGHT_CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(mut guard) = cache.lock() {
+        *guard = Some(CachedPreflightDecision {
+            key,
+            allowed: true,
+            cached_at_ms: now_ms,
+            request_id: decision.request_id.clone(),
+        });
+    }
+}
+
+#[cfg(test)]
+fn clear_preflight_cache_for_tests() {
+    let cache = TRANSCRIPTION_PREFLIGHT_CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(mut guard) = cache.lock() {
+        *guard = None;
+    }
+}
+
 async fn preflight_fixvox_managed_transcription(
     config: &ManagedHostRuntimeConfig,
 ) -> Option<ProviderTranscriptionOutcome> {
+    let cache_key = preflight_cache_key(config);
+    if preflight_cache_allows_at(&cache_key, current_time_ms()) {
+        return None;
+    }
+
     let started_at = Instant::now();
     let request = match fixvox_cloud::build_preflight_request(fixvox_cloud::PreflightInput {
         install_id: config.install_id.clone(),
@@ -1341,6 +1454,8 @@ async fn preflight_fixvox_managed_transcription(
             fixvox_metadata: None,
         });
     }
+
+    remember_preflight_decision_at(cache_key, &decision, current_time_ms());
 
     None
 }
@@ -2551,6 +2666,78 @@ mod tests {
     }
 
     #[test]
+    fn managed_runtime_config_prefers_persisted_runtime_policy_over_legacy_transport_policy() {
+        let appdata = "target/runtime-transcription-runtime-policy";
+        let _ = fs::remove_dir_all(appdata);
+        let state = fixvox_cloud::FixvoxDeviceState {
+            install_id: "install_runtime_policy".to_string(),
+            device_id: Some("dev_runtime_policy".to_string()),
+            last_register_ok: true,
+            last_register_error_code: None,
+            last_register_error_message: None,
+            policy_id: Some("pro".to_string()),
+            policy_label: Some("Pro".to_string()),
+            transport_policy: Some(serde_json::json!({
+                "mode": "managed",
+                "speechProvider": "groq",
+                "defaults": { "sttModel": "whisper-large-v3" }
+            })),
+            policy_snapshot: Some(fixvox_cloud::FixvoxPolicySnapshot {
+                policy_id: Some("pro".to_string()),
+                policy_label: Some("Pro".to_string()),
+                features: Some(serde_json::json!({ "managedTranscription": true })),
+                capabilities: fixvox_cloud::FixvoxPolicyCapabilities {
+                    can_use_managed_transcription: true,
+                    can_see_advanced_settings: true,
+                    can_use_debug_tools: false,
+                },
+                transport_policy: Some(serde_json::json!({ "mode": "managed" })),
+                runtime_policy: Some(serde_json::json!({
+                    "policyId": "pro",
+                    "transcript": {
+                        "provider": "groq",
+                        "model": "whisper-large-v3-turbo",
+                        "prompt": "persisted technical Spanish prompt"
+                    },
+                    "voicePolicy": {
+                        "enableSttPrompt": true,
+                        "enableRawPostProcess": false
+                    }
+                })),
+                fetched_at: "test".to_string(),
+                trust: "fresh".to_string(),
+                stale: false,
+                error: None,
+            }),
+        };
+        let path = Path::new(appdata)
+            .join("dictation-tauri")
+            .join("fixvox-device-state.json");
+        fixvox_cloud::persist_device_state(&path, &state)
+            .expect("test device state should persist");
+
+        let config = read_managed_runtime_config(
+            &|key| match key {
+                "APPDATA" => Some(appdata.to_string()),
+                "FIXVOX_BACKEND_URL" => Some("https://auth-fixvox.jpsala.dev".to_string()),
+                _ => None,
+            },
+            &test_request("runtime-policy-state"),
+        )
+        .expect("managed runtime should use persisted runtime policy");
+
+        assert_eq!(config.model, "whisper-large-v3-turbo");
+        assert_eq!(
+            config.stt_prompt.as_deref(),
+            Some("persisted technical Spanish prompt")
+        );
+        assert_eq!(
+            config.post_process.as_ref().map(|policy| policy.enabled),
+            Some(false)
+        );
+    }
+
+    #[test]
     fn managed_runtime_config_uses_policy_plan_for_stt_and_postprocess() {
         let request = test_request("managed-policy-runtime-plan");
         let policy_json = serde_json::json!({
@@ -2808,6 +2995,63 @@ mod tests {
     }
 
     #[test]
+    fn preflight_cache_reuses_allowed_decision_for_matching_key_within_ttl() {
+        clear_preflight_cache_for_tests();
+        let config = test_managed_config();
+        let key = preflight_cache_key(&config);
+        let decision = fixvox_cloud::PreflightDecision {
+            ok: true,
+            allowed: true,
+            mode: Some("managed".to_string()),
+            usage_kind: Some("transcription".to_string()),
+            request_id: Some("preflight_req_123".to_string()),
+            deny_code: None,
+            deny_message: None,
+            limits: None,
+        };
+
+        remember_preflight_decision_at(key.clone(), &decision, 1_000);
+
+        assert!(preflight_cache_allows_at(
+            &key,
+            1_000 + TRANSCRIPTION_PREFLIGHT_CACHE_TTL_MS
+        ));
+        assert!(!preflight_cache_allows_at(
+            &key,
+            1_001 + TRANSCRIPTION_PREFLIGHT_CACHE_TTL_MS
+        ));
+        assert!(!preflight_cache_allows_at(
+            &PreflightCacheKey {
+                device_id: "dev_other".to_string(),
+                ..key
+            },
+            1_100,
+        ));
+        clear_preflight_cache_for_tests();
+    }
+
+    #[test]
+    fn preflight_cache_does_not_remember_denials() {
+        clear_preflight_cache_for_tests();
+        let key = preflight_cache_key(&test_managed_config());
+        let decision = fixvox_cloud::PreflightDecision {
+            ok: true,
+            allowed: false,
+            mode: Some("managed".to_string()),
+            usage_kind: Some("transcription".to_string()),
+            request_id: Some("preflight_req_denied".to_string()),
+            deny_code: Some("quota_exceeded".to_string()),
+            deny_message: Some("quota exceeded".to_string()),
+            limits: None,
+        };
+
+        remember_preflight_decision_at(key.clone(), &decision, 1_000);
+
+        assert!(!preflight_cache_allows_at(&key, 1_001));
+        clear_preflight_cache_for_tests();
+    }
+
+    #[test]
     fn generated_transcript_and_report_paths_stay_under_allowed_roots() {
         let request = test_request("run:with/unsafe chars");
         let response = map_provider_outcome_to_host_response(
@@ -2930,6 +3174,7 @@ mod tests {
                 transport_policy: Some(serde_json::json!({
                     "speech": { "mode": if managed_allowed { "proxied" } else { "disabled" } }
                 })),
+                runtime_policy: None,
                 fetched_at: "test".to_string(),
                 trust: "fresh".to_string(),
                 stale: false,
@@ -2941,6 +3186,19 @@ mod tests {
             .join("fixvox-device-state.json");
         fixvox_cloud::persist_device_state(&path, &state)
             .expect("test device state should be persisted");
+    }
+
+    fn test_managed_config() -> ManagedHostRuntimeConfig {
+        ManagedHostRuntimeConfig {
+            backend_base_url: "https://auth-fixvox.jpsala.dev".to_string(),
+            install_id: "install_test_123".to_string(),
+            device_id: "dev_test_1234567890abcdef".to_string(),
+            provider: "fixvox-cloud".to_string(),
+            model: "whisper-large-v3-turbo".to_string(),
+            language: None,
+            stt_prompt: None,
+            post_process: None,
+        }
     }
 
     fn test_request(run_id: &str) -> HostTranscriptionRequest {

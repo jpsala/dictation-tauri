@@ -27,6 +27,7 @@ pub fn run() {
             native_capture::stop_native_microphone_capture,
             native_capture::cancel_native_microphone_capture,
             runtime_transcription::get_runtime_transcription_readiness,
+            runtime_transcription::prewarm_fixvox_managed_transcription,
             runtime_transcription::transcribe_captured_audio,
             fixvox_cloud::get_fixvox_cloud_status,
             fixvox_cloud::register_fixvox_device,
