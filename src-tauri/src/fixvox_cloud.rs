@@ -1201,7 +1201,7 @@ async fn register_device_with_reqwest(
     input: DeviceRegisterInput,
 ) -> Result<DeviceRegisterSnapshot, FixvoxCloudError> {
     let endpoint = join_url(&config.backend_base_url, "/v2/device/register");
-    let body = serde_json::to_value(build_device_register_request(input)).map_err(|_| {
+    let body = serde_json::to_value(build_device_register_request(input)?).map_err(|_| {
         error(
             "FIXVOX_REGISTER_REQUEST_SERIALIZE_FAILED",
             "Fixvox device registration request could not be serialized.",
@@ -1225,7 +1225,7 @@ async fn activate_device_with_reqwest_request(
     input: DeviceActivateInput,
 ) -> Result<DeviceActivateSnapshot, FixvoxCloudError> {
     let endpoint = join_url(&config.backend_base_url, "/v2/device/activate");
-    let body = serde_json::to_value(build_device_activate_request(input)).map_err(|_| {
+    let body = serde_json::to_value(build_device_activate_request(input)?).map_err(|_| {
         error(
             "FIXVOX_ACTIVATE_REQUEST_SERIALIZE_FAILED",
             "Fixvox device activation request could not be serialized.",

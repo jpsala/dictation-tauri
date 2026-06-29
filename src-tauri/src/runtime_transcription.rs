@@ -1,4 +1,8 @@
-use std::{env, fs, path::Path, time::Instant};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
 use crate::fixvox_cloud;
 use reqwest::header;
@@ -353,6 +357,11 @@ fn resolve_fixvox_device_id(
 ) -> Option<String> {
     read_persisted_fixvox_device_id(env_lookup)
         .or_else(|| first_env_value(env_lookup, &["FIXVOX_DEVICE_ID"]))
+        .or_else(|| {
+            ensure_persisted_fixvox_device_state(env_lookup)
+                .and_then(|state| state.device_id)
+                .filter(|device_id| !device_id.trim().is_empty())
+        })
 }
 
 fn resolve_fixvox_install_id(
@@ -360,6 +369,11 @@ fn resolve_fixvox_install_id(
 ) -> Option<String> {
     read_persisted_fixvox_install_id(env_lookup)
         .or_else(|| first_env_value(env_lookup, &["FIXVOX_INSTALL_ID"]))
+        .or_else(|| {
+            ensure_persisted_fixvox_device_state(env_lookup)
+                .map(|state| state.install_id)
+                .filter(|install_id| !install_id.trim().is_empty())
+        })
 }
 
 fn read_persisted_fixvox_device_id(
@@ -383,6 +397,17 @@ fn read_persisted_fixvox_device_state(
 ) -> Option<fixvox_cloud::FixvoxDeviceState> {
     let path = fixvox_cloud::resolve_device_state_path(env_lookup).ok()?;
     fixvox_cloud::read_device_state(&path).ok().flatten()
+}
+
+fn ensure_persisted_fixvox_device_state(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Option<fixvox_cloud::FixvoxDeviceState> {
+    if let Some(state) = read_persisted_fixvox_device_state(env_lookup) {
+        return Some(state);
+    }
+
+    fixvox_cloud::get_fixvox_cloud_status_with_env(env_lookup).ok()?;
+    read_persisted_fixvox_device_state(env_lookup)
 }
 
 fn transcribe_captured_audio_without_provider_call(
@@ -1864,7 +1889,35 @@ fn writable_artifact_file_path(artifact_path: &str) -> String {
 
 fn artifact_file_path_candidates(artifact_path: &str) -> Vec<String> {
     let normalized = normalize_path(artifact_path);
-    vec![normalized.clone(), format!("../{}", normalized)]
+    let mut candidates = vec![normalized.clone(), format!("../{}", normalized)];
+
+    if let Some(app_data_root) = local_app_data_root() {
+        candidates.push(
+            app_data_root
+                .join(&normalized)
+                .to_string_lossy()
+                .to_string(),
+        );
+    }
+
+    if let Some(repo_root) = compile_time_repo_root() {
+        candidates.push(repo_root.join(&normalized).to_string_lossy().to_string());
+    }
+
+    candidates
+}
+
+fn local_app_data_root() -> Option<PathBuf> {
+    ["APPDATA", "LOCALAPPDATA", "XDG_DATA_HOME", "HOME"]
+        .iter()
+        .find_map(|key| std::env::var(key).ok())
+        .map(|base| PathBuf::from(base).join("dictation-tauri"))
+}
+
+fn compile_time_repo_root() -> Option<PathBuf> {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|path| path.to_path_buf())
 }
 
 fn elapsed_ms(started_at: Instant) -> u64 {
@@ -2172,6 +2225,37 @@ mod tests {
         assert_eq!(config.install_id, "install_test_123");
         assert_eq!(config.device_id, "dev_test_1234567890abcdef");
         assert_eq!(config.provider, "fixvox-cloud");
+    }
+
+    #[test]
+    fn managed_runtime_creates_durable_install_id_before_reporting_missing_device_id() {
+        let appdata = "target/runtime-transcription-auto-install-id";
+        let _ = fs::remove_dir_all(appdata);
+
+        let request = test_request("managed-auto-install-id");
+        let denied = read_managed_runtime_config(
+            &|key| match key {
+                "APPDATA" => Some(appdata.to_string()),
+                "FIXVOX_BACKEND_URL" => Some("https://auth-fixvox.jpsala.dev".to_string()),
+                _ => None,
+            },
+            &request,
+        )
+        .expect_err(
+            "first packaged dictation should create install id before requiring activation",
+        );
+
+        assert_eq!(denied.code, "FIXVOX_DEVICE_ID_MISSING");
+        let path = fixvox_cloud::resolve_device_state_path(&|key| match key {
+            "APPDATA" => Some(appdata.to_string()),
+            _ => None,
+        })
+        .expect("test appdata should resolve device state path");
+        let state = fixvox_cloud::read_device_state(&path)
+            .expect("device state should be readable")
+            .expect("device state should be created");
+        assert!(state.install_id.starts_with("install_"));
+        assert!(state.device_id.is_none());
     }
 
     #[test]
