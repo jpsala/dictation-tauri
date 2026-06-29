@@ -23,7 +23,6 @@ import {
   type DeliveryEvidence as DesktopDeliveryEvidence,
   type TauriDesktopDeliveryTarget,
 } from "./delivery";
-import { DEFAULT_V2_VOICE_POST_PROCESS_PROMPT } from "./fixvox-text-runtime";
 import { createHostClientTranscriptionAdapter } from "./host-runtime/pipeline-adapter";
 import {
   describeHostReadiness,
@@ -31,8 +30,7 @@ import {
   type HostReadinessUiState,
 } from "./host-runtime/readiness-ui";
 import { createHostRuntimeClientRuntime } from "./host-runtime/runtime-selection";
-import type { HostPostProcessPolicy, HostRuntimeClient } from "./host-runtime/types";
-import {
+import type { HostRuntimeClient } from "./host-runtime/types";import {
   deriveRuntimeRecoveryAction,
   type RuntimeRecoveryAction,
 } from "./model-gateway/runtime-transcription";
@@ -83,16 +81,6 @@ type CaptureUiState = {
   state: CaptureState;
   message: string;
   result?: CaptureResult;
-};
-
-const fixvoxManagedPostProcessPolicy: HostPostProcessPolicy = {
-  enabled: true,
-  prompt: DEFAULT_V2_VOICE_POST_PROCESS_PROMPT,
-  provider: "groq",
-  model: "openai/gpt-oss-120b",
-  source: "policy",
-  policyId: "pro",
-  voiceRoutingProfileId: "pro-post-process",
 };
 
 type PipelineUiState = {
@@ -976,7 +964,6 @@ export function App() {
           ? {
               mode: "real",
               allowProviderCall: true,
-              postProcess: fixvoxManagedPostProcessPolicy,
             }
           : undefined,
       ),
@@ -1247,7 +1234,6 @@ export function App() {
             ? {
                 mode: "real",
                 allowProviderCall: true,
-                postProcess: fixvoxManagedPostProcessPolicy,
               }
             : undefined,
         ),

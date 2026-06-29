@@ -280,6 +280,7 @@ pub(crate) struct ManagedSttInput {
     pub(crate) audio_file_name: String,
     pub(crate) model: String,
     pub(crate) language: Option<String>,
+    pub(crate) prompt: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1490,19 +1491,28 @@ pub(crate) fn build_managed_stt_request_preview(
             )
         })?;
 
-    let mut multipart_fields = vec![
-        "file".to_string(),
-        "model".to_string(),
-        "response_format".to_string(),
-    ];
+    let mut multipart_fields = vec!["file".to_string(), "model".to_string()];
     if input
         .language
         .as_ref()
         .and_then(|value| clean_env_value(Some(value.clone())))
+        .filter(|value| !value.eq_ignore_ascii_case("auto"))
         .is_some()
     {
         multipart_fields.push("language".to_string());
     }
+    if input
+        .prompt
+        .as_ref()
+        .and_then(|value| clean_env_value(Some(value.clone())))
+        .is_some()
+    {
+        multipart_fields.push("prompt".to_string());
+    }
+    multipart_fields.push("response_format".to_string());
+    multipart_fields.push("timestamp_granularities[]".to_string());
+    multipart_fields.push("timestamp_granularities[]".to_string());
+    multipart_fields.push("temperature".to_string());
 
     Ok(ManagedSttRequestPreview {
         endpoint: join_url(&config.backend_base_url, "/v1/audio/transcriptions"),

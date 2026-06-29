@@ -1,5 +1,7 @@
 use std::{
+    collections::hash_map::DefaultHasher,
     env, fs,
+    hash::{Hash, Hasher},
     path::{Path, PathBuf},
     time::Instant,
 };
@@ -14,6 +16,7 @@ const TRANSCRIPT_ROOT: &str = "artifacts/microphone-capture/transcripts/";
 const REPORT_ROOT: &str = "artifacts/microphone-capture/reports/";
 const DEFAULT_PROVIDER: &str = "groq";
 const DEFAULT_MODEL: &str = "whisper-large-v3";
+const DEFAULT_PRO_STT_MODEL: &str = "whisper-large-v3-turbo";
 const GROQ_TRANSCRIPTION_ENDPOINT: &str = "https://api.groq.com/openai/v1/audio/transcriptions";
 
 #[derive(Serialize)]
@@ -50,7 +53,7 @@ pub struct HostTranscriptionRequest {
     post_process: Option<HostPostProcessPolicy>,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct HostPostProcessPolicy {
     enabled: bool,
@@ -60,6 +63,19 @@ struct HostPostProcessPolicy {
     source: Option<String>,
     policy_id: Option<String>,
     voice_routing_profile_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DictationRuntimePlan {
+    policy_id: Option<String>,
+    voice_routing_profile_id: Option<String>,
+    route_label: Option<String>,
+    stt_provider: String,
+    stt_model: String,
+    stt_prompt_enabled: bool,
+    stt_prompt: Option<String>,
+    language: Option<String>,
+    post_process: HostPostProcessPolicy,
 }
 
 #[derive(Clone, Serialize, Debug, PartialEq, Eq)]
@@ -224,6 +240,8 @@ struct ManagedHostRuntimeConfig {
     provider: String,
     model: String,
     language: Option<String>,
+    stt_prompt: Option<String>,
+    post_process: Option<HostPostProcessPolicy>,
 }
 
 #[allow(dead_code)]
@@ -301,10 +319,7 @@ fn create_runtime_transcription_readiness(
                 return HostRuntimeReadiness {
                     configured: true,
                     provider: Some("fixvox-cloud".to_string()),
-                    model: Some(
-                        first_env_value(env_lookup, &["FIXVOX_STT_MODEL"])
-                            .unwrap_or_else(|| DEFAULT_MODEL.to_string()),
-                    ),
+                    model: Some(resolve_dictation_runtime_plan(env_lookup).stt_model),
                     artifact_root: ARTIFACT_ROOT,
                     supports_real_provider_call: true,
                     direct_byok_configured: false,
@@ -694,9 +709,13 @@ fn read_managed_runtime_config(
         fixvox_cloud::policy_allows_managed_transcription(&state)
             .map_err(|reason| error(&reason.code, &reason.message))?;
     }
+
+    let runtime_plan = resolve_dictation_runtime_plan(env_lookup);
     let model = request
         .model
         .clone()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| Some(runtime_plan.stt_model.clone()))
         .or_else(|| {
             first_env_value(
                 env_lookup,
@@ -708,6 +727,7 @@ fn read_managed_runtime_config(
     let language = request
         .language
         .clone()
+        .or_else(|| runtime_plan.language.clone())
         .or_else(|| {
             first_env_value(
                 env_lookup,
@@ -719,6 +739,15 @@ fn read_managed_runtime_config(
             )
         })
         .filter(|value| !value.trim().is_empty());
+    let stt_prompt = runtime_plan
+        .stt_prompt
+        .clone()
+        .or_else(|| first_env_value(env_lookup, &["FIXVOX_STT_PROMPT", "GROQ_STT_PROMPT"]))
+        .filter(|value| !value.trim().is_empty());
+    let post_process = request
+        .post_process
+        .clone()
+        .or_else(|| Some(runtime_plan.post_process.clone()));
 
     Ok(ManagedHostRuntimeConfig {
         backend_base_url,
@@ -727,7 +756,254 @@ fn read_managed_runtime_config(
         provider: "fixvox-cloud".to_string(),
         model,
         language,
+        stt_prompt,
+        post_process,
     })
+}
+
+fn resolve_dictation_runtime_plan(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> DictationRuntimePlan {
+    read_dictation_policy_json(env_lookup)
+        .as_ref()
+        .map(resolve_dictation_runtime_plan_from_policy_json)
+        .unwrap_or_else(|| {
+            let policy_id = read_persisted_fixvox_device_state(env_lookup)
+                .and_then(|state| state.policy_id)
+                .filter(|value| !value.trim().is_empty());
+            fallback_dictation_runtime_plan(policy_id)
+        })
+}
+
+fn read_dictation_policy_json(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Option<serde_json::Value> {
+    if let Some(raw_json) = first_env_value(env_lookup, &["FIXVOX_CACHED_POLICY_JSON"])
+        .filter(|value| !value.trim().is_empty())
+    {
+        return serde_json::from_str(&raw_json).ok();
+    }
+
+    if let Some(path) = first_env_value(env_lookup, &["FIXVOX_CACHED_POLICY_PATH"])
+        .filter(|value| !value.trim().is_empty())
+    {
+        return fs::read_to_string(path)
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok());
+    }
+
+    read_persisted_fixvox_device_state(env_lookup).and_then(|state| {
+        state
+            .policy_snapshot
+            .and_then(|snapshot| snapshot.transport_policy)
+            .or(state.transport_policy)
+    })
+}
+
+fn resolve_dictation_runtime_plan_from_policy_json(
+    policy: &serde_json::Value,
+) -> DictationRuntimePlan {
+    let policy_id = first_json_string(policy, &[&["policyId"], &["policy_id"]]);
+    let voice_runtime_stt_prompt_enabled = first_json_bool(
+        policy,
+        &[
+            &["voiceRouting", "runtime", "sttPromptEnabled"],
+            &["voice_routing", "runtime", "stt_prompt_enabled"],
+            &["voicePolicy", "enableSttPrompt"],
+            &["voice_policy", "enable_stt_prompt"],
+        ],
+    )
+    .unwrap_or(true);
+    let voice_runtime_post_process_enabled = first_json_bool(
+        policy,
+        &[
+            &["voiceRouting", "runtime", "postProcessEnabled"],
+            &["voice_routing", "runtime", "post_process_enabled"],
+            &["voicePolicy", "enableRawPostProcess"],
+            &["voice_policy", "enable_raw_post_process"],
+        ],
+    )
+    .unwrap_or(false);
+    let model = first_json_string(
+        policy,
+        &[
+            &["voiceRouting", "speech", "model"],
+            &["voice_routing", "speech", "model"],
+            &["speech", "transcription", "model"],
+            &["transcript", "model"],
+            &["defaults", "sttModel"],
+            &["defaults", "stt_model"],
+        ],
+    )
+    .unwrap_or_else(|| {
+        if policy_id.as_deref() == Some("pro") {
+            DEFAULT_PRO_STT_MODEL.to_string()
+        } else {
+            DEFAULT_MODEL.to_string()
+        }
+    });
+    let provider = first_json_string(
+        policy,
+        &[
+            &["voiceRouting", "speech", "provider"],
+            &["voice_routing", "speech", "provider"],
+            &["speech", "transcription", "provider"],
+            &["transcript", "provider"],
+            &["transportPolicy", "speechProvider"],
+            &["transport_policy", "speechProvider"],
+        ],
+    )
+    .unwrap_or_else(|| DEFAULT_PROVIDER.to_string());
+    let stt_prompt = if voice_runtime_stt_prompt_enabled {
+        first_json_string(
+            policy,
+            &[
+                &["prompts", "transcriptBase", "text"],
+                &["prompts", "transcript_base", "text"],
+                &["transcript", "prompt"],
+            ],
+        )
+    } else {
+        None
+    };
+    let language = first_json_string(
+        policy,
+        &[
+            &["speech", "language", "value"],
+            &["transcript", "language"],
+            &["userSettingsDefaults", "transcript", "language"],
+            &["user_settings_defaults", "transcript", "language"],
+        ],
+    );
+    let route_label = first_json_string(
+        policy,
+        &[&["voiceRouting", "label"], &["voice_routing", "label"]],
+    )
+    .or_else(|| {
+        resolve_voice_routing_profile_id(policy_id.as_deref(), voice_runtime_post_process_enabled)
+    });
+    let voice_routing_profile_id =
+        resolve_voice_routing_profile_id(policy_id.as_deref(), voice_runtime_post_process_enabled);
+    let post_process_prompt = if voice_runtime_post_process_enabled {
+        first_json_string(
+            policy,
+            &[
+                &["prompts", "postProcessBase", "text"],
+                &["prompts", "post_process_base", "text"],
+                &["voicePolicy", "postProcessPrompt"],
+                &["voice_policy", "post_process_prompt"],
+            ],
+        )
+    } else {
+        None
+    };
+
+    DictationRuntimePlan {
+        policy_id: policy_id.clone(),
+        voice_routing_profile_id: voice_routing_profile_id.clone(),
+        route_label,
+        stt_provider: provider,
+        stt_model: model,
+        stt_prompt_enabled: voice_runtime_stt_prompt_enabled,
+        stt_prompt,
+        language,
+        post_process: HostPostProcessPolicy {
+            enabled: voice_runtime_post_process_enabled,
+            prompt: post_process_prompt,
+            provider: if voice_runtime_post_process_enabled {
+                Some(DEFAULT_PROVIDER.to_string())
+            } else {
+                None
+            },
+            model: if voice_runtime_post_process_enabled {
+                Some("openai/gpt-oss-120b".to_string())
+            } else {
+                None
+            },
+            source: Some(if voice_runtime_post_process_enabled {
+                "policy".to_string()
+            } else {
+                "disabled".to_string()
+            }),
+            policy_id,
+            voice_routing_profile_id,
+        },
+    }
+}
+
+fn fallback_dictation_runtime_plan(policy_id: Option<String>) -> DictationRuntimePlan {
+    let post_process_enabled = false;
+    let voice_routing_profile_id =
+        resolve_voice_routing_profile_id(policy_id.as_deref(), post_process_enabled);
+    DictationRuntimePlan {
+        policy_id: policy_id.clone(),
+        voice_routing_profile_id: voice_routing_profile_id.clone(),
+        route_label: voice_routing_profile_id.clone(),
+        stt_provider: DEFAULT_PROVIDER.to_string(),
+        stt_model: if policy_id.as_deref() == Some("pro") {
+            DEFAULT_PRO_STT_MODEL.to_string()
+        } else {
+            DEFAULT_MODEL.to_string()
+        },
+        stt_prompt_enabled: false,
+        stt_prompt: None,
+        language: None,
+        post_process: HostPostProcessPolicy {
+            enabled: false,
+            prompt: None,
+            provider: None,
+            model: None,
+            source: Some("disabled".to_string()),
+            policy_id,
+            voice_routing_profile_id,
+        },
+    }
+}
+
+fn resolve_voice_routing_profile_id(
+    policy_id: Option<&str>,
+    post_process_enabled: bool,
+) -> Option<String> {
+    if policy_id == Some("pro") {
+        return Some(if post_process_enabled {
+            "pro-post-process".to_string()
+        } else {
+            "pro-stt-only".to_string()
+        });
+    }
+    None
+}
+
+fn first_json_string(value: &serde_json::Value, paths: &[&[&str]]) -> Option<String> {
+    paths.iter().find_map(|path| {
+        let text = lookup_json_path(value, path)?.as_str()?.trim().to_string();
+        if text.is_empty() {
+            None
+        } else {
+            Some(text)
+        }
+    })
+}
+
+fn first_json_bool(value: &serde_json::Value, paths: &[&[&str]]) -> Option<bool> {
+    paths
+        .iter()
+        .find_map(|path| lookup_json_path(value, path)?.as_bool())
+}
+
+fn lookup_json_path<'a>(
+    value: &'a serde_json::Value,
+    path: &[&str],
+) -> Option<&'a serde_json::Value> {
+    path.iter()
+        .try_fold(value, |current, segment| current.get(*segment))
+}
+
+#[allow(dead_code)]
+fn redacted_text_hash(value: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 fn read_host_env_value(key: &str) -> Option<String> {
@@ -785,6 +1061,10 @@ fn is_allowed_host_dot_env_key(key: &str) -> bool {
             | "FIXVOX_INSTALL_ID"
             | "FIXVOX_STT_MODEL"
             | "FIXVOX_STT_LANGUAGE"
+            | "FIXVOX_STT_PROMPT"
+            | "GROQ_STT_PROMPT"
+            | "FIXVOX_CACHED_POLICY_JSON"
+            | "FIXVOX_CACHED_POLICY_PATH"
     )
 }
 
@@ -1081,6 +1361,7 @@ async fn transcribe_fixvox_managed_audio(
             audio_file_name: file_name.clone(),
             model: config.model.clone(),
             language: config.language.clone(),
+            prompt: config.stt_prompt.clone(),
         },
     ) {
         Ok(preview) => preview,
@@ -1100,12 +1381,23 @@ async fn transcribe_fixvox_managed_audio(
     let file_part = reqwest::multipart::Part::bytes(audio).file_name(file_name);
     let mut form = reqwest::multipart::Form::new()
         .text("model", config.model.clone())
-        .text("response_format", "verbose_json")
         .part("file", file_part);
 
-    if let Some(language) = config.language.clone() {
+    if let Some(language) = config
+        .language
+        .clone()
+        .filter(|value| !value.eq_ignore_ascii_case("auto"))
+    {
         form = form.text("language", language);
     }
+    if let Some(prompt) = config.stt_prompt.clone() {
+        form = form.text("prompt", prompt);
+    }
+    form = form
+        .text("response_format", "verbose_json")
+        .text("timestamp_granularities[]", "word")
+        .text("timestamp_granularities[]", "segment")
+        .text("temperature", "0");
 
     let client = match fixvox_cloud::fixvox_http_client() {
         Ok(client) => client,
@@ -1242,7 +1534,8 @@ async fn apply_fixvox_managed_postprocess(
     config: Option<&ManagedHostRuntimeConfig>,
     request: &HostTranscriptionRequest,
 ) -> HostTranscriptionResponse {
-    let Some(policy) = request.post_process.as_ref() else {
+    let policy_from_config = config.and_then(|managed| managed.post_process.as_ref());
+    let Some(policy) = request.post_process.as_ref().or(policy_from_config) else {
         return response;
     };
 
@@ -2195,6 +2488,50 @@ mod tests {
     }
 
     #[test]
+    fn resolves_redacted_fixvox_pro_policy_into_managed_runtime_plan() {
+        let policy_json = serde_json::json!({
+            "policyId": "pro",
+            "transcript": {
+                "provider": "groq",
+                "model": "whisper-large-v3-turbo",
+                "prompt": "Transcribí en español. [fixture redacted] Conservá comandos, modelos, paquetes, archivos, URLs, emails, números y mayúsculas técnicas."
+            },
+            "voicePolicy": {
+                "enableSttPrompt": true,
+                "enableRawPostProcess": false,
+                "postProcessPrompt": "[redacted postprocess prompt fixture]"
+            },
+            "voiceRouting": {
+                "label": "pro-stt-only",
+                "runtime": {
+                    "sttPromptEnabled": true,
+                    "postProcessEnabled": false
+                },
+                "speech": {
+                    "provider": "groq",
+                    "model": "whisper-large-v3-turbo"
+                }
+            }
+        });
+        let plan = resolve_dictation_runtime_plan_from_policy_json(&policy_json);
+
+        assert_eq!(plan.policy_id.as_deref(), Some("pro"));
+        assert_eq!(
+            plan.voice_routing_profile_id.as_deref(),
+            Some("pro-stt-only")
+        );
+        assert_eq!(plan.stt_provider, "groq");
+        assert_eq!(plan.stt_model, "whisper-large-v3-turbo");
+        assert!(plan.stt_prompt_enabled);
+        assert_eq!(
+            plan.stt_prompt.as_ref().map(|prompt| prompt.len()),
+            Some(127)
+        );
+        assert!(!plan.post_process.enabled);
+        assert_eq!(plan.post_process.source.as_deref(), Some("disabled"));
+    }
+
+    #[test]
     fn managed_runtime_config_resolves_install_and_device_for_preflight() {
         let request = test_request("managed-preflight-config-ready");
         let config = read_managed_runtime_config(
@@ -2211,6 +2548,47 @@ mod tests {
         assert_eq!(config.install_id, "install_test_123");
         assert_eq!(config.device_id, "dev_test_1234567890abcdef");
         assert_eq!(config.provider, "fixvox-cloud");
+    }
+
+    #[test]
+    fn managed_runtime_config_uses_policy_plan_for_stt_and_postprocess() {
+        let request = test_request("managed-policy-runtime-plan");
+        let policy_json = serde_json::json!({
+            "policyId": "pro",
+            "transcript": {
+                "provider": "groq",
+                "model": "whisper-large-v3-turbo",
+                "prompt": "technical Spanish STT prompt fixture"
+            },
+            "voicePolicy": {
+                "enableSttPrompt": true,
+                "enableRawPostProcess": false,
+                "postProcessPrompt": "postprocess fixture"
+            }
+        })
+        .to_string();
+        let config = read_managed_runtime_config(
+            &|key| match key {
+                "FIXVOX_BACKEND_URL" => Some("https://auth-fixvox.jpsala.dev".to_string()),
+                "FIXVOX_INSTALL_ID" => Some("install_test_123".to_string()),
+                "FIXVOX_DEVICE_ID" => Some("dev_test_1234567890abcdef".to_string()),
+                "FIXVOX_STT_MODEL" => Some("whisper-large-v3".to_string()),
+                "FIXVOX_CACHED_POLICY_JSON" => Some(policy_json.clone()),
+                _ => None,
+            },
+            &request,
+        )
+        .expect("managed runtime config should resolve from policy cache");
+
+        assert_eq!(config.model, "whisper-large-v3-turbo");
+        assert_eq!(
+            config.stt_prompt.as_deref(),
+            Some("technical Spanish STT prompt fixture")
+        );
+        assert_eq!(
+            config.post_process.as_ref().map(|policy| policy.enabled),
+            Some(false),
+        );
     }
 
     #[test]
