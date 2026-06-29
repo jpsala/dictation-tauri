@@ -29,6 +29,7 @@ artifacts/desktop-control/
 artifacts/tts-parity/
 artifacts/ui-spikes/
 artifacts/live-app/
+artifacts/release/
 
 # OS/editor noise
 .DS_Store

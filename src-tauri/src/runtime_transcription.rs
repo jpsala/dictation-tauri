@@ -2045,25 +2045,11 @@ fn normalize_error_code(code: &str) -> String {
 
 fn redact_request_id(request_id: Option<String>) -> Option<String> {
     let request_id = request_id?;
-    let redacted = redact_host_text(&request_id);
-    if redacted.contains("[REDACTED]") {
-        return Some("redacted-request-id".to_string());
-    }
-
-    let normalized = redacted.trim();
-    if normalized.is_empty() {
+    if request_id.trim().is_empty() {
         return None;
     }
 
-    if normalized.len() > 128
-        || !normalized
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || ". _:-".contains(character))
-    {
-        return Some("redacted-request-id".to_string());
-    }
-
-    Some(normalized.to_string())
+    Some("redacted-request-id".to_string())
 }
 
 fn redact_host_text(message: &str) -> String {
@@ -2483,7 +2469,10 @@ mod tests {
         assert!(report.contains("\"transcriptLength\":15"));
         assert!(report.contains("\"fixvoxMetadata\""));
         assert!(report.contains("redacted-usage-key"));
+        assert!(report.contains("redacted-request-id"));
         assert!(!report.contains("dev_test_1234567890abcdef"));
+        assert!(!report.contains("fx_req_safe_123"));
+        assert!(!report.contains("req_safe_123"));
         assert!(!report.contains("host transcript"));
     }
 
