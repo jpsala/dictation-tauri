@@ -373,12 +373,9 @@ fn write_wav_artifact(
     samples: &[i16],
     duration_ms: u64,
 ) -> Result<CapturedAudioArtifact, String> {
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or_else(|| "Repository root could not be resolved.".to_string())?
-        .to_path_buf();
+    let artifact_root = writable_artifact_root()?;
     let relative_path = format!("artifacts/microphone-capture/audio/{capture_id}.wav");
-    let artifact_path = repo_root.join(&relative_path);
+    let artifact_path = artifact_root.join(&relative_path);
 
     if let Some(parent) = artifact_path.parent() {
         fs::create_dir_all(parent)
@@ -422,6 +419,30 @@ fn write_wav_artifact(
         sensitivity: "real-user-audio",
         policy: "gitignored-local",
     })
+}
+
+fn writable_artifact_root() -> Result<PathBuf, String> {
+    if cfg!(debug_assertions) {
+        return PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .map(|path| path.to_path_buf())
+            .ok_or_else(|| "Repository root could not be resolved.".to_string());
+    }
+
+    local_app_data_root()
+        .or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .map(|path| path.to_path_buf())
+        })
+        .ok_or_else(|| "Local app data directory could not be resolved.".to_string())
+}
+
+fn local_app_data_root() -> Option<PathBuf> {
+    ["APPDATA", "LOCALAPPDATA", "XDG_DATA_HOME", "HOME"]
+        .iter()
+        .find_map(|key| std::env::var(key).ok())
+        .map(|base| PathBuf::from(base).join("dictation-tauri"))
 }
 
 fn create_capture_level(samples: &[i16]) -> CaptureLevel {

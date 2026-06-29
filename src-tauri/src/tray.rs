@@ -198,6 +198,7 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
         HostMenuAction::Quit => app.exit(0),
         action => {
             if let Some(payload) = host_command_payload(action) {
+                let _ = app.emit_to(DOCK_WINDOW_LABEL, HOST_COMMAND_EVENT, payload.clone());
                 let _ = app.emit(HOST_COMMAND_EVENT, payload);
             }
         }

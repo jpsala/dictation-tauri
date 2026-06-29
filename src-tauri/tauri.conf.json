@@ -58,6 +58,9 @@
     "category": "Productivity",
     "shortDescription": "Fixvox desktop dictation client for Windows.",
     "longDescription": "Fixvox Tauri is the Windows desktop client for Fixvox Cloud managed dictation.",
+    "resources": {
+      "target/release/WebView2Loader.dll": "WebView2Loader.dll"
+    },
     "windows": {
       "allowDowngrades": false,
       "nsis": {

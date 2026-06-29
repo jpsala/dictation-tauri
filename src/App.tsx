@@ -140,6 +140,9 @@ type CaptureGatewayRuntime = {
   capturedMessage: string;
 };
 
+type ResolvedTauriHostCommandPayload = Required<Pick<TauriHostCommandPayload, "command">> &
+  Omit<TauriHostCommandPayload, "command">;
+
 async function loadHostReadinessUi(
   client: HostRuntimeClient,
 ): Promise<HostReadinessUiState> {
@@ -1021,6 +1024,9 @@ export function App() {
   const [resultHistoryOpen, setResultHistoryOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const persistedHistoryEntryIdRef = useRef<string | undefined>(undefined);
+  const hostCommandHandlerRef = useRef<
+    ((payload: ResolvedTauriHostCommandPayload) => void | Promise<void>) | undefined
+  >(undefined);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -1574,7 +1580,7 @@ export function App() {
     void pasteLastToForegroundTarget({ summary, text: entry.text });
   }
 
-  function handleHostCommandPayload(payload: Required<Pick<TauriHostCommandPayload, "command">> & Omit<TauriHostCommandPayload, "command">) {
+  function handleHostCommandPayload(payload: ResolvedTauriHostCommandPayload) {
     switch (payload.command) {
       case "select_preset":
         if (payload.presetId) {
@@ -1781,11 +1787,15 @@ export function App() {
   }
 
   useEffect(() => {
+    hostCommandHandlerRef.current = handleHostCommandPayload;
+  });
+
+  useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
     void listenForTauriHostCommands((payload) => {
-      handleHostCommandPayload(payload);
+      void hostCommandHandlerRef.current?.(payload);
     }).then((nextUnlisten) => {
       if (disposed) {
         nextUnlisten?.();
@@ -1799,7 +1809,7 @@ export function App() {
       disposed = true;
       unlisten?.();
     };
-  }, [voiceDockState.phase, pipelineUi.summary]);
+  }, []);
 
   useEffect(() => {
     if (!import.meta.env.DEV) {
