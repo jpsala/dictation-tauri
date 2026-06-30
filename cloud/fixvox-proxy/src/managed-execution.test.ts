@@ -300,6 +300,109 @@ describe("control-plane admin devices", () => {
       },
     });
   });
+
+  test("lists signed-in accounts without leaking raw account identifiers", async () => {
+    const store = new MemoryKv();
+    const accountId = "google:google-sub-super-secret-123456";
+    const registered = await registerDevice(store, {
+      installId: "install-admin-account-list",
+      version: "0.1.0",
+      platform: "win32",
+    }, { accountId, authProviders: ["google"] });
+
+    const response = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/accounts", {
+        headers: { Authorization: "Bearer test-admin-key" },
+      }),
+      createEnv(store) as never,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json() as {
+      ok: boolean;
+      accounts: Array<{
+        accountHandle: string;
+        accountIdRedacted: string;
+        deviceCount: number;
+        devices: Array<{ deviceIdRedacted: string; policyId: string | null }>;
+      }>;
+    };
+    expect(payload.ok).toBe(true);
+    expect(payload.accounts).toHaveLength(1);
+    expect(payload.accounts[0]).toMatchObject({
+      accountIdRedacted: "account redacted",
+      deviceCount: 1,
+      devices: [{ policyId: "alpha-basic" }],
+    });
+    expect(payload.accounts[0].accountHandle).toMatch(/^acc_[a-f0-9]{16}$/);
+    expect(payload.accounts[0].devices[0].deviceIdRedacted).not.toBe(registered.deviceId);
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toContain(accountId);
+    expect(serialized).not.toContain("google-sub-super-secret");
+  });
+
+  test("assigns policy by account and applies it to future linked devices", async () => {
+    const store = new MemoryKv();
+    const accountId = "google:account-policy-sub-123456";
+    const first = await registerDevice(store, {
+      installId: "install-admin-account-policy-1",
+      version: "0.1.0",
+      platform: "win32",
+    }, { accountId, authProviders: ["google"] });
+    const second = await registerDevice(store, {
+      installId: "install-admin-account-policy-2",
+      version: "0.1.0",
+      platform: "win32",
+    }, { accountId, authProviders: ["google"] });
+
+    const listResponse = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/accounts", {
+        headers: { Authorization: "Bearer test-admin-key" },
+      }),
+      createEnv(store) as never,
+      {} as ExecutionContext,
+    );
+    const listPayload = await listResponse.json() as { accounts: Array<{ accountHandle: string }> };
+    const accountHandle = listPayload.accounts[0].accountHandle;
+
+    const assignResponse = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/accounts/policy", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-admin-key",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ accountHandle, policyId: "pro" }),
+      }),
+      createEnv(store) as never,
+      {} as ExecutionContext,
+    );
+
+    expect(assignResponse.status).toBe(200);
+    const assignPayload = await assignResponse.json() as { devicesUpdated: number; account: { policyId: string } };
+    expect(assignPayload).toMatchObject({ devicesUpdated: 2, account: { policyId: "pro" } });
+    expect(JSON.stringify(assignPayload)).not.toContain(accountId);
+
+    const devicesResponse = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/devices", {
+        headers: { Authorization: "Bearer test-admin-key" },
+      }),
+      createEnv(store) as never,
+      {} as ExecutionContext,
+    );
+    const devicesPayload = await devicesResponse.json() as { devices: Array<{ deviceId: string; policyId: string | null }> };
+    const updated = devicesPayload.devices.filter((device) => [first.deviceId, second.deviceId].includes(device.deviceId));
+    expect(updated.map((device) => device.policyId).sort()).toEqual(["pro", "pro"]);
+
+    const third = await registerDevice(store, {
+      installId: "install-admin-account-policy-3",
+      version: "0.1.0",
+      platform: "win32",
+    }, { accountId, authProviders: ["google"] });
+    expect(third.policyId).toBe("pro");
+    expect(third.policyLabel).toBe("Pro");
+  });
 });
 
 describe("managed execution preflight", () => {

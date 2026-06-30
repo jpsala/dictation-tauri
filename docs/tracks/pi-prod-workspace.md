@@ -33,7 +33,7 @@ Poder trabajar en Fixvox Tauri/Cloud desde el VPS productivo por SSH/Pi sin depe
 - Helpers creados:
   - `dictation-tauri-pi` -> `cd /home/jpsal/dev/dictation-tauri && pi "$@"`.
   - `dictation-tauri-console` -> tmux session `dictation-tauri` en ese repo.
-  - `fixvox-admin` -> admin CLI redacted-safe para `health`, `devices`, `policies` y `assign-device-policy ... --yes`.
+  - `fixvox-admin` -> admin CLI redacted-safe para `health`, `devices`, `accounts`, `policies`, `assign-device-policy ... --yes` y `assign-account-policy ... --yes`.
 - Auth remoto verificado:
   - Wrangler autenticado (`wrangler whoami` OK, output no registrado).
   - `wrangler deploy --dry-run` OK desde `cloud/fixvox-proxy`.
@@ -95,7 +95,7 @@ ssh vps 'fixvox-admin assign-device-policy <deviceId> <policyId> "<Label>" --yes
 - Windows/Tauri GUI, Cua local y smokes desktop reales siguen requiriendo una maquina Windows.
 - El repo remoto tiene commits locales que aun no estan en GitHub; hasta que haya push aprobado, GitHub no es la fuente completa.
 - No se configuro servicio/autostart/tunnel nuevo para Dictation Tauri; el acceso inicial es por SSH/tmux.
-- Admin actual aun es incompleto para producto: hay asignacion device-level y runtime policy JSON, pero faltan endpoints/UI de user-level groups, crear grupos/templates desde admin y usage/quota dashboard.
+- Admin actual aun es incompleto para producto: hay listado/assignment account-level y device-level, pero faltan UI de grupos, crear grupos/templates desde admin y usage/quota dashboard.
 - No copiar secretos ni `.env` al repo; el admin key remoto vive fuera del repo en `~/.config/dictation-tauri/admin.env`.
 
 ## Proximo Paso Recomendado
