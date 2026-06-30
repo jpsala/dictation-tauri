@@ -104,7 +104,8 @@ Implementacion sugerida:
 - Login token vive fuera del repo en `~/.config/dictation-tauri/admin-web.env`; no imprimirlo ni commitearlo. Cloudflare Access queda como mejora posterior.
 - 2026-06-30: token web rotado porque el anterior fue pegado en el chat; service `fixvox-admin-web.service` reiniciado y login + Pi health validados.
 - Checks: `node --check admin/fixvox-web/server.mjs`, `npm run cloud:test` (67/67), `npm run build` OK; VPS health local OK, login OK, `/api/pi-chat/health` OK, `/api/admin/accounts` OK, prompt Pi respondio `FIXVOX_ADMIN_PI_OK`.
-- Falta polish UX y acciones admin rich; el MVP web ya existe.
+- 2026-06-30: Pi Chat mejorado copiando patrones de Constelaciones: layout chat + side panel, tool logs, pending UI requests, abort/new session/get_state controls, admin data buttons y soporte `extension_ui_response` sin esperar respuesta RPC.
+- Falta polish UX y acciones admin rich; el MVP web ya existe y ya se parece mas al Pi Chat de Constelaciones.
 
 ## Proximo Paso Para Nueva Sesion
 
