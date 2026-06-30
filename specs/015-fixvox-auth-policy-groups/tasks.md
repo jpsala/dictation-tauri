@@ -40,7 +40,7 @@
 
 ## Phase 7: Gated Real Smoke
 
-- [ ] T021 With explicit JP approval, run a redacted login/link smoke against Fixvox Cloud. Browser Google OAuth handoff completed; provider-free host link contract now calls `/desktop/login/link-device`, persists returned policy/authPolicy, and Settings shows active policy when capabilities arrive. Real smoke 2026-06-30 was attempted with JP approval for T021 only and is blocked: signed-in status was redacted/OK, but Cloud returned `FIXVOX_LOGIN_DEVICE_LINK_REJECTED` / `Not found` for `/desktop/login/link-device`; no authPolicy was persisted and managed capabilities stayed fail-closed. Evidence: `artifacts/desktop-control/fixvox-login-link-smoke/20260630-T021-login-link-cdp/report.json`.
+- [ ] T021 With explicit JP approval, run a redacted login/link smoke against Fixvox Cloud. Browser Google OAuth handoff completed; provider-free host link contract now calls `/desktop/login/link-device`, persists returned policy/authPolicy, and Settings shows active policy when capabilities arrive. Real smoke 2026-06-30 was attempted with JP approval for T021 only and is blocked in production: signed-in status was redacted/OK, but Cloud returned `FIXVOX_LOGIN_DEVICE_LINK_REJECTED` / `Not found` for `/desktop/login/link-device`; no authPolicy was persisted and managed capabilities stayed fail-closed. Evidence: `artifacts/desktop-control/fixvox-login-link-smoke/20260630-T021-login-link-cdp/report.json`. Local source patch exists in `C:/dev/fixvox` and proxy tests pass; deploy/retry still pending.
 - [ ] T022 With explicit JP approval, verify a signed-in policy group unlocks managed dictation and a denied group fails closed.
 
 ## Guardrails
