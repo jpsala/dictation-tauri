@@ -33,10 +33,10 @@
 
 ## Phase 6: Runtime Enforcement
 
-- [ ] T017 Enforce `dictation` + `managed_stt` before managed dictation.
-- [ ] T018 Enforce `postprocess` + `managed_llm` before managed postprocess.
-- [ ] T019 Enforce `translate` and `assistant_actions` for future translate/assistant lanes.
-- [ ] T020 Ensure denied managed capability never falls back silently to BYOK/direct provider.
+- [x] T017 Enforce `dictation` + `managed_stt` before managed dictation.
+- [x] T018 Enforce `postprocess` + `managed_llm` before managed postprocess.
+- [x] T019 Enforce `translate` and `assistant_actions` for future translate/assistant lanes.
+- [x] T020 Ensure denied managed capability never falls back silently to BYOK/direct provider.
 
 ## Phase 7: Gated Real Smoke
 

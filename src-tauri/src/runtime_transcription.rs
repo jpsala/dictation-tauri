@@ -973,8 +973,9 @@ fn read_managed_runtime_config(
             "Managed Fixvox transcription requires a registered device id.",
         )
     })?;
-    if let Some(state) = read_persisted_fixvox_device_state(env_lookup) {
-        fixvox_cloud::policy_allows_managed_transcription(&state)
+    let persisted_device_state = read_persisted_fixvox_device_state(env_lookup);
+    if let Some(state) = persisted_device_state.as_ref() {
+        fixvox_cloud::policy_allows_managed_transcription(state)
             .map_err(|reason| error(&reason.code, &reason.message))?;
     }
 
@@ -1016,6 +1017,16 @@ fn read_managed_runtime_config(
         .post_process
         .clone()
         .or_else(|| Some(runtime_plan.post_process.clone()));
+    if post_process
+        .as_ref()
+        .map(|policy| policy.enabled)
+        .unwrap_or(false)
+    {
+        if let Some(state) = persisted_device_state.as_ref() {
+            fixvox_cloud::policy_allows_managed_operation(state, "postprocess")
+                .map_err(|reason| error(&reason.code, &reason.message))?;
+        }
+    }
 
     Ok(ManagedHostRuntimeConfig {
         backend_base_url,
@@ -3663,6 +3674,7 @@ mod tests {
                 stale: false,
                 error: None,
             }),
+            auth_policy: None,
         };
         let path = Path::new(appdata)
             .join("dictation-tauri")
@@ -3805,6 +3817,81 @@ mod tests {
         .expect_err("managed runtime should fail closed instead of falling back to BYOK");
 
         assert_eq!(denied.code, "FIXVOX_MANAGED_TRANSCRIPTION_DISABLED");
+        assert!(!denied.message.to_ascii_lowercase().contains("gsk"));
+    }
+
+    #[test]
+    fn managed_runtime_fails_closed_when_postprocess_lacks_managed_llm_capability() {
+        let appdata = "target/runtime-transcription-postprocess-capability-denied";
+        let _ = fs::remove_dir_all(appdata);
+        let mut request = test_request("managed-postprocess-denied");
+        request.post_process = Some(HostPostProcessPolicy {
+            enabled: true,
+            prompt: Some("[redacted postprocess prompt fixture]".to_string()),
+            provider: Some("fixvox-cloud".to_string()),
+            model: Some("openai/gpt-oss-120b".to_string()),
+            source: Some("test".to_string()),
+            policy_id: Some("dictation-basic-without-llm".to_string()),
+            voice_routing_profile_id: None,
+        });
+        let state = fixvox_cloud::FixvoxDeviceState {
+            install_id: "install_postprocess_denied".to_string(),
+            device_id: Some("dev_postprocess_denied".to_string()),
+            last_register_ok: true,
+            last_register_error_code: None,
+            last_register_error_message: None,
+            policy_id: Some("dictation-basic".to_string()),
+            policy_label: Some("Dictation Basic".to_string()),
+            transport_policy: Some(serde_json::json!({ "speech": { "mode": "proxied" } })),
+            policy_snapshot: Some(fixvox_cloud::FixvoxPolicySnapshot {
+                policy_id: Some("dictation-basic".to_string()),
+                policy_label: Some("Dictation Basic".to_string()),
+                features: Some(serde_json::json!({ "managedTranscription": true })),
+                capabilities: fixvox_cloud::FixvoxPolicyCapabilities {
+                    can_use_managed_transcription: true,
+                    can_see_advanced_settings: false,
+                    can_use_debug_tools: false,
+                },
+                transport_policy: Some(serde_json::json!({ "speech": { "mode": "proxied" } })),
+                runtime_policy: None,
+                fetched_at: "test".to_string(),
+                trust: "fresh".to_string(),
+                stale: false,
+                error: None,
+            }),
+            auth_policy: Some(fixvox_cloud::FixvoxAuthPolicyStatus {
+                access_mode: "signed_in".to_string(),
+                user_redacted: Some("user_t…7890".to_string()),
+                group_label: Some("Dictation".to_string()),
+                policy_template_id: Some("dictation-basic".to_string()),
+                policy_template_label: Some("Dictation Basic".to_string()),
+                capabilities: vec![
+                    "dictation".to_string(),
+                    "managed_stt".to_string(),
+                    "postprocess".to_string(),
+                ],
+                limits: None,
+                redacted: true,
+            }),
+        };
+        let path = Path::new(appdata)
+            .join("dictation-tauri")
+            .join("fixvox-device-state.json");
+        fixvox_cloud::persist_device_state(&path, &state)
+            .expect("test device state should be persisted");
+
+        let denied = read_managed_runtime_config(
+            &|key| match key {
+                "APPDATA" => Some(appdata.to_string()),
+                "FIXVOX_BACKEND_URL" => Some("https://auth-fixvox.jpsala.dev".to_string()),
+                "GROQ_API_KEY" => Some("gsk_test_secret_must_not_leak".to_string()),
+                _ => None,
+            },
+            &request,
+        )
+        .expect_err("postprocess must require managed_llm and not fall back to BYOK");
+
+        assert_eq!(denied.code, "FIXVOX_CAPABILITY_NOT_ALLOWED");
         assert!(!denied.message.to_ascii_lowercase().contains("gsk"));
     }
 
@@ -4297,6 +4384,7 @@ mod tests {
                 stale: false,
                 error: None,
             }),
+            auth_policy: None,
         };
         let path = Path::new(appdata)
             .join("dictation-tauri")

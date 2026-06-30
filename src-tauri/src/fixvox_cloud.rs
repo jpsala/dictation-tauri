@@ -1173,10 +1173,17 @@ pub(crate) fn derive_policy_capabilities(
 pub(crate) fn policy_allows_managed_transcription(
     state: &FixvoxDeviceState,
 ) -> Result<(), FixvoxCloudError> {
+    policy_allows_managed_operation(state, "dictation")
+}
+
+pub(crate) fn policy_allows_managed_operation(
+    state: &FixvoxDeviceState,
+    operation: &str,
+) -> Result<(), FixvoxCloudError> {
     if !state.last_register_ok {
         return Err(error(
             "FIXVOX_POLICY_UNTRUSTED",
-            "Fixvox policy is not confirmed; refresh or activate the device before managed transcription.",
+            "Fixvox policy is not confirmed; refresh or activate the device before managed runtime.",
         ));
     }
 
@@ -1186,30 +1193,77 @@ pub(crate) fn policy_allows_managed_transcription(
             None,
             state.transport_policy.as_ref(),
         );
-        if legacy_capabilities.can_use_managed_transcription {
+        if operation == "dictation" && legacy_capabilities.can_use_managed_transcription {
             return Ok(());
         }
         return Err(error(
             "FIXVOX_POLICY_MISSING",
-            "Fixvox policy snapshot is missing; refresh policy before managed transcription.",
+            "Fixvox policy snapshot is missing; refresh policy before managed runtime.",
         ));
     };
 
     if snapshot.stale || snapshot.error.is_some() || snapshot.trust == "error" {
         return Err(error(
             "FIXVOX_POLICY_STALE",
-            "Fixvox policy snapshot is stale or failed; refresh policy before managed transcription.",
+            "Fixvox policy snapshot is stale or failed; refresh policy before managed runtime.",
         ));
     }
 
-    if !snapshot.capabilities.can_use_managed_transcription {
+    if let Some(auth_policy) = state.auth_policy.as_ref() {
+        return auth_policy_allows_operation(auth_policy, operation);
+    }
+
+    if operation == "dictation" && snapshot.capabilities.can_use_managed_transcription {
+        return Ok(());
+    }
+    if operation == "dictation" && !snapshot.capabilities.can_use_managed_transcription {
         return Err(error(
             "FIXVOX_MANAGED_TRANSCRIPTION_DISABLED",
             "Fixvox policy does not allow managed transcription for this device.",
         ));
     }
 
-    Ok(())
+    Err(error(
+        "FIXVOX_CAPABILITY_NOT_ALLOWED",
+        "Fixvox policy does not allow the required managed capability for this device.",
+    ))
+}
+
+fn auth_policy_allows_operation(
+    auth_policy: &FixvoxAuthPolicyStatus,
+    operation: &str,
+) -> Result<(), FixvoxCloudError> {
+    let required = required_product_capabilities(operation);
+    let missing = required
+        .iter()
+        .filter(|capability| {
+            !auth_policy
+                .capabilities
+                .iter()
+                .any(|allowed| allowed == **capability)
+        })
+        .copied()
+        .collect::<Vec<_>>();
+
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    Err(error(
+        "FIXVOX_CAPABILITY_NOT_ALLOWED",
+        "Fixvox policy does not allow the required managed capability for this device.",
+    ))
+}
+
+fn required_product_capabilities(operation: &str) -> Vec<&'static str> {
+    match operation.trim().to_ascii_lowercase().as_str() {
+        "dictation" | "managed_stt" => vec!["dictation", "managed_stt"],
+        "postprocess" | "managed_llm" => vec!["postprocess", "managed_llm"],
+        "translate" => vec!["translate", "managed_llm"],
+        "selection_transform" => vec!["selection_transform", "managed_llm"],
+        "assistant_action" | "assistant_actions" => vec!["assistant_actions", "managed_llm"],
+        _ => vec!["managed_llm"],
+    }
 }
 
 fn feature_bool(features: Option<&serde_json::Value>, keys: &[&str]) -> Option<bool> {
@@ -2341,6 +2395,64 @@ mod tests {
         );
         assert!(!serialized.contains("user_sensitive_1234567890"));
         assert!(!serialized.contains("jp@example.invalid"));
+    }
+
+    #[test]
+    fn auth_policy_required_capabilities_fail_closed_by_operation() {
+        let mut state = FixvoxDeviceState {
+            install_id: "install_test".to_string(),
+            device_id: Some("dev_test".to_string()),
+            last_register_ok: true,
+            last_register_error_code: None,
+            last_register_error_message: None,
+            policy_id: Some("translate-only".to_string()),
+            policy_label: Some("Translate only".to_string()),
+            transport_policy: Some(json!({ "speech": { "mode": "proxied" } })),
+            policy_snapshot: Some(FixvoxPolicySnapshot {
+                policy_id: Some("translate-only".to_string()),
+                policy_label: Some("Translate only".to_string()),
+                features: Some(json!({ "managedTranscription": true })),
+                capabilities: FixvoxPolicyCapabilities {
+                    can_use_managed_transcription: true,
+                    can_see_advanced_settings: false,
+                    can_use_debug_tools: false,
+                },
+                transport_policy: Some(json!({ "speech": { "mode": "proxied" } })),
+                runtime_policy: None,
+                fetched_at: "test".to_string(),
+                trust: "fresh".to_string(),
+                stale: false,
+                error: None,
+            }),
+            auth_policy: Some(FixvoxAuthPolicyStatus {
+                access_mode: "signed_in".to_string(),
+                user_redacted: Some("user_t…7890".to_string()),
+                group_label: Some("Translators".to_string()),
+                policy_template_id: Some("translate-only".to_string()),
+                policy_template_label: Some("Translate only".to_string()),
+                capabilities: vec!["translate".to_string(), "managed_llm".to_string()],
+                limits: None,
+                redacted: true,
+            }),
+        };
+
+        let denied = policy_allows_managed_operation(&state, "dictation")
+            .expect_err("translate-only must not unlock dictation/STT");
+        assert_eq!(denied.code, "FIXVOX_CAPABILITY_NOT_ALLOWED");
+        policy_allows_managed_operation(&state, "translate").expect("translate lane is allowed");
+
+        state
+            .auth_policy
+            .as_mut()
+            .expect("auth policy")
+            .capabilities = vec![
+            "dictation".to_string(),
+            "managed_stt".to_string(),
+            "postprocess".to_string(),
+        ];
+        let denied = policy_allows_managed_operation(&state, "postprocess")
+            .expect_err("postprocess also requires managed_llm");
+        assert_eq!(denied.code, "FIXVOX_CAPABILITY_NOT_ALLOWED");
     }
 
     #[test]
