@@ -258,12 +258,12 @@ function renderShell() {
           <div id="health-warning"></div>
           <div class="pi-grid">
             <section class="chat-card">
-              <div class="card-strip"><strong>Conversación</strong><span id="cwd-label"></span></div>
+              <div class="card-strip"><div><strong>Conversación</strong><small>Enter envía · Shift+Enter agrega línea</small></div><span id="cwd-label"></span></div>
               <div class="request-list" id="requests"></div>
               <div class="messages" id="messages"></div>
               <form class="composer" id="composer">
                 <textarea id="prompt" aria-label="Mensaje para Pi"></textarea>
-                <div class="composer-buttons"><button class="icon-button primary" type="submit" id="send-button" title="Enviar">➤</button><button class="icon-button" type="button" id="abort-inline" title="Abortar">■</button><button class="icon-button" type="button" id="new-inline" title="Nueva sesión">↻</button></div>
+                <div class="composer-buttons"><button class="composer-action primary" type="submit" id="send-button" title="Enviar">Enviar</button><button class="composer-action" type="button" id="abort-inline" title="Abortar">Detener</button><button class="composer-action" type="button" id="new-inline" title="Nueva sesión">Nueva</button></div>
               </form>
             </section>
             <aside class="activity-card" id="activity"></aside>
@@ -292,7 +292,7 @@ function renderHeader() {
   const header = $('#topbar'); if (!header) return
   const health = state.health
   const envName = state.env?.environment || 'unknown'
-  header.innerHTML = `<div><div class="title-line"><span class="title-icon" aria-hidden="true">C</span><h1>Chat</h1></div><p>Consola agentica dentro de Fixvox.</p></div><div class="chips"><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `Pi ${esc(health.piVersion || '')}` : 'Pi no listo'}</span><span class="chip ${state.running ? 'primary' : ''}">${esc(statusLabel(state.status))}</span><span class="chip ${state.env?.production ? 'prod' : 'local'}">${esc(envName)}</span></div>`
+  header.innerHTML = `<div><div class="title-line"><span class="title-icon" aria-hidden="true">Pi</span><div><h1>Pi Chat</h1><p>Consola agentica para operar Fixvox.</p></div></div></div><div class="chips"><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `Pi ${esc(health.piVersion || '')}` : 'Pi no listo'}</span><span class="chip ${state.running ? 'primary' : ''}">${esc(statusLabel(state.status))}</span><span class="chip ${state.env?.production ? 'prod' : 'local'}">${esc(envName)}</span></div>`
   const cwd = $('#cwd-label')
   if (cwd) cwd.innerHTML = health?.ok ? `cwd: <code>${esc(shortPath(health.cwd))}</code> · ${esc(health.process || '')}` : ''
 }
@@ -303,7 +303,7 @@ function renderHealthWarning() {
 }
 function renderMessages() {
   const box = $('#messages'); if (!box) return
-  box.innerHTML = state.messages.length ? state.messages.map((message) => messageBubble(message)).join('') : '<div class="empty">Todavía no hay mensajes.</div>'
+  box.innerHTML = state.messages.length ? state.messages.map((message) => messageBubble(message)).join('') : '<div class="empty-state"><strong>Listo para trabajar</strong><span>Pedile a Pi que revise UI, admin, policies o un cambio local. Nada toca production en modo mock.</span></div>'
   box.scrollTop = box.scrollHeight
   const input = $('#prompt')
   if (input) {
@@ -314,9 +314,10 @@ function renderMessages() {
   if (send) send.disabled = !state.health?.ok || state.running
 }
 function messageBubble(message) {
-  const role = message.role === 'user' ? (state.env?.user?.name || 'Vos') : message.role === 'system' ? 'Sistema' : 'agente'
+  const role = message.role === 'user' ? (state.env?.user?.name || 'Vos') : message.role === 'system' ? 'Sistema' : 'Pi'
+  const initial = message.role === 'user' ? 'JP' : message.role === 'system' ? 'S' : 'Pi'
   const fallback = message.role === 'assistant' && state.running && !message.content ? 'Trabajando…' : message.content || (message.role === 'assistant' ? 'Pi terminó sin texto visible. Revisá la actividad técnica.' : '')
-  return `<div class="message-row ${message.role}"><article class="bubble"><div class="bubble-label">${esc(role)}</div><div class="markdown-lite">${renderMarkdownLite(fallback)}</div></article></div>`
+  return `<div class="message-row ${message.role}"><span class="message-avatar">${esc(initial)}</span><article class="bubble"><div class="bubble-label">${esc(role)}</div><div class="markdown-lite">${renderMarkdownLite(fallback)}</div></article></div>`
 }
 function renderMarkdownLite(text) {
   let html = esc(text)
@@ -354,10 +355,10 @@ function renderAdminData() {
   const data = state.adminData
   if (!data) { box.innerHTML = '<div class="empty small">Cargá accounts/devices/policies/usage.</div>'; return }
   if (state.dataTab === 'accounts' && Array.isArray(data.accounts)) {
-    box.innerHTML = `<table><thead><tr><th>Account</th><th>Policy</th><th>Devices</th><th></th></tr></thead><tbody>${data.accounts.map((account) => `<tr><td><strong>${esc(account.accountHandle)}</strong><br><small>${esc(account.accountIdRedacted)}</small></td><td>${esc(account.policyId || 'device-level')}<br><small>${esc(account.policyLabel || '')}</small></td><td>${esc(account.deviceCount)}<br><small>${esc(account.lastSeenAt || '')}</small></td><td><button class="button tiny" data-assign-account="${esc(account.accountHandle)}" data-policy="${esc(account.policyId || 'pro')}">Asignar</button></td></tr>`).join('')}</tbody></table>`; return
+    box.innerHTML = `<div class="admin-card-list">${data.accounts.map((account) => `<article class="admin-mini"><div><strong>${esc(account.accountHandle)}</strong><small>${esc(account.accountIdRedacted)}</small></div><span class="policy-badge">${esc(account.policyLabel || account.policyId || 'device-level')}</span><div class="mini-meta"><span>${esc(account.deviceCount)} devices</span><span>${esc(account.lastSeenAt || '')}</span></div><button class="button tiny" data-assign-account="${esc(account.accountHandle)}" data-policy="${esc(account.policyId || 'pro')}">Asignar policy</button></article>`).join('')}</div>`; return
   }
   if (state.dataTab === 'devices' && Array.isArray(data.devices)) {
-    box.innerHTML = `<table><thead><tr><th>Device</th><th>Policy</th><th>Status</th><th></th></tr></thead><tbody>${data.devices.map((device) => `<tr><td><strong>${esc(device.deviceId)}</strong><br><small>${esc(device.installId)}</small></td><td>${esc(device.policyId || 'none')}<br><small>${esc(device.policyLabel || '')}</small></td><td>${esc(device.status)}<br><small>${esc(device.lastSeenAt || '')}</small></td><td><button class="button tiny" data-assign-device="${esc(device.deviceId)}" data-policy="${esc(device.policyId || 'pro')}">Asignar</button></td></tr>`).join('')}</tbody></table>`; return
+    box.innerHTML = `<div class="admin-card-list">${data.devices.map((device) => `<article class="admin-mini"><div><strong>${esc(device.deviceId)}</strong><small>${esc(device.installId)}</small></div><span class="policy-badge">${esc(device.policyLabel || device.policyId || 'none')}</span><div class="mini-meta"><span>${esc(device.status)}</span><span>${esc(device.lastSeenAt || '')}</span></div><button class="button tiny" data-assign-device="${esc(device.deviceId)}" data-policy="${esc(device.policyId || 'pro')}">Asignar policy</button></article>`).join('')}</div>`; return
   }
   const policies = Array.isArray(data.policies) ? data.policies : Array.isArray(data.policyOptions) ? data.policyOptions.map((id) => ({ id, label: id })) : []
   if (state.dataTab === 'policies' && policies.length) {
