@@ -8,6 +8,7 @@ const state = {
   uiRequests: new Map(),
   dataTab: 'accounts',
   adminData: null,
+  env: null,
   session: null,
   running: false,
   controller: null,
@@ -48,6 +49,11 @@ async function jsonFetch(url, options = {}) {
 }
 async function sendCommand(command) {
   return jsonFetch('/api/pi-chat/command', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command }) })
+}
+async function refreshEnv() {
+  try { state.env = await jsonFetch('/api/admin/env') }
+  catch (error) { state.env = { ok: false, environment: 'unknown', error: error.message } }
+  render()
 }
 async function refreshHealth() {
   try {
@@ -180,6 +186,7 @@ async function assignAccountPolicy(accountHandle, currentPolicy) {
   const policyId = prompt(`Policy para ${accountHandle}`, currentPolicy || 'pro')
   if (!policyId) return
   if (!confirm(`Asignar policy ${policyId} a account ${accountHandle}?`)) return
+  if (!confirmProductionMutation(`assign account ${accountHandle} -> ${policyId}`)) return
   const policyLabel = prompt('Label opcional', policyId === 'pro' ? 'Pro' : policyId) || undefined
   state.adminData = await jsonFetch('/api/admin/accounts/policy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ accountHandle, policyId, policyLabel }) })
   renderAdminData()
@@ -188,11 +195,18 @@ async function assignDevicePolicy(deviceId, currentPolicy) {
   const policyId = prompt(`Policy para device ${deviceId}`, currentPolicy || 'pro')
   if (!policyId) return
   if (!confirm(`Asignar policy ${policyId} a device ${deviceId}?`)) return
+  if (!confirmProductionMutation(`assign device ${deviceId} -> ${policyId}`)) return
   const policyLabel = prompt('Label opcional', policyId === 'pro' ? 'Pro' : policyId) || undefined
   state.adminData = await jsonFetch('/api/admin/devices/policy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deviceId, policyId, policyLabel }) })
   renderAdminData()
 }
+function confirmProductionMutation(description) {
+  if (!state.env?.production) return true
+  return prompt(`PRODUCTION mutation: ${description}\nEscribí PROD para confirmar.`) === 'PROD'
+}
 function render() {
+  const envName = state.env?.environment || 'unknown'
+  const envClass = state.env?.production ? 'prod' : 'local'
   app.innerHTML = `
     <div class="app-shell">
       <aside class="sidebar">
@@ -213,6 +227,7 @@ function render() {
       </aside>
       <div class="main">
         <header class="topbar" id="topbar"></header>
+        <div class="env-banner ${envClass}"><strong>${envName.toUpperCase()}</strong> · ${esc(state.env?.adminBaseUrl || 'sin base URL')} · ${state.env?.production ? 'Mutaciones requieren escribir PROD.' : 'Entorno seguro para iterar antes de promover a producción.'}</div>
         <div class="content">
           <section class="panel chat-panel">
             <div class="panel-header"><div><div class="panel-title">Conversación</div><div class="muted">Enter agrega línea · Ctrl/⌘+Enter envía</div></div></div>
@@ -230,7 +245,8 @@ function renderHeader() {
   const header = $('#topbar'); if (!header) return
   const health = state.health
   const session = state.session?.sessionName || state.session?.sessionId || 'sin sesión'
-  header.innerHTML = `<div><h2>Pi Chat Fixvox</h2><div class="muted">Control room para Dictation Tauri + Fixvox Cloud</div></div><div class="chips"><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `Pi ${esc(health.piVersion || '')}` : 'Pi no listo'}</span><span class="chip">${esc(state.status)}</span><span class="chip">${esc(session)}</span></div>`
+  const envName = state.env?.environment || 'unknown'
+  header.innerHTML = `<div><h2>Pi Chat Fixvox</h2><div class="muted">Control room para Dictation Tauri + Fixvox Cloud</div></div><div class="chips"><span class="chip ${state.env?.production ? 'prod' : 'local'}">${esc(envName)}</span><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `Pi ${esc(health.piVersion || '')}` : 'Pi no listo'}</span><span class="chip">${esc(state.status)}</span><span class="chip">${esc(session)}</span></div>`
 }
 function renderMessages() {
   const box = $('#messages'); if (!box) return
@@ -282,5 +298,5 @@ function wireEvents() {
 function alertError(error) { alert(error.message || String(error)) }
 
 render()
-refreshHealth().then(() => refreshSession()).catch(() => {})
+refreshEnv().then(() => refreshHealth()).then(() => refreshSession()).catch(() => {})
 loadAdmin('accounts').catch(() => {})

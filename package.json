@@ -39,9 +39,12 @@
     "release:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-windows.ps1",
     "cloud:test": "cd cloud/fixvox-proxy && bun test",
     "cloud:dev": "cd cloud/fixvox-proxy && bun run dev",
+    "cloud:dev:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cloud-dev-local.ps1",
     "cloud:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cloud-deploy.ps1",
     "cloud:admin": "node scripts/fixvox-admin.mjs",
-    "admin:web": "node admin/fixvox-web/server.mjs"
+    "admin:web": "node admin/fixvox-web/server.mjs",
+    "admin:web:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/admin-web-local.ps1",
+    "admin:web:prod": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/admin-web-prod.ps1"
   },
   "dependencies": {
     "@heroui/react": "^3.2.1",

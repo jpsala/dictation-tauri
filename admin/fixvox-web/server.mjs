@@ -16,6 +16,7 @@ const PI_CWD = path.resolve(process.env.PI_CHAT_CWD || repoRoot)
 const PI_BIN = process.env.PI_CHAT_BIN || 'pi'
 const PI_ARGS = splitArgs(process.env.PI_CHAT_ARGS || '')
 const ADMIN_BASE_URL = (process.env.FIXVOX_ADMIN_BASE_URL || 'https://auth-fixvox.jpsala.dev').replace(/\/+$/g, '')
+const ADMIN_ENV = process.env.FIXVOX_ADMIN_ENV || (ADMIN_BASE_URL.includes('127.0.0.1') || ADMIN_BASE_URL.includes('localhost') ? 'local' : 'production')
 const sessions = new Map()
 
 loadEnvFile(path.join(repoRoot, 'cloud', 'fixvox-proxy', '.dev.vars'))
@@ -252,6 +253,18 @@ const server = http.createServer(async (req, res) => {
       return res.end()
     }
     if (url.pathname === '/' || url.pathname === '/admin' || url.pathname === '/admin/pi') return html(res, appHtml())
+    if (url.pathname === '/api/admin/env') return sendJson(res, 200, {
+      ok: true,
+      environment: ADMIN_ENV,
+      production: ADMIN_ENV === 'production',
+      adminBaseUrl: ADMIN_BASE_URL,
+      piCwd: PI_CWD,
+      guardrails: [
+        'No push/deploy/systemd/tunnel sin aprobacion explicita.',
+        'No mutar policies/users en production sin confirmacion explicita.',
+        'No imprimir tokens, account IDs crudos, device IDs completos, transcripts ni audio.',
+      ],
+    })
     if (url.pathname === '/api/pi-chat/health') return sendJson(res, 200, await pi.health())
     if (url.pathname === '/api/pi-chat/command' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req) || '{}')
