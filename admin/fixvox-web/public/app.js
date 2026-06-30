@@ -10,6 +10,7 @@ const state = {
   adminData: null,
   env: null,
   session: null,
+  sessionNameDraft: '',
   running: false,
   controller: null,
 }
@@ -22,11 +23,16 @@ function pretty(value) {
   if (typeof value === 'string') return value
   try { return JSON.stringify(value, null, 2) } catch { return String(value) }
 }
+function shortPath(value) {
+  const text = String(value || '')
+  if (text.length <= 42) return text
+  return `…${text.slice(-39)}`
+}
 function toolText(value) { return pretty(value).slice(0, 8000) }
 function addMessage(role, content) {
   const message = { id: crypto.randomUUID(), role, content }
   state.messages.push(message)
-  render()
+  renderMessages()
   return message.id
 }
 function appendMessage(id, delta) {
@@ -53,51 +59,68 @@ async function sendCommand(command) {
 async function refreshEnv() {
   try { state.env = await jsonFetch('/api/admin/env') }
   catch (error) { state.env = { ok: false, environment: 'unknown', error: error.message } }
-  render()
+  renderAll()
 }
 async function refreshHealth() {
   try {
     state.health = await jsonFetch('/api/pi-chat/health')
     state.status = state.health.ok ? `Pi ${state.health.piVersion || ''}` : 'Pi no listo'
   } catch (error) {
-    state.health = { ok: false, error: error.message }
+    state.health = { ok: false, error: error.message, process: 'stopped' }
     state.status = 'Pi error'
   }
-  render()
+  renderAll()
 }
 async function refreshSession() {
+  if (!state.health?.ok) return
   try {
     const payload = await sendCommand({ type: 'get_state' })
     state.session = payload.response?.data || payload.response || null
+    state.sessionNameDraft = state.session?.sessionName || ''
   } catch { state.session = null }
   renderActivity()
+  renderHeader()
+}
+async function renameSession() {
+  if (!state.health?.ok) return
+  await sendCommand({ type: 'set_session_name', name: state.sessionNameDraft.trim() })
+  await refreshSession()
+}
+async function cloneSession() {
+  if (!state.health?.ok) return
+  await sendCommand({ type: 'clone' })
+  addMessage('system', 'Sesión Pi clonada desde el punto actual.')
+  await refreshSession()
 }
 async function newSession() {
   await sendCommand({ type: 'new_session' })
   state.messages = [{ id: crypto.randomUUID(), role: 'system', content: 'Nueva sesión Pi iniciada.' }]
   state.tools.clear()
   state.uiRequests.clear()
+  state.sessionNameDraft = ''
+  await refreshHealth()
   await refreshSession()
-  render()
+  renderAll()
 }
 async function abortPi() {
   if (state.controller) state.controller.abort()
   try { await sendCommand({ type: 'abort' }) } catch {}
   state.running = false
   state.status = 'Abortado'
-  render()
+  renderAll()
 }
-async function submitPrompt(textOverride) {
+async function submitPrompt(textOverride, displayTextOverride) {
   const input = $('#prompt')
   const text = String(textOverride ?? input?.value ?? '').trim()
-  if (!text || state.running || !state.health?.ok) return
+  const displayText = String(displayTextOverride ?? text).trim()
+  if (!text || !displayText || state.running || !state.health?.ok) return
   if (input) input.value = ''
-  addMessage('user', text)
+  addMessage('user', displayText)
   const assistantId = addMessage('assistant', '')
   state.running = true
   state.status = 'Pi está trabajando...'
   state.controller = new AbortController()
-  render()
+  renderAll()
   try {
     const response = await fetch('/api/pi-chat/prompt', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: text }), signal: state.controller.signal })
     if (!response.ok || !response.body) throw new Error('Pi no aceptó el prompt')
@@ -108,7 +131,7 @@ async function submitPrompt(textOverride) {
     state.running = false
     state.controller = null
     state.status = 'Listo'
-    render()
+    renderAll()
     refreshHealth().catch(() => {})
     refreshSession().catch(() => {})
   }
@@ -180,7 +203,12 @@ async function loadAdmin(tab = state.dataTab) {
   state.dataTab = tab
   const endpoints = { accounts: '/api/admin/accounts?limit=50', devices: '/api/admin/devices?limit=50', policies: '/api/admin/policies', usage: '/api/admin/usage' }
   try { state.adminData = await jsonFetch(endpoints[tab]) } catch (error) { state.adminData = { ok: false, error: error.message } }
+  renderSidebar()
   renderAdminData()
+}
+function confirmProductionMutation(description) {
+  if (!state.env?.production) return true
+  return prompt(`PRODUCTION mutation: ${description}\nEscribí PROD para confirmar.`) === 'PROD'
 }
 async function assignAccountPolicy(accountHandle, currentPolicy) {
   const policyId = prompt(`Policy para ${accountHandle}`, currentPolicy || 'pro')
@@ -200,94 +228,134 @@ async function assignDevicePolicy(deviceId, currentPolicy) {
   state.adminData = await jsonFetch('/api/admin/devices/policy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deviceId, policyId, policyLabel }) })
   renderAdminData()
 }
-function confirmProductionMutation(description) {
-  if (!state.env?.production) return true
-  return prompt(`PRODUCTION mutation: ${description}\nEscribí PROD para confirmar.`) === 'PROD'
+
+function renderAll() {
+  if (!app.dataset.ready) renderShell()
+  renderSidebar(); renderHeader(); renderHealthWarning(); renderMessages(); renderUiRequests(); renderActivity(); renderAdminData(); wireDynamicEvents()
 }
-function render() {
-  const envName = state.env?.environment || 'unknown'
-  const envClass = state.env?.production ? 'prod' : 'local'
+function renderShell() {
+  app.dataset.ready = 'true'
   app.innerHTML = `
-    <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand"><div class="brand-mark">F</div><div><h1>Fixvox</h1><p>Admin remoto</p></div></div>
-        <div class="nav-group"><div class="nav-label">Pi Chat</div>
-          <button class="quick-btn" data-quick="Listá el estado operativo del repo y sugerí el próximo paso. No hagas cambios.">Status Pi</button>
-          <button class="quick-btn" data-quick="Listá accounts, devices y policies usando las herramientas disponibles. No mutes producción.">Resumen admin</button>
-          <button class="quick-btn" data-quick="Hacé un diagnóstico rápido del admin Fixvox, sin cambiar nada.">Diagnóstico</button>
-        </div>
-        <div class="nav-group"><div class="nav-label">Admin</div>
-          ${['accounts','devices','policies','usage'].map((tab) => `<button class="nav-btn ${state.dataTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`).join('')}
-        </div>
-        <div class="nav-group"><div class="nav-label">Sesión</div>
-          <button class="nav-btn" id="new-session">Nueva sesión</button>
-          <button class="nav-btn" id="refresh-session">Estado sesión</button>
-          <button class="nav-btn danger" id="abort-pi">Abortar</button>
-        </div>
-      </aside>
-      <div class="main">
-        <header class="topbar" id="topbar"></header>
-        <div class="env-banner ${envClass}"><strong>${envName.toUpperCase()}</strong> · ${esc(state.env?.adminBaseUrl || 'sin base URL')} · ${state.env?.production ? 'Mutaciones requieren escribir PROD.' : 'Entorno seguro para iterar antes de promover a producción.'}</div>
-        <div class="content">
-          <section class="panel chat-panel">
-            <div class="panel-header"><div><div class="panel-title">Conversación</div><div class="muted">Enter agrega línea · Ctrl/⌘+Enter envía</div></div></div>
-            <div class="request-list" id="requests"></div>
-            <div class="messages" id="messages"></div>
-            <form class="composer" id="composer"><textarea id="prompt" placeholder="Escribí una instrucción para Pi..."></textarea><div class="composer-actions"><button type="submit">Enviar</button><button type="button" class="secondary" id="abort-inline">Abort</button></div></form>
-          </section>
-          <aside class="side"><section class="panel"><div class="panel-header"><div class="panel-title">Actividad técnica</div></div><div class="tool-list" id="tools"></div></section><section class="panel"><div class="panel-header"><div class="panel-title">Control plane</div></div><div class="data-tabs">${['accounts','devices','policies','usage'].map((tab) => `<button class="data-tab ${state.dataTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`).join('')}</div><div class="admin-body" id="admin-data"></div></section></aside>
-        </div>
-      </div>
+    <div class="admin-layout">
+      <aside class="admin-drawer" id="sidebar"></aside>
+      <main class="admin-main">
+        <section class="pi-page">
+          <div class="pi-header" id="topbar"></div>
+          <div id="health-warning"></div>
+          <div class="pi-grid">
+            <section class="chat-card">
+              <div class="card-strip"><strong>Conversación</strong><span id="cwd-label"></span></div>
+              <div class="request-list" id="requests"></div>
+              <div class="messages" id="messages"></div>
+              <form class="composer" id="composer">
+                <textarea id="prompt" aria-label="Mensaje para Pi"></textarea>
+                <div class="composer-buttons"><button class="icon-button primary" type="submit" id="send-button" title="Enviar">➤</button><button class="icon-button" type="button" id="abort-inline" title="Abortar">■</button><button class="icon-button" type="button" id="new-inline" title="Nueva sesión">↻</button></div>
+              </form>
+            </section>
+            <aside class="activity-card" id="activity"></aside>
+          </div>
+        </section>
+      </main>
     </div>`
-  wireEvents(); renderHeader(); renderMessages(); renderUiRequests(); renderActivity(); renderAdminData()
+  $('#composer').onsubmit = (event) => { event.preventDefault(); submitPrompt().catch(alertError) }
+  $('#abort-inline').onclick = () => abortPi().catch(alertError)
+  $('#new-inline').onclick = () => newSession().catch(alertError)
+  $('#prompt').onkeydown = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      submitPrompt().catch(alertError)
+    }
+  }
+}
+function renderSidebar() {
+  const sidebar = $('#sidebar'); if (!sidebar) return
+  const nav = [
+    ['Dashboard', '⌂', 'dashboard'], ['Chat', '🤖', 'chat'], ['Accounts', '◎', 'accounts'], ['Devices', '▣', 'devices'], ['Policies', '◆', 'policies'], ['Usage', '◌', 'usage'], ['Mi cuenta', '☻', 'account'],
+  ]
+  sidebar.innerHTML = `<div class="drawer-brand"><div><strong>Fixvox</strong><span>Admin y usuarios</span></div></div><div class="drawer-list">${nav.map(([label, icon, key]) => `<button class="drawer-item ${key === 'chat' || key === state.dataTab ? 'selected' : ''}" data-nav="${key}" title="${label}"><span class="drawer-icon">${icon}</span><span class="drawer-text">${label}</span></button>`).join('')}</div><div class="drawer-user"><div>${esc(state.env?.user?.name || state.env?.user?.email || 'Admin')}</div><small>${esc(state.env?.user?.email || state.env?.environment || '')}</small><a href="/logout">Salir</a></div>`
 }
 function renderHeader() {
   const header = $('#topbar'); if (!header) return
   const health = state.health
-  const session = state.session?.sessionName || state.session?.sessionId || 'sin sesión'
   const envName = state.env?.environment || 'unknown'
-  header.innerHTML = `<div><h2>Pi Chat Fixvox</h2><div class="muted">Control room para Dictation Tauri + Fixvox Cloud</div></div><div class="chips"><span class="chip ${state.env?.production ? 'prod' : 'local'}">${esc(envName)}</span><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `Pi ${esc(health.piVersion || '')}` : 'Pi no listo'}</span><span class="chip">${esc(state.status)}</span><span class="chip">${esc(session)}</span><span class="chip">${esc(state.env?.user?.email || state.env?.user?.provider || 'auth')}</span><a class="chip" href="/logout">salir</a></div>`
+  header.innerHTML = `<div><div class="title-line"><span class="title-icon">💬</span><h1>Chat</h1></div><p>Consola agentica dentro de Fixvox.</p></div><div class="chips"><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `▶ Pi ${esc(health.piVersion || '')}` : '⚠ Pi no listo'}</span><span class="chip ${state.running ? 'primary' : ''}">${state.running ? '◷' : '✓'} ${esc(state.status)}</span><span class="chip ${state.env?.production ? 'prod' : 'local'}">${esc(envName)}</span></div>`
+  const cwd = $('#cwd-label')
+  if (cwd) cwd.innerHTML = health?.ok ? `cwd: <code>${esc(shortPath(health.cwd))}</code> · ${esc(health.process || '')}` : ''
+}
+function renderHealthWarning() {
+  const box = $('#health-warning'); if (!box) return
+  if (state.health?.ok || !state.health?.error) { box.innerHTML = ''; return }
+  box.innerHTML = `<div class="alert warning"><strong>${esc(state.health.error)}</strong><br>${esc(state.health.instructions || '')}<br>cwd: <code>${esc(state.health.cwd || '')}</code> · bin: <code>${esc(state.health.piBin || '')}</code></div>`
 }
 function renderMessages() {
   const box = $('#messages'); if (!box) return
-  box.innerHTML = state.messages.map((message) => `<div class="message-row ${message.role}"><div class="bubble"><div class="bubble-label">${message.role === 'user' ? 'JP' : message.role === 'system' ? 'Sistema' : 'agente'}</div>${esc(message.content)}</div></div>`).join('') || '<div class="empty">Todavía no hay mensajes.</div>'
+  box.innerHTML = state.messages.length ? state.messages.map((message) => messageBubble(message)).join('') : '<div class="empty">Todavía no hay mensajes.</div>'
   box.scrollTop = box.scrollHeight
+  const input = $('#prompt')
+  if (input) {
+    input.disabled = !state.health?.ok || state.running
+    input.placeholder = state.health?.ok ? 'Escribí una instrucción para Pi… (Enter envía, Shift+Enter baja línea)' : 'Pi todavía no está listo en este entorno.'
+  }
+  const send = $('#send-button')
+  if (send) send.disabled = !state.health?.ok || state.running
+}
+function messageBubble(message) {
+  const role = message.role === 'user' ? (state.env?.user?.name || 'Vos') : message.role === 'system' ? 'Sistema' : 'agente'
+  const fallback = message.role === 'assistant' && state.running && !message.content ? 'Trabajando…' : message.content || (message.role === 'assistant' ? 'Pi terminó sin texto visible. Revisá la actividad técnica.' : '')
+  return `<div class="message-row ${message.role}"><article class="bubble"><div class="bubble-label">${esc(role)}</div><div class="markdown-lite">${renderMarkdownLite(fallback)}</div></article></div>`
+}
+function renderMarkdownLite(text) {
+  let html = esc(text)
+  html = html.replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>')
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/\n/g, '<br>')
+  return html
 }
 function renderUiRequests() {
   const box = $('#requests'); if (!box) return
   box.innerHTML = [...state.uiRequests.values()].map((request) => {
     const options = Array.isArray(request.options) ? request.options.slice(0, 4) : []
-    return `<div class="request-card" data-request="${esc(request.id)}"><strong>${esc(request.title || request.question || request.method || 'Solicitud Pi')}</strong><div class="muted">${esc(request.context || request.description || '')}</div><textarea placeholder="Respuesta para Pi"></textarea><div class="chips">${options.map((option) => `<button class="secondary" data-option="${esc(typeof option === 'string' ? option : option.label || option.title || 'Opción')}">${esc(typeof option === 'string' ? option : option.label || option.title || 'Opción')}</button>`).join('')}<button data-respond>Responder</button></div></div>`
+    return `<div class="request-card" data-request="${esc(request.id)}"><strong>${esc(request.title || request.question || request.method || 'Solicitud Pi')}</strong><div class="muted">${esc(request.context || request.description || '')}</div><textarea placeholder="Respuesta para Pi"></textarea><div class="button-row">${options.map((option) => `<button class="button small" data-option="${esc(typeof option === 'string' ? option : option.label || option.title || 'Opción')}">${esc(typeof option === 'string' ? option : option.label || option.title || 'Opción')}</button>`).join('')}<button class="button small primary" data-respond>Responder</button></div></div>`
   }).join('')
 }
 function renderActivity() {
-  const box = $('#tools'); if (!box) return
+  const box = $('#activity'); if (!box) return
+  const sessionTitle = state.session?.sessionName || state.session?.sessionId || 'sin nombre'
   const tools = [...state.tools.values()].reverse()
-  box.innerHTML = tools.length ? tools.map((tool) => `<div class="tool-card ${esc(tool.status)}"><div class="tool-head"><span>${esc(tool.title || 'tool')}</span><span>${esc(tool.status || 'running')}</span></div><div class="muted">${esc(tool.subtitle || tool.id || '')}</div>${tool.body ? `<pre class="tool-body">${esc(tool.body)}</pre>` : ''}</div>`).join('') : '<div class="empty">Sin tools todavía.</div>'
+  box.innerHTML = `<div class="activity-section session"><div class="section-head"><div><span>⑂</span><strong>Sesión Pi</strong></div><button class="icon-button mini" id="refresh-session" title="Refrescar sesión">⟳</button></div>${state.session ? `<p><strong>${esc(sessionTitle)}</strong><br><code>${esc(shortPath(state.session.sessionFile || ''))}</code></p><div class="chips wrap"><span class="chip">${state.session.messageCount ?? 0} mensajes</span>${state.session.pendingMessageCount ? `<span class="chip warn">${state.session.pendingMessageCount} pendientes</span>` : ''}${state.session.isStreaming ? '<span class="chip primary">streaming</span>' : ''}${state.session.isCompacting ? '<span class="chip">compactando</span>' : ''}</div><div class="rename-row"><input id="session-name" value="${esc(state.sessionNameDraft)}" placeholder="Nombre visible"><button class="icon-button mini" id="rename-session">✎</button></div><button class="button full" id="clone-session">Clonar sesión</button>` : `<p class="muted">No hay estado de sesión cargado.</p><button class="button full" id="refresh-session-empty">Refrescar sesión</button>`}</div><div class="activity-section"><div class="section-head"><div><span>⚙</span><strong>Actividad técnica</strong></div><span class="muted">${tools.length} tools</span></div><div class="tool-list">${tools.length ? tools.map(toolCard).join('') : '<p class="muted">Sin tools todavía.</p>'}</div></div><div class="activity-section"><div class="section-head"><div><span>▦</span><strong>Fixvox admin</strong></div></div><div class="data-tabs">${['accounts','devices','policies','usage'].map((tab) => `<button class="data-tab ${state.dataTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`).join('')}</div><div id="admin-data" class="admin-data"></div></div>`
+  renderAdminData()
+}
+function toolCard(tool) {
+  const icon = tool.status === 'error' ? '⚠' : tool.status === 'done' ? '✓' : '◷'
+  return `<details class="tool-card ${esc(tool.status)}" ${tool.status === 'running' ? 'open' : ''}><summary><span class="tool-status">${icon} ${esc(tool.status)}</span><strong>${esc(tool.title || 'tool')}</strong>${tool.subtitle ? `<small>${esc(tool.subtitle)}</small>` : ''}</summary>${tool.body ? `<pre>${esc(tool.body)}</pre>` : ''}</details>`
 }
 function renderAdminData() {
   const box = $('#admin-data'); if (!box) return
   const data = state.adminData
-  if (!data) { box.innerHTML = '<div class="empty">Cargá accounts/devices/policies/usage.</div>'; return }
+  if (!data) { box.innerHTML = '<div class="empty small">Cargá accounts/devices/policies/usage.</div>'; return }
   if (state.dataTab === 'accounts' && Array.isArray(data.accounts)) {
-    box.innerHTML = `<table class="table"><thead><tr><th>Account</th><th>Policy</th><th>Devices</th><th></th></tr></thead><tbody>${data.accounts.map((account) => `<tr><td><strong>${esc(account.accountHandle)}</strong><br><span class="muted">${esc(account.accountIdRedacted)}</span></td><td>${esc(account.policyId || 'device-level')}<br><span class="muted">${esc(account.policyLabel || '')}</span></td><td>${esc(account.deviceCount)}<br><span class="muted">${esc(account.lastSeenAt || '')}</span></td><td><button data-assign-account="${esc(account.accountHandle)}" data-policy="${esc(account.policyId || 'pro')}">Asignar</button></td></tr>`).join('')}</tbody></table>`; return
+    box.innerHTML = `<table><thead><tr><th>Account</th><th>Policy</th><th>Devices</th><th></th></tr></thead><tbody>${data.accounts.map((account) => `<tr><td><strong>${esc(account.accountHandle)}</strong><br><small>${esc(account.accountIdRedacted)}</small></td><td>${esc(account.policyId || 'device-level')}<br><small>${esc(account.policyLabel || '')}</small></td><td>${esc(account.deviceCount)}<br><small>${esc(account.lastSeenAt || '')}</small></td><td><button class="button tiny" data-assign-account="${esc(account.accountHandle)}" data-policy="${esc(account.policyId || 'pro')}">Asignar</button></td></tr>`).join('')}</tbody></table>`; return
   }
   if (state.dataTab === 'devices' && Array.isArray(data.devices)) {
-    box.innerHTML = `<table class="table"><thead><tr><th>Device</th><th>Policy</th><th>Status</th><th></th></tr></thead><tbody>${data.devices.map((device) => `<tr><td><strong>${esc(device.deviceId)}</strong><br><span class="muted">${esc(device.installId)}</span></td><td>${esc(device.policyId || 'none')}<br><span class="muted">${esc(device.policyLabel || '')}</span></td><td>${esc(device.status)}<br><span class="muted">${esc(device.lastSeenAt || '')}</span></td><td><button data-assign-device="${esc(device.deviceId)}" data-policy="${esc(device.policyId || 'pro')}">Asignar</button></td></tr>`).join('')}</tbody></table>`; return
+    box.innerHTML = `<table><thead><tr><th>Device</th><th>Policy</th><th>Status</th><th></th></tr></thead><tbody>${data.devices.map((device) => `<tr><td><strong>${esc(device.deviceId)}</strong><br><small>${esc(device.installId)}</small></td><td>${esc(device.policyId || 'none')}<br><small>${esc(device.policyLabel || '')}</small></td><td>${esc(device.status)}<br><small>${esc(device.lastSeenAt || '')}</small></td><td><button class="button tiny" data-assign-device="${esc(device.deviceId)}" data-policy="${esc(device.policyId || 'pro')}">Asignar</button></td></tr>`).join('')}</tbody></table>`; return
   }
-  box.innerHTML = `<pre class="data">${esc(pretty(data))}</pre>`
+  box.innerHTML = `<pre class="data-pre">${esc(pretty(data))}</pre>`
 }
-function wireEvents() {
-  document.querySelectorAll('[data-quick]').forEach((button) => button.onclick = () => submitPrompt(button.dataset.quick))
-  document.querySelectorAll('[data-tab]').forEach((button) => button.onclick = () => loadAdmin(button.dataset.tab))
-  $('#new-session').onclick = () => newSession().catch(alertError)
-  $('#refresh-session').onclick = () => refreshSession().catch(alertError)
-  $('#abort-pi').onclick = () => abortPi().catch(alertError)
-  $('#abort-inline').onclick = () => abortPi().catch(alertError)
-  $('#composer').onsubmit = (event) => { event.preventDefault(); submitPrompt().catch(alertError) }
-  $('#prompt').onkeydown = (event) => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); submitPrompt().catch(alertError) } }
+function wireDynamicEvents() {
+  document.querySelectorAll('[data-nav]').forEach((button) => button.onclick = () => {
+    const key = button.dataset.nav
+    if (['accounts','devices','policies','usage'].includes(key)) loadAdmin(key).catch(alertError)
+    if (key === 'chat') document.querySelector('.messages')?.scrollIntoView({ block: 'nearest' })
+  })
+  document.querySelectorAll('[data-tab]').forEach((button) => button.onclick = () => loadAdmin(button.dataset.tab).catch(alertError))
   document.querySelectorAll('[data-assign-account]').forEach((button) => button.onclick = () => assignAccountPolicy(button.dataset.assignAccount, button.dataset.policy).catch(alertError))
   document.querySelectorAll('[data-assign-device]').forEach((button) => button.onclick = () => assignDevicePolicy(button.dataset.assignDevice, button.dataset.policy).catch(alertError))
+  const refreshButtons = ['refresh-session','refresh-session-empty']
+  for (const id of refreshButtons) { const el = document.getElementById(id); if (el) el.onclick = () => refreshSession().catch(alertError) }
+  const rename = $('#rename-session'); if (rename) rename.onclick = () => renameSession().catch(alertError)
+  const clone = $('#clone-session'); if (clone) clone.onclick = () => cloneSession().catch(alertError)
+  const name = $('#session-name'); if (name) name.oninput = (event) => { state.sessionNameDraft = event.currentTarget.value }
   document.querySelectorAll('[data-request]').forEach((card) => {
     const id = card.dataset.request
     card.querySelectorAll('[data-option]').forEach((button) => button.onclick = () => respondUiRequest(id, { selected: button.dataset.option, value: button.dataset.option }).catch(alertError))
@@ -297,6 +365,6 @@ function wireEvents() {
 }
 function alertError(error) { alert(error.message || String(error)) }
 
-render()
+renderShell()
 refreshEnv().then(() => refreshHealth()).then(() => refreshSession()).catch(() => {})
 loadAdmin('accounts').catch(() => {})
