@@ -70,24 +70,7 @@ fn attach_close_lifecycle<R: Runtime>(window: WebviewWindow<R>) {
     });
 }
 
-pub fn close_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    eprintln!("[dictation-tauri][settings] close requested by renderer");
-    let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) else {
-        return Ok(());
-    };
-    window
-        .close()
-        .map_err(|error| format!("settings window close failed: {error}"))?;
-    eprintln!("[dictation-tauri][settings] close ok");
-    Ok(())
-}
-
 #[tauri::command]
 pub fn show_settings_window(app: AppHandle) -> Result<(), String> {
     show_settings_window_for_app(&app)
-}
-
-#[tauri::command]
-pub fn close_settings_window(app: AppHandle) -> Result<(), String> {
-    close_settings_window_for_app(&app)
 }

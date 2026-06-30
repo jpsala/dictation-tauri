@@ -21,7 +21,6 @@ describe("SettingsSurface", () => {
     expect(html).toContain("Dictation key editor");
     expect(html).toContain("Alt+Space");
     expect(html).toContain("Check current shortcut");
-    expect(html).toContain("Close Settings");
     expect(html).toContain("Click the field, then press the shortcut.");
     expect(html).toContain("Click to edit");
     expect(html).not.toContain("Use Alt+Space");
@@ -156,8 +155,8 @@ describe("SettingsSurface", () => {
     expect(source).not.toContain("disabled={!isActive}");
     expect(source).toContain("selectedSection === \"hotkeys\"");
     expect(source).toContain("selectedSection === \"cloud\"");
-    expect(source).toContain("close_settings_window");
-    expect(source).toContain("closeSettingsWindow");
+    expect(source).not.toContain("close_settings_window");
+    expect(source).not.toContain("closeSettingsWindow");
     expect(source).toContain("getFixvoxCloudStatus");
     expect(source).toContain("getFixvoxAuthSessionStatus");
     expect(source).toContain("pollFixvoxCloudLogin");

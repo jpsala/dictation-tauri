@@ -245,21 +245,6 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
   const authStatusAccessLabel = loginSignedIn ? "Signed in" : authPolicyView.accessLabel;
   const authStatusUserLabel = loginSignedIn ? (authSessionStatus?.userRedacted ?? "user redacted") : authPolicyView.userLabel;
 
-  async function closeSettingsWindow() {
-    if (!tauriRuntime) {
-      return;
-    }
-
-    try {
-      await invoke("close_settings_window");
-    } catch (error) {
-      setNotice({
-        tone: "warning",
-        message: `Settings close failed: ${formatHotkeyEditReason(error)}`,
-      });
-    }
-  }
-
   async function previewCandidate(nextShortcut = editingShortcut) {
     setBusyAction("preview");
     setApplyResult(undefined);
@@ -593,18 +578,7 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
             <h1 id={`settings-${selectedSection}-title`}>{settingsHeading}</h1>
             <p>{settingsSummary}</p>
           </div>
-          <div className="settings-header-actions">
-            <span className="settings-status-badge">{selectedSectionMeta.state}</span>
-            <button
-              type="button"
-              className="settings-close-button"
-              onClick={() => void closeSettingsWindow()}
-              aria-label="Close Settings"
-              disabled={!tauriRuntime}
-            >
-              Close
-            </button>
-          </div>
+          <span className="settings-status-badge">{selectedSectionMeta.state}</span>
         </header>
 
         {selectedSection === "hotkeys" ? (
