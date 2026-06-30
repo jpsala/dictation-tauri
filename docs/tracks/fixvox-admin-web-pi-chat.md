@@ -105,7 +105,9 @@ Implementacion sugerida:
 - 2026-06-30: token web rotado porque el anterior fue pegado en el chat; service `fixvox-admin-web.service` reiniciado y login + Pi health validados. Se roto nuevamente despues de una segunda exposicion accidental en chat.
 - Checks: `node --check admin/fixvox-web/server.mjs`, `npm run cloud:test` (67/67), `npm run build` OK; VPS health local OK, login OK, `/api/pi-chat/health` OK, `/api/admin/accounts` OK, prompt Pi respondio `FIXVOX_ADMIN_PI_OK`.
 - 2026-06-30: Pi Chat mejorado copiando patrones de Constelaciones: layout chat + side panel, tool logs, pending UI requests, abort/new session/get_state controls, admin data buttons y soporte `extension_ui_response` sin esperar respuesta RPC. Desplegado al VPS y validado con prompt `FIXVOX_ADMIN_CHAT_V2_OK`.
-- Falta polish UX y acciones admin rich; el MVP web ya existe y ya se parece mas al Pi Chat de Constelaciones.
+- 2026-06-30: Admin web dejo de ser HTML inline y paso a mini app completa con assets versionados en `admin/fixvox-web/public/`: `index.html`, `styles.css`, `app.js`. Incluye sidebar, topbar, chat estilo control room, activity/tool panel, tabs accounts/devices/policies/usage, tablas admin y acciones con confirmacion para assign account/device policy. Server `server.mjs` quedo como API/static host.
+- Desplegado al VPS y validado: public `/healthz` OK, `/admin/pi` redirige a login, local login OK, `/api/pi-chat/health` OK, accounts OK, prompt Pi `FIXVOX_FULL_ADMIN_APP_OK` OK.
+- Falta polish incremental, pero el admin ya esta estructurado como app propia y no como parche inline.
 
 ## Proximo Paso Para Nueva Sesion
 
