@@ -102,6 +102,7 @@ Implementacion sugerida:
 - Primer admin web minimo implementado en `admin/fixvox-web/server.mjs`, con `npm run admin:web`, login por token server-side, `/admin/pi`, Pi RPC, health, accounts/devices proxy y guardrails en prompts.
 - Desplegado en VPS como `fixvox-admin-web.service` en `127.0.0.1:8787`, publicado por tunnel en `https://fixvox.jpsala.dev/admin/pi`.
 - Login token vive fuera del repo en `~/.config/dictation-tauri/admin-web.env`; no imprimirlo ni commitearlo. Cloudflare Access queda como mejora posterior.
+- 2026-06-30: token web rotado porque el anterior fue pegado en el chat; service `fixvox-admin-web.service` reiniciado y login + Pi health validados.
 - Checks: `node --check admin/fixvox-web/server.mjs`, `npm run cloud:test` (67/67), `npm run build` OK; VPS health local OK, login OK, `/api/pi-chat/health` OK, `/api/admin/accounts` OK, prompt Pi respondio `FIXVOX_ADMIN_PI_OK`.
 - Falta polish UX y acciones admin rich; el MVP web ya existe.
 
