@@ -23,6 +23,20 @@ function pretty(value) {
   if (typeof value === 'string') return value
   try { return JSON.stringify(value, null, 2) } catch { return String(value) }
 }
+function cleanText(value) {
+  return String(value ?? '')
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/\[[0-9;:]*m/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+function statusLabel(value) {
+  const text = cleanText(value || '')
+  if (!text) return 'Listo'
+  if (/codex|token|left|%|thinking|tool/i.test(text)) return 'Pi está trabajando…'
+  return text.length > 44 ? `${text.slice(0, 41)}…` : text
+}
 function shortPath(value) {
   const text = String(value || '')
   if (text.length <= 42) return text
@@ -153,7 +167,7 @@ async function readSse(body, onEvent) {
   }
 }
 function handlePiEvent(event, assistantId) {
-  if (event.type === 'web_status') { state.status = String(event.status || 'Pi'); renderHeader(); return }
+  if (event.type === 'web_status') { state.status = statusLabel(event.status || 'Pi'); renderHeader(); return }
   if (event.type === 'web_error') { appendMessage(assistantId, `\n\n⚠️ ${event.error || 'Error de Pi'}`); return }
   if (event.type === 'extension_ui_request') { handleUiRequest(event, assistantId); return }
   if (event.type === 'tool_execution_start') {
@@ -185,8 +199,8 @@ function handlePiEvent(event, assistantId) {
 }
 function handleUiRequest(event, assistantId) {
   const method = String(event.method || '')
-  if (method === 'setStatus') { state.status = String(event.statusText || 'Pi'); renderHeader(); return }
-  if (method === 'setTitle') { state.status = String(event.title || 'Pi'); renderHeader(); return }
+  if (method === 'setStatus') { state.status = statusLabel(event.statusText || 'Pi'); renderHeader(); return }
+  if (method === 'setTitle') { state.status = statusLabel(event.title || 'Pi'); renderHeader(); return }
   if (method === 'set_editor_text') { const input = $('#prompt'); if (input) input.value = String(event.text || ''); return }
   if (method === 'notify' || method === 'setWidget') return
   const id = String(event.id || crypto.randomUUID())
@@ -270,7 +284,7 @@ function renderShell() {
 function renderSidebar() {
   const sidebar = $('#sidebar'); if (!sidebar) return
   const nav = [
-    ['Dashboard', '⌂', 'dashboard'], ['Chat', '🤖', 'chat'], ['Accounts', '◎', 'accounts'], ['Devices', '▣', 'devices'], ['Policies', '◆', 'policies'], ['Usage', '◌', 'usage'], ['Mi cuenta', '☻', 'account'],
+    ['Dashboard', 'D', 'dashboard'], ['Chat', 'C', 'chat'], ['Accounts', 'A', 'accounts'], ['Devices', 'V', 'devices'], ['Policies', 'P', 'policies'], ['Usage', 'U', 'usage'], ['Mi cuenta', 'M', 'account'],
   ]
   sidebar.innerHTML = `<div class="drawer-brand"><div><strong>Fixvox</strong><span>Admin y usuarios</span></div></div><div class="drawer-list">${nav.map(([label, icon, key]) => `<button class="drawer-item ${key === 'chat' || key === state.dataTab ? 'selected' : ''}" data-nav="${key}" title="${label}"><span class="drawer-icon">${icon}</span><span class="drawer-text">${label}</span></button>`).join('')}</div><div class="drawer-user"><div>${esc(state.env?.user?.name || state.env?.user?.email || 'Admin')}</div><small>${esc(state.env?.user?.email || state.env?.environment || '')}</small><a href="/logout">Salir</a></div>`
 }
@@ -278,7 +292,7 @@ function renderHeader() {
   const header = $('#topbar'); if (!header) return
   const health = state.health
   const envName = state.env?.environment || 'unknown'
-  header.innerHTML = `<div><div class="title-line"><span class="title-icon">💬</span><h1>Chat</h1></div><p>Consola agentica dentro de Fixvox.</p></div><div class="chips"><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `▶ Pi ${esc(health.piVersion || '')}` : '⚠ Pi no listo'}</span><span class="chip ${state.running ? 'primary' : ''}">${state.running ? '◷' : '✓'} ${esc(state.status)}</span><span class="chip ${state.env?.production ? 'prod' : 'local'}">${esc(envName)}</span></div>`
+  header.innerHTML = `<div><div class="title-line"><span class="title-icon" aria-hidden="true">C</span><h1>Chat</h1></div><p>Consola agentica dentro de Fixvox.</p></div><div class="chips"><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `Pi ${esc(health.piVersion || '')}` : 'Pi no listo'}</span><span class="chip ${state.running ? 'primary' : ''}">${esc(statusLabel(state.status))}</span><span class="chip ${state.env?.production ? 'prod' : 'local'}">${esc(envName)}</span></div>`
   const cwd = $('#cwd-label')
   if (cwd) cwd.innerHTML = health?.ok ? `cwd: <code>${esc(shortPath(health.cwd))}</code> · ${esc(health.process || '')}` : ''
 }
@@ -323,12 +337,14 @@ function renderActivity() {
   const box = $('#activity'); if (!box) return
   const sessionTitle = state.session?.sessionName || state.session?.sessionId || 'sin nombre'
   const tools = [...state.tools.values()].reverse()
-  box.innerHTML = `<div class="activity-section session"><div class="section-head"><div><span>⑂</span><strong>Sesión Pi</strong></div><button class="icon-button mini" id="refresh-session" title="Refrescar sesión">⟳</button></div>${state.session ? `<p><strong>${esc(sessionTitle)}</strong><br><code>${esc(shortPath(state.session.sessionFile || ''))}</code></p><div class="chips wrap"><span class="chip">${state.session.messageCount ?? 0} mensajes</span>${state.session.pendingMessageCount ? `<span class="chip warn">${state.session.pendingMessageCount} pendientes</span>` : ''}${state.session.isStreaming ? '<span class="chip primary">streaming</span>' : ''}${state.session.isCompacting ? '<span class="chip">compactando</span>' : ''}</div><div class="rename-row"><input id="session-name" value="${esc(state.sessionNameDraft)}" placeholder="Nombre visible"><button class="icon-button mini" id="rename-session">✎</button></div><button class="button full" id="clone-session">Clonar sesión</button>` : `<p class="muted">No hay estado de sesión cargado.</p><button class="button full" id="refresh-session-empty">Refrescar sesión</button>`}</div><div class="activity-section"><div class="section-head"><div><span>⚙</span><strong>Actividad técnica</strong></div><span class="muted">${tools.length} tools</span></div><div class="tool-list">${tools.length ? tools.map(toolCard).join('') : '<p class="muted">Sin tools todavía.</p>'}</div></div><div class="activity-section"><div class="section-head"><div><span>▦</span><strong>Fixvox admin</strong></div></div><div class="data-tabs">${['accounts','devices','policies','usage'].map((tab) => `<button class="data-tab ${state.dataTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`).join('')}</div><div id="admin-data" class="admin-data"></div></div>`
+  box.innerHTML = `<div class="activity-section session"><div class="section-head"><div><span class="section-icon">S</span><strong>Sesión Pi</strong></div><button class="icon-button mini" id="refresh-session" title="Refrescar sesión">↻</button></div>${state.session ? `<p><strong>${esc(sessionTitle)}</strong><br><code>${esc(shortPath(state.session.sessionFile || ''))}</code></p><div class="chips wrap"><span class="chip">${state.session.messageCount ?? 0} mensajes</span>${state.session.pendingMessageCount ? `<span class="chip warn">${state.session.pendingMessageCount} pendientes</span>` : ''}${state.session.isStreaming ? '<span class="chip primary">streaming</span>' : ''}${state.session.isCompacting ? '<span class="chip">compactando</span>' : ''}</div><div class="rename-row"><input id="session-name" value="${esc(state.sessionNameDraft)}" placeholder="Nombre visible"><button class="icon-button mini" id="rename-session">✓</button></div><button class="button full" id="clone-session">Clonar sesión</button>` : `<p class="muted">No hay estado de sesión cargado.</p><button class="button full" id="refresh-session-empty">Refrescar sesión</button>`}</div><div class="activity-section"><div class="section-head"><div><span class="section-icon">T</span><strong>Actividad técnica</strong></div><span class="muted">${tools.length} tools</span></div><div class="tool-list">${tools.length ? tools.map(toolCard).join('') : '<p class="muted">Sin tools todavía.</p>'}</div></div><div class="activity-section"><div class="section-head"><div><span class="section-icon">F</span><strong>Fixvox admin</strong></div></div><div class="data-tabs">${['accounts','devices','policies','usage'].map((tab) => `<button class="data-tab ${state.dataTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`).join('')}</div><div id="admin-data" class="admin-data"></div></div>`
   renderAdminData()
 }
 function toolCard(tool) {
-  const icon = tool.status === 'error' ? '⚠' : tool.status === 'done' ? '✓' : '◷'
-  return `<details class="tool-card ${esc(tool.status)}" ${tool.status === 'running' ? 'open' : ''}><summary><span class="tool-status">${icon} ${esc(tool.status)}</span><strong>${esc(tool.title || 'tool')}</strong>${tool.subtitle ? `<small>${esc(tool.subtitle)}</small>` : ''}</summary>${tool.body ? `<pre>${esc(tool.body)}</pre>` : ''}</details>`
+  const title = cleanText(tool.title || 'tool') || 'tool'
+  const subtitle = cleanText(tool.subtitle || '')
+  const body = cleanText(tool.body || '')
+  return `<article class="tool-card ${esc(tool.status)}"><div class="tool-head"><span class="tool-status ${esc(tool.status)}">${esc(tool.status || 'done')}</span><strong>${esc(title)}</strong></div>${subtitle ? `<small>${esc(subtitle)}</small>` : ''}${body ? `<pre>${esc(body)}</pre>` : ''}</article>`
 }
 function renderAdminData() {
   const box = $('#admin-data'); if (!box) return
