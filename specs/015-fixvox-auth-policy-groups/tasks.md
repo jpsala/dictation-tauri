@@ -40,7 +40,7 @@
 
 ## Phase 7: Gated Real Smoke
 
-- [ ] T021 With explicit JP approval, run a redacted login/link smoke against Fixvox Cloud. Browser Google OAuth handoff completed; Tauri polling UX added, device link/policy refresh completion still pending.
+- [ ] T021 With explicit JP approval, run a redacted login/link smoke against Fixvox Cloud. Browser Google OAuth handoff completed and Settings shows redacted signed-in status; device link/policy refresh completion still pending.
 - [ ] T022 With explicit JP approval, verify a signed-in policy group unlocks managed dictation and a denied group fails closed.
 
 ## Guardrails

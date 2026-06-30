@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-30T02:23:49.231Z
+Generated: 2026-06-30T02:57:48.999Z
 
 ## Topics
 
@@ -34,7 +34,7 @@ Generated: 2026-06-30T02:23:49.231Z
 - archived/medium: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md) - updated 2026-06-07
 - active/high: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md) - updated 2026-06-30
 - active/high: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md) - updated 2026-06-10
-- active/high: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md) - updated 2026-06-29
+- active/high: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md) - updated 2026-06-30
 - active/high: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md) - updated 2026-06-29
 
 ## Specs

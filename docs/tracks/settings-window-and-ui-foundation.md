@@ -1,7 +1,7 @@
 ---
 status: active
 started: 2026-06-25
-updated: 2026-06-29
+updated: 2026-06-30
 priority: high
 owner: JP/Pi
 related:
@@ -57,7 +57,7 @@ JP rechazo el primer Settings real por ser demasiado grande. Se reencuadro el tr
 - Superficie actual: `src/settings/SettingsSurface.tsx`.
 - Tema compacto: `src/settings/settings-heroui.css`.
 - Ventana Tauri `settings` reducida a `720x480` (`min 620x420`).
-- Comando Rust `show_settings_window` en `src-tauri/src/settings_window.rs`.
+- Comando Rust `show_settings_window` en `src-tauri/src/settings_window.rs`; la X nativa ahora cierra/destruye Settings y el siguiente open recrea la ventana si falta.
 - Tray `Settings` abre la ventana normal directamente desde Rust (`src-tauri/src/tray.rs`).
 - Se retiro del UI todo lo no-hotkeys: presets, dock toggles, delivery toggles y preview grande.
 - Hotkeys ahora tiene un unico campo editor persistente: click en la hotkey actual -> `Press new shortcut...` -> presionar combinacion. El host valida/registra/persiste en `hotkey-preferences.v1.json` bajo app data Tauri; el renderer no registra shortcuts globales. El recorder evita captura por mero focus/mousedown y de-dupea rearmados mientras esta armed/recording.
@@ -83,7 +83,7 @@ JP rechazo el primer Settings real por ser demasiado grande. Se reencuadro el tr
 - Fit check 720x450: `artifacts/ui-spikes/settings-hotkey-reregistration/20260625-172439/settings-after-tauri-content-check.png`.
 - Checks: `npm run test:pipeline -- tests/settings`, `npm run build`, `npm run visual:check`, `cd src-tauri && CARGO_TARGET_DIR=target/pi-settings-rereg cargo check`.
 
-Hotfix inmediato: si Settings se cerraba con la X, Tauri destruia la ventana y el menu `Settings` quedaba sin respuesta. `settings_window` ahora registra hide-on-close, recrea la ventana si falta y hace show/unminimize/focus al abrir; el tray abre Settings por ruta nativa y loguea error si falla. Test guard: `tests/settings/settings-window-host.test.ts`.
+Hotfix cierre Settings: se probo que `hide-on-close` dejaba friccion y JP no queria boton Close custom. La X nativa ahora se deja cerrar/destruir la ventana (`CloseRequested` sin `prevent_close`) y `show_settings_window` recrea la WebView si falta, luego show/unminimize/focus. Test guard: `tests/settings/settings-window-host.test.ts`. No reintroducir `api.prevent_close()` ni boton Close propio salvo pedido explicito.
 
 Hotfix tray/dock: JP reporto que `Show dock`/`Hide dock` no hacian nada. `dock_shell` ahora mantiene una bandera host-owned de visibilidad para que los updates renderer no re-muestren el dock oculto, conserva el ultimo estado para `Show dock`, usa `ShowWindow(SW_HIDE)` nativo en Windows y el tray loguea errores show/hide. Test guard: `tests/desktop-control/dock-shell-host.test.ts`.
 
