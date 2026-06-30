@@ -2,7 +2,7 @@
 
 Estado vivo del proyecto. Mantener corto.
 
-Ultima actualizacion manual: 2026-06-30 (Settings Cloud Google OAuth UX/polling + Settings X close fixed; runtime parity sigue cerrado).
+Ultima actualizacion manual: 2026-06-30 (Tauri + Cloud consolidados en este repo; T021/T022 signed-in policy smokes pasaron; oportunidades de usuarios registrados abiertas).
 
 ## Regla
 
@@ -44,7 +44,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `012-fixvox-dock-dictation-key` | complete through larger parity follow-ups: Skin4-like dock, Rust/Tauri shell, tray/context menu, default native Alt+Space with fallback, synced/actionable companion window first-slice, bounded result history, side-by-side smoke, and real `paste_sent`/controlled `paste_observed` E2E | `specs/012-fixvox-dock-dictation-key/tasks.md` |
 | `013-fixvox-text-runtime-parity` | complete + archived runtime parity closeout: provider/model/prompt/request/postprocess, Windows cargo tests, runtimePolicy persistence/refresh, preflight cache/prewarm/soft-timeout, audio prep VAD/MP3/no-speech and smoke real redacted. | `specs/013-fixvox-text-runtime-parity/tasks.md`, `docs/tracks/archive/fixvox-effective-runtime-parity.md` |
 | `015-fixvox-auth-policy-groups` | complete through T022: real browser Google OAuth, link/policy, Pro managed dictation unlock, and alpha-basic signed-in denied group fail-closed before provider all passed redacted. | `specs/015-fixvox-auth-policy-groups/tasks.md` |
-| `016-fixvox-cloud-consolidation` | active: Worker copied into `cloud/fixvox-proxy/`, root cloud scripts added, provider-free cloud tests pass; production cutover deploy from this repo completed and T021 rerun passed. | `specs/016-fixvox-cloud-consolidation/tasks.md` |
+| `016-fixvox-cloud-consolidation` | complete: Worker vive en `cloud/fixvox-proxy/`, deploy productivo desde este repo paso, T021/T022 pasaron, `C:/dev/fixvox` queda legacy/reference. | `specs/016-fixvox-cloud-consolidation/tasks.md` |
 
 ## Tracks Activas
 
@@ -54,6 +54,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Estudio de fuentes | `docs/tracks/source-project-study-plan.md` | Plan vivo para Copicu/Fixvox. |
 | Settings/UI foundation | `docs/tracks/settings-window-and-ui-foundation.md` | Decision HeroUI v3 y handoff para pantalla Settings real. |
 | Fixvox Tauri cloud/release | `docs/tracks/fixvox-tauri-cloud-release.md` | Plan para convertir este repo en cliente desktop Fixvox instalable, activable y policy-driven contra Fixvox Cloud. |
+| Usuarios registrados / poder producto | `docs/tracks/fixvox-registered-users-opportunities.md` | Mapa de posibilidades ahora que hay login, device link, authPolicy, capabilities y enforcement Cloud. |
 
 ## Decisiones Vigentes
 
