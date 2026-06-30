@@ -7,6 +7,9 @@ const state = {
   tools: new Map(),
   uiRequests: new Map(),
   dataTab: 'accounts',
+  activeView: 'chat',
+  selectedPolicyId: 'pro',
+  policyDrafts: {},
   adminData: null,
   env: null,
   session: null,
@@ -217,8 +220,7 @@ async function loadAdmin(tab = state.dataTab) {
   state.dataTab = tab
   const endpoints = { accounts: '/api/admin/accounts?limit=50', devices: '/api/admin/devices?limit=50', policies: '/api/admin/policies', usage: '/api/admin/usage' }
   try { state.adminData = await jsonFetch(endpoints[tab]) } catch (error) { state.adminData = { ok: false, error: error.message } }
-  renderSidebar()
-  renderAdminData()
+  renderAll()
 }
 function confirmProductionMutation(description) {
   if (!state.env?.production) return true
@@ -258,7 +260,7 @@ function renderShell() {
           <div id="health-warning"></div>
           <div class="pi-grid">
             <section class="chat-card">
-              <div class="card-strip"><div><strong>Conversación</strong><small>Enter envía · Shift+Enter agrega línea</small></div><span id="cwd-label"></span></div>
+              <div class="card-strip"><div><strong id="main-title">Conversación</strong><small id="main-subtitle">Enter envía · Shift+Enter agrega línea</small></div><span id="cwd-label"></span></div>
               <div class="request-list" id="requests"></div>
               <div class="messages" id="messages"></div>
               <form class="composer" id="composer">
@@ -295,7 +297,7 @@ function renderSidebar() {
   const nav = [
     ['Dashboard', 'D', 'dashboard'], ['Chat', 'C', 'chat'], ['Accounts', 'A', 'accounts'], ['Devices', 'V', 'devices'], ['Policies', 'P', 'policies'], ['Usage', 'U', 'usage'], ['Mi cuenta', 'M', 'account'],
   ]
-  sidebar.innerHTML = `<div class="drawer-brand"><div><strong>Fixvox</strong><span>Admin y usuarios</span></div></div><div class="drawer-list">${nav.map(([label, icon, key]) => `<button class="drawer-item ${key === 'chat' ? 'selected' : ''}" data-nav="${key}" title="${label}"><span class="drawer-icon">${icon}</span><span class="drawer-text">${label}</span></button>`).join('')}</div><div class="drawer-user"><div>${esc(state.env?.user?.name || state.env?.user?.email || 'Admin')}</div><small>${esc(state.env?.user?.email || state.env?.environment || '')}</small><a href="/logout">Salir</a></div>`
+  sidebar.innerHTML = `<div class="drawer-brand"><div><strong>Fixvox</strong><span>Admin y usuarios</span></div></div><div class="drawer-list">${nav.map(([label, icon, key]) => `<button class="drawer-item ${key === state.activeView ? 'selected' : ''}" data-nav="${key}" title="${label}"><span class="drawer-icon">${icon}</span><span class="drawer-text">${label}</span></button>`).join('')}</div><div class="drawer-user"><div>${esc(state.env?.user?.name || state.env?.user?.email || 'Admin')}</div><small>${esc(state.env?.user?.email || state.env?.environment || '')}</small><a href="/logout">Salir</a></div>`
 }
 function renderHeader() {
   const header = $('#topbar'); if (!header) return
@@ -312,6 +314,20 @@ function renderHealthWarning() {
 }
 function renderMessages() {
   const box = $('#messages'); if (!box) return
+  const title = $('#main-title')
+  const subtitle = $('#main-subtitle')
+  const composer = $('#composer')
+  if (state.activeView !== 'chat') {
+    if (title) title.textContent = viewTitle(state.activeView)
+    if (subtitle) subtitle.textContent = 'Control room local-first: ver, comparar y preparar cambios seguros.'
+    if (composer) composer.hidden = true
+    box.innerHTML = renderAdminWorkbench(state.activeView)
+    box.scrollTop = 0
+    return
+  }
+  if (title) title.textContent = 'Conversación'
+  if (subtitle) subtitle.textContent = 'Enter envía · Shift+Enter agrega línea'
+  if (composer) composer.hidden = false
   box.innerHTML = state.messages.length ? state.messages.map((message) => messageBubble(message)).join('') : '<div class="empty-state"><strong>Listo para trabajar</strong><span>Pedile a Pi que revise UI, admin, policies o un cambio local. Nada toca production en modo mock.</span></div>'
   box.scrollTop = box.scrollHeight
   const input = $('#prompt')
@@ -327,6 +343,9 @@ function renderMessages() {
     send.setAttribute('aria-label', send.title)
     send.classList.toggle('danger', state.running)
   }
+}
+function viewTitle(view) {
+  return { accounts: 'Accounts', devices: 'Devices', policies: 'Policies', usage: 'Usage' }[view] || 'Fixvox Admin'
 }
 function messageBubble(message) {
   const role = message.role === 'user' ? (state.env?.user?.name || 'Vos') : message.role === 'system' ? 'Sistema' : 'Pi'
@@ -365,6 +384,76 @@ function toolCard(tool) {
   const body = cleanText(tool.body || '')
   return `<article class="tool-card ${esc(tool.status)}"><div class="tool-head"><span class="tool-dot ${esc(tool.status)}"></span><div class="tool-title"><strong>${esc(title)}</strong>${subtitle ? `<small>${esc(subtitle)}</small>` : ''}</div><span class="tool-status ${esc(tool.status)}">${esc(tool.status || 'done')}</span></div>${body ? `<pre>${esc(body)}</pre>` : ''}</article>`
 }
+
+function currentAdminData(view = state.activeView) {
+  return view === state.dataTab ? state.adminData : null
+}
+function policyRowsFromData(data) {
+  if (!data) return []
+  if (Array.isArray(data.policies)) return data.policies.map((policy) => ({ ...policy, policyId: policy.id || policy.policyId, policyLabel: policy.label || policy.policyLabel || policy.id }))
+  if (Array.isArray(data.policyOptions)) return data.policyOptions.map((policy) => typeof policy === 'string' ? { policyId: policy, policyLabel: policy, capabilities: [] } : { ...policy, policyId: policy.policyId || policy.id, policyLabel: policy.policyLabel || policy.label || policy.policyId || policy.id, capabilities: policy.capabilities || [] })
+  return []
+}
+function policyUsage(policyId) {
+  const accounts = state.dataTab === 'accounts' && Array.isArray(state.adminData?.accounts) ? state.adminData.accounts : []
+  const devices = state.dataTab === 'devices' && Array.isArray(state.adminData?.devices) ? state.adminData.devices : []
+  return { accounts: accounts.filter((item) => item.policyId === policyId).length, devices: devices.filter((item) => item.policyId === policyId).length }
+}
+function renderAdminWorkbench(view) {
+  const data = currentAdminData(view)
+  if (!data) return `<div class="admin-workbench loading"><strong>Cargando ${esc(viewTitle(view))}…</strong></div>`
+  if (data.ok === false) return `<div class="alert warning"><strong>No se pudo cargar ${esc(viewTitle(view))}</strong><br>${esc(data.error || 'Error desconocido')}</div>`
+  if (view === 'accounts') return renderAccountsWorkbench(data)
+  if (view === 'devices') return renderDevicesWorkbench(data)
+  if (view === 'policies') return renderPoliciesWorkbench(data)
+  if (view === 'usage') return renderUsageWorkbench(data)
+  return `<pre class="data-pre">${esc(pretty(data))}</pre>`
+}
+function renderAccountsWorkbench(data) {
+  const accounts = Array.isArray(data.accounts) ? data.accounts : []
+  return `<div class="admin-workbench"><div class="workbench-head"><div><span class="eyebrow">Accounts</span><h2>Cuentas registradas</h2><p>Ver cuenta, policy efectiva, devices vinculados y preparar asignaciones seguras.</p></div><button class="button" data-chat-context="Mostrame un resumen de las accounts registradas y posibles acciones seguras." data-chat-label="Resumen accounts">Preguntar a Pi</button></div><div class="entity-grid">${accounts.map((account) => `<article class="entity-card"><div class="entity-card-head"><div><strong>${esc(account.accountHandle)}</strong><small>${esc(account.accountIdRedacted || 'account redacted')}</small></div><span class="policy-badge">${esc(account.policyLabel || account.policyId || 'device-level')}</span></div><div class="entity-meta"><span>${esc(account.deviceCount ?? 0)} devices</span><span>${esc(account.lastSeenAt || 'sin actividad')}</span></div><div class="entity-actions"><button class="button tiny" data-assign-account="${esc(account.accountHandle)}" data-policy="${esc(account.policyId || 'pro')}">Asignar policy</button><button class="button tiny" data-chat-context="Explicame la cuenta ${esc(account.accountHandle)} y qué policy conviene asignarle." data-chat-label="Analizar ${esc(account.accountHandle)}">Analizar con Pi</button></div></article>`).join('') || '<div class="empty-state"><strong>Sin accounts</strong><span>No hay cuentas para mostrar.</span></div>'}</div></div>`
+}
+function renderDevicesWorkbench(data) {
+  const devices = Array.isArray(data.devices) ? data.devices : []
+  return `<div class="admin-workbench"><div class="workbench-head"><div><span class="eyebrow">Devices</span><h2>Dispositivos</h2><p>Estado, install, policy efectiva y actividad reciente.</p></div><button class="button" data-chat-context="Mostrame un resumen de devices activos, policies y riesgos." data-chat-label="Resumen devices">Preguntar a Pi</button></div><div class="entity-grid">${devices.map((device) => `<article class="entity-card"><div class="entity-card-head"><div><strong>${esc(device.deviceId)}</strong><small>${esc(device.installId || '')}</small></div><span class="policy-badge">${esc(device.policyLabel || device.policyId || 'none')}</span></div><div class="entity-meta"><span>${esc(device.status || 'unknown')}</span><span>${esc(device.lastSeenAt || 'sin actividad')}</span></div><div class="entity-actions"><button class="button tiny" data-assign-device="${esc(device.deviceId)}" data-policy="${esc(device.policyId || 'pro')}">Asignar policy</button><button class="button tiny" data-chat-context="Revisá el device ${esc(device.deviceId)}: estado, policy y acciones recomendadas." data-chat-label="Analizar device">Analizar con Pi</button></div></article>`).join('') || '<div class="empty-state"><strong>Sin devices</strong><span>No hay dispositivos para mostrar.</span></div>'}</div></div>`
+}
+function renderPoliciesWorkbench(data) {
+  const policies = policyRowsFromData(data)
+  const selected = policies.find((policy) => (policy.policyId || policy.id) === state.selectedPolicyId) || policies[0]
+  if (selected && !state.selectedPolicyId) state.selectedPolicyId = selected.policyId || selected.id
+  const selectedId = selected?.policyId || selected?.id || 'policy'
+  const draft = state.policyDrafts[selectedId] || { capabilities: [...(selected?.capabilities || [])], label: selected?.policyLabel || selected?.label || selectedId }
+  const usage = policyUsage(selectedId)
+  return `<div class="admin-workbench policies-workbench"><div class="workbench-head"><div><span class="eyebrow">Policies</span><h2>Policy explorer</h2><p>Ver, comparar y preparar ediciones. En mock, guardar solo cambia el draft local.</p></div><button class="button" data-chat-context="Compará las policies disponibles y recomendame una estructura para usuarios registrados." data-chat-label="Comparar policies">Comparar con Pi</button></div><div class="policy-layout"><div class="policy-column">${policies.map((policy) => { const id = policy.policyId || policy.id; return `<button class="policy-row ${id === selectedId ? 'active' : ''}" data-policy-select="${esc(id)}"><strong>${esc(policy.policyLabel || policy.label || id)}</strong><small>${esc(id)} · ${(policy.capabilities || []).length} capabilities</small></button>` }).join('') || '<p class="muted">Sin policies.</p>'}</div>${selected ? `<section class="policy-detail"><div class="entity-card-head"><div><span class="eyebrow">Detalle</span><h3>${esc(draft.label || selectedId)}</h3><small>${esc(selectedId)}</small></div><span class="policy-badge">${usage.accounts} accounts · ${usage.devices} devices</span></div><div class="cap-editor"><strong>Capabilities</strong>${['dictation','managed_stt','advanced_settings','debug_tools','managed_postprocess'].map((cap) => `<label><input type="checkbox" data-policy-id="${esc(selectedId)}" data-toggle-cap="${esc(cap)}" ${draft.capabilities.includes(cap) ? 'checked' : ''}> ${esc(cap)}</label>`).join('')}</div><div class="policy-diff"><strong>Draft diff</strong><pre>${esc(policyDiff(selected, draft))}</pre></div><div class="entity-actions"><button class="button primary" data-save-policy="${esc(selectedId)}">Guardar draft local</button><button class="button" data-chat-context="Explicame la policy ${esc(selectedId)} y el impacto de sus capabilities: ${esc(draft.capabilities.join(', '))}" data-chat-label="Explicar policy ${esc(selectedId)}">Explicar con Pi</button></div></section>` : ''}</div></div>`
+}
+function renderUsageWorkbench(data) {
+  const summary = data.summary || data
+  const rows = Array.isArray(data.rows) ? data.rows : []
+  return `<div class="admin-workbench"><div class="workbench-head"><div><span class="eyebrow">Usage</span><h2>Uso y quotas</h2><p>Resumen de consumo para detectar cuentas activas, riesgo de quota y costo.</p></div><button class="button" data-chat-context="Analizá usage/quota y detectá riesgos o próximos límites." data-chat-label="Analizar usage">Analizar con Pi</button></div><div class="usage-grid big"><article class="metric"><span>Accounts</span><strong>${esc(summary.accounts ?? '-')}</strong></article><article class="metric"><span>Devices</span><strong>${esc(summary.activeDevices ?? summary.devices ?? '-')}</strong></article><article class="metric"><span>Requests 24h</span><strong>${esc(summary.managedRequests24h ?? '-')}</strong></article><article class="metric"><span>Cost 24h</span><strong>${esc(summary.estimatedCostUsd24h ?? '-')}</strong></article></div><div class="entity-grid compact">${rows.map((row) => `<article class="entity-card"><strong>${esc(row.accountHandle || '-')}</strong><div class="entity-meta"><span>${esc(row.managedRequests24h ?? '-')} requests</span><span>${esc(row.quotaStatus || '-')}</span></div></article>`).join('') || '<p class="muted">Sin rows de usage.</p>'}</div></div>`
+}
+function policyDiff(original, draft) {
+  const before = { label: original.policyLabel || original.label || original.policyId || original.id, capabilities: original.capabilities || [] }
+  const after = { label: draft.label, capabilities: draft.capabilities || [] }
+  return JSON.stringify({ before, after }, null, 2)
+}
+function togglePolicyCapability(policyId, capability) {
+  const data = currentAdminData('policies') || state.adminData
+  const original = policyRowsFromData(data).find((policy) => (policy.policyId || policy.id) === policyId) || { policyId, capabilities: [] }
+  const draft = state.policyDrafts[policyId] || { capabilities: [...(original.capabilities || [])], label: original.policyLabel || original.label || policyId }
+  const set = new Set(draft.capabilities || [])
+  if (set.has(capability)) set.delete(capability); else set.add(capability)
+  state.policyDrafts[policyId] = { ...draft, capabilities: [...set] }
+  renderMessages(); wireDynamicEvents()
+}
+async function savePolicyDraft(policyId) {
+  const draft = state.policyDrafts[policyId]
+  if (!draft) return
+  if (state.env?.production && !confirmProductionMutation(`guardar policy ${policyId}`)) return
+  addMessage('system', `Draft local de policy ${policyId} guardado en memoria. Falta endpoint Worker para persistir templates.`)
+  state.activeView = 'chat'
+  renderAll()
+}
+
 function renderAdminData() {
   const box = $('#admin-data'); if (!box) return
   const data = state.adminData
@@ -389,10 +478,15 @@ function renderAdminData() {
 function wireDynamicEvents() {
   document.querySelectorAll('[data-nav]').forEach((button) => button.onclick = () => {
     const key = button.dataset.nav
-    if (['accounts','devices','policies','usage'].includes(key)) loadAdmin(key).catch(alertError)
-    if (key === 'chat') document.querySelector('.messages')?.scrollIntoView({ block: 'nearest' })
+    if (key === 'chat') { state.activeView = 'chat'; renderAll(); return }
+    if (['accounts','devices','policies','usage'].includes(key)) { state.activeView = key; loadAdmin(key).catch(alertError); renderAll() }
   })
-  document.querySelectorAll('[data-tab]').forEach((button) => button.onclick = () => loadAdmin(button.dataset.tab).catch(alertError))
+  document.querySelectorAll('[data-tab]').forEach((button) => button.onclick = () => { state.dataTab = button.dataset.tab; loadAdmin(button.dataset.tab).catch(alertError) })
+  document.querySelectorAll('[data-open-view]').forEach((button) => button.onclick = () => { state.activeView = button.dataset.openView; loadAdmin(button.dataset.openView).catch(alertError); renderAll() })
+  document.querySelectorAll('[data-policy-select]').forEach((button) => button.onclick = () => { state.selectedPolicyId = button.dataset.policySelect; renderMessages(); wireDynamicEvents() })
+  document.querySelectorAll('[data-toggle-cap]').forEach((button) => button.onclick = () => togglePolicyCapability(button.dataset.policyId, button.dataset.toggleCap))
+  document.querySelectorAll('[data-save-policy]').forEach((button) => button.onclick = () => savePolicyDraft(button.dataset.savePolicy).catch(alertError))
+  document.querySelectorAll('[data-chat-context]').forEach((button) => button.onclick = () => { state.activeView = 'chat'; renderAll(); submitPrompt(button.dataset.chatContext, button.dataset.chatLabel || button.textContent).catch(alertError) })
   document.querySelectorAll('[data-assign-account]').forEach((button) => button.onclick = () => assignAccountPolicy(button.dataset.assignAccount, button.dataset.policy).catch(alertError))
   document.querySelectorAll('[data-assign-device]').forEach((button) => button.onclick = () => assignDevicePolicy(button.dataset.assignDevice, button.dataset.policy).catch(alertError))
   const refreshButtons = ['refresh-session','refresh-session-empty']

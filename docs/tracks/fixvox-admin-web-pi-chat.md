@@ -113,6 +113,38 @@ Implementacion sugerida:
 - Desplegado al VPS y validado: public `/healthz` OK, `/admin/pi` redirige a login, local login OK, `/api/pi-chat/health` OK, accounts OK, prompt Pi `FIXVOX_FULL_ADMIN_APP_OK` OK.
 - Feedback JP 2026-06-30: el admin actual sigue distinto al de `C:/dev/constelaciones`; faltan sidebar, comportamiento del input, chat y otros detalles de la experiencia. Se hizo una primera pasada de paridad UX: sidebar estilo AdminLayout claro, header/chat/card/input/activity panel mas cercano a Constelaciones, Enter envia y Shift+Enter baja linea, session state/rename/clone, tool cards tipo details y admin tabs en activity panel. Desplegado al VPS; browser smoke real con Google login activo respondio `FIXVOX_UX_PARITY_OK`. Todavia requiere comparacion visual fina lado-a-lado antes de declararlo completamente equivalente.
 
+## Plan Control Room Accounts / Devices / Policies / Usage
+
+Objetivo inmediato: convertir el admin de Fixvox en un control room operativo donde JP pueda trabajar por pantalla o por Pi Chat sobre las entidades reales del dominio.
+
+### Fase A - Local Mock Rapido
+
+- Sidebar cambia el panel principal, no solo el panel derecho.
+- `Accounts`: cards/listado completo, detalle seleccionable, devices vinculados, policy efectiva y accion segura de asignar policy.
+- `Devices`: cards/listado completo, account/policy/status/last seen, accion segura de asignar policy.
+- `Policies`: explorer visual con cards, detalle, capabilities, quotas/model routing cuando existan, editor local/mock con diff antes de guardar.
+- `Usage`: metric cards + tabla por account/device, con alertas visuales.
+- Pi Chat debe conocer el contexto visual: pantalla activa + entidad seleccionada, para poder responder/operar sobre ella.
+- Validacion: browser localhost mock, sin Worker/Pi/VPS real.
+
+### Fase B - API Real Readonly
+
+- Conectar las pantallas al Worker real a traves del server admin, siempre con `ADMIN_API_KEY` server-side.
+- Mantener datos redacted en browser.
+- Agregar detalle real donde el Worker ya lo exponga; si falta endpoint, documentar gap y crear endpoint en batch separado.
+
+### Fase C - Mutaciones Seguras
+
+- Account/device policy assignment ya existe: moverlo del prompt/panel chico a acciones de pantalla.
+- Policy create/edit requiere primero endpoint Worker explicito con tests: draft -> diff -> confirmacion -> persistencia.
+- En production exigir confirmacion `PROD`; en local/mock permitir guardar solo en memoria.
+
+### Fase D - Chat Como Orquestador
+
+- Desde chat: "mostrame accounts", "abrí policy pro", "compará alpha-basic vs pro", "prepará una policy beta".
+- Renderizar respuestas como componentes: cards, diffs, confirmaciones y botones.
+- Nunca ejecutar push/deploy/systemd/tunnel/policy mutations sin confirmacion explicita.
+
 ## Proximo Paso Para Nueva Sesion
 
 Arrancar con objetivo:
