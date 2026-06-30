@@ -286,7 +286,7 @@ function renderSidebar() {
   const nav = [
     ['Dashboard', 'D', 'dashboard'], ['Chat', 'C', 'chat'], ['Accounts', 'A', 'accounts'], ['Devices', 'V', 'devices'], ['Policies', 'P', 'policies'], ['Usage', 'U', 'usage'], ['Mi cuenta', 'M', 'account'],
   ]
-  sidebar.innerHTML = `<div class="drawer-brand"><div><strong>Fixvox</strong><span>Admin y usuarios</span></div></div><div class="drawer-list">${nav.map(([label, icon, key]) => `<button class="drawer-item ${key === 'chat' || key === state.dataTab ? 'selected' : ''}" data-nav="${key}" title="${label}"><span class="drawer-icon">${icon}</span><span class="drawer-text">${label}</span></button>`).join('')}</div><div class="drawer-user"><div>${esc(state.env?.user?.name || state.env?.user?.email || 'Admin')}</div><small>${esc(state.env?.user?.email || state.env?.environment || '')}</small><a href="/logout">Salir</a></div>`
+  sidebar.innerHTML = `<div class="drawer-brand"><div><strong>Fixvox</strong><span>Admin y usuarios</span></div></div><div class="drawer-list">${nav.map(([label, icon, key]) => `<button class="drawer-item ${key === 'chat' ? 'selected' : ''}" data-nav="${key}" title="${label}"><span class="drawer-icon">${icon}</span><span class="drawer-text">${label}</span></button>`).join('')}</div><div class="drawer-user"><div>${esc(state.env?.user?.name || state.env?.user?.email || 'Admin')}</div><small>${esc(state.env?.user?.email || state.env?.environment || '')}</small><a href="/logout">Salir</a></div>`
 }
 function renderHeader() {
   const header = $('#topbar'); if (!header) return
@@ -341,6 +341,7 @@ function renderActivity() {
   const hiddenToolCount = Math.max(0, tools.length - visibleTools.length)
   box.innerHTML = `<div class="activity-section session"><div class="section-head"><div><span class="section-icon">S</span><strong>Sesión Pi</strong></div><button class="icon-button mini" id="refresh-session" title="Refrescar sesión">↻</button></div>${state.session ? `<p><strong>${esc(sessionTitle)}</strong><br><code>${esc(shortPath(state.session.sessionFile || ''))}</code></p><div class="chips wrap"><span class="chip">${state.session.messageCount ?? 0} mensajes</span>${state.session.pendingMessageCount ? `<span class="chip warn">${state.session.pendingMessageCount} pendientes</span>` : ''}${state.session.isStreaming ? '<span class="chip primary">streaming</span>' : ''}${state.session.isCompacting ? '<span class="chip">compactando</span>' : ''}</div><div class="rename-row"><input id="session-name" value="${esc(state.sessionNameDraft)}" placeholder="Nombre visible"><button class="icon-button mini" id="rename-session">✓</button></div><button class="button full" id="clone-session">Clonar sesión</button>` : `<p class="muted">No hay estado de sesión cargado.</p><button class="button full" id="refresh-session-empty">Refrescar sesión</button>`}</div><div class="activity-section"><div class="section-head"><div><span class="section-icon">T</span><strong>Actividad técnica</strong></div><span class="muted">${tools.length} tools</span></div><div class="tool-list">${visibleTools.length ? visibleTools.map(toolCard).join('') : '<p class="muted">Sin tools todavía.</p>'}</div>${hiddenToolCount ? `<p class="muted tool-overflow-note">+ ${hiddenToolCount} tools anteriores ocultas para mantener el panel limpio.</p>` : ''}</div><div class="activity-section"><div class="section-head"><div><span class="section-icon">F</span><strong>Fixvox admin</strong></div></div><div class="data-tabs">${['accounts','devices','policies','usage'].map((tab) => `<button class="data-tab ${state.dataTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`).join('')}</div><div id="admin-data" class="admin-data"></div></div>`
   renderAdminData()
+  wireDynamicEvents()
 }
 function toolCard(tool) {
   const title = cleanText(tool.title || 'tool') || 'tool'
@@ -357,6 +358,15 @@ function renderAdminData() {
   }
   if (state.dataTab === 'devices' && Array.isArray(data.devices)) {
     box.innerHTML = `<table><thead><tr><th>Device</th><th>Policy</th><th>Status</th><th></th></tr></thead><tbody>${data.devices.map((device) => `<tr><td><strong>${esc(device.deviceId)}</strong><br><small>${esc(device.installId)}</small></td><td>${esc(device.policyId || 'none')}<br><small>${esc(device.policyLabel || '')}</small></td><td>${esc(device.status)}<br><small>${esc(device.lastSeenAt || '')}</small></td><td><button class="button tiny" data-assign-device="${esc(device.deviceId)}" data-policy="${esc(device.policyId || 'pro')}">Asignar</button></td></tr>`).join('')}</tbody></table>`; return
+  }
+  const policies = Array.isArray(data.policies) ? data.policies : Array.isArray(data.policyOptions) ? data.policyOptions.map((id) => ({ id, label: id })) : []
+  if (state.dataTab === 'policies' && policies.length) {
+    box.innerHTML = `<div class="policy-list">${policies.map((policy) => `<article class="mini-card"><strong>${esc(policy.label || policy.id)}</strong><small>${esc(policy.id)}</small><div class="cap-list">${(policy.capabilities || []).map((cap) => `<span>${esc(cap)}</span>`).join('') || '<span>policy</span>'}</div></article>`).join('')}</div>`; return
+  }
+  if (state.dataTab === 'usage') {
+    const summary = data.summary || data
+    const rows = Array.isArray(data.rows) ? data.rows : []
+    box.innerHTML = `<div class="usage-grid"><article class="metric"><span>Accounts</span><strong>${esc(summary.accounts ?? '-')}</strong></article><article class="metric"><span>Devices</span><strong>${esc(summary.activeDevices ?? summary.devices ?? '-')}</strong></article><article class="metric"><span>Requests 24h</span><strong>${esc(summary.managedRequests24h ?? '-')}</strong></article><article class="metric"><span>Cost 24h</span><strong>${esc(summary.estimatedCostUsd24h ?? '-')}</strong></article></div>${rows.length ? `<table><thead><tr><th>Account</th><th>Requests</th><th>Quota</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${esc(row.accountHandle || '-')}</td><td>${esc(row.managedRequests24h ?? '-')}</td><td>${esc(row.quotaStatus || '-')}</td></tr>`).join('')}</tbody></table>` : ''}`; return
   }
   box.innerHTML = `<pre class="data-pre">${esc(pretty(data))}</pre>`
 }

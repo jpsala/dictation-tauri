@@ -269,3 +269,14 @@ td small { color: #667085; }
 .tool-overflow-note { margin: 8px 0 0; font-size: 12px; }
 .admin-data { max-height: 260px; }
 .activity-section.session p code { word-break: break-all; }
+
+.policy-list { display: grid; gap: 8px; }
+.mini-card { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; padding: 10px; }
+.mini-card strong { display: block; color: #172033; }
+.mini-card small { display: block; color: #667085; margin-top: 2px; }
+.cap-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.cap-list span { border: 1px solid #dbe4f0; border-radius: 999px; background: #f8fafc; color: #475467; padding: 2px 7px; font-size: 11px; font-weight: 750; }
+.usage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.metric { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; padding: 10px; }
+.metric span { display: block; color: #667085; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.metric strong { display: block; margin-top: 3px; font-size: 18px; }
