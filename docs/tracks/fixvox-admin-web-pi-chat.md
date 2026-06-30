@@ -128,6 +128,19 @@ Primer small batch recomendado:
 5. Validar con browser real/screenshot comparando contra Constelaciones; no declarar completo si visual/comportamiento sigue claramente distinto.
 6. Checks: `node --check admin/fixvox-web/server.mjs`, `node --check admin/fixvox-web/public/app.js`, `npm run cloud:test`, smoke remoto Google login + Pi prompt.
 
+## Contrato Agentico Para El Chat
+
+Para que el Fixvox Admin Pi Chat se parezca a Constelaciones no alcanza con CSS: el agente debe trabajar con un contrato de dominio visible para la UI.
+
+- Las respuestas deben preferir componentes accionables cuando haya decision o side effect: confirmacion, selector, status card, tool card, request pendiente.
+- El chat debe mantener separacion clara entre conversacion, actividad tecnica y datos admin; no volcar logs/tool output como texto principal salvo que sea resumen util.
+- El agente debe usar nombres/entidades de dominio Fixvox: accounts, devices, policies, usage/quota, Worker, Tauri host, VPS admin web.
+- Acciones de riesgo siempre como pedido/confirmacion UI antes de ejecutar: production policy/user mutations, deploy, push, tunnel, systemd, secretos.
+- No imprimir tokens, raw account IDs/emails completos, device IDs completos, transcripts/audio/selected text.
+- El input/chat debe respetar el modelo Constelaciones: Enter envia, Shift+Enter baja linea, streaming incremental, abort visible, new session visible, pending UI requests renderizadas como cards.
+- La UI debe mostrar tool activity en panel lateral compacto; si hay muchas tools, resumir/ocultar antiguas para no degradar la lectura.
+- Cada tanda de mejora visual debe validarse con screenshot real contra Constelaciones antes de declararse equivalente.
+
 ## Guardrails
 
 - No push sin aprobacion explicita.
