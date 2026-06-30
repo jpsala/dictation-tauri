@@ -37,10 +37,15 @@ Objetivo: iterar sin tocar usuarios reales ni Cloudflare production KV/DO.
 - Token local por defecto: `local-dev-token` (solo dev, no secreto real)
 - Worker vars: `cloud/fixvox-proxy/.dev.vars` (gitignored)
 - Banner UI: `LOCAL`
+- Para polish visual/chat sin depender de Worker/Pi/VPS, usar mock local: `npm run admin:web:local -- -Mock`. Esto setea `FIXVOX_ADMIN_MOCK=1`, auto-login mock y fixtures de health/session/tools/accounts/devices/policies/usage.
 
 Comandos:
 
 ```bash
+# UI/chat polish sin infra real
+npm run admin:web:local -- -Mock
+
+# Integracion local con Worker dev real
 npm run cloud:dev:local
 npm run admin:web:local
 ```
@@ -54,6 +59,8 @@ FIXVOX_ADMIN_HOST=127.0.0.1
 FIXVOX_ADMIN_BASE_URL=http://127.0.0.1:8787
 FIXVOX_ADMIN_WEB_TOKEN=local-dev-token
 PI_CHAT_CWD=<repo local>
+# Solo con -Mock:
+FIXVOX_ADMIN_MOCK=1
 ```
 
 ### Produccion

@@ -26,6 +26,7 @@ const WEB_TOKEN = process.env.FIXVOX_ADMIN_WEB_TOKEN || process.env.FIXVOX_ADMIN
 const GOOGLE_CLIENT_ID = process.env.FIXVOX_ADMIN_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLOUD_CLIENT_ID || ''
 const GOOGLE_CLIENT_SECRET = process.env.FIXVOX_ADMIN_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLOUD_CLIENT_SECRET || ''
 const ALLOWED_EMAILS = new Set(String(process.env.FIXVOX_ADMIN_ALLOWED_EMAILS || '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean))
+const MOCK_MODE = process.env.FIXVOX_ADMIN_MOCK === '1'
 
 function loadEnvFile(file) {
   if (!file || !fs.existsSync(file)) return
@@ -172,6 +173,7 @@ async function getPiVersion() {
 }
 
 function readSession(req) {
+  if (MOCK_MODE) return { provider: 'mock', email: 'local@fixvox.dev', name: 'Local Fixvox', expiresAt: Date.now() + 86400000 }
   const cookie = req.headers.cookie || ''
   const match = cookie.match(/(?:^|;\s*)fixvox_admin_session=([^;]+)/)
   const token = match?.[1]
@@ -243,6 +245,94 @@ async function proxyAdmin(pathname, method = 'GET', body) {
   const payload = text ? JSON.parse(text) : null
   if (!response.ok) throw Object.assign(new Error(payload?.error?.message || 'Fixvox admin request failed'), { status: response.status, payload })
   return payload
+}
+
+
+function mockSessionState() {
+  return {
+    sessionId: 'mock-local-session',
+    sessionName: 'fixvox-local-ui-lab',
+    sessionFile: path.join(PI_CWD, '.pi', 'sessions', 'fixvox-local-ui-lab.jsonl'),
+    messageCount: 12,
+    pendingMessageCount: 0,
+    isStreaming: false,
+    isCompacting: false,
+    model: { provider: 'openai', id: 'gpt-5', name: 'GPT-5' },
+    followUpMode: 'auto',
+    steeringMode: 'normal',
+  }
+}
+function mockAccounts() {
+  return {
+    ok: true,
+    accounts: [
+      { accountHandle: 'acc_jp_owner', accountIdRedacted: 'account redacted', policyId: 'pro', policyLabel: 'Pro', deviceCount: 2, lastSeenAt: '2026-06-30T14:20:00.000Z' },
+      { accountHandle: 'acc_alpha_team', accountIdRedacted: 'account redacted', policyId: 'alpha-full', policyLabel: 'Alpha full', deviceCount: 1, lastSeenAt: '2026-06-30T13:10:00.000Z' },
+      { accountHandle: 'acc_trial_user', accountIdRedacted: 'account redacted', policyId: 'alpha-basic', policyLabel: 'Alpha basic', deviceCount: 1, lastSeenAt: '2026-06-29T22:44:00.000Z' },
+    ],
+    nextCursor: null,
+    policyOptions: ['alpha-basic', 'alpha-full', 'alpha-private', 'pro'],
+    redacted: true,
+  }
+}
+function mockDevices() {
+  return {
+    ok: true,
+    devices: [
+      { deviceId: 'dev_redacted_owner', installId: 'install_redacted_a', policyId: 'pro', policyLabel: 'Pro', status: 'active', lastSeenAt: '2026-06-30T14:20:00.000Z' },
+      { deviceId: 'dev_redacted_laptop', installId: 'install_redacted_b', policyId: 'alpha-full', policyLabel: 'Alpha full', status: 'active', lastSeenAt: '2026-06-30T13:10:00.000Z' },
+    ],
+    policyOptions: ['alpha-basic', 'alpha-full', 'alpha-private', 'pro'],
+    redacted: true,
+  }
+}
+function mockPolicies() {
+  return {
+    ok: true,
+    policies: [
+      { id: 'pro', label: 'Pro', capabilities: ['dictation', 'managed_stt', 'advanced_settings'] },
+      { id: 'alpha-full', label: 'Alpha full', capabilities: ['dictation', 'managed_stt'] },
+      { id: 'alpha-basic', label: 'Alpha basic', capabilities: ['dictation'] },
+    ],
+    redacted: true,
+  }
+}
+function mockUsage() {
+  return {
+    ok: true,
+    summary: { accounts: 3, activeDevices: 4, managedRequests24h: 18, estimatedCostUsd24h: 0.42 },
+    rows: [
+      { accountHandle: 'acc_jp_owner', managedRequests24h: 12, quotaStatus: 'ok' },
+      { accountHandle: 'acc_alpha_team', managedRequests24h: 6, quotaStatus: 'ok' },
+    ],
+    redacted: true,
+  }
+}
+async function mockPrompt(message, send) {
+  send({ type: 'web_status', status: 'Pi está trabajando…' })
+  const toolId = `mock-tool-${Date.now()}`
+  send({ type: 'tool_execution_start', toolCallId: toolId, toolName: 'fixvox.local_ui_probe', extensionPath: 'mock/local' })
+  await new Promise((resolve) => setTimeout(resolve, 120))
+  send({ type: 'tool_execution_end', toolCallId: toolId, toolName: 'fixvox.local_ui_probe', result: { ok: true, checked: ['sidebar', 'chat', 'composer', 'activity'] } })
+  const text = message.includes('FIXVOX')
+    ? 'FIXVOX_LOCAL_MOCK_OK'
+    : 'Modo local mock listo. Puedo probar sidebar, input, chat, streaming, tools, session state y componentes sin tocar VPS ni production.'
+  send({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: text } })
+  send({ type: 'agent_end' })
+}
+function mockCommand(command) {
+  if (command?.type === 'get_state') return { ok: true, response: { data: mockSessionState() } }
+  if (command?.type === 'new_session') return { ok: true, response: { data: mockSessionState() } }
+  if (command?.type === 'set_session_name') return { ok: true, response: { data: { ...mockSessionState(), sessionName: command.name || 'fixvox-local-ui-lab' } } }
+  if (command?.type === 'clone') return { ok: true, response: { data: { ...mockSessionState(), sessionName: 'fixvox-local-ui-lab-clone' } } }
+  return { ok: true, response: { data: { accepted: true, commandType: command?.type || 'unknown' } } }
+}
+function mockAdmin(pathname) {
+  if (pathname === '/api/admin/accounts' || pathname === '/api/admin/accounts/policy') return mockAccounts()
+  if (pathname === '/api/admin/devices' || pathname === '/api/admin/devices/policy') return mockDevices()
+  if (pathname === '/api/admin/policies') return mockPolicies()
+  if (pathname === '/api/admin/usage') return mockUsage()
+  return null
 }
 
 function withGuardrails(message) {
@@ -334,9 +424,10 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/' || url.pathname === '/admin' || url.pathname === '/admin/pi') return html(res, appHtml())
     if (url.pathname === '/api/admin/env') return sendJson(res, 200, {
       ok: true,
-      environment: ADMIN_ENV,
-      production: ADMIN_ENV === 'production',
-      adminBaseUrl: ADMIN_BASE_URL,
+      environment: MOCK_MODE ? 'local-mock' : ADMIN_ENV,
+      production: !MOCK_MODE && ADMIN_ENV === 'production',
+      mock: MOCK_MODE,
+      adminBaseUrl: MOCK_MODE ? 'mock://fixvox-admin' : ADMIN_BASE_URL,
       piCwd: PI_CWD,
       user: readSession(req) ? { provider: readSession(req).provider, email: readSession(req).email || null, name: readSession(req).name || null } : null,
       guardrails: [
@@ -345,10 +436,11 @@ const server = http.createServer(async (req, res) => {
         'No imprimir tokens, account IDs crudos, device IDs completos, transcripts ni audio.',
       ],
     })
-    if (url.pathname === '/api/pi-chat/health') return sendJson(res, 200, await pi.health())
+    if (url.pathname === '/api/pi-chat/health') return sendJson(res, 200, MOCK_MODE ? { ok: true, cwd: PI_CWD, piBin: PI_BIN, piVersion: '0.80.2-mock', process: 'mock' } : await pi.health())
     if (url.pathname === '/api/pi-chat/command' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req) || '{}')
       const command = body.command || body
+      if (MOCK_MODE) return sendJson(res, 200, mockCommand(command))
       if (command?.type === 'extension_ui_response') {
         await pi.sendExtensionUiResponse(command)
         return sendJson(res, 200, { ok: true })
@@ -366,10 +458,12 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive' })
       const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`)
       send({ type: 'web_status', status: 'starting' })
+      if (MOCK_MODE) { await mockPrompt(message, send); return res.end() }
       try { await pi.prompt(withGuardrails(message), send); send({ type: 'web_status', status: 'done' }) }
       catch (error) { send({ type: 'web_error', error: error instanceof Error ? error.message : 'Pi error' }) }
       return res.end()
     }
+    if (MOCK_MODE && url.pathname.startsWith('/api/admin/')) { const mocked = mockAdmin(url.pathname); if (mocked) return sendJson(res, 200, mocked) }
     if (url.pathname === '/api/admin/accounts') return sendJson(res, 200, await proxyAdmin(`/admin/control-plane/accounts?limit=${encodeURIComponent(url.searchParams.get('limit') || '20')}`))
     if (url.pathname === '/api/admin/accounts/policy' && req.method === 'POST') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/accounts/policy', 'POST', JSON.parse(await readBody(req) || '{}')))
     if (url.pathname === '/api/admin/devices') return sendJson(res, 200, await proxyAdmin(`/admin/control-plane/devices?limit=${encodeURIComponent(url.searchParams.get('limit') || '20')}`))
