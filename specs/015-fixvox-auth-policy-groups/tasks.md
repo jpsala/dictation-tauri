@@ -27,9 +27,9 @@
 
 ## Phase 5: Device Link + Policy Refresh
 
-- [ ] T014 Link current install/device to signed-in user after auth completion.
-- [ ] T015 Refresh policy snapshot including user/group/template/capabilities/limits.
-- [ ] T016 Settings displays group/template and actionable next step.
+- [x] T014 Link current install/device to signed-in user after auth completion.
+- [x] T015 Refresh policy snapshot including user/group/template/capabilities/limits.
+- [x] T016 Settings displays group/template and actionable next step.
 
 ## Phase 6: Runtime Enforcement
 

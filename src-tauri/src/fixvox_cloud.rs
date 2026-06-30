@@ -57,7 +57,7 @@ pub(crate) struct FixvoxPolicySnapshot {
     pub(crate) error: Option<FixvoxCloudError>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FixvoxAuthPolicyStatus {
     pub(crate) access_mode: String,
@@ -236,6 +236,8 @@ pub(crate) struct FixvoxDeviceState {
     pub(crate) transport_policy: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) policy_snapshot: Option<FixvoxPolicySnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) auth_policy: Option<FixvoxAuthPolicyStatus>,
 }
 
 pub(crate) trait DeviceRegisterHttpClient {
@@ -738,6 +740,7 @@ pub(crate) fn build_device_state_from_register(
     snapshot: &DeviceRegisterSnapshot,
 ) -> FixvoxDeviceState {
     let policy_snapshot = build_policy_snapshot_from_register(snapshot);
+    let auth_policy = build_auth_policy_status_from_register(snapshot, &policy_snapshot);
     FixvoxDeviceState {
         install_id: config.install_id.clone(),
         device_id: Some(snapshot.device_id.clone()),
@@ -748,6 +751,7 @@ pub(crate) fn build_device_state_from_register(
         policy_label: Some(snapshot.policy_label.clone()),
         transport_policy: Some(snapshot.transport_policy.clone()),
         policy_snapshot: Some(policy_snapshot),
+        auth_policy,
     }
 }
 
@@ -765,6 +769,7 @@ pub(crate) fn build_device_state_from_register_error(
         policy_label: None,
         transport_policy: None,
         policy_snapshot: Some(build_policy_snapshot_from_error(register_error)),
+        auth_policy: None,
     }
 }
 
@@ -782,6 +787,7 @@ pub(crate) fn build_device_state_from_activate(
         policy_label: Some(snapshot.policy_label.clone()),
         transport_policy: None,
         policy_snapshot: Some(build_policy_snapshot_from_activation(snapshot)),
+        auth_policy: None,
     }
 }
 
@@ -829,6 +835,7 @@ pub(crate) fn build_initial_device_state(
         policy_label,
         transport_policy,
         policy_snapshot,
+        auth_policy: previous_policy.and_then(|state| state.auth_policy.clone()),
     }
 }
 
@@ -857,6 +864,149 @@ pub(crate) fn build_policy_snapshot_from_register(
     }
 }
 
+fn build_auth_policy_status_from_register(
+    snapshot: &DeviceRegisterSnapshot,
+    policy_snapshot: &FixvoxPolicySnapshot,
+) -> Option<FixvoxAuthPolicyStatus> {
+    let access_mode =
+        json_string(&snapshot.auth, &["accessMode", "access_mode", "mode"]).or_else(|| {
+            if json_string(&snapshot.auth, &["userId", "user_id", "userEmail", "email"]).is_some() {
+                Some("signed_in".to_string())
+            } else {
+                None
+            }
+        });
+    let user_value = json_string(&snapshot.auth, &["userId", "user_id", "userEmail", "email"]);
+    let group_label = json_string(
+        &snapshot.auth,
+        &["groupLabel", "group_label", "groupName", "group"],
+    );
+    let policy_template_id =
+        json_string(&snapshot.auth, &["policyTemplateId", "policy_template_id"])
+            .or_else(|| clean_env_value(Some(snapshot.policy_id.clone())));
+    let policy_template_label = json_string(
+        &snapshot.auth,
+        &["policyTemplateLabel", "policy_template_label"],
+    )
+    .or_else(|| clean_env_value(Some(snapshot.policy_label.clone())));
+
+    if access_mode.is_none() && user_value.is_none() && group_label.is_none() {
+        return None;
+    }
+
+    let access_mode = match access_mode
+        .unwrap_or_else(|| "signed_in".to_string())
+        .replace('-', "_")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "signedin" | "signed_in" => "signed_in".to_string(),
+        "anonymous" | "signed_out" => "anonymous".to_string(),
+        _ if user_value.is_some() => "signed_in".to_string(),
+        _ => "anonymous".to_string(),
+    };
+    let capabilities = policy_template_id
+        .as_deref()
+        .map(product_capabilities_for_policy_template)
+        .filter(|capabilities| !capabilities.is_empty())
+        .unwrap_or_else(|| {
+            product_capabilities_from_policy_capabilities(&policy_snapshot.capabilities)
+        });
+    let limits = if snapshot.limits.is_null()
+        || snapshot
+            .limits
+            .as_object()
+            .map(|object| object.is_empty())
+            .unwrap_or(false)
+    {
+        None
+    } else {
+        Some(snapshot.limits.clone())
+    };
+
+    Some(FixvoxAuthPolicyStatus {
+        access_mode,
+        user_redacted: redact_user_identifier(user_value.as_deref()),
+        group_label,
+        policy_template_id,
+        policy_template_label,
+        capabilities,
+        limits,
+        redacted: true,
+    })
+}
+
+fn product_capabilities_for_policy_template(policy_id: &str) -> Vec<String> {
+    match policy_id.trim().to_ascii_lowercase().as_str() {
+        "basic-anonymous" => vec![],
+        "translate-only" => vec!["translate", "managed_llm"],
+        "dictation-basic" => vec!["dictation", "postprocess", "managed_stt", "managed_llm"],
+        "pro" => vec![
+            "translate",
+            "dictation",
+            "postprocess",
+            "selection_transform",
+            "assistant_actions",
+            "custom_prompts",
+            "advanced_settings",
+            "managed_stt",
+            "managed_llm",
+        ],
+        "power-admin" | "power" | "admin" => vec![
+            "translate",
+            "dictation",
+            "postprocess",
+            "selection_transform",
+            "assistant_actions",
+            "custom_prompts",
+            "advanced_settings",
+            "debug_tools",
+            "managed_stt",
+            "managed_llm",
+        ],
+        _ => vec![],
+    }
+    .into_iter()
+    .map(|value| value.to_string())
+    .collect()
+}
+
+fn product_capabilities_from_policy_capabilities(
+    capabilities: &FixvoxPolicyCapabilities,
+) -> Vec<String> {
+    let mut product_capabilities = Vec::new();
+    if capabilities.can_use_managed_transcription {
+        product_capabilities.push("dictation".to_string());
+        product_capabilities.push("managed_stt".to_string());
+    }
+    if capabilities.can_see_advanced_settings {
+        product_capabilities.push("advanced_settings".to_string());
+    }
+    if capabilities.can_use_debug_tools {
+        product_capabilities.push("debug_tools".to_string());
+    }
+    product_capabilities
+}
+
+fn json_string(value: &serde_json::Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        value
+            .get(*key)
+            .and_then(|entry| entry.as_str())
+            .and_then(|entry| clean_env_value(Some(entry.to_string())))
+    })
+}
+
+fn redact_user_identifier(value: Option<&str>) -> Option<String> {
+    value.and_then(|value| {
+        if value.contains('@') {
+            Some("user redacted".to_string())
+        } else {
+            redact_identifier(Some(value))
+        }
+    })
+}
+
 fn build_runtime_policy_from_register(snapshot: &DeviceRegisterSnapshot) -> serde_json::Value {
     let mut policy = serde_json::Map::new();
     policy.insert(
@@ -869,6 +1019,8 @@ fn build_runtime_policy_from_register(snapshot: &DeviceRegisterSnapshot) -> serd
     );
     policy.insert("features".to_string(), snapshot.features.clone());
     policy.insert("defaults".to_string(), snapshot.defaults.clone());
+    policy.insert("auth".to_string(), snapshot.auth.clone());
+    policy.insert("limits".to_string(), snapshot.limits.clone());
     policy.insert(
         "transportPolicy".to_string(),
         snapshot.transport_policy.clone(),
@@ -1618,7 +1770,7 @@ fn build_cloud_status(
         transport_policy: state.transport_policy,
         policy_snapshot: state.policy_snapshot,
         capabilities,
-        auth_policy: None,
+        auth_policy: state.auth_policy,
         redacted: true,
     }
 }
@@ -2132,6 +2284,66 @@ mod tests {
     }
 
     #[test]
+    fn signed_in_policy_refresh_links_user_group_template_and_limits_redacted() {
+        let snapshot = DeviceRegisterSnapshot {
+            ok: true,
+            device_id: "dev_test_pro".to_string(),
+            activated: true,
+            policy_id: "pro".to_string(),
+            policy_label: "Pro".to_string(),
+            auth: json!({
+                "accessMode": "signed_in",
+                "userId": "user_sensitive_1234567890",
+                "userEmail": "jp@example.invalid",
+                "groupLabel": "Founders",
+                "policyTemplateId": "pro",
+                "policyTemplateLabel": "Pro"
+            }),
+            features: json!({ "managedTranscription": true, "debugTools": false }),
+            defaults: json!({}),
+            limits: json!({ "monthlyMinutes": 1500, "maxAudioSeconds": 180 }),
+            telemetry: json!({}),
+            transport_policy: json!({ "speech": { "mode": "proxied", "provider": "groq" } }),
+            transcript: None,
+            voice_policy: None,
+            voice_routing: None,
+            speech: None,
+            prompts: None,
+            user_settings_defaults: None,
+        };
+
+        let config = FixvoxCloudRuntimeConfig {
+            backend_base_url: PREFERRED_FIXVOX_BACKEND_URL.to_string(),
+            install_id: "install_test".to_string(),
+            device_id: None,
+        };
+        let state = build_device_state_from_register(&config, &snapshot);
+        let status = build_cloud_status(
+            PathBuf::from("C:/Users/JP/AppData/Roaming/dictation-tauri/fixvox-device-state.json"),
+            state,
+            PREFERRED_FIXVOX_BACKEND_URL.to_string(),
+        );
+        let auth_policy = status
+            .auth_policy
+            .expect("signed-in policy is exposed redacted");
+        let serialized = serde_json::to_string(&auth_policy).expect("auth policy serializes");
+
+        assert_eq!(auth_policy.access_mode, "signed_in");
+        assert_eq!(auth_policy.user_redacted, Some("user_s…7890".to_string()));
+        assert_eq!(auth_policy.group_label, Some("Founders".to_string()));
+        assert_eq!(auth_policy.policy_template_id, Some("pro".to_string()));
+        assert!(auth_policy
+            .capabilities
+            .contains(&"managed_stt".to_string()));
+        assert_eq!(
+            auth_policy.limits,
+            Some(json!({ "monthlyMinutes": 1500, "maxAudioSeconds": 180 }))
+        );
+        assert!(!serialized.contains("user_sensitive_1234567890"));
+        assert!(!serialized.contains("jp@example.invalid"));
+    }
+
+    #[test]
     fn auth_session_status_never_exposes_host_owned_secrets() {
         let state = FixvoxAuthSessionState {
             status: "signed_in".to_string(),
@@ -2183,6 +2395,7 @@ mod tests {
                 "FIXVOX_REGISTER_FAILED",
                 "redacted",
             ))),
+            auth_policy: None,
         };
 
         let denied = policy_allows_managed_transcription(&state)
