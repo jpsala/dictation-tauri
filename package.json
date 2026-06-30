@@ -40,7 +40,8 @@
     "cloud:test": "cd cloud/fixvox-proxy && bun test",
     "cloud:dev": "cd cloud/fixvox-proxy && bun run dev",
     "cloud:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cloud-deploy.ps1",
-    "cloud:admin": "node scripts/fixvox-admin.mjs"
+    "cloud:admin": "node scripts/fixvox-admin.mjs",
+    "admin:web": "node admin/fixvox-web/server.mjs"
   },
   "dependencies": {
     "@heroui/react": "^3.2.1",
