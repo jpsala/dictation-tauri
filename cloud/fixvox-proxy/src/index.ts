@@ -10,9 +10,11 @@ import {
 } from "./admin-store";
 import {
   activateDevice,
+  assignControlPlaneAdminAccountPolicy,
   assignControlPlaneAdminDevicePolicy,
   buildFeedbackEvent,
   evaluateExecutionPreflight,
+  listControlPlaneAdminAccounts,
   listControlPlaneAdminDevices,
   listFeedbackEvents,
   parseExecutionMode,
@@ -465,6 +467,30 @@ export default {
         } catch (error) {
           const message = error instanceof Error ? error.message : "Unable to update device policy.";
           const status = message === "device not found" ? 404 : 400;
+          return withAdminCors(request, json({ error: { message } }, status));
+        }
+      }
+
+      if (request.method === "GET" && url.pathname === "/admin/control-plane/accounts") {
+        return withAdminCors(request, json(await listControlPlaneAdminAccounts(env.USAGE, {
+          limit: Number(url.searchParams.get("limit") ?? "50"),
+          cursor: url.searchParams.get("cursor"),
+        })));
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/accounts/policy") {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid account policy payload." } }, 400));
+        }
+
+        try {
+          return withAdminCors(request, json(await assignControlPlaneAdminAccountPolicy(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to update account policy.";
+          const status = message === "account not found" ? 404 : 400;
           return withAdminCors(request, json({ error: { message } }, status));
         }
       }

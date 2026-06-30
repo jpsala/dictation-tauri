@@ -205,6 +205,49 @@ export type ControlPlaneAdminDevicePolicyResponse = {
   device: ControlPlaneAdminDeviceRow;
 };
 
+export type ControlPlaneAdminAccountDeviceRow = {
+  deviceIdRedacted: string;
+  policyId: string | null;
+  policyLabel: string | null;
+  status: DeviceRecord["status"];
+  lastSeenAt: string;
+};
+
+export type ControlPlaneAdminAccountRow = {
+  accountHandle: string;
+  accountIdRedacted: string;
+  policyId: string | null;
+  policyLabel: string | null;
+  deviceCount: number;
+  devices: ControlPlaneAdminAccountDeviceRow[];
+  lastSeenAt: string;
+};
+
+export type ControlPlaneAdminAccountList = {
+  ok: true;
+  source: "default" | "stored";
+  updatedAt: string;
+  policyOptions: ControlPlaneAdminPolicyOption[];
+  accounts: ControlPlaneAdminAccountRow[];
+  nextCursor: string | null;
+};
+
+export type ControlPlaneAdminAccountPolicyPayload = {
+  accountHandle?: string | null;
+  accountId?: string | null;
+  policyId?: string | null;
+  policyLabel?: string | null;
+};
+
+export type ControlPlaneAdminAccountPolicyResponse = {
+  ok: true;
+  source: "default" | "stored";
+  updatedAt: string;
+  policyOptions: ControlPlaneAdminPolicyOption[];
+  account: ControlPlaneAdminAccountRow;
+  devicesUpdated: number;
+};
+
 export type FeedbackEvent = {
   id: string;
   ts: string;
@@ -240,6 +283,7 @@ const DEVICE_TTL_SECONDS = 60 * 60 * 24 * 180;
 const DEVICE_WRITE_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const DEVICE_RECENT_LIMIT = 500;
 const DEVICE_RECENT_INDEX_KEY = "control:devices:recent";
+const ACCOUNT_POLICY_TTL_SECONDS = DEVICE_TTL_SECONDS;
 const FEEDBACK_TTL_SECONDS = 60 * 60 * 24 * 180;
 const FEEDBACK_RECENT_LIMIT = 500;
 const FEEDBACK_RECENT_INDEX_KEY = "control:feedback:recent";
@@ -289,6 +333,14 @@ type PolicyProfileAssignment = {
   voiceRoutingProfile?: string;
   promptProfile?: string;
   settingsDefaultsProfile?: string;
+};
+
+type AccountPolicyAssignment = {
+  accountHandle: string;
+  accountId: string;
+  policyId: string;
+  policyLabel: string;
+  updatedAt: string;
 };
 
 const BUILT_IN_POLICY_ASSIGNMENTS: Record<string, PolicyProfileAssignment> = {
@@ -588,6 +640,26 @@ function buildDeviceKey(deviceId: string): string {
 
 function buildInstallKey(installId: string): string {
   return `control:install:${installId}`;
+}
+
+async function buildAccountHandle(accountId: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(accountId));
+  const hex = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `acc_${hex.slice(0, 16)}`;
+}
+
+function buildAccountPolicyKey(accountHandle: string): string {
+  return `control:account:${accountHandle}:policy`;
+}
+
+function redactLongIdentifier(value: string | null | undefined): string {
+  const candidate = value?.trim() ?? "";
+  if (!candidate || candidate.length <= 10) return "redacted";
+  return `${candidate.slice(0, 6)}…${candidate.slice(-4)}`;
+}
+
+function redactAccountId(_accountId: string): string {
+  return "account redacted";
 }
 
 function buildFeedbackKey(id: string): string {
@@ -995,6 +1067,52 @@ async function buildControlPlaneAdminDeviceRow(
   };
 }
 
+async function readRecentDeviceRecords(store: KvNamespaceLike): Promise<DeviceRecord[]> {
+  const recent = await readRecentDeviceIndex(store);
+  const records = await Promise.all(recent.map(async (entry) => (
+    normalizeDeviceRecord(parseJson<DeviceRecord | null>(await store.get(buildDeviceKey(entry.id)), null))
+  )));
+  return records
+    .filter((record): record is DeviceRecord => Boolean(record))
+    .sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt));
+}
+
+async function readAccountPolicyAssignment(store: KvNamespaceLike, accountId: string): Promise<AccountPolicyAssignment | null> {
+  const accountHandle = await buildAccountHandle(accountId);
+  const assignment = parseJson<AccountPolicyAssignment | null>(await store.get(buildAccountPolicyKey(accountHandle)), null);
+  if (!assignment || assignment.accountId !== accountId || assignment.accountHandle !== accountHandle) return null;
+  return assignment;
+}
+
+function resolvePolicyOptionLabel(options: ControlPlaneAdminPolicyOption[], policyId: string, fallback?: string | null): string {
+  return sanitizeString(fallback) ?? options.find((option) => option.policyId === policyId)?.policyLabel ?? formatPolicyLabel(policyId);
+}
+
+async function buildControlPlaneAdminAccountRow(
+  store: KvNamespaceLike,
+  accountId: string,
+  records: DeviceRecord[],
+): Promise<ControlPlaneAdminAccountRow> {
+  const assignment = await readAccountPolicyAssignment(store, accountId);
+  const accountHandle = await buildAccountHandle(accountId);
+  const sorted = [...records].sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt));
+  return {
+    accountHandle,
+    accountIdRedacted: redactAccountId(accountId),
+    policyId: assignment?.policyId ?? null,
+    policyLabel: assignment?.policyLabel ?? null,
+    deviceCount: sorted.length,
+    devices: sorted.slice(0, 20).map((record) => ({
+      deviceIdRedacted: redactLongIdentifier(record.deviceId),
+      policyId: record.policyId,
+      policyLabel: record.policyLabel,
+      status: record.status,
+      lastSeenAt: record.lastSeenAt,
+    })),
+    lastSeenAt: sorted[0]?.lastSeenAt ?? assignment?.updatedAt ?? new Date(0).toISOString(),
+  };
+}
+
 function resolvePolicyProfile(basePolicy: Record<string, unknown>, kind: string, profileId: string): Record<string, unknown> | null {
   const configuredProfiles = readNestedRecord(basePolicy, "policyProfiles");
   const configuredKind = configuredProfiles ? readNestedRecord(configuredProfiles, kind) : null;
@@ -1034,13 +1152,15 @@ export async function registerDevice(
   const recordKey = buildDeviceKey(deviceId);
   const previous = normalizeDeviceRecord(parseJson<DeviceRecord | null>(await store.get(recordKey), null));
   const ts = nowIso(payload.ts);
-  const policyId = previous?.policyId ?? DEFAULT_POLICY_ID;
-  const policyLabel = previous?.policyLabel ?? DEFAULT_POLICY_LABEL;
+  const accountId = sanitizeString(options.accountId) ?? previous?.accountId ?? null;
+  const accountAssignment = accountId ? await readAccountPolicyAssignment(store, accountId) : null;
+  const policyId = accountAssignment?.policyId ?? previous?.policyId ?? DEFAULT_POLICY_ID;
+  const policyLabel = accountAssignment?.policyLabel ?? previous?.policyLabel ?? DEFAULT_POLICY_LABEL;
   const status = previous?.status ?? "active";
   const nextRecord: DeviceRecord = {
     deviceId,
     installId,
-    accountId: sanitizeString(options.accountId) ?? previous?.accountId ?? null,
+    accountId,
     activated: status === "active",
     policyId,
     policyLabel,
@@ -1195,6 +1315,105 @@ export async function listControlPlaneAdminDevices(
     policyOptions: buildAdminPolicyOptions(policy),
     devices,
     nextCursor: recent.length > offset + window.length ? String(offset + window.length) : null,
+  };
+}
+
+export async function listControlPlaneAdminAccounts(
+  store: KvNamespaceLike,
+  options: { limit?: number | null; cursor?: string | null } = {},
+): Promise<ControlPlaneAdminAccountList> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const records = await readRecentDeviceRecords(store);
+  const groups = new Map<string, DeviceRecord[]>();
+  for (const record of records) {
+    if (!record.accountId) continue;
+    groups.set(record.accountId, [...(groups.get(record.accountId) ?? []), record]);
+  }
+  const limit = Math.min(100, Math.max(1, Number(options.limit ?? 50) || 50));
+  const offset = Math.max(0, Number(options.cursor ?? 0) || 0);
+  const accounts = (await Promise.all([...groups.entries()].map(([accountId, accountRecords]) => (
+    buildControlPlaneAdminAccountRow(store, accountId, accountRecords)
+  )))).sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt));
+  const page = accounts.slice(offset, offset + limit);
+  const policy = runtimePolicy.policy as Record<string, unknown>;
+
+  return {
+    ok: true,
+    source: runtimePolicy.source,
+    updatedAt: runtimePolicy.updatedAt,
+    policyOptions: buildAdminPolicyOptions(policy),
+    accounts: page,
+    nextCursor: accounts.length > offset + page.length ? String(offset + page.length) : null,
+  };
+}
+
+export async function assignControlPlaneAdminAccountPolicy(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminAccountPolicyPayload,
+): Promise<ControlPlaneAdminAccountPolicyResponse> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const policy = runtimePolicy.policy as Record<string, unknown>;
+  const policyOptions = buildAdminPolicyOptions(policy);
+  const policyId = sanitizeString(payload.policyId);
+  if (!policyId) {
+    throw new Error("policyId is required");
+  }
+  if (!policyOptions.some((option) => option.policyId === policyId)) {
+    throw new Error("unknown policyId");
+  }
+
+  const requestedHandle = sanitizeString(payload.accountHandle);
+  let accountId = sanitizeString(payload.accountId);
+  const records = await readRecentDeviceRecords(store);
+  if (!accountId && requestedHandle) {
+    for (const record of records) {
+      if (!record.accountId) continue;
+      if (await buildAccountHandle(record.accountId) === requestedHandle) {
+        accountId = record.accountId;
+        break;
+      }
+    }
+  }
+  if (!accountId) {
+    throw new Error("account not found");
+  }
+
+  const accountHandle = await buildAccountHandle(accountId);
+  if (requestedHandle && requestedHandle !== accountHandle) {
+    throw new Error("account not found");
+  }
+  const policyLabel = resolvePolicyOptionLabel(policyOptions, policyId, payload.policyLabel);
+  const updatedAt = new Date().toISOString();
+  const assignment: AccountPolicyAssignment = { accountHandle, accountId, policyId, policyLabel, updatedAt };
+  await store.put(buildAccountPolicyKey(accountHandle), JSON.stringify(assignment), {
+    expirationTtl: ACCOUNT_POLICY_TTL_SECONDS,
+  });
+
+  let devicesUpdated = 0;
+  for (const record of records) {
+    if (record.accountId !== accountId) continue;
+    const nextRecord: DeviceRecord = {
+      ...record,
+      activated: record.status === "active",
+      policyId,
+      policyLabel,
+      cohorts: resolveActivationCohorts(policyId, record.cohorts),
+    };
+    await store.put(buildDeviceKey(record.deviceId), JSON.stringify(nextRecord), {
+      expirationTtl: DEVICE_TTL_SECONDS,
+    });
+    await indexDeviceRecord(store, nextRecord);
+    devicesUpdated += 1;
+  }
+
+  const accountRecords = (await readRecentDeviceRecords(store)).filter((record) => record.accountId === accountId);
+  return {
+    ok: true,
+    source: runtimePolicy.source,
+    updatedAt: runtimePolicy.updatedAt,
+    policyOptions,
+    account: await buildControlPlaneAdminAccountRow(store, accountId, accountRecords),
+    devicesUpdated,
   };
 }
 

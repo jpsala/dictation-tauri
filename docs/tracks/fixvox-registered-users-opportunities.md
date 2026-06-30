@@ -107,10 +107,10 @@ Primera apuesta recomendada: **Admin de usuarios/grupos + usage/quota visible**.
 
 Objetivo: poder operar usuarios/devices/policies desde este repo sin scripts sueltos.
 
-- [ ] A1 Mapear modelo actual de `DeviceRecord`, `accountId`, policy templates, usage y admin endpoints en `cloud/fixvox-proxy/`.
-- [ ] A2 Agregar endpoint admin redacted para buscar/listar usuarios registrados por cuenta, device y policy sin exponer emails completos ni account IDs crudos.
-- [ ] A3 Agregar endpoint admin para asignar policy a cuenta/user, no solo a device, con fallback device-level documentado.
-- [ ] A4 Agregar tests Worker para listar usuarios, asignar policy por account y verificar redaccion.
+- [x] A1 Mapear modelo actual de `DeviceRecord`, `accountId`, policy templates, usage y admin endpoints en `cloud/fixvox-proxy/`.
+- [x] A2 Agregar endpoint admin redacted para buscar/listar usuarios registrados por cuenta, device y policy sin exponer emails completos ni account IDs crudos.
+- [x] A3 Agregar endpoint admin para asignar policy a cuenta/user, no solo a device, con fallback device-level documentado.
+- [x] A4 Agregar tests Worker para listar usuarios, asignar policy por account y verificar redaccion.
 - [ ] A5 Documentar runbook admin local: listar, asignar Pro/basic, restaurar Pro, verificar policy.
 
 ### Phase B — Usage/quota visible
@@ -160,6 +160,16 @@ Objetivo: probar crecimiento real fuera de la maquina dev.
 - Si el trial inicial requiere aprobacion manual o auto-Pro limitado.
 - Que datos de usage son aceptables en admin sin volverse sensibles.
 - Si prompts/vocabulario por usuario entran antes o despues de otra PC smoke.
+
+## Implementacion 2026-06-30 — Phase A parcial
+
+- Worker agrega `GET /admin/control-plane/accounts` para listar cuentas signed-in con `accountHandle`, `accountIdRedacted`, resumen de devices/policies y sin exponer account IDs crudos.
+- Worker agrega `POST /admin/control-plane/accounts/policy` para asignar policy por cuenta usando `accountHandle`; actualiza devices existentes de esa cuenta y guarda assignment para que futuros devices linkeados hereden la policy.
+- `registerDevice` honra assignments account-level antes del fallback device/default policy.
+- Script versionado `scripts/fixvox-admin.mjs` + `npm run cloud:admin` permite `health`, `devices`, `accounts`, `policies`, `assign-device-policy` y `assign-account-policy` con redaccion por defecto.
+- Tests nuevos en `cloud/fixvox-proxy/src/managed-execution.test.ts` cubren listado redacted y assign por account sin leakage de `google:<sub>`.
+- Checks pasados: `npm run cloud:test` (67/67), focused `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control` (148/148), `npm run build`, `cd src-tauri && cargo fmt --check && CARGO_TARGET_DIR=target/pi-admin-users cargo check`.
+- No deploy, no push.
 
 ## Checks Base Para Cada Batch
 
