@@ -544,6 +544,98 @@
   width: 100%;
 }
 
+.settings-cloud-login-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid oklch(0.74 0.16 45 / 38%);
+  border-radius: 17px;
+  background:
+    radial-gradient(circle at 18% 0%, oklch(0.7 0.17 45 / 20%), transparent 42%),
+    linear-gradient(135deg, oklch(0.2 0.04 240 / 90%), oklch(0.145 0.026 235 / 94%));
+  box-shadow: 0 16px 44px oklch(0 0 0 / 22%);
+  padding: 14px;
+}
+
+.settings-cloud-login-hero[data-status="pending"] {
+  border-color: oklch(0.72 0.15 75 / 48%);
+  background:
+    radial-gradient(circle at 18% 0%, oklch(0.78 0.16 75 / 18%), transparent 42%),
+    linear-gradient(135deg, oklch(0.19 0.038 235 / 92%), oklch(0.13 0.024 235 / 96%));
+}
+
+.settings-cloud-login-hero[data-status="signed_in"] {
+  border-color: oklch(0.74 0.16 145 / 52%);
+  background:
+    radial-gradient(circle at 18% 0%, oklch(0.72 0.16 145 / 20%), transparent 42%),
+    linear-gradient(135deg, oklch(0.19 0.04 150 / 88%), oklch(0.13 0.024 235 / 96%));
+}
+
+.settings-cloud-login-hero-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.settings-cloud-login-hero-copy > span {
+  width: fit-content;
+  border: 1px solid oklch(1 0 0 / 14%);
+  border-radius: 999px;
+  background: oklch(1 0 0 / 7%);
+  color: oklch(0.82 0.12 45);
+  padding: 4px 8px;
+  font-size: 0.62rem;
+  font-weight: 880;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.settings-cloud-login-hero-copy strong {
+  color: var(--settings-text);
+  font-size: 1.08rem;
+  line-height: 1.1;
+}
+
+.settings-cloud-login-hero-copy small {
+  max-width: 58ch;
+  color: var(--settings-muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.settings-cloud-login-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-cloud-login-primary {
+  min-height: 42px;
+  border: 0;
+  border-radius: 13px;
+  background: linear-gradient(135deg, oklch(0.72 0.16 45), oklch(0.62 0.17 35));
+  box-shadow: 0 12px 26px oklch(0.64 0.16 35 / 22%);
+  color: oklch(0.12 0.018 235);
+  padding: 0 18px;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.settings-cloud-login-primary:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.25);
+  opacity: 0.72;
+}
+
+.settings-cloud-login-primary:focus-visible {
+  outline: 3px solid var(--settings-focus);
+  outline-offset: 2px;
+}
+
 .settings-cloud-signin-button:disabled {
   cursor: default;
   opacity: 0.86;

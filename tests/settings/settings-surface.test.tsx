@@ -77,7 +77,8 @@ describe("SettingsSurface", () => {
     expect(html).toContain("managed dictation, postprocess, transforms, assistant actions, advanced settings and higher limits require Fixvox Cloud login");
     expect(html).toContain("Browser sign-in is host-owned; Settings only receives redacted session status.");
     expect(html).toContain("Start Fixvox Cloud sign in");
-    expect(html).toContain("opens browser");
+    expect(html).toContain("Sign in with Google");
+    expect(html).toContain("Use your Fixvox account to unlock managed dictation");
     expect(html).toContain("fixvox-device-state.json · host app data");
     expect(html).not.toContain("user_1234567890abcdef");
     expect(html).not.toContain("dev_test_1234567890abcdef");
@@ -158,6 +159,7 @@ describe("SettingsSurface", () => {
     expect(source).toContain("getFixvoxAuthSessionStatus");
     expect(source).toContain("pollFixvoxCloudLogin");
     expect(source).toContain("pollCloudLoginStatus");
+    expect(source).toContain("visibilitychange");
     expect(source).toContain("activateFixvoxDevice");
     expect(source).toContain("startFixvoxCloudLogin");
     expect(source).toContain("startCloudLogin");
