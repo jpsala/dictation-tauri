@@ -3,6 +3,8 @@
 .env.*
 .dev.vars
 **/.dev.vars
+.wrangler
+**/.wrangler
 !.env.example
 
 # Dependencies
