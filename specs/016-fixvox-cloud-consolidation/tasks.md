@@ -21,8 +21,8 @@
 
 ## Phase 4: Legacy Demotion
 
-- [ ] T011 Document `C:/dev/fixvox` as legacy/reference for new Tauri Cloud work.
-- [ ] T012 Remove remaining docs that say Cloud changes must be made in `C:/dev/fixvox`, replacing them with this repo path.
+- [x] T011 Document `C:/dev/fixvox` as legacy/reference for new Tauri Cloud work.
+- [x] T012 Remove remaining docs that say Cloud changes must be made in `C:/dev/fixvox`, replacing them with this repo path.
 
 ## Guardrails
 
