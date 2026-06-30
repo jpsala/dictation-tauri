@@ -22,7 +22,7 @@ source_refs:
 
 ## Objetivo
 
-Crear para Fixvox/Dictation Tauri un admin web remoto equivalente en espiritu a `https://turnos.jpsala.dev/admin/pi` de Constelaciones, para que JP pueda operar Fixvox Cloud, usuarios, policies, usage y Pi remoto sin depender de dejar la PC local encendida.
+Crear para Fixvox/Dictation Tauri un admin web remoto equivalente en UX/interaction model a `https://turnos.jpsala.dev/admin/pi` de Constelaciones, para que JP pueda operar Fixvox Cloud, usuarios, policies, usage y Pi remoto sin depender de dejar la PC local encendida. JP explicito que el MVP actual todavia **no alcanza**: debe parecerse mucho mas a Constelaciones en sidebar, comportamiento del input, experiencia del chat, streaming, tool logs, session state y componentes interactivos. Copiar el shell/UX/comportamiento genericamente; no copiar funcionalidad propia de turnos/Constelaciones.
 
 URL objetivo preferida:
 
@@ -32,7 +32,7 @@ https://fixvox.jpsala.dev/admin/pi
 
 ## Decision
 
-Vale la pena para este repo **si se mantiene chico y operativo**: un control room de Fixvox, no una segunda app gigante.
+Vale la pena para este repo como control room de Fixvox, pero el criterio de aceptacion visual/interactiva es alto: debe sentirse como el `/admin/pi` de Constelaciones. No basta con una mini app funcional si el sidebar, input, chat y activity panel se comportan distinto.
 
 El admin web debe correr en VPS porque necesita poder spawnear Pi/RPC y guardar secretos server-side. El Worker de Cloudflare (`auth-fixvox.jpsala.dev`) sigue siendo runtime/auth/API, pero no puede spawnear procesos ni ejecutar Pi.
 
@@ -52,7 +52,7 @@ Se intento crear una consola baja-nivel tipo ttyd/tmux (`fixvox-pi-console.jpsal
 - `/admin/pi` con Pi RPC remoto en `/home/jpsal/dev/dictation-tauri`.
 - Capaz de leer/editar repo, correr tests y preparar cambios.
 - Acciones peligrosas con confirmacion: push, deploy, policy mutations, secrets, tunnels, systemd.
-- Idealmente componentes/acciones como Constelaciones: confirmations, pickers, status cards, tool logs.
+- Componentes/acciones como Constelaciones: confirmations, pickers, status cards, tool logs, session state, pending UI requests, input behavior, streaming y layout. Esto ya no es "idealmente"; es requisito de producto para que JP lo use como consola principal.
 
 ### Operacion Fixvox Cloud
 
@@ -85,9 +85,11 @@ auth-fixvox.jpsala.dev            -> Cloudflare Worker runtime/auth/API
 Implementacion sugerida:
 
 1. Crear app web admin minima en este repo o subdir `admin/fixvox-web/`.
-2. Portar lo minimo de Constelaciones:
+2. Portar/adaptar de Constelaciones todo lo genericamente reutilizable del admin Pi Chat:
    - `apps/web/src/server/pi-rpc.ts` pattern.
-   - `apps/web/src/routes/admin.pi.tsx` concept, no toda la app.
+   - `apps/web/src/routes/admin.pi.tsx` interaction model.
+   - `MessageBubble`, `ToolCard`, `ActivityPanel`, pending UI request cards, input key behavior, session controls y event rendering.
+   - Excluir solo funcionalidad de negocio de turnos/Constelaciones.
 3. Correr en VPS con systemd user.
 4. Publicar con Cloudflare Tunnel/DNS bajo `fixvox.jpsala.dev`.
 5. Agregar pantallas accounts/devices/policies/usage usando `scripts/fixvox-admin.mjs`/Worker endpoints como backend inicial.
@@ -109,26 +111,27 @@ Implementacion sugerida:
 - 2026-06-30: se agrego flujo local-first: `FIXVOX_ADMIN_ENV`, `/api/admin/env`, banners `LOCAL`/`PRODUCTION`, confirmacion reforzada `PROD` para mutations production, scripts `npm run cloud:dev:local`, `npm run admin:web:local`, `npm run admin:web:prod`, y playbook `docs/topics/fixvox-local-to-production-workflow.md`. Desplegado en VPS; `/api/admin/env` reporta `production` + `https://auth-fixvox.jpsala.dev` y Pi prompt respondio `FIXVOX_LOCAL_PROD_WORKFLOW_OK`.
 - 2026-06-30: login admin mejorado: `/login` ofrece Google OAuth (`/auth/google/start` + `/auth/google/callback`) con allowlist server-side y token fallback. Google secrets/allowlist viven fuera del repo en `~/.config/dictation-tauri/admin-web.env`; el token fallback fue rotado otra vez. Browser smoke inicial fallo con `redirect_uri_mismatch`, se agrego `https://fixvox.jpsala.dev/auth/google/callback` al OAuth client de Google Cloud y se actualizo la allowlist. Browser smoke real en Vivaldi paso end-to-end: Google account chooser -> `/admin/pi`, UI muestra usuario autorizado, `PRODUCTION`, Pi `0.80.2`, accounts cargados.
 - Desplegado al VPS y validado: public `/healthz` OK, `/admin/pi` redirige a login, local login OK, `/api/pi-chat/health` OK, accounts OK, prompt Pi `FIXVOX_FULL_ADMIN_APP_OK` OK.
-- Falta polish incremental, pero el admin ya esta estructurado como app propia y no como parche inline.
+- Feedback JP 2026-06-30: el admin actual sigue distinto al de `C:/dev/constelaciones`; faltan sidebar, comportamiento del input, chat y otros detalles de la experiencia. Proximo trabajo debe priorizar paridad UX/interaction con Constelaciones antes de ampliar features admin. El admin ya esta estructurado como app propia, pero aun no cumple el objetivo visual/interactivo final.
 
 ## Proximo Paso Para Nueva Sesion
 
 Arrancar con objetivo:
 
-> Convertir el MVP `https://fixvox.jpsala.dev/admin/pi` en un control room poderoso: mejor chat Pi, tool logs, confirmaciones para mutations, y tabs accounts/devices/policies/usage.
+> Llevar `https://fixvox.jpsala.dev/admin/pi` a paridad UX/interaction con `C:/dev/constelaciones/apps/web/src/routes/admin.pi.tsx`, sin copiar negocio de turnos.
 
 Primer small batch recomendado:
 
-1. Mejorar UI `/admin/pi` con historial legible, tool logs y status cards estilo Constelaciones.
-2. Agregar acciones con confirmacion: assign-account-policy, assign-device-policy, refresh accounts/devices.
-3. Agregar `/admin/accounts` y `/admin/devices` como tabs/paneles reales dentro del admin web.
-4. Mantener `ADMIN_API_KEY` y token web server-side; nunca exponerlos al browser.
-5. Checks: `node --check admin/fixvox-web/server.mjs`, `npm run cloud:test`, smoke remoto login + Pi prompt.
+1. Estudiar nuevamente `C:/dev/constelaciones/apps/web/src/routes/admin.pi.tsx` y `apps/web/src/server/pi-rpc.ts`.
+2. Rehacer sidebar/topbar/chat/input/activity panel para que se comporten como Constelaciones: Enter/Shift+Enter, submit/abort/new session, session state, health chips, scroll behavior, streaming assistant, tool cards plegables, pending UI cards y message bubbles.
+3. Mantener tabs/accounts/devices como paneles Fixvox, pero subordinados al layout estilo Constelaciones.
+4. Mantener auth Google/server-side, `ADMIN_API_KEY` server-side y confirmaciones production.
+5. Validar con browser real/screenshot comparando contra Constelaciones; no declarar completo si visual/comportamiento sigue claramente distinto.
+6. Checks: `node --check admin/fixvox-web/server.mjs`, `node --check admin/fixvox-web/public/app.js`, `npm run cloud:test`, smoke remoto Google login + Pi prompt.
 
 ## Guardrails
 
 - No push sin aprobacion explicita.
 - No deploy/tunnel/systemd nuevo sin aprobacion explicita.
-- No copiar Constelaciones entero ni acoplarlo al producto de turnos.
+- Si copiar/adaptar todo lo genericamente reutilizable del UX de `C:/dev/constelaciones` para Pi Chat; no copiar negocio de turnos ni acoplar datos/funcionalidad de Constelaciones.
 - No exponer `ADMIN_API_KEY` ni tokens al browser.
 - No mutar policies/users sin confirmacion humana.
