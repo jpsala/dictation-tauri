@@ -156,7 +156,7 @@ describe("SettingsSurface", () => {
     expect(source).not.toContain("disabled={!isActive}");
     expect(source).toContain("selectedSection === \"hotkeys\"");
     expect(source).toContain("selectedSection === \"cloud\"");
-    expect(source).toContain("hide_settings_window");
+    expect(source).toContain("close_settings_window");
     expect(source).toContain("closeSettingsWindow");
     expect(source).toContain("getFixvoxCloudStatus");
     expect(source).toContain("getFixvoxAuthSessionStatus");
