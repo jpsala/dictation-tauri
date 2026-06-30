@@ -33,6 +33,7 @@ pub fn run() {
             fixvox_cloud::register_fixvox_device,
             fixvox_cloud::refresh_fixvox_policy,
             fixvox_cloud::activate_fixvox_device,
+            fixvox_cloud::start_fixvox_cloud_login,
             desktop_delivery::capture_desktop_delivery_target,
             desktop_delivery::get_cached_desktop_delivery_target,
             desktop_delivery::deliver_text_to_desktop_target,

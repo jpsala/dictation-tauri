@@ -57,6 +57,17 @@ export type FixvoxCloudStatus = {
 
 export type FixvoxCloudOperation = "register" | "refresh" | "activate";
 
+export type FixvoxCloudLoginStartStatus = {
+  flow: "device_code_polling";
+  verificationUrlRedacted: string;
+  browserOpened: boolean;
+  pollingIntervalSeconds: number;
+  expiresInSeconds: number;
+  sessionIdRedacted: string;
+  stateRedacted: string;
+  redacted: true;
+};
+
 export type FixvoxCloudHealthTone = "idle" | "success" | "warning" | "danger";
 
 export type FixvoxCloudHealth = {
@@ -116,6 +127,16 @@ export async function activateFixvoxDevice(
   }
 
   return invoke<FixvoxCloudStatus>("activate_fixvox_device", { inviteCode });
+}
+
+export async function startFixvoxCloudLogin(
+  openExternalBrowser = true,
+): Promise<FixvoxCloudLoginStartStatus | undefined> {
+  if (!isTauri()) {
+    return undefined;
+  }
+
+  return invoke<FixvoxCloudLoginStartStatus>("start_fixvox_cloud_login", { openExternalBrowser });
 }
 
 export function summarizeFixvoxCloudStatus(status: FixvoxCloudStatus | undefined): string {

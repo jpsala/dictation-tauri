@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
+    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -58,6 +59,32 @@ pub(crate) struct FixvoxPolicySnapshot {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct FixvoxAuthPolicyStatus {
+    pub(crate) access_mode: String,
+    pub(crate) user_redacted: Option<String>,
+    pub(crate) group_label: Option<String>,
+    pub(crate) policy_template_id: Option<String>,
+    pub(crate) policy_template_label: Option<String>,
+    pub(crate) capabilities: Vec<String>,
+    pub(crate) limits: Option<serde_json::Value>,
+    pub(crate) redacted: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FixvoxCloudLoginStartStatus {
+    pub(crate) flow: String,
+    pub(crate) verification_url_redacted: String,
+    pub(crate) browser_opened: bool,
+    pub(crate) polling_interval_seconds: u64,
+    pub(crate) expires_in_seconds: u64,
+    pub(crate) session_id_redacted: String,
+    pub(crate) state_redacted: String,
+    pub(crate) redacted: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct FixvoxCloudStatus {
     pub(crate) backend_base_url: String,
     pub(crate) state_path: String,
@@ -73,6 +100,7 @@ pub(crate) struct FixvoxCloudStatus {
     pub(crate) transport_policy: Option<serde_json::Value>,
     pub(crate) policy_snapshot: Option<FixvoxPolicySnapshot>,
     pub(crate) capabilities: FixvoxPolicyCapabilities,
+    pub(crate) auth_policy: Option<FixvoxAuthPolicyStatus>,
     pub(crate) redacted: bool,
 }
 
@@ -1094,6 +1122,24 @@ pub(crate) fn activate_fixvox_device_with_client_and_env(
     activate_device_with_client_and_env(client, env_lookup, invite_code)
 }
 
+pub(crate) fn start_fixvox_cloud_login_with_env(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+    open_external_browser: bool,
+) -> Result<FixvoxCloudLoginStartStatus, FixvoxCloudError> {
+    let backend_base_url = resolve_backend_base_url(env_lookup)?;
+    let state_nonce = generate_login_state_nonce();
+    let verification_url = build_fixvox_login_verification_url(&backend_base_url, &state_nonce);
+
+    if open_external_browser {
+        open_external_browser_url(&verification_url)?;
+    }
+
+    Ok(build_fixvox_login_start_status(
+        state_nonce,
+        open_external_browser,
+    ))
+}
+
 #[tauri::command]
 pub fn get_fixvox_cloud_status() -> Result<FixvoxCloudStatus, FixvoxCloudError> {
     get_fixvox_cloud_status_with_env(&read_env_value)
@@ -1114,6 +1160,13 @@ pub async fn activate_fixvox_device(
     invite_code: String,
 ) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
     activate_device_with_reqwest(&read_env_value, invite_code).await
+}
+
+#[tauri::command]
+pub fn start_fixvox_cloud_login(
+    open_external_browser: Option<bool>,
+) -> Result<FixvoxCloudLoginStartStatus, FixvoxCloudError> {
+    start_fixvox_cloud_login_with_env(&read_env_value, open_external_browser.unwrap_or(false))
 }
 
 fn register_or_refresh_device_with_client(
@@ -1446,6 +1499,7 @@ fn build_cloud_status(
         transport_policy: state.transport_policy,
         policy_snapshot: state.policy_snapshot,
         capabilities,
+        auth_policy: None,
         redacted: true,
     }
 }
@@ -1766,6 +1820,72 @@ fn trim_trailing_slashes(value: &str) -> String {
 
 fn join_url(base_url: &str, path: &str) -> String {
     format!("{}{}", trim_trailing_slashes(base_url), path)
+}
+
+fn build_fixvox_login_verification_url(base_url: &str, state_nonce: &str) -> String {
+    format!(
+        "{}?flow=device-code&client=fixvox-tauri&state={}",
+        join_url(base_url, "/desktop/login"),
+        state_nonce,
+    )
+}
+
+fn build_fixvox_login_start_status(
+    state_nonce: String,
+    browser_opened: bool,
+) -> FixvoxCloudLoginStartStatus {
+    FixvoxCloudLoginStartStatus {
+        flow: "device_code_polling".to_string(),
+        verification_url_redacted: join_url(
+            PREFERRED_FIXVOX_BACKEND_URL,
+            "/desktop/login?flow=device-code&client=fixvox-tauri&state=redacted",
+        ),
+        browser_opened,
+        polling_interval_seconds: 3,
+        expires_in_seconds: 600,
+        session_id_redacted: "pending-cloud-session".to_string(),
+        state_redacted: redact_identifier(Some(&state_nonce))
+            .unwrap_or_else(|| "redacted".to_string()),
+        redacted: true,
+    }
+}
+
+fn generate_login_state_nonce() -> String {
+    format!(
+        "fxv_{}_{}",
+        current_unix_timestamp_string(),
+        std::process::id(),
+    )
+}
+
+fn open_external_browser_url(url: &str) -> Result<(), FixvoxCloudError> {
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = Command::new("rundll32.exe");
+        command.arg("url.dll,FileProtocolHandler").arg(url);
+        command
+    };
+
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = Command::new("open");
+        command.arg(url);
+        command
+    };
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = {
+        let mut command = Command::new("xdg-open");
+        command.arg(url);
+        command
+    };
+
+    command.spawn().map(|_| ()).map_err(|_| {
+        error(
+            "FIXVOX_LOGIN_BROWSER_OPEN_FAILED",
+            "Fixvox login could not open the external browser.",
+        )
+    })
 }
 
 fn error(code: &str, message: &str) -> FixvoxCloudError {

@@ -20,8 +20,8 @@
 
 ## Phase 4: Host-Owned Login Start
 
-- [ ] T010 Add Tauri command contract to start Fixvox Cloud login in external browser.
-- [ ] T011 Choose first completion mechanism: device-code polling or custom protocol callback.
+- [x] T010 Add Tauri command contract to start Fixvox Cloud login in external browser.
+- [x] T011 Choose first completion mechanism: device-code polling or custom protocol callback.
 - [ ] T012 Persist session metadata/tokens host-owned only; expose redacted status to React.
 - [ ] T013 Add provider-free Rust/TS tests for login state and token redaction.
 
