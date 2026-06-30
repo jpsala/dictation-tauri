@@ -8,6 +8,7 @@ describe("Settings host window", () => {
     const tauriConfig = readFileSync("src-tauri/tauri.conf.json", "utf8");
 
     expect(libSource).toContain("settings_window::configure_settings_window");
+    expect(libSource).toContain("settings_window::hide_settings_window");
     expect(libSource).toContain("preview_desktop_control_hotkey_registration");
     expect(libSource).toContain("apply_desktop_control_hotkey_registration");
     expect(tauriConfig).toContain('"label": "settings"');
@@ -16,6 +17,7 @@ describe("Settings host window", () => {
     expect(settingsSource).toContain("reusing configured window");
     expect(settingsSource).toContain("api.prevent_close()");
     expect(settingsSource).toContain("settings_window.hide()");
+    expect(settingsSource).toContain("hide_settings_window_for_app");
     expect(settingsSource).toContain("create_fresh_settings_window");
     expect(settingsSource).toContain("index.html#settings");
     expect(settingsSource).not.toContain("destroying stale window before open");

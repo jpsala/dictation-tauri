@@ -75,7 +75,24 @@ fn attach_hide_on_close<R: Runtime>(window: WebviewWindow<R>) {
     });
 }
 
+pub fn hide_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    eprintln!("[dictation-tauri][settings] hide requested");
+    let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) else {
+        return Ok(());
+    };
+    window
+        .hide()
+        .map_err(|error| format!("settings window hide failed: {error}"))?;
+    eprintln!("[dictation-tauri][settings] hide ok");
+    Ok(())
+}
+
 #[tauri::command]
 pub fn show_settings_window(app: AppHandle) -> Result<(), String> {
     show_settings_window_for_app(&app)
+}
+
+#[tauri::command]
+pub fn hide_settings_window(app: AppHandle) -> Result<(), String> {
+    hide_settings_window_for_app(&app)
 }
