@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-29T23:22:02.166Z
+Generated: 2026-06-30T00:03:08.983Z
 
 ## Topics
 
@@ -32,7 +32,7 @@ Generated: 2026-06-29T23:22:02.166Z
 - archived/high: [Fixvox Effective Runtime Parity](../tracks/archive/fixvox-effective-runtime-parity.md) - updated 2026-06-29
 - archived/low: [Prompt Para Proxima Sesion Archivado](../tracks/archive/next-session-prompt-2026-06-20.md) - updated 2026-06-20
 - archived/medium: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md) - updated 2026-06-07
-- active/high: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md) - updated 2026-06-28
+- active/high: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md) - updated 2026-06-29
 - active/high: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md) - updated 2026-06-10
 - active/high: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md) - updated 2026-06-29
 - active/high: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md) - updated 2026-06-29
@@ -54,6 +54,7 @@ Generated: 2026-06-29T23:22:02.166Z
 - [013-fixvox-text-runtime-parity](../../specs/013-fixvox-text-runtime-parity/)
 - [013-verified-paste-observer](../../specs/013-verified-paste-observer/)
 - [014-fixvox-parity-tray-settings-hotkeys](../../specs/014-fixvox-parity-tray-settings-hotkeys/)
+- [015-fixvox-auth-policy-groups](../../specs/015-fixvox-auth-policy-groups/)
 
 ## Skills
 

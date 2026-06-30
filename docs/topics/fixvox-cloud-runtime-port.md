@@ -164,6 +164,24 @@ Por eso Dictation Tauri debe tratar managed como `Groq-only` hasta que el Worker
 
 ## Decision De Producto/Tecnica
 
+Decision 2026-06-29: Fixvox Tauri evoluciona de invite/device activation hacia **login cloud para todo lo que supere el modo basico**. El modo anonimo conserva `installId` y una experiencia limitada/onboarding; dictado managed, postprocess, transforms, assistant actions, advanced settings, debug y limites de producto deben venir de un usuario autenticado con policy de Fixvox Cloud. Auth objetivo: email magic link, Google OAuth y GitHub OAuth. Invites quedan para beta/grants manuales.
+
+Modelo conceptual:
+
+```text
+User
+  -> Org/Workspace opcional
+    -> Group/Membership
+      -> Policy Template
+        -> Capabilities + Limits
+Device
+  -> installId anonimo
+  -> linked to User after login
+  -> policy snapshot host-owned/redacted
+```
+
+Capabilities iniciales de producto: `translate`, `dictation`, `postprocess`, `selection_transform`, `assistant_actions`, `custom_prompts`, `advanced_settings`, `debug_tools`, `managed_stt`, `managed_llm`. La UI solo refleja; Cloud y Rust/Tauri deben validar y fallar cerrado.
+
 1. El camino principal pasa a ser Fixvox managed cloud para STT/postprocess cuando haya backend configurado.
 2. El camino directo Groq local queda como BYOK/dev fallback explicito, no como default silencioso.
 3. React no recibe secretos ni decide transporte real.
@@ -199,7 +217,7 @@ Formato: `installId`, `deviceId`, ultimo resultado de registro (`lastRegisterOk`
 
 ## Camino De Implementacion
 
-La spec guia historica es `specs/009-fixvox-cloud-runtime-port/`. La track viva para el nuevo goal instalable/cloud es `docs/tracks/fixvox-tauri-cloud-release.md`.
+La spec guia historica es `specs/009-fixvox-cloud-runtime-port/`. La track viva para el nuevo goal instalable/cloud es `docs/tracks/fixvox-tauri-cloud-release.md`. La evolucion de login, grupos y capabilities administrables vive en `specs/015-fixvox-auth-policy-groups/`.
 
 Orden recomendado:
 
