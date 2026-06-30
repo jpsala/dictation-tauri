@@ -24,7 +24,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Datos de dictado | decided | `docs/topics/privacy-and-dictation-data.md` | Modo personal/dev permisivo; no imprimir ni commitear secretos. |
 | AOS/docs | active | `docs/topics/agentic-os.md` | Mantener `docs/tracks/`, `docs/skills/`, junction y audit verde. |
 | Settings/UI foundation | active | `docs/tracks/settings-window-and-ui-foundation.md`, `docs/topics/ui-design-and-impeccable.md` | Base compacta secciones + Hotkeys con un unico campo recorder persistente implementado; preferencia actual quedó Alt+3 por pedido de JP. |
-| Fixvox Tauri cloud/release | active | `docs/tracks/fixvox-tauri-cloud-release.md`, `docs/topics/fixvox-cloud-runtime-port.md` | Alpha prerelease separado publicado; prueba en otra PC pausada por JP. Cloud Settings local ahora muestra health/next-step/errors redacted y repair/refresh; no republish/subir otro asset sin aprobacion explicita. |
+| Fixvox Tauri cloud/release | active | `docs/tracks/fixvox-tauri-cloud-release.md`, `docs/topics/fixvox-cloud-runtime-port.md` | Alpha prerelease separado publicado; prueba en otra PC pausada por JP. Cloud Settings local ahora muestra health/next-step/errors redacted y repair/refresh. Nuevo arco decidido: login cloud para mas que modo basico, grupos/policy templates/capabilities administrables. No republish/subir otro asset sin aprobacion explicita. |
 
 ## Spec Activa
 
@@ -43,6 +43,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | `011-selection-transform-and-recovery-ergonomics` | active post-selection smoke: fixture-first routing/transforms, safe paste-last, explicit host command boundary, redacted target metadata, best-effort UIA selected-text read, and T039 product IPC smoke passed; replace-selection remains gated | `specs/011-selection-transform-and-recovery-ergonomics/tasks.md` |
 | `012-fixvox-dock-dictation-key` | complete through larger parity follow-ups: Skin4-like dock, Rust/Tauri shell, tray/context menu, default native Alt+Space with fallback, synced/actionable companion window first-slice, bounded result history, side-by-side smoke, and real `paste_sent`/controlled `paste_observed` E2E | `specs/012-fixvox-dock-dictation-key/tasks.md` |
 | `013-fixvox-text-runtime-parity` | complete + archived runtime parity closeout: provider/model/prompt/request/postprocess, Windows cargo tests, runtimePolicy persistence/refresh, preflight cache/prewarm/soft-timeout, audio prep VAD/MP3/no-speech and smoke real redacted. | `specs/013-fixvox-text-runtime-parity/tasks.md`, `docs/tracks/archive/fixvox-effective-runtime-parity.md` |
+| `015-fixvox-auth-policy-groups` | active/documented: anonymous basic mode + login for more-than-basic, user/group/policy template capabilities, host/cloud enforcement planned. | `specs/015-fixvox-auth-policy-groups/tasks.md` |
 
 ## Tracks Activas
 
@@ -58,6 +59,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 - Stack base: React, Vite, TypeScript strict, npm, Tauri v2, Rust 2021 y Playwright.
 - Decision 2026-06-27: los unicos proyectos fuente activos son `C:\dev\copicu` y `C:\dev\fixvox`; no usar worktrees/rutas viejas como referencia.
 - Decision 2026-06-27: Dictation Tauri es el nuevo cliente desktop de Fixvox; Fixvox Cloud es el control-plane canonico para device, activation, policy/preflight y managed runtime.
+- Decision 2026-06-29: modo anonimo/basic queda limitado; todo lo que supere lo basico requiere login Fixvox Cloud (email magic link, Google, GitHub objetivo), device linked a user y policy group/template con capabilities/limits administrables desde nube.
 - `C:\dev\copicu` es canon tecnico para Tauri/UI/settings/Windows desktop mechanics.
 - `C:\dev\fixvox` / Fixvox es canon funcional para dictado, runtime, backend/proxy, policies/env y benchmarks; no se porta literal.
 - MVP 0-3: app base, pipeline simulado, audio sintetico/STT dry-run con shell de provider real, microfono real.
@@ -176,6 +178,7 @@ Post-`013`: el foco activo paso a Settings real sobre una ventana normal. Estado
 60. Follow-up performance browser: JP confirmo `Alt+Shift+X` funcionando, pero paste en navegador estaba lento. Root cause probable: tras direct Unicode se seguia corriendo el observer Win32 bounded (`WM_GETTEXT`/enumeracion) y un settle especial Chromium; para `Chrome_WidgetWin_*`/`Chrome_RenderWidgetHostHWND` ahora se salta el observer bounded no util y queda settle directo corto. Instancia live reiniciada `20260629-browser-direct-input-fast`; JP confirmo que ya quedo bien. Checks: desktop-delivery-rust, desktop-control, build, cargo check.
 61. `aos-gol 3 y 4`: prueba en otra PC queda pausada; se cerró hardening local de Cloud Settings para activation/policy/errors: health derivado (`Ready`, activation needed, stale, managed blocked, refresh failed), next-step visible, error redacted, `statePath` reducido a app-data basename y accion `Repair device link` host-owned además de status/refresh/activate. Smoke visual CUA Cloud paso en run `20260629-settings-cloud-smoke` con Settings/Cloud en `Ready`, policy Pro, capabilities fresh y acciones visibles; report redacted `artifacts/ui-spikes/settings-cloud-smoke/20260629-settings-cloud-smoke/report.json`. Checks: settings, settings+voice-dock+desktop-control, build, cargo fmt/check.
 62. Pulido local Settings/Dock/Cloud: el recorder de Hotkeys ya no arma captura por `mousedown`/`focus` y ahora evita rearmados duplicados con guard ref mientras esta recording/armed; esto reduce activaciones dobles al editar la hotkey en Settings. Commit `710f24d fix: harden settings hotkey capture`. Checks: `npm run test:pipeline -- tests/settings`, `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`, `npm run build`.
+63. Decision producto/cloud: JP quiere login para cualquier capacidad mas alla de lo basico, con usuarios/grupos administrables desde Fixvox Cloud. Se creo `specs/015-fixvox-auth-policy-groups/` para anonymous basic -> login -> link device -> policy group/template -> capabilities/limits -> enforcement cloud/host. Login real/OAuth/device-link queda gated por aprobacion explicita.
 
 ## Promocion De Memoria
 

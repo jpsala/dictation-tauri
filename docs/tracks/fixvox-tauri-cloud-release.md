@@ -1,7 +1,7 @@
 ---
 status: active
 started: 2026-06-27
-updated: 2026-06-28
+updated: 2026-06-29
 priority: high
 owner: JP
 related:
@@ -39,7 +39,7 @@ Decision de producto 2026-06-27: Dictation Tauri es el nuevo cliente desktop de 
 
 ## Proximo Paso
 
-Bootstrap inicial completado: installer local reproducible + release channel separado documentado para Tauri. Device identity/status host-owned y Settings activation estan implementados. Smoke real autorizado por JP diagnostico Cloudflare 1010 sin User-Agent; con `fixvox-tauri/<version>` el device local quedo Pro. T005 ya agrega snapshot/capabilities policy-driven y T006 ya endurece el runtime para preferir device state persistido y no caer silenciosamente a BYOK. El smoke instalado local aislado ya paso; JP dejo la prueba en otra PC en pausa. Batch local actual: UX de Cloud en Settings endurecida con health/next-step/actionable errors y repair/refresh, sin publish ni llamadas cloud reales nuevas. Pendiente: validacion externa cuando JP la reactive.
+Bootstrap inicial completado: installer local reproducible + release channel separado documentado para Tauri. Device identity/status host-owned y Settings activation estan implementados. Smoke real autorizado por JP diagnostico Cloudflare 1010 sin User-Agent; con `fixvox-tauri/<version>` el device local quedo Pro. T005 ya agrega snapshot/capabilities policy-driven y T006 ya endurece el runtime para preferir device state persistido y no caer silenciosamente a BYOK. El smoke instalado local aislado ya paso; JP dejo la prueba en otra PC en pausa. Batch local actual: UX de Cloud en Settings endurecida con health/next-step/actionable errors y repair/refresh, sin publish ni llamadas cloud reales nuevas. Decision nueva 2026-06-29: el siguiente arco de producto es login cloud para todo lo que supere el modo basico, con grupos/policy templates/capabilities administrables desde Fixvox Cloud; ver `specs/015-fixvox-auth-policy-groups/`. Pendiente: validacion externa cuando JP la reactive.
 
 ## Release Bootstrap Inicial
 
@@ -181,6 +181,25 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
   - No publicar/subir assets.
   - No mostrar invite codes, device IDs completos, transcripts ni rutas personales completas.
 
+### T009 — Login cloud, grupos y policy capabilities administrables
+
+- Estado: documented / pending implementation
+- Tipo: product/control-plane
+- Objetivo: pasar de activation/invite como mecanismo principal a usuario autenticado + device linked + policy group administrable desde Fixvox Cloud.
+- Pasos:
+  1. Mantener modo anonimo/basic con `installId` para onboarding limitado.
+  2. Requerir login para capacidades superiores: dictation managed, postprocess, transforms, assistant actions, advanced/debug y limites altos.
+  3. Modelar `User -> Group -> Policy Template -> Capabilities + Limits` y vincular devices a usuarios.
+  4. Agregar Settings/Cloud signed-out/signed-in UX con `Sign in` via browser externo.
+  5. Validar capabilities en Cloud y host runtime; UI gating no cuenta como seguridad.
+- Checks:
+  - `specs/015-fixvox-auth-policy-groups/tasks.md`
+  - tests provider-free antes de cualquier login real.
+- Guardrails:
+  - Login/OAuth/device-link real requiere aprobacion explicita.
+  - No tokens/user IDs/device IDs completos en logs/docs.
+  - No deploy/publish/push.
+
 ### T007 — Publicar release artifact descargable
 
 - Estado: pending
@@ -212,6 +231,7 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 - 2026-06-29 smoke local tipo PC limpia sin instalar: se agrego `scripts/packaged-clean-smoke.ps1` / `npm run packaged-clean:smoke -- -AllowDesktopSideEffects`, que lanza `src-tauri/target/release/dictation-tauri.exe` con `APPDATA/LOCALAPPDATA` aislados, working dir sin `.env`, sin `GROQ_API_KEY`/device env y shortcut `Ctrl+Shift+F9` para no interceptar `Alt+Space`. Passing runs: `artifacts/release/packaged-clean-smoke/20260629-packaged-clean-first-run-nocdp/report.json` contra exe local previo y `artifacts/release/packaged-clean-smoke/20260629-packaged-clean-post-redaction-fix/report.json` contra build local post-fix; verifica que el exe empaquetado queda vivo, configura dock, crea `fixvox-device-state.json` con `installId` y sin `deviceId` antes de activation, y no lee dotenv del repo. Tambien se descargo el asset publicado a temp y el SHA256 remoto coincide con `4dd4670d3a2a46fa5a605718abaab8f1891b619a6e0f7345bf30b8043f69f74c`, sin instalar ni republish. Gotcha: no usar `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`/CDP en este smoke empaquetado; en este host hace fallar setup del WebView con `failed to receive message from webview`.
 - 2026-06-29 smoke instalado local aprobado por JP: se descargo el asset publicado `Fixvox-Tauri-Setup.exe`, se verifico SHA256 `4dd4670d3a2a46fa5a605718abaab8f1891b619a6e0f7345bf30b8043f69f74c`, se instalo silenciosamente en carpeta aislada bajo `artifacts/release/installed-smoke/20260629-installed-release-smoke/install`, se activo un device Pro contra Fixvox Cloud con invite local sin imprimir IDs/codes (`activation-report.json`) y se ejecuto dictado E2E con el exe instalado, `APPDATA/LOCALAPPDATA` aislados, sin `.env`/BYOK/device env y `Ctrl+Shift+F9`: managed STT + postprocess + paste al target controlado paso con `targetTextLength=10`, clipboard restaurado y report redacted en `installed-dictation-report.json`. Durante el smoke se encontro que el redacted report local conservaba request IDs completos; se corrigio `redact_request_id` para siempre materializar `redacted-request-id`, se saneo el artifact local y se genero un nuevo installer local no publicado con SHA256 `1ecaa89a503bd1a93f4b894e6b2dc811357cfb53eaaebae71e3a309da968ea12`.
 - 2026-06-29 UX hardening local: `src/settings/fixvox-cloud-control.ts` deriva health accionable para activation/policy/errors; `SettingsSurface` muestra badge/headline/next-step/capabilities, reduce `statePath` a `fixvox-device-state.json · host app data`, expone `Repair device link` host-owned y conserva `window.confirm` antes de operaciones cloud. Checks: `npm run test:pipeline -- tests/settings`, `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`, `npm run build`, `cd src-tauri && cargo fmt --check && cargo check`.
+- 2026-06-29 auth/policy groups decision: JP decidio que el usuario que quiera mas que lo basico debe autenticarse por email/Google/GitHub usando Fixvox Cloud. Se documento `specs/015-fixvox-auth-policy-groups/`, `docs/DECISIONS.md` y este track. Modelo objetivo: anonymous basic -> login -> link device to user -> policy group/template -> capabilities/limits -> runtime/cloud enforcement.
 - Infra release actual Fixvox: `C:/dev/infra/docs/runbooks/cloud-services.md` seccion `Fixvox — Releases / Auto-update`.
 - Policy/control-plane canonico: `C:/dev/fixvox/.specify/specs/003-settings-policy-control-plane/spec.md`.
 - Installer checklist canonico: `C:/dev/fixvox/.specify/specs/007-windows-release-installer/spec.md`.

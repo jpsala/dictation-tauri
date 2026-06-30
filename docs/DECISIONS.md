@@ -4,6 +4,24 @@ Registro corto de decisiones durables.
 
 ## Aprobadas
 
+### 2026-06-29 - Login cloud para capacidades mas alla de lo basico
+
+Estado: accepted
+
+Decision: Fixvox Tauri mantiene un modo anonimo/basic de baja friccion con `installId` local, pero cualquier capacidad mas alla de lo basico debe requerir login contra Fixvox Cloud. La autenticacion objetivo usa email magic link como base y Google/GitHub OAuth como proveedores convenientes. El device se vincula al usuario autenticado y recibe una policy snapshot con grupo/template/capabilities/limits administrables desde la nube.
+
+Motivo: JP necesita manejar facilmente tipos/grupos de usuarios, desde `translate-only` hasta usuarios con dictado, postprocess, transforms, assistant actions, advanced settings y debug. Centralizarlo en Fixvox Cloud simplifica control, revocacion, billing futuro, soporte, limites y rollout sin hardcodear variantes en el cliente.
+
+Alcance:
+
+- Modelar permisos como capabilities/entitlements de producto, no como flags visuales solamente.
+- El cliente Tauri puede ocultar/deshabilitar UI, pero runtime y Cloud deben validar capabilities y fallar cerrado.
+- BYOK/direct provider queda como modo dev/avanzado explicito; nunca desbloquea silenciosamente una capability managed denegada.
+- Invites quedan como mecanismo beta/manual, no como modelo principal de acceso de largo plazo.
+- React no recibe tokens ni toma decisiones de seguridad; Rust/Tauri posee session/device persistence host-owned y expone solo estado redacted.
+
+Proximo paso: ejecutar `specs/015-fixvox-auth-policy-groups/` empezando por contratos provider-free y Settings/Cloud signed-out/signed-in UX antes de cualquier login real. Login/OAuth/device-link real requiere aprobacion explicita por ser side effect externo/cuenta.
+
 ### 2026-06-24 - Permiso persistente para side effects locales controlados
 
 Estado: accepted
