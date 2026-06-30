@@ -263,7 +263,7 @@ function renderShell() {
               <div class="messages" id="messages"></div>
               <form class="composer" id="composer">
                 <textarea id="prompt" aria-label="Mensaje para Pi"></textarea>
-                <div class="composer-buttons"><button class="composer-action primary" type="submit" id="send-button" title="Enviar">Enviar</button><button class="composer-action" type="button" id="abort-inline" title="Abortar">Detener</button><button class="composer-action" type="button" id="new-inline" title="Nueva sesión">Nueva</button></div>
+                <div class="composer-buttons"><button class="composer-icon primary" type="button" id="send-button" title="Enviar" aria-label="Enviar">${sendIcon()}</button><button class="composer-icon" type="button" id="new-inline" title="Nueva sesión" aria-label="Nueva sesión">${newIcon()}</button></div>
               </form>
             </section>
             <aside class="activity-card" id="activity"></aside>
@@ -272,7 +272,7 @@ function renderShell() {
       </main>
     </div>`
   $('#composer').onsubmit = (event) => { event.preventDefault(); submitPrompt().catch(alertError) }
-  $('#abort-inline').onclick = () => abortPi().catch(alertError)
+  $('#send-button').onclick = () => (state.running ? abortPi() : submitPrompt()).catch(alertError)
   $('#new-inline').onclick = () => newSession().catch(alertError)
   $('#prompt').onkeydown = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -280,6 +280,15 @@ function renderShell() {
       submitPrompt().catch(alertError)
     }
   }
+}
+function sendIcon() {
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.8 20.2 21 12 3.8 3.8l1.4 6.5L14 12l-8.8 1.7-1.4 6.5Z"/></svg>'
+}
+function stopIcon() {
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>'
+}
+function newIcon() {
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>'
 }
 function renderSidebar() {
   const sidebar = $('#sidebar'); if (!sidebar) return
@@ -311,7 +320,13 @@ function renderMessages() {
     input.placeholder = state.health?.ok ? 'Escribí una instrucción para Pi… (Enter envía, Shift+Enter baja línea)' : 'Pi todavía no está listo en este entorno.'
   }
   const send = $('#send-button')
-  if (send) send.disabled = !state.health?.ok || state.running
+  if (send) {
+    send.disabled = !state.health?.ok
+    send.innerHTML = state.running ? stopIcon() : sendIcon()
+    send.title = state.running ? 'Cancelar respuesta' : 'Enviar'
+    send.setAttribute('aria-label', send.title)
+    send.classList.toggle('danger', state.running)
+  }
 }
 function messageBubble(message) {
   const role = message.role === 'user' ? (state.env?.user?.name || 'Vos') : message.role === 'system' ? 'Sistema' : 'Pi'

@@ -377,3 +377,30 @@ td small { color: #667085; }
   .composer-buttons { width: 100%; flex-direction: row; }
   .composer-action { flex: 1; }
 }
+
+/* Standard composer icon actions: one primary button toggles send/cancel. */
+.composer-buttons { min-width: auto; flex-direction: row; align-self: stretch; align-items: flex-start; }
+.composer-icon {
+  width: 42px;
+  height: 42px;
+  border: 1px solid #d0d5dd;
+  border-radius: 999px;
+  background: #fff;
+  color: #344054;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, color .15s ease, transform .1s ease;
+}
+.composer-icon:hover { background: #f2f4f7; transform: translateY(-1px); }
+.composer-icon.primary { background: #1976d2; border-color: #1976d2; color: #fff; }
+.composer-icon.primary:hover { background: #1565c0; }
+.composer-icon.danger { background: #dc2626; border-color: #dc2626; color: #fff; }
+.composer-icon.danger:hover { background: #b91c1c; }
+.composer-icon:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.composer-icon svg { width: 20px; height: 20px; fill: currentColor; }
+.composer-icon svg path[fill="none"] { fill: none; }
+@media (max-width: 760px) {
+  .composer-buttons { width: auto; align-self: flex-end; }
+  .composer-icon { flex: 0 0 auto; }
+}
