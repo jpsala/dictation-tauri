@@ -1,4 +1,11 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import {
+  getFixvoxPolicyTemplate,
+  type FixvoxPolicyTemplate,
+  type FixvoxPolicyTemplateId,
+  type FixvoxProductCapability,
+  type FixvoxUserAccessMode,
+} from "../fixvox-auth/policy-groups";
 
 export type FixvoxPolicyCapabilities = {
   canUseManagedTranscription: boolean;
@@ -18,6 +25,17 @@ export type FixvoxPolicySnapshot = {
   error?: { code: string; message: string; redacted: true };
 };
 
+export type FixvoxAuthPolicyStatus = {
+  accessMode: FixvoxUserAccessMode;
+  userRedacted?: string;
+  groupLabel?: string;
+  policyTemplateId?: FixvoxPolicyTemplateId;
+  policyTemplateLabel?: string;
+  capabilities?: FixvoxProductCapability[];
+  limits?: FixvoxPolicyTemplate["limits"];
+  redacted: true;
+};
+
 export type FixvoxCloudStatus = {
   backendBaseUrl: string;
   statePath: string;
@@ -33,6 +51,7 @@ export type FixvoxCloudStatus = {
   transportPolicy?: unknown;
   policySnapshot?: FixvoxPolicySnapshot;
   capabilities?: FixvoxPolicyCapabilities;
+  authPolicy?: FixvoxAuthPolicyStatus;
   redacted: boolean;
 };
 
@@ -49,6 +68,20 @@ export type FixvoxCloudHealth = {
   policyLabel: string;
   managedLabel: string;
   nextAction: string;
+};
+
+export type FixvoxAuthPolicyView = {
+  tone: FixvoxCloudHealthTone;
+  accessLabel: string;
+  headline: string;
+  detail: string;
+  userLabel: string;
+  groupLabel: string;
+  templateLabel: string;
+  capabilityLabel: string;
+  limitsLabel: string;
+  actionLabel: string;
+  actionHint: string;
 };
 
 export async function getFixvoxCloudStatus(): Promise<FixvoxCloudStatus | undefined> {
@@ -250,6 +283,98 @@ export function summarizeFixvoxPolicyCapabilities(status: FixvoxCloudStatus | un
   ];
   const trust = status.policySnapshot?.stale ? "stale" : status.policySnapshot?.trust ?? "pending";
   return `${parts.join(" · ")} · ${trust}`;
+}
+
+function summarizeAuthPolicyCapabilities(capabilities: FixvoxProductCapability[]): string {
+  const enabled = new Set(capabilities);
+  const parts = [
+    enabled.has("dictation") && enabled.has("managed_stt") ? "managed dictation" : "no managed dictation",
+    enabled.has("postprocess") && enabled.has("managed_llm") ? "postprocess" : "no postprocess",
+    enabled.has("translate") && enabled.has("managed_llm") ? "translate" : "no translate",
+    enabled.has("advanced_settings") ? "advanced settings" : "basic settings",
+    enabled.has("debug_tools") ? "debug tools" : "debug hidden",
+  ];
+  return parts.join(" · ");
+}
+
+function summarizeFixvoxAuthLimits(limits: FixvoxPolicyTemplate["limits"] | undefined): string {
+  if (!limits) {
+    return "Limits pending";
+  }
+
+  const parts = [
+    typeof limits.monthlyMinutes === "number" ? `${limits.monthlyMinutes} min/month` : undefined,
+    typeof limits.maxAudioSeconds === "number" ? `${limits.maxAudioSeconds}s max audio` : undefined,
+    typeof limits.dailyTranslations === "number" ? `${limits.dailyTranslations} translations/day` : undefined,
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" · ") : "No elevated limits";
+}
+
+function safeRedactedLabel(value: string | undefined, fallback: string): string {
+  if (!value) {
+    return fallback;
+  }
+
+  if (value.includes("@") || /\b(?:user|usr|dev|device|token|sess|session)_[A-Za-z0-9_-]{8,}\b/i.test(value)) {
+    return fallback;
+  }
+
+  return value;
+}
+
+export function deriveFixvoxAuthPolicyView(status: FixvoxCloudStatus | undefined): FixvoxAuthPolicyView {
+  if (!status) {
+    return {
+      tone: "warning",
+      accessLabel: "Open in Tauri",
+      headline: "Auth status unavailable",
+      detail: "Open Settings inside the Tauri app to read signed-in state from host-owned storage.",
+      userLabel: "host-owned",
+      groupLabel: "Pending",
+      templateLabel: "Pending",
+      capabilityLabel: "Capabilities pending host status.",
+      limitsLabel: "Limits pending",
+      actionLabel: "Sign in to unlock",
+      actionHint: "Login will be started by the host in a browser, not by React.",
+    };
+  }
+
+  const auth = status.authPolicy;
+  const template = auth?.policyTemplateId ? getFixvoxPolicyTemplate(auth.policyTemplateId) : undefined;
+  const templateLabel = auth?.policyTemplateLabel ?? template?.label ?? status.policyLabel ?? "Policy pending";
+  const capabilities = auth?.capabilities ?? (template ? [...template.capabilities] : []);
+  const limits = auth?.limits ?? template?.limits;
+
+  if (auth?.accessMode === "signed_in") {
+    return {
+      tone: "success",
+      accessLabel: "Signed in",
+      headline: "Signed in policy active",
+      detail: "Fixvox Cloud can assign this user to a group/template; host and cloud still enforce capabilities.",
+      userLabel: safeRedactedLabel(auth.userRedacted, "user redacted"),
+      groupLabel: auth.groupLabel ?? "Group pending",
+      templateLabel,
+      capabilityLabel: summarizeAuthPolicyCapabilities(capabilities),
+      limitsLabel: summarizeFixvoxAuthLimits(limits),
+      actionLabel: "Account linked",
+      actionHint: "Session secrets stay host-owned; React only receives redacted policy state.",
+    };
+  }
+
+  return {
+    tone: "warning",
+    accessLabel: "Anonymous basic",
+    headline: "Signed out: basic mode only",
+    detail: "Anonymous/basic mode is intentionally limited; managed dictation, postprocess, transforms, assistant actions, advanced settings and higher limits require Fixvox Cloud login.",
+    userLabel: "no user",
+    groupLabel: "No user group",
+    templateLabel: "Basic anonymous",
+    capabilityLabel: summarizeAuthPolicyCapabilities([...getFixvoxPolicyTemplate("basic-anonymous").capabilities]),
+    limitsLabel: summarizeFixvoxAuthLimits(getFixvoxPolicyTemplate("basic-anonymous").limits),
+    actionLabel: "Sign in to unlock",
+    actionHint: "Login is not wired yet; the next step is a host-owned browser flow.",
+  };
 }
 
 export function shouldConfirmFixvoxCloudOperation(

@@ -183,7 +183,7 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 
 ### T009 — Login cloud, grupos y policy capabilities administrables
 
-- Estado: provider-free-contracts-done / settings-ux-next
+- Estado: provider-free-contracts-and-settings-ux-done / host-login-next
 - Tipo: product/control-plane
 - Objetivo: pasar de activation/invite como mecanismo principal a usuario autenticado + device linked + policy group administrable desde Fixvox Cloud.
 - Pasos:
@@ -236,6 +236,7 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 - 2026-06-29 UX hardening local: `src/settings/fixvox-cloud-control.ts` deriva health accionable para activation/policy/errors; `SettingsSurface` muestra badge/headline/next-step/capabilities, reduce `statePath` a `fixvox-device-state.json · host app data`, expone `Repair device link` host-owned y conserva `window.confirm` antes de operaciones cloud. Checks: `npm run test:pipeline -- tests/settings`, `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`, `npm run build`, `cd src-tauri && cargo fmt --check && cargo check`.
 - 2026-06-29 auth/policy groups decision: JP decidio que el usuario que quiera mas que lo basico debe autenticarse por email/Google/GitHub usando Fixvox Cloud. Se documento `specs/015-fixvox-auth-policy-groups/`, `docs/DECISIONS.md` y este track. Modelo objetivo: anonymous basic -> login -> link device to user -> policy group/template -> capabilities/limits -> runtime/cloud enforcement.
 - 2026-06-29 T009 provider-free contracts: `src/fixvox-auth/policy-groups.ts` define capabilities de producto, templates `basic-anonymous`, `translate-only`, `dictation-basic`, `pro`, `power-admin`, required-capability checks y serializacion redacted. Tests en `tests/settings/auth-policy-groups.test.ts` validan templates progresivos y fail-closed sin login real. Commits: `5881a02`, `f665b58`.
+- 2026-06-29 T009 Settings UX provider-free: `SettingsSurface`/`fixvox-cloud-control` muestran signed-out anonymous/basic con `Sign in to unlock`, signed-in simulado con user redacted + group/template/capabilities/limits, y tests DOM cubren que no se filtren IDs/tokens/rutas personales. No hay login real ni llamadas OAuth/device-link.
 - Infra release actual Fixvox: `C:/dev/infra/docs/runbooks/cloud-services.md` seccion `Fixvox — Releases / Auto-update`.
 - Policy/control-plane canonico: `C:/dev/fixvox/.specify/specs/003-settings-policy-control-plane/spec.md`.
 - Installer checklist canonico: `C:/dev/fixvox/.specify/specs/007-windows-release-installer/spec.md`.
