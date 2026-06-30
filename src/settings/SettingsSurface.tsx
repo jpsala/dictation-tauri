@@ -17,6 +17,7 @@ import {
   refreshFixvoxPolicy,
   registerFixvoxDevice,
   shouldConfirmFixvoxCloudOperation,
+  startFixvoxCloudLogin,
   summarizeFixvoxCloudProblem,
   summarizeFixvoxPolicyCapabilities,
   type FixvoxCloudStatus,
@@ -51,7 +52,7 @@ type EditorNotice = {
   message: string;
 };
 
-type BusyAction = "preview" | "apply" | FixvoxCloudOperation | "status";
+type BusyAction = "preview" | "apply" | FixvoxCloudOperation | "status" | "login";
 
 type CaptureState = "idle" | "recording";
 
@@ -361,6 +362,44 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
     }
   }
 
+  async function startCloudLogin() {
+    if (!tauriRuntime) {
+      setCloudNotice({ tone: "warning", message: "Open Settings inside Tauri to start login." });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Open the external browser to start Fixvox Cloud sign-in? No session secrets will be exposed to Settings.",
+    );
+    if (!confirmed) {
+      setCloudNotice({ tone: "idle", message: "Fixvox Cloud sign-in was not started." });
+      return;
+    }
+
+    setBusyAction("login");
+    try {
+      const login = await startFixvoxCloudLogin(true);
+      if (!login) {
+        setCloudNotice({ tone: "warning", message: "Open this surface inside Tauri to start host-owned login." });
+        return;
+      }
+
+      setCloudNotice({
+        tone: login.browserOpened ? "success" : "warning",
+        message: login.browserOpened
+          ? `External browser opened for ${login.flow}; polling contract expires in ${login.expiresInSeconds}s.`
+          : `Login start prepared for ${login.flow}; external browser was not opened.`,
+      });
+    } catch (error) {
+      setCloudNotice({
+        tone: "danger",
+        message: `Fixvox Cloud login start failed: ${formatHotkeyEditReason(error)}`,
+      });
+    } finally {
+      setBusyAction(undefined);
+    }
+  }
+
   async function runCloudOperation(operation: FixvoxCloudOperation) {
     const code = inviteCode.trim();
     if (operation === "activate" && !code) {
@@ -606,10 +645,11 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
             <button
               type="button"
               className="settings-hotkey-recorder settings-cloud-signin-button"
-              disabled
-              aria-label="Fixvox Cloud sign in placeholder"
+              disabled={!tauriRuntime || Boolean(busyAction)}
+              onClick={() => void startCloudLogin()}
+              aria-label="Start Fixvox Cloud sign in"
             >
-              <span>{authPolicyView.actionLabel}</span>
+              <span>{busyAction === "login" ? "Opening browser…" : authPolicyView.actionLabel}</span>
               <small>{authPolicyView.accessLabel}</small>
             </button>
 
