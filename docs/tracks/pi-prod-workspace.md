@@ -96,16 +96,15 @@ ssh vps 'fixvox-admin assign-device-policy <deviceId> <policyId> "<Label>" --yes
 
 - Windows/Tauri GUI, Cua local y smokes desktop reales siguen requiriendo una maquina Windows.
 - El repo remoto tiene commits locales que aun no estan en GitHub; hasta que haya push aprobado, GitHub no es la fuente completa.
-- No se configuro servicio/autostart/tunnel nuevo para Dictation Tauri; el acceso inicial es por SSH/tmux.
+- Se creo experimentalmente `dictation-tauri-pi-console.service` (ttyd local-only en `127.0.0.1:7682`) durante el spike de consola web. El ingress publico `fixvox-pi-console.jpsala.dev` fue retirado de la config del tunnel porque JP prefiere admin web estilo Constelaciones; tratar ese servicio como fallback tecnico/cleanup pendiente, no producto.
 - Admin actual aun es incompleto para producto: hay listado/assignment account-level y device-level, pero faltan UI de grupos, crear grupos/templates desde admin y usage/quota dashboard.
 - No copiar secretos ni `.env` al repo; el admin key remoto vive fuera del repo en `~/.config/dictation-tauri/admin.env`.
 
 ## Proximo Paso Recomendado
 
-1. Implementar Phase A del track `docs/tracks/fixvox-registered-users-opportunities.md`: admin users/groups real, account-level assignment y tests.
+1. Implementar admin web `https://fixvox.jpsala.dev/admin/pi` estilo Constelaciones; no insistir con ttyd como producto.
 2. Decidir si se aprueba `git push` para que GitHub y VPS queden alineados.
-3. Si JP quiere UI web persistente, crear un ttyd/tunnel separado para Dictation Tauri con aprobacion explicita.
-4. Si JP quiere agent remoto always-on para este repo, crear servicio systemd user separado y documentarlo en `C:/dev/infra`.
+3. Si JP quiere agent remoto always-on para este repo, crear servicio systemd user separado y documentarlo en `C:/dev/infra`.
 
 ## Guardrails
 
