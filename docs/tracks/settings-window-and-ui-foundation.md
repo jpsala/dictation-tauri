@@ -147,7 +147,7 @@ Pulido live de Settings/Dock/Cloud posterior al recorder hardening:
 
 Siguiente lote recomendado:
 
-1. Que JP pruebe la instancia viva desde `artifacts/live-app/20260629-settings-cloud-smoke/tauri-dev.log`; preferencia actual historica quedo en `Alt+3` por pedido explicito.
+1. Que JP pruebe la instancia viva desde `artifacts/live-app/20260630-001421/tauri-dev.log`; preferencia actual historica quedo en `Alt+Space` al reiniciar esta tanda.
 2. Si hay friccion en Cloud Settings, corregir copy/estado local sin llamadas cloud reales nuevas salvo aprobacion; mantener errores e IDs redacted.
 3. Si se agregan mas combinaciones soportadas, mantener validacion/registro/persistencia host-owned y reutilizar el copy de errores/conflictos de `src/settings/hotkey-edit-copy.ts`.
 4. No reintroducir listas de alternativas para la hotkey principal; mantener un solo campo editable.

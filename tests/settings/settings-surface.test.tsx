@@ -123,7 +123,22 @@ describe("SettingsSurface", () => {
       redacted: true,
     };
 
-    const html = renderToStaticMarkup(<SettingsSurface initialSection="cloud" initialCloudStatus={cloudStatus} />);
+    const html = renderToStaticMarkup(
+      <SettingsSurface
+        initialSection="cloud"
+        initialCloudStatus={cloudStatus}
+        initialAuthSessionStatus={{
+          status: "signed_in",
+          flow: "device_code_polling",
+          userRedacted: "user_1234567890abcdef",
+          sessionIdRedacted: "sess…cdef",
+          stateRedacted: "state…cdef",
+          secretsPresent: false,
+          sessionPath: "fixvox-auth-session.v1.json · host app data",
+          redacted: true,
+        }}
+      />,
+    );
 
     expect(html).toContain("Signed in policy active");
     expect(html).toContain("Founders");
@@ -131,7 +146,11 @@ describe("SettingsSurface", () => {
     expect(html).toContain("managed dictation");
     expect(html).toContain("postprocess");
     expect(html).toContain("1500 min/month");
-    expect(html).toContain("React only receives redacted policy state");
+    expect(html).toContain("host and cloud still enforce capabilities");
+    expect(html).toContain("Fixvox policy active");
+    expect(html).toContain("This device is linked to a redacted Fixvox account and policy capabilities are refreshed from Cloud");
+    expect(html).not.toContain("Signed in: device link pending");
+    expect(html).not.toContain("Capabilities remain basic until the host links this device");
     expect(html).not.toContain("user_1234567890abcdef");
     expect(html).not.toContain("device_id");
     expect(html).not.toContain("gsk_");
