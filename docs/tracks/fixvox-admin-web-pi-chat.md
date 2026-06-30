@@ -99,7 +99,9 @@ Implementacion sugerida:
 - Worker deploy desde VPS funciona.
 - Admin CLI listo: `scripts/fixvox-admin.mjs` / `npm run cloud:admin`.
 - Account-level policy admin deployado en Worker version `6c2501dd-e7af-4e8b-9697-9251aad5c8c3`.
-- Falta admin web con `/admin/pi`.
+- Primer admin web minimo implementado en `admin/fixvox-web/server.mjs`, con `npm run admin:web`, login por token server-side, `/admin/pi`, Pi RPC, health, accounts/devices proxy y guardrails en prompts.
+- Checks locales: `node --check admin/fixvox-web/server.mjs`, `npm run cloud:test` (67/67), `npm run build` OK.
+- Falta desplegar el admin web en VPS bajo `https://fixvox.jpsala.dev/admin/pi` y definir acceso final (token/Cloudflare Access).
 
 ## Proximo Paso Para Nueva Sesion
 
