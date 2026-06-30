@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  deriveFixvoxAuthPolicyView,
   deriveFixvoxCloudHealth,
   formatFixvoxStateLocation,
   shouldConfirmFixvoxCloudOperation,
@@ -132,6 +133,66 @@ describe("Fixvox cloud settings contract", () => {
     });
     expect(summarizeFixvoxCloudProblem(failed)).toBe("cloudflare_1010: request blocked");
     expect(JSON.stringify(deriveFixvoxCloudHealth(failed))).not.toContain("dev_test_1234567890abcdef");
+  });
+
+  it("derives signed-out basic and signed-in group/template auth UX without raw ids", () => {
+    const signedOut: FixvoxCloudStatus = {
+      backendBaseUrl: "https://auth-fixvox.jpsala.dev",
+      statePath: "C:/Users/JP/AppData/Roaming/dictation-tauri/fixvox-device-state.json",
+      installIdPresent: true,
+      installIdRedacted: "instal…1234",
+      deviceRegistered: false,
+      lastRegisterOk: false,
+      redacted: true,
+    };
+
+    expect(deriveFixvoxAuthPolicyView(signedOut)).toMatchObject({
+      tone: "warning",
+      accessLabel: "Anonymous basic",
+      headline: "Signed out: basic mode only",
+      groupLabel: "No user group",
+      templateLabel: "Basic anonymous",
+      actionLabel: "Sign in to unlock",
+    });
+    expect(deriveFixvoxAuthPolicyView(signedOut).capabilityLabel).toContain("no managed dictation");
+
+    const signedIn: FixvoxCloudStatus = {
+      backendBaseUrl: "https://auth-fixvox.jpsala.dev",
+      statePath: "redacted",
+      installIdPresent: true,
+      installIdRedacted: "instal…1234",
+      deviceRegistered: true,
+      deviceIdRedacted: "dev…cdef",
+      lastRegisterOk: true,
+      policyLabel: "Pro",
+      capabilities: {
+        canUseManagedTranscription: true,
+        canSeeAdvancedSettings: true,
+        canUseDebugTools: false,
+      },
+      authPolicy: {
+        accessMode: "signed_in",
+        userRedacted: "user_1234567890abcdef",
+        groupLabel: "Founders",
+        policyTemplateId: "pro",
+        policyTemplateLabel: "Pro",
+        redacted: true,
+      },
+      redacted: true,
+    };
+
+    const view = deriveFixvoxAuthPolicyView(signedIn);
+
+    expect(view).toMatchObject({
+      tone: "success",
+      accessLabel: "Signed in",
+      userLabel: "user redacted",
+      groupLabel: "Founders",
+      templateLabel: "Pro",
+      actionLabel: "Account linked",
+    });
+    expect(view.capabilityLabel).toContain("managed dictation");
+    expect(JSON.stringify(view)).not.toContain("user_1234567890abcdef");
   });
 
   it("keeps real cloud operations behind explicit user confirmation", () => {

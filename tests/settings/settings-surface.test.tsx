@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { SettingsSurface } from "../../src/settings/SettingsSurface";
+import type { FixvoxCloudStatus } from "../../src/settings/fixvox-cloud-control";
 
 describe("SettingsSurface", () => {
   it("renders a compact section scaffold with a host-owned hotkey editor", () => {
@@ -51,6 +52,86 @@ describe("SettingsSurface", () => {
     expect(html.toLowerCase()).not.toContain("spike-only");
     expect(html.toLowerCase()).not.toContain("raw transcript");
     expect(html.toLowerCase()).not.toContain("selected text");
+  });
+
+  it("renders Settings Cloud signed-out/basic UX without real auth", () => {
+    const cloudStatus: FixvoxCloudStatus = {
+      backendBaseUrl: "https://auth-fixvox.jpsala.dev",
+      statePath: "C:/Users/JP/AppData/Roaming/dictation-tauri/fixvox-device-state.json",
+      installIdPresent: true,
+      installIdRedacted: "instal…1234",
+      deviceRegistered: false,
+      lastRegisterOk: false,
+      redacted: true,
+    };
+
+    const html = renderToStaticMarkup(<SettingsSurface initialSection="cloud" initialCloudStatus={cloudStatus} />);
+
+    expect(html).toContain("Fixvox Cloud");
+    expect(html).toContain("Signed out: basic mode only");
+    expect(html).toContain("Anonymous basic");
+    expect(html).toContain("Sign in to unlock");
+    expect(html).toContain("No user group");
+    expect(html).toContain("Basic anonymous");
+    expect(html).toContain("no managed dictation");
+    expect(html).toContain("managed dictation, postprocess, transforms, assistant actions, advanced settings and higher limits require Fixvox Cloud login");
+    expect(html).toContain("Login is not wired yet; the next step is a host-owned browser flow.");
+    expect(html).toContain("fixvox-device-state.json · host app data");
+    expect(html).not.toContain("user_1234567890abcdef");
+    expect(html).not.toContain("dev_test_1234567890abcdef");
+    expect(html).not.toContain("C:/Users/JP/AppData");
+    expect(html).not.toContain("token");
+  });
+
+  it("renders signed-in group/template/capabilities from simulated policy only", () => {
+    const cloudStatus: FixvoxCloudStatus = {
+      backendBaseUrl: "https://auth-fixvox.jpsala.dev",
+      statePath: "redacted",
+      installIdPresent: true,
+      installIdRedacted: "instal…1234",
+      deviceRegistered: true,
+      deviceIdRedacted: "dev…cdef",
+      lastRegisterOk: true,
+      policyLabel: "Pro",
+      capabilities: {
+        canUseManagedTranscription: true,
+        canSeeAdvancedSettings: true,
+        canUseDebugTools: false,
+      },
+      policySnapshot: {
+        policyLabel: "Pro",
+        capabilities: {
+          canUseManagedTranscription: true,
+          canSeeAdvancedSettings: true,
+          canUseDebugTools: false,
+        },
+        fetchedAt: "2026-06-29T00:00:00Z",
+        trust: "simulated",
+        stale: false,
+      },
+      authPolicy: {
+        accessMode: "signed_in",
+        userRedacted: "user_1234567890abcdef",
+        groupLabel: "Founders",
+        policyTemplateId: "pro",
+        policyTemplateLabel: "Pro",
+        redacted: true,
+      },
+      redacted: true,
+    };
+
+    const html = renderToStaticMarkup(<SettingsSurface initialSection="cloud" initialCloudStatus={cloudStatus} />);
+
+    expect(html).toContain("Signed in policy active");
+    expect(html).toContain("Founders");
+    expect(html).toContain("Pro");
+    expect(html).toContain("managed dictation");
+    expect(html).toContain("postprocess");
+    expect(html).toContain("1500 min/month");
+    expect(html).toContain("React only receives redacted policy state");
+    expect(html).not.toContain("user_1234567890abcdef");
+    expect(html).not.toContain("device_id");
+    expect(html).not.toContain("gsk_");
   });
 
   it("wires the single shortcut field to record key presses and save through the host", () => {

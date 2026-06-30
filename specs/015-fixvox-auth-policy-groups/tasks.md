@@ -14,9 +14,9 @@
 
 ## Phase 3: Settings Cloud UX
 
-- [ ] T007 Extend Settings/Cloud view with signed-out/signed-in states and `Sign in to unlock` copy.
-- [ ] T008 Keep all auth/user/device identifiers redacted in Settings and tests.
-- [ ] T009 Add visual/DOM smoke for Settings Cloud signed-out/basic state without real auth.
+- [x] T007 Extend Settings/Cloud view with signed-out/signed-in states and `Sign in to unlock` copy.
+- [x] T008 Keep all auth/user/device identifiers redacted in Settings and tests.
+- [x] T009 Add visual/DOM smoke for Settings Cloud signed-out/basic state without real auth.
 
 ## Phase 4: Host-Owned Login Start
 

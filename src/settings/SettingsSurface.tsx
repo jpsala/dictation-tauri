@@ -10,6 +10,7 @@ import {
 } from "../desktop-control/tauri-host-control";
 import {
   activateFixvoxDevice,
+  deriveFixvoxAuthPolicyView,
   deriveFixvoxCloudHealth,
   formatFixvoxStateLocation,
   getFixvoxCloudStatus,
@@ -59,9 +60,14 @@ type HostHotkeyCapturePayload = {
   shortcut: string;
 };
 
+type SettingsSurfaceProps = {
+  initialSection?: SettingsSectionId;
+  initialCloudStatus?: FixvoxCloudStatus;
+};
+
 const HOST_HOTKEY_CAPTURE_EVENT = "desktop-control://hotkey-capture";
 
-export function SettingsSurface() {
+export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus }: SettingsSurfaceProps = {}) {
   const tauriRuntime = isTauri();
   const [dictationShortcut, setDictationShortcut] = useState("Alt+Space");
   const [editingShortcut, setEditingShortcut] = useState("Alt+Space");
@@ -73,13 +79,13 @@ export function SettingsSurface() {
   });
   const [busyAction, setBusyAction] = useState<BusyAction | undefined>();
   const [captureState, setCaptureState] = useState<CaptureState>("idle");
-  const [cloudStatus, setCloudStatus] = useState<FixvoxCloudStatus | undefined>();
+  const [cloudStatus, setCloudStatus] = useState<FixvoxCloudStatus | undefined>(initialCloudStatus);
   const [cloudNotice, setCloudNotice] = useState<EditorNotice>({
     tone: "idle",
     message: "Local cloud status loads from host-owned app data.",
   });
   const [inviteCode, setInviteCode] = useState("");
-  const [selectedSection, setSelectedSection] = useState<SettingsSectionId>("hotkeys");
+  const [selectedSection, setSelectedSection] = useState<SettingsSectionId>(initialSection);
   const captureArmedRef = useRef(false);
   const selectedSectionMeta = sections.find((section) => section.id === selectedSection) ?? sections[1];
   const settingsHeading = sectionHeading(selectedSectionMeta.id);
@@ -188,6 +194,7 @@ export function SettingsSurface() {
     : "Apply waits for preview.";
   const candidateChanged = editingShortcut !== dictationShortcut;
   const cloudHealth = deriveFixvoxCloudHealth(cloudStatus);
+  const authPolicyView = deriveFixvoxAuthPolicyView(cloudStatus);
   const cloudProblem = summarizeFixvoxCloudProblem(cloudStatus);
   const cloudStateLocation = formatFixvoxStateLocation(cloudStatus?.statePath);
 
@@ -519,6 +526,16 @@ export function SettingsSurface() {
           </div>
 
           <div className="settings-hotkey-list" aria-label="Fixvox Cloud status">
+            <div className="settings-hotkey-row" data-health={authPolicyView.tone}>
+              <div className="settings-hotkey-copy">
+                <strong>{authPolicyView.headline}</strong>
+                <span>{authPolicyView.detail}</span>
+              </div>
+              <div className="settings-hotkey-value" aria-label="Fixvox Cloud auth status">
+                <kbd>{authPolicyView.accessLabel}</kbd>
+                <small>{authPolicyView.userLabel}</small>
+              </div>
+            </div>
             <div className="settings-hotkey-row" data-health={cloudHealth.tone}>
               <div className="settings-hotkey-copy">
                 <strong>{cloudHealth.headline}</strong>
@@ -531,22 +548,32 @@ export function SettingsSurface() {
             </div>
             <div className="settings-hotkey-row">
               <div className="settings-hotkey-copy">
-                <strong>Policy</strong>
-                <span>{cloudStatus?.backendBaseUrl ?? "https://auth-fixvox.jpsala.dev"}</span>
+                <strong>Policy group</strong>
+                <span>{authPolicyView.groupLabel}</span>
               </div>
-              <div className="settings-hotkey-value" aria-label="Fixvox Cloud policy status">
-                <kbd>{cloudHealth.policyLabel}</kbd>
-                <small>{cloudStatus?.policyId ?? cloudStatus?.policySnapshot?.trust ?? "pending"}</small>
+              <div className="settings-hotkey-value" aria-label="Fixvox Cloud policy group">
+                <kbd>{authPolicyView.templateLabel}</kbd>
+                <small>{authPolicyView.accessLabel}</small>
               </div>
             </div>
             <div className="settings-hotkey-row">
               <div className="settings-hotkey-copy">
                 <strong>Capabilities</strong>
-                <span>{summarizeFixvoxPolicyCapabilities(cloudStatus)}</span>
+                <span>{authPolicyView.capabilityLabel}</span>
               </div>
               <div className="settings-hotkey-value" aria-label="Fixvox Cloud capabilities">
                 <kbd>{cloudHealth.managedLabel}</kbd>
                 <small>{cloudStatus?.capabilities?.canSeeAdvancedSettings ? "advanced" : "basic"}</small>
+              </div>
+            </div>
+            <div className="settings-hotkey-row">
+              <div className="settings-hotkey-copy">
+                <strong>Policy snapshot</strong>
+                <span>{summarizeFixvoxPolicyCapabilities(cloudStatus)}</span>
+              </div>
+              <div className="settings-hotkey-value" aria-label="Fixvox Cloud policy status">
+                <kbd>{cloudHealth.policyLabel}</kbd>
+                <small>{cloudStatus?.policySnapshot?.trust ?? "pending"}</small>
               </div>
             </div>
             <div className="settings-hotkey-row">
@@ -568,9 +595,23 @@ export function SettingsSurface() {
                   <h3 id="settings-cloud-activation-title">Device activation</h3>
                   <span>Cloud gated</span>
                 </div>
-                <p>Invite-code activation is host-owned and asks before contacting Fixvox Cloud.</p>
+                <p>Invite-code activation is host-owned and asks before contacting Fixvox Cloud. Login is next and will stay host-owned.</p>
+              </div>
+              <div className="settings-hotkey-editor-state" aria-label="Fixvox Cloud auth action">
+                <span>{authPolicyView.limitsLabel}</span>
+                <span>{authPolicyView.actionHint}</span>
               </div>
             </div>
+
+            <button
+              type="button"
+              className="settings-hotkey-recorder settings-cloud-signin-button"
+              disabled
+              aria-label="Fixvox Cloud sign in placeholder"
+            >
+              <span>{authPolicyView.actionLabel}</span>
+              <small>{authPolicyView.accessLabel}</small>
+            </button>
 
             <input
               className="settings-hotkey-recorder settings-cloud-invite-input"
