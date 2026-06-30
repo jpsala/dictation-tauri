@@ -55,6 +55,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Settings/UI foundation | `docs/tracks/settings-window-and-ui-foundation.md` | Decision HeroUI v3 y handoff para pantalla Settings real. |
 | Fixvox Tauri cloud/release | `docs/tracks/fixvox-tauri-cloud-release.md` | Plan para convertir este repo en cliente desktop Fixvox instalable, activable y policy-driven contra Fixvox Cloud. |
 | Usuarios registrados / poder producto | `docs/tracks/fixvox-registered-users-opportunities.md` | Roadmap implementable para admin usuarios/grupos, usage/quota, planes/capabilities, personalizacion y beta/otra PC. |
+| Pi prod workspace | `docs/tracks/pi-prod-workspace.md` | VPS `vps` tiene Pi 0.80.2 y repo `/home/jpsal/dev/dictation-tauri`; usar SSH/tmux para trabajar sin PC local encendida. |
 
 ## Decisiones Vigentes
 
@@ -194,6 +195,7 @@ Post-`013`: el foco activo paso a Settings real sobre una ventana normal. Estado
 74. Cutover deploy desde este repo aprobado y ejecutado: primer `npm run cloud:deploy` fallo antes de subir porque `wrangler` no estaba instalado (node_modules excluido), se desplego desde `cloud/fixvox-proxy` usando el binario Wrangler existente y luego se hardeneo `scripts/cloud-deploy.ps1` para first-run fallback con `npx --yes wrangler@4.74.0`. Worker version `f23ad375-5056-483d-8f0a-417a5450bd76`. T021 rerun post-cutover paso: `artifacts/desktop-control/fixvox-login-link-smoke/20260630-T021-after-repo-cloud-deploy/report.json`.
 75. T022 paso con aprobacion JP: Pro managed dictation E2E `artifacts/desktop-control/dictation-e2e/20260630-T022-pro-managed-r2/report.json` (fresh WAV, managed provider path, paste_sent, clipboard restored); denied alpha-basic signed-in policy smoke `artifacts/desktop-control/policy-deny-smoke/20260630-T022-denied-policy-r2/report.json` asigno temporalmente alpha-basic, refresco `authPolicy` signed-in con capabilities vacias, `prewarm_fixvox_managed_transcription` fallo cerrado con `FIXVOX_CAPABILITY_NOT_ALLOWED` antes de provider y restauro Pro. Se desplego Worker version `8218d344-adfc-467e-bd12-b4ad271e1826`; Tauri ahora honra `auth.capabilities: []` explicitamente.
 76. Spec 016 legacy demotion/docs cleanup completado: `docs/topics/fixvox-cloud-runtime-port.md`, `docs/topics/source-project-map.md`, `docs/topics/fixvox-dock-and-hotkeys-reference.md`, track cloud y tasks ahora declaran `cloud/fixvox-proxy/` como source operativo Cloud/Worker y `C:/dev/fixvox` como legacy/reference, no dependencia para trabajo nuevo.
+77. Pi prod workspace preparado en VPS para no depender de PC local: `ssh vps` -> `srv1761438` user `jpsal`, Pi `/home/jpsal/.local/bin/pi` version 0.80.2, repo `/home/jpsal/dev/dictation-tauri` clonado desde bundle local con commits actuales, origin GitHub, estado remoto `main...origin/main [ahead 45, behind 2]`. Helpers: `dictation-tauri-pi` y `dictation-tauri-console`. Check remoto `npm run cloud:test` OK (65/65). No push, no autostart/tunnel nuevo.
 
 ## Promocion De Memoria
 

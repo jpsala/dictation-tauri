@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-30T04:50:09.486Z
+Generated: 2026-06-30T05:00:53.948Z
 
 ## Topics
 
@@ -35,6 +35,7 @@ Generated: 2026-06-30T04:50:09.486Z
 - active/high: [Fixvox Registered Users Opportunities](../tracks/fixvox-registered-users-opportunities.md) - updated 2026-06-30
 - active/high: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md) - updated 2026-06-30
 - active/high: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md) - updated 2026-06-10
+- active/high: [Pi Prod Workspace For Dictation Tauri](../tracks/pi-prod-workspace.md) - updated 2026-06-30
 - active/high: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md) - updated 2026-06-30
 - active/high: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md) - updated 2026-06-29
 
