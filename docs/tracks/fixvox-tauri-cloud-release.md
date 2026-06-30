@@ -1,7 +1,7 @@
 ---
 status: active
 started: 2026-06-27
-updated: 2026-06-29
+updated: 2026-06-30
 priority: high
 owner: JP
 related:
@@ -39,7 +39,7 @@ Decision de producto 2026-06-27: Dictation Tauri es el nuevo cliente desktop de 
 
 ## Proximo Paso
 
-Bootstrap inicial completado: installer local reproducible + release channel separado documentado para Tauri. Device identity/status host-owned y Settings activation estan implementados. Smoke real autorizado por JP diagnostico Cloudflare 1010 sin User-Agent; con `fixvox-tauri/<version>` el device local quedo Pro. T005 ya agrega snapshot/capabilities policy-driven y T006 ya endurece el runtime para preferir device state persistido y no caer silenciosamente a BYOK. El smoke instalado local aislado ya paso; JP dejo la prueba en otra PC en pausa. Batch local actual: UX de Cloud en Settings endurecida con health/next-step/actionable errors y repair/refresh, sin publish ni llamadas cloud reales nuevas. Decision nueva 2026-06-29: el siguiente arco de producto es login cloud para todo lo que supere el modo basico, con grupos/policy templates/capabilities administrables desde Fixvox Cloud; ver `specs/015-fixvox-auth-policy-groups/`. Pendiente: validacion externa cuando JP la reactive.
+Bootstrap inicial completado: installer local reproducible + release channel separado documentado para Tauri. Device identity/status host-owned y Settings activation estan implementados. Smoke real autorizado por JP diagnostico Cloudflare 1010 sin User-Agent; con `fixvox-tauri/<version>` el device local quedo Pro. T005 ya agrega snapshot/capabilities policy-driven y T006 ya endurece el runtime para preferir device state persistido y no caer silenciosamente a BYOK. El smoke instalado local aislado ya paso; JP dejo la prueba en otra PC en pausa. UX de Cloud Settings ahora muestra health/next-step/actionable errors, repair/refresh, sign-in sin modal y polling redacted de session status. Decision 2026-06-29: login cloud para todo lo que supere el modo basico, con grupos/policy templates/capabilities administrables desde Fixvox Cloud; ver `specs/015-fixvox-auth-policy-groups/`. Pendiente: completar device link/policy refresh post-OAuth y validacion externa cuando JP la reactive.
 
 ## Release Bootstrap Inicial
 
@@ -183,7 +183,7 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 
 ### T009 — Login cloud, grupos y policy capabilities administrables
 
-- Estado: provider-free-contracts-and-settings-ux-done / host-login-next
+- Estado: browser-google-oauth-done / tauri-polling-ux-done / device-link-next
 - Tipo: product/control-plane
 - Objetivo: pasar de activation/invite como mecanismo principal a usuario autenticado + device linked + policy group administrable desde Fixvox Cloud.
 - Pasos:
@@ -192,6 +192,7 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
   3. Modelar `User -> Group -> Policy Template -> Capabilities + Limits` y vincular devices a usuarios.
   4. Agregar Settings/Cloud signed-out/signed-in UX con `Sign in` via browser externo.
   5. Validar capabilities en Cloud y host runtime; UI gating no cuenta como seguridad.
+  6. Estado 2026-06-30: Cloud production `/desktop/login` muestra Google OAuth y browser flow completo; Settings no usa modal, abre browser directo y puede poll `/desktop/login/status` via comando host-owned `poll_fixvox_cloud_login` con estado redacted.
 - Checks:
   - `specs/015-fixvox-auth-policy-groups/tasks.md`
   - `npm run test:pipeline -- tests/settings/auth-policy-groups.test.ts`

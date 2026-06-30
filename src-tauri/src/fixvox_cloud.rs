@@ -85,6 +85,21 @@ pub(crate) struct FixvoxAuthSessionState {
     pub(crate) expires_at: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FixvoxCloudLoginPollStatus {
+    pub(crate) status: String,
+    pub(crate) flow: Option<String>,
+    pub(crate) provider: Option<String>,
+    pub(crate) state_redacted: Option<String>,
+    pub(crate) user_redacted: Option<String>,
+    pub(crate) completed_at: Option<String>,
+    pub(crate) expires_at: Option<String>,
+    pub(crate) error: Option<String>,
+    pub(crate) error_description: Option<String>,
+    pub(crate) redacted: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FixvoxAuthSessionStatus {
@@ -1396,6 +1411,71 @@ pub(crate) fn get_fixvox_auth_session_status_with_env(
     Ok(build_auth_session_status(path, state.as_ref()))
 }
 
+pub(crate) async fn poll_fixvox_cloud_login_with_env(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<FixvoxAuthSessionStatus, FixvoxCloudError> {
+    let backend_base_url = resolve_backend_base_url(env_lookup)?;
+    let path = resolve_auth_session_state_path(env_lookup)?;
+    let Some(mut state) = read_auth_session_state(&path)? else {
+        return Ok(build_auth_session_status(path, None));
+    };
+
+    if state.status != "pending" {
+        return Ok(build_auth_session_status(path, Some(&state)));
+    }
+
+    let status_url = build_fixvox_login_status_url(&backend_base_url, &state.state_nonce);
+    let client = fixvox_http_client()?;
+    let response = client.get(status_url).send().await.map_err(|_| {
+        error(
+            "FIXVOX_LOGIN_STATUS_FAILED",
+            "Fixvox Cloud login status could not be reached.",
+        )
+    })?;
+
+    if response.status().as_u16() == 404 {
+        state.status = "expired".to_string();
+        persist_auth_session_state(&path, &state)?;
+        return Ok(build_auth_session_status(path, Some(&state)));
+    }
+
+    if !response.status().is_success() {
+        return Err(error(
+            "FIXVOX_LOGIN_STATUS_FAILED",
+            "Fixvox Cloud login status returned an error.",
+        ));
+    }
+
+    let poll_status: FixvoxCloudLoginPollStatus = response.json().await.map_err(|_| {
+        error(
+            "FIXVOX_LOGIN_STATUS_INVALID",
+            "Fixvox Cloud login status did not match the expected contract.",
+        )
+    })?;
+
+    match poll_status.status.as_str() {
+        "success" => {
+            state.status = "signed_in".to_string();
+            state.user_id = poll_status.user_redacted.clone();
+            state.user_email = None;
+            state.expires_at = None;
+            persist_auth_session_state(&path, &state)?;
+        }
+        "error" => {
+            state.status = "error".to_string();
+            persist_auth_session_state(&path, &state)?;
+        }
+        "pending" => {}
+        "not_found" => {
+            state.status = "expired".to_string();
+            persist_auth_session_state(&path, &state)?;
+        }
+        _ => {}
+    }
+
+    Ok(build_auth_session_status(path, Some(&state)))
+}
+
 pub(crate) fn get_fixvox_cloud_status_with_env(
     env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
 ) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
@@ -1468,6 +1548,11 @@ pub fn get_fixvox_cloud_status() -> Result<FixvoxCloudStatus, FixvoxCloudError> 
 #[tauri::command]
 pub fn get_fixvox_auth_session_status() -> Result<FixvoxAuthSessionStatus, FixvoxCloudError> {
     get_fixvox_auth_session_status_with_env(&read_env_value)
+}
+
+#[tauri::command]
+pub async fn poll_fixvox_cloud_login() -> Result<FixvoxAuthSessionStatus, FixvoxCloudError> {
+    poll_fixvox_cloud_login_with_env(&read_env_value).await
 }
 
 #[tauri::command]
@@ -2155,6 +2240,14 @@ fn build_fixvox_login_verification_url(base_url: &str, state_nonce: &str) -> Str
     format!(
         "{}?flow=device-code&client=fixvox-tauri&state={}",
         join_url(base_url, "/desktop/login"),
+        state_nonce,
+    )
+}
+
+fn build_fixvox_login_status_url(base_url: &str, state_nonce: &str) -> String {
+    format!(
+        "{}?state={}",
+        join_url(base_url, "/desktop/login/status"),
         state_nonce,
     )
 }

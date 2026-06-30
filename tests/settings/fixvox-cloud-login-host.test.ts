@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { startFixvoxCloudLogin } from "../../src/settings/fixvox-cloud-control";
+import { pollFixvoxCloudLogin, startFixvoxCloudLogin } from "../../src/settings/fixvox-cloud-control";
 
 describe("Fixvox Cloud host-owned login start", () => {
   it("exposes a device-code polling command without exposing session secrets to React", async () => {
     await expect(startFixvoxCloudLogin()).resolves.toBeUndefined();
+    await expect(pollFixvoxCloudLogin()).resolves.toBeUndefined();
 
     const rustSource = readFileSync("src-tauri/src/fixvox_cloud.rs", "utf8");
     const libSource = readFileSync("src-tauri/src/lib.rs", "utf8");
@@ -12,6 +13,7 @@ describe("Fixvox Cloud host-owned login start", () => {
 
     expect(rustSource).toContain("start_fixvox_cloud_login");
     expect(rustSource).toContain("get_fixvox_auth_session_status");
+    expect(rustSource).toContain("poll_fixvox_cloud_login");
     expect(rustSource).toContain("device_code_polling");
     expect(rustSource).toContain("build_fixvox_login_verification_url");
     expect(rustSource).toContain("open_external_browser_url");
@@ -25,8 +27,10 @@ describe("Fixvox Cloud host-owned login start", () => {
 
     expect(libSource).toContain("fixvox_cloud::start_fixvox_cloud_login");
     expect(libSource).toContain("fixvox_cloud::get_fixvox_auth_session_status");
+    expect(libSource).toContain("fixvox_cloud::poll_fixvox_cloud_login");
     expect(rendererSource).toContain("start_fixvox_cloud_login");
     expect(rendererSource).toContain("get_fixvox_auth_session_status");
+    expect(rendererSource).toContain("poll_fixvox_cloud_login");
     expect(rendererSource).toContain("verificationUrlRedacted");
     expect(rendererSource).not.toContain("sessionSecret");
     expect(rendererSource).not.toContain("refreshSecret");

@@ -15,6 +15,7 @@ import {
   formatFixvoxStateLocation,
   getFixvoxAuthSessionStatus,
   getFixvoxCloudStatus,
+  pollFixvoxCloudLogin,
   refreshFixvoxPolicy,
   registerFixvoxDevice,
   shouldConfirmFixvoxCloudOperation,
@@ -54,7 +55,7 @@ type EditorNotice = {
   message: string;
 };
 
-type BusyAction = "preview" | "apply" | FixvoxCloudOperation | "status" | "login";
+type BusyAction = "preview" | "apply" | FixvoxCloudOperation | "status" | "login" | "loginStatus";
 
 type CaptureState = "idle" | "recording";
 
@@ -119,6 +120,17 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
 
     void loadCloudStatus();
   }, [tauriRuntime, selectedSection]);
+
+  useEffect(() => {
+    if (!tauriRuntime || selectedSection !== "cloud" || authSessionStatus?.status !== "pending") {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void pollCloudLoginStatus(true);
+    }, 3_000);
+    return () => window.clearInterval(timer);
+  }, [tauriRuntime, selectedSection, authSessionStatus?.status]);
 
   useEffect(() => {
     if (!tauriRuntime) {
@@ -369,17 +381,53 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
     }
   }
 
-  async function startCloudLogin() {
+  async function pollCloudLoginStatus(silent = false) {
     if (!tauriRuntime) {
-      setCloudNotice({ tone: "warning", message: "Open Settings inside Tauri to start login." });
+      setCloudNotice({ tone: "warning", message: "Open Settings inside Tauri to check login status." });
       return;
     }
 
-    const confirmed = window.confirm(
-      "Open the external browser to start Fixvox Cloud sign-in? No session secrets will be exposed to Settings.",
-    );
-    if (!confirmed) {
-      setCloudNotice({ tone: "idle", message: "Fixvox Cloud sign-in was not started." });
+    if (!silent) {
+      setBusyAction("loginStatus");
+    }
+    try {
+      const sessionStatus = await pollFixvoxCloudLogin();
+      if (!sessionStatus) {
+        setCloudNotice({ tone: "warning", message: "Open this surface inside Tauri to check host-owned login." });
+        return;
+      }
+
+      setAuthSessionStatus(sessionStatus);
+      if (sessionStatus.status === "signed_in") {
+        setCloudNotice({
+          tone: "success",
+          message: "Fixvox Cloud sign-in completed. Session status is host-owned and redacted in Settings.",
+        });
+      } else if (sessionStatus.status === "pending") {
+        setCloudNotice({
+          tone: "idle",
+          message: "Waiting for browser sign-in to finish. Settings checks this session automatically.",
+        });
+      } else if (sessionStatus.status === "expired") {
+        setCloudNotice({ tone: "warning", message: "This login session expired. Start sign-in again." });
+      } else if (sessionStatus.status === "error") {
+        setCloudNotice({ tone: "danger", message: "Fixvox Cloud sign-in failed. Start sign-in again." });
+      }
+    } catch (error) {
+      setCloudNotice({
+        tone: "danger",
+        message: `Fixvox Cloud login status failed: ${formatHotkeyEditReason(error)}`,
+      });
+    } finally {
+      if (!silent) {
+        setBusyAction(undefined);
+      }
+    }
+  }
+
+  async function startCloudLogin() {
+    if (!tauriRuntime) {
+      setCloudNotice({ tone: "warning", message: "Open Settings inside Tauri to start login." });
       return;
     }
 
@@ -404,8 +452,8 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
       setCloudNotice({
         tone: login.browserOpened ? "success" : "warning",
         message: login.browserOpened
-          ? `External browser opened for ${login.flow}; polling contract expires in ${login.expiresInSeconds}s.`
-          : `Login start prepared for ${login.flow}; external browser was not opened.`,
+          ? `Browser opened. Continue with Google there, then return here; Settings checks this session automatically.`
+          : `Login start prepared for ${login.flow}; use Check sign-in status after opening the browser.`,
       });
     } catch (error) {
       setCloudNotice({
@@ -648,14 +696,15 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
             <div className="settings-hotkey-editor-topline">
               <div className="settings-hotkey-editor-copy">
                 <div className="settings-native-plan-heading">
-                  <h3 id="settings-cloud-activation-title">Device activation</h3>
-                  <span>Cloud gated</span>
+                  <h3 id="settings-cloud-activation-title">Fixvox Cloud sign in</h3>
+                  <span>Host-owned</span>
                 </div>
-                <p>Invite-code activation is host-owned and asks before contacting Fixvox Cloud. Login is next and will stay host-owned.</p>
+                <p>Sign-in opens your browser directly. Settings never receives secrets and only displays redacted session status.</p>
               </div>
               <div className="settings-hotkey-editor-state" aria-label="Fixvox Cloud auth action">
                 <span>{authPolicyView.limitsLabel}</span>
                 <span>{authSessionStatus ? `Session ${authSessionStatus.status}` : authPolicyView.actionHint}</span>
+                {authSessionStatus?.userRedacted ? <span>{authSessionStatus.userRedacted}</span> : null}
                 {authSessionStatus?.sessionIdRedacted ? <span>{authSessionStatus.sessionIdRedacted}</span> : null}
               </div>
             </div>
@@ -668,8 +717,19 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
               aria-label="Start Fixvox Cloud sign in"
             >
               <span>{busyAction === "login" ? "Opening browser…" : authPolicyView.actionLabel}</span>
-              <small>{authPolicyView.accessLabel}</small>
+              <small>{authSessionStatus?.status === "pending" ? "browser pending" : "opens browser"}</small>
             </button>
+
+            {authSessionStatus?.status === "pending" || authSessionStatus?.status === "signed_in" ? (
+              <button
+                type="button"
+                className="settings-editor-button settings-editor-button-secondary settings-cloud-login-status-button"
+                disabled={!tauriRuntime || Boolean(busyAction)}
+                onClick={() => void pollCloudLoginStatus()}
+              >
+                {busyAction === "loginStatus" ? "Checking" : "Check sign-in status"}
+              </button>
+            ) : null}
 
             <input
               className="settings-hotkey-recorder settings-cloud-invite-input"

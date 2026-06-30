@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-30T01:14:00.443Z
+Generated: 2026-06-30T02:23:49.231Z
 
 ## Topics
 
@@ -32,7 +32,7 @@ Generated: 2026-06-30T01:14:00.443Z
 - archived/high: [Fixvox Effective Runtime Parity](../tracks/archive/fixvox-effective-runtime-parity.md) - updated 2026-06-29
 - archived/low: [Prompt Para Proxima Sesion Archivado](../tracks/archive/next-session-prompt-2026-06-20.md) - updated 2026-06-20
 - archived/medium: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md) - updated 2026-06-07
-- active/high: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md) - updated 2026-06-29
+- active/high: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md) - updated 2026-06-30
 - active/high: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md) - updated 2026-06-10
 - active/high: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md) - updated 2026-06-29
 - active/high: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md) - updated 2026-06-29

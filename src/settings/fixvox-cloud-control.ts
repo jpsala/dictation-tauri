@@ -123,6 +123,14 @@ export async function getFixvoxAuthSessionStatus(): Promise<FixvoxAuthSessionSta
   return invoke<FixvoxAuthSessionStatus>("get_fixvox_auth_session_status");
 }
 
+export async function pollFixvoxCloudLogin(): Promise<FixvoxAuthSessionStatus | undefined> {
+  if (!isTauri()) {
+    return undefined;
+  }
+
+  return invoke<FixvoxAuthSessionStatus>("poll_fixvox_cloud_login");
+}
+
 export async function registerFixvoxDevice(): Promise<FixvoxCloudStatus | undefined> {
   if (!isTauri()) {
     return undefined;
@@ -414,7 +422,7 @@ export function deriveFixvoxAuthPolicyView(status: FixvoxCloudStatus | undefined
     capabilityLabel: summarizeAuthPolicyCapabilities([...getFixvoxPolicyTemplate("basic-anonymous").capabilities]),
     limitsLabel: summarizeFixvoxAuthLimits(getFixvoxPolicyTemplate("basic-anonymous").limits),
     actionLabel: "Sign in to unlock",
-    actionHint: "Login is not wired yet; the next step is a host-owned browser flow.",
+    actionHint: "Browser sign-in is host-owned; Settings only receives redacted session status.",
   };
 }
 
