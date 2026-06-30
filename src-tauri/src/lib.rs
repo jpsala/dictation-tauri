@@ -60,6 +60,7 @@ pub fn run() {
             result_history::list_result_history_entries,
             result_history::clear_result_history,
             settings_window::show_settings_window,
+            settings_window::hide_settings_window,
             tray::show_dock_context_menu,
         ])
         .run(tauri::generate_context!())
