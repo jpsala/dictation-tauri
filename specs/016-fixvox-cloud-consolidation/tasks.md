@@ -15,9 +15,9 @@
 
 ## Phase 3: Cutover Deploy (Gated)
 
-- [ ] T008 With explicit JP approval, deploy `cloud/fixvox-proxy` from this repo.
-- [ ] T009 Rerun T021 redacted login/link smoke against production after deploy from this repo.
-- [ ] T010 Record Worker version ID and evidence.
+- [x] T008 With explicit JP approval, deploy `cloud/fixvox-proxy` from this repo.
+- [x] T009 Rerun T021 redacted login/link smoke against production after deploy from this repo.
+- [x] T010 Record Worker version ID and evidence.
 
 ## Phase 4: Legacy Demotion
 
