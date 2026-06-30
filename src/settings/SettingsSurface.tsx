@@ -67,11 +67,12 @@ type HostHotkeyCapturePayload = {
 type SettingsSurfaceProps = {
   initialSection?: SettingsSectionId;
   initialCloudStatus?: FixvoxCloudStatus;
+  initialAuthSessionStatus?: FixvoxAuthSessionStatus;
 };
 
 const HOST_HOTKEY_CAPTURE_EVENT = "desktop-control://hotkey-capture";
 
-export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus }: SettingsSurfaceProps = {}) {
+export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus, initialAuthSessionStatus }: SettingsSurfaceProps = {}) {
   const tauriRuntime = isTauri();
   const [dictationShortcut, setDictationShortcut] = useState("Alt+Space");
   const [editingShortcut, setEditingShortcut] = useState("Alt+Space");
@@ -84,7 +85,7 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
   const [busyAction, setBusyAction] = useState<BusyAction | undefined>();
   const [captureState, setCaptureState] = useState<CaptureState>("idle");
   const [cloudStatus, setCloudStatus] = useState<FixvoxCloudStatus | undefined>(initialCloudStatus);
-  const [authSessionStatus, setAuthSessionStatus] = useState<FixvoxAuthSessionStatus | undefined>();
+  const [authSessionStatus, setAuthSessionStatus] = useState<FixvoxAuthSessionStatus | undefined>(initialAuthSessionStatus);
   const [cloudNotice, setCloudNotice] = useState<EditorNotice>({
     tone: "idle",
     message: "Local cloud status loads from host-owned app data.",
@@ -228,22 +229,28 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
   const loginSessionStatus = authSessionStatus?.status ?? "signed_out";
   const loginPending = loginSessionStatus === "pending";
   const loginSignedIn = loginSessionStatus === "signed_in";
-  const loginHeroTitle = loginSignedIn
-    ? "Google sign-in complete"
-    : loginPending
-      ? "Finish sign-in in your browser"
-      : "Sign in to unlock Fixvox Cloud";
-  const loginHeroDetail = loginSignedIn
-    ? "Settings received redacted account status. Device link and policy refresh are the next host-owned step."
-    : loginPending
-      ? "After Google finishes, return here. Settings checks automatically and you can also check manually."
-      : "Use your Fixvox account to unlock managed dictation, postprocess, transforms, assistant actions and higher limits.";
-  const authStatusHeadline = loginSignedIn ? "Signed in: device link pending" : authPolicyView.headline;
-  const authStatusDetail = loginSignedIn
+  const signedInPolicyActive = cloudStatus?.authPolicy?.accessMode === "signed_in";
+  const signedInDeviceLinkPending = loginSignedIn && !signedInPolicyActive;
+  const loginHeroTitle = signedInPolicyActive
+    ? "Fixvox policy active"
+    : loginSignedIn
+      ? "Google sign-in complete"
+      : loginPending
+        ? "Finish sign-in in your browser"
+        : "Sign in to unlock Fixvox Cloud";
+  const loginHeroDetail = signedInPolicyActive
+    ? "This device is linked to a redacted Fixvox account and policy capabilities are refreshed from Cloud."
+    : loginSignedIn
+      ? "Settings received redacted account status. Device link and policy refresh are the next host-owned step."
+      : loginPending
+        ? "After Google finishes, return here. Settings checks automatically and you can also check manually."
+        : "Use your Fixvox account to unlock managed dictation, postprocess, transforms, assistant actions and higher limits.";
+  const authStatusHeadline = signedInDeviceLinkPending ? "Signed in: device link pending" : authPolicyView.headline;
+  const authStatusDetail = signedInDeviceLinkPending
     ? "Google sign-in completed. Capabilities remain basic until the host links this device and refreshes policy."
     : authPolicyView.detail;
-  const authStatusAccessLabel = loginSignedIn ? "Signed in" : authPolicyView.accessLabel;
-  const authStatusUserLabel = loginSignedIn ? (authSessionStatus?.userRedacted ?? "user redacted") : authPolicyView.userLabel;
+  const authStatusAccessLabel = signedInDeviceLinkPending ? "Signed in" : authPolicyView.accessLabel;
+  const authStatusUserLabel = signedInDeviceLinkPending ? (authSessionStatus?.userRedacted ?? "user redacted") : authPolicyView.userLabel;
 
   async function previewCandidate(nextShortcut = editingShortcut) {
     setBusyAction("preview");
@@ -430,9 +437,14 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
 
       setAuthSessionStatus(sessionStatus);
       if (sessionStatus.status === "signed_in") {
+        const linkedStatus = await getFixvoxCloudStatus();
+        setCloudStatus(linkedStatus);
+        const linkedAuthPolicy = linkedStatus?.authPolicy?.accessMode === "signed_in";
         setCloudNotice({
-          tone: "success",
-          message: "Fixvox Cloud sign-in completed. Session status is host-owned and redacted in Settings.",
+          tone: linkedAuthPolicy ? "success" : "warning",
+          message: linkedAuthPolicy
+            ? "Fixvox Cloud sign-in completed; this device is linked and policy capabilities were refreshed."
+            : "Fixvox Cloud sign-in completed. Device link is still pending; use Link signed-in device or Check sign-in status again.",
         });
       } else if (sessionStatus.status === "pending") {
         setCloudNotice({
@@ -735,7 +747,7 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
               <div className="settings-hotkey-editor-state" aria-label="Fixvox Cloud auth action">
                 <span>{authPolicyView.limitsLabel}</span>
                 <span>{authSessionStatus ? `Session ${authSessionStatus.status}` : authPolicyView.actionHint}</span>
-                {authSessionStatus?.userRedacted ? <span>{authSessionStatus.userRedacted}</span> : null}
+                {authSessionStatus?.userRedacted ? <span>{authStatusUserLabel}</span> : null}
                 {authSessionStatus?.sessionIdRedacted ? <span>{authSessionStatus.sessionIdRedacted}</span> : null}
               </div>
             </div>
@@ -791,9 +803,9 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
                 type="button"
                 className="settings-editor-button settings-editor-button-secondary"
                 disabled={!tauriRuntime || Boolean(busyAction)}
-                onClick={() => void runCloudOperation("register")}
+                onClick={() => void (signedInDeviceLinkPending ? pollCloudLoginStatus() : runCloudOperation("register"))}
               >
-                {busyAction === "register" ? "Repairing" : "Repair device link"}
+                {busyAction === "register" ? "Repairing" : signedInDeviceLinkPending ? "Link signed-in device" : "Repair device link"}
               </button>
               <button
                 type="button"

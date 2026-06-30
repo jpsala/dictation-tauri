@@ -160,6 +160,19 @@ pub(crate) struct DeviceRegisterRequest {
     pub(crate) ts: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DesktopLoginDeviceLinkRequest {
+    pub(crate) state: String,
+    pub(crate) install_id: String,
+    pub(crate) device_id: Option<String>,
+    pub(crate) version: String,
+    pub(crate) platform: String,
+    pub(crate) arch: String,
+    pub(crate) hostname: String,
+    pub(crate) ts: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct DeviceRegisterInput {
     pub(crate) install_id: String,
@@ -511,6 +524,30 @@ pub(crate) fn build_device_register_request(
         arch: input.arch.trim().to_string(),
         hostname: input.hostname.trim().to_string(),
         ts: input.ts.trim().to_string(),
+    })
+}
+
+pub(crate) fn build_desktop_login_device_link_request(
+    state: &FixvoxAuthSessionState,
+    input: DeviceRegisterInput,
+) -> Result<DesktopLoginDeviceLinkRequest, FixvoxCloudError> {
+    let register = build_device_register_request(input)?;
+    let state_nonce = clean_env_value(Some(state.state_nonce.clone())).ok_or_else(|| {
+        error(
+            "FIXVOX_LOGIN_STATE_MISSING",
+            "Fixvox login device link requires a signed-in login state.",
+        )
+    })?;
+
+    Ok(DesktopLoginDeviceLinkRequest {
+        state: state_nonce,
+        install_id: register.install_id,
+        device_id: register.device_id,
+        version: register.version,
+        platform: register.platform,
+        arch: register.arch,
+        hostname: register.hostname,
+        ts: register.ts,
     })
 }
 
@@ -1421,6 +1458,9 @@ pub(crate) async fn poll_fixvox_cloud_login_with_env(
     };
 
     if state.status != "pending" {
+        if state.status == "signed_in" && !device_state_has_signed_in_auth_policy(env_lookup)? {
+            link_signed_in_session_device_with_reqwest(env_lookup, &state).await?;
+        }
         return Ok(build_auth_session_status(path, Some(&state)));
     }
 
@@ -1460,6 +1500,9 @@ pub(crate) async fn poll_fixvox_cloud_login_with_env(
             state.user_email = None;
             state.expires_at = None;
             persist_auth_session_state(&path, &state)?;
+            if !device_state_has_signed_in_auth_policy(env_lookup)? {
+                link_signed_in_session_device_with_reqwest(env_lookup, &state).await?;
+            }
         }
         "error" => {
             state.status = "error".to_string();
@@ -1481,6 +1524,27 @@ pub(crate) fn get_fixvox_cloud_status_with_env(
 ) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
     let (path, state, backend_base_url) = resolve_or_create_device_state(env_lookup)?;
     Ok(build_cloud_status(path, state, backend_base_url))
+}
+
+pub(crate) fn link_fixvox_cloud_login_device_with_client_and_env(
+    client: &dyn DeviceRegisterHttpClient,
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    let auth_path = resolve_auth_session_state_path(env_lookup)?;
+    let Some(state) = read_auth_session_state(&auth_path)? else {
+        return Err(error(
+            "FIXVOX_LOGIN_SESSION_MISSING",
+            "Fixvox Cloud login must complete before linking this device.",
+        ));
+    };
+    if state.status != "signed_in" {
+        return Err(error(
+            "FIXVOX_LOGIN_SESSION_NOT_SIGNED_IN",
+            "Fixvox Cloud login is not signed in yet.",
+        ));
+    }
+
+    link_signed_in_session_device_with_client(client, env_lookup, &state)
 }
 
 pub(crate) fn register_fixvox_device_with_client_and_env(
@@ -1649,6 +1713,52 @@ fn activate_device_with_client_and_env(
     ))
 }
 
+fn link_signed_in_session_device_with_client(
+    client: &dyn DeviceRegisterHttpClient,
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+    session_state: &FixvoxAuthSessionState,
+) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    let (path, state, backend_base_url) = resolve_or_create_device_state(env_lookup)?;
+    let config = FixvoxCloudRuntimeConfig {
+        backend_base_url,
+        install_id: state.install_id.clone(),
+        device_id: state.device_id.clone(),
+    };
+    let input = build_device_register_input(&config, env_lookup);
+    let body = serde_json::to_value(build_desktop_login_device_link_request(
+        session_state,
+        input,
+    )?)
+    .map_err(|_| {
+        error(
+            "FIXVOX_LOGIN_DEVICE_LINK_SERIALIZE_FAILED",
+            "Fixvox login device link request could not be serialized.",
+        )
+    })?;
+    let endpoint = join_url(&config.backend_base_url, "/desktop/login/link-device");
+    let snapshot = match post_device_snapshot_with_client(
+        client,
+        &endpoint,
+        body,
+        "FIXVOX_LOGIN_DEVICE_LINK_RESPONSE_INVALID",
+    ) {
+        Ok(snapshot) => snapshot,
+        Err(link_error) => {
+            let error_state = build_device_state_from_register_error(&config, &link_error);
+            persist_device_state(&path, &error_state)?;
+            return Err(link_error);
+        }
+    };
+    let next_state = build_device_state_from_register(&config, &snapshot);
+    persist_device_state(&path, &next_state)?;
+
+    Ok(build_cloud_status(
+        path,
+        next_state,
+        config.backend_base_url.clone(),
+    ))
+}
+
 async fn register_or_refresh_device_with_reqwest(
     env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
 ) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
@@ -1665,6 +1775,56 @@ async fn register_or_refresh_device_with_reqwest(
             let error_state = build_device_state_from_register_error(&config, &register_error);
             persist_device_state(&path, &error_state)?;
             return Err(register_error);
+        }
+    };
+    let next_state = build_device_state_from_register(&config, &snapshot);
+    persist_device_state(&path, &next_state)?;
+
+    Ok(build_cloud_status(
+        path,
+        next_state,
+        config.backend_base_url.clone(),
+    ))
+}
+
+async fn link_signed_in_session_device_with_reqwest(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+    session_state: &FixvoxAuthSessionState,
+) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    let (path, state, backend_base_url) = resolve_or_create_device_state(env_lookup)?;
+    let config = FixvoxCloudRuntimeConfig {
+        backend_base_url,
+        install_id: state.install_id.clone(),
+        device_id: state.device_id.clone(),
+    };
+    let input = build_device_register_input(&config, env_lookup);
+    let body = serde_json::to_value(build_desktop_login_device_link_request(
+        session_state,
+        input,
+    )?)
+    .map_err(|_| {
+        error(
+            "FIXVOX_LOGIN_DEVICE_LINK_SERIALIZE_FAILED",
+            "Fixvox login device link request could not be serialized.",
+        )
+    })?;
+    let endpoint = join_url(&config.backend_base_url, "/desktop/login/link-device");
+    let snapshot = match post_device_snapshot_with_reqwest(
+        endpoint,
+        body,
+        "FIXVOX_LOGIN_DEVICE_LINK_UNAVAILABLE",
+        "Fixvox Cloud login device link could not be reached.",
+        "FIXVOX_LOGIN_DEVICE_LINK_REJECTED",
+        "Fixvox Cloud rejected login device link.",
+        "FIXVOX_LOGIN_DEVICE_LINK_RESPONSE_INVALID",
+    )
+    .await
+    {
+        Ok(snapshot) => snapshot,
+        Err(link_error) => {
+            let error_state = build_device_state_from_register_error(&config, &link_error);
+            persist_device_state(&path, &error_state)?;
+            return Err(link_error);
         }
     };
     let next_state = build_device_state_from_register(&config, &snapshot);
@@ -2250,6 +2410,20 @@ fn build_fixvox_login_status_url(base_url: &str, state_nonce: &str) -> String {
         join_url(base_url, "/desktop/login/status"),
         state_nonce,
     )
+}
+
+fn device_state_has_signed_in_auth_policy(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<bool, FixvoxCloudError> {
+    let path = resolve_device_state_path(env_lookup)?;
+    let Some(state) = read_device_state(&path)? else {
+        return Ok(false);
+    };
+    Ok(state
+        .auth_policy
+        .as_ref()
+        .map(|auth| auth.access_mode == "signed_in")
+        .unwrap_or(false))
 }
 
 fn build_auth_session_status(

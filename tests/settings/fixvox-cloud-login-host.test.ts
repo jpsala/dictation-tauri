@@ -10,12 +10,17 @@ describe("Fixvox Cloud host-owned login start", () => {
     const rustSource = readFileSync("src-tauri/src/fixvox_cloud.rs", "utf8");
     const libSource = readFileSync("src-tauri/src/lib.rs", "utf8");
     const rendererSource = readFileSync("src/settings/fixvox-cloud-control.ts", "utf8");
+    const settingsSurfaceSource = readFileSync("src/settings/SettingsSurface.tsx", "utf8");
 
     expect(rustSource).toContain("start_fixvox_cloud_login");
     expect(rustSource).toContain("get_fixvox_auth_session_status");
     expect(rustSource).toContain("poll_fixvox_cloud_login");
     expect(rustSource).toContain("device_code_polling");
     expect(rustSource).toContain("build_fixvox_login_verification_url");
+    expect(rustSource).toContain("/desktop/login/link-device");
+    expect(rustSource).toContain("build_desktop_login_device_link_request");
+    expect(rustSource).toContain("link_signed_in_session_device_with_reqwest");
+    expect(rustSource).toContain("device_state_has_signed_in_auth_policy");
     expect(rustSource).toContain("open_external_browser_url");
     expect(rustSource).toContain("state_redacted");
     expect(rustSource).toContain("session_id_redacted");
@@ -32,6 +37,7 @@ describe("Fixvox Cloud host-owned login start", () => {
     expect(rendererSource).toContain("get_fixvox_auth_session_status");
     expect(rendererSource).toContain("poll_fixvox_cloud_login");
     expect(rendererSource).toContain("verificationUrlRedacted");
+    expect(settingsSurfaceSource).toContain("this device is linked and policy capabilities were refreshed");
     expect(rendererSource).not.toContain("sessionSecret");
     expect(rendererSource).not.toContain("refreshSecret");
     expect(rendererSource).not.toContain("localStorage");
