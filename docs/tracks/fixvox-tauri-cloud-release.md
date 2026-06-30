@@ -183,7 +183,7 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 
 ### T009 — Login cloud, grupos y policy capabilities administrables
 
-- Estado: documented / pending implementation
+- Estado: provider-free-contracts-done / settings-ux-next
 - Tipo: product/control-plane
 - Objetivo: pasar de activation/invite como mecanismo principal a usuario autenticado + device linked + policy group administrable desde Fixvox Cloud.
 - Pasos:
@@ -194,7 +194,10 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
   5. Validar capabilities en Cloud y host runtime; UI gating no cuenta como seguridad.
 - Checks:
   - `specs/015-fixvox-auth-policy-groups/tasks.md`
-  - tests provider-free antes de cualquier login real.
+  - `npm run test:pipeline -- tests/settings/auth-policy-groups.test.ts`
+  - `npm run test:pipeline -- tests/settings`
+  - `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`
+  - `npm run build`
 - Guardrails:
   - Login/OAuth/device-link real requiere aprobacion explicita.
   - No tokens/user IDs/device IDs completos en logs/docs.
@@ -232,6 +235,7 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 - 2026-06-29 smoke instalado local aprobado por JP: se descargo el asset publicado `Fixvox-Tauri-Setup.exe`, se verifico SHA256 `4dd4670d3a2a46fa5a605718abaab8f1891b619a6e0f7345bf30b8043f69f74c`, se instalo silenciosamente en carpeta aislada bajo `artifacts/release/installed-smoke/20260629-installed-release-smoke/install`, se activo un device Pro contra Fixvox Cloud con invite local sin imprimir IDs/codes (`activation-report.json`) y se ejecuto dictado E2E con el exe instalado, `APPDATA/LOCALAPPDATA` aislados, sin `.env`/BYOK/device env y `Ctrl+Shift+F9`: managed STT + postprocess + paste al target controlado paso con `targetTextLength=10`, clipboard restaurado y report redacted en `installed-dictation-report.json`. Durante el smoke se encontro que el redacted report local conservaba request IDs completos; se corrigio `redact_request_id` para siempre materializar `redacted-request-id`, se saneo el artifact local y se genero un nuevo installer local no publicado con SHA256 `1ecaa89a503bd1a93f4b894e6b2dc811357cfb53eaaebae71e3a309da968ea12`.
 - 2026-06-29 UX hardening local: `src/settings/fixvox-cloud-control.ts` deriva health accionable para activation/policy/errors; `SettingsSurface` muestra badge/headline/next-step/capabilities, reduce `statePath` a `fixvox-device-state.json · host app data`, expone `Repair device link` host-owned y conserva `window.confirm` antes de operaciones cloud. Checks: `npm run test:pipeline -- tests/settings`, `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`, `npm run build`, `cd src-tauri && cargo fmt --check && cargo check`.
 - 2026-06-29 auth/policy groups decision: JP decidio que el usuario que quiera mas que lo basico debe autenticarse por email/Google/GitHub usando Fixvox Cloud. Se documento `specs/015-fixvox-auth-policy-groups/`, `docs/DECISIONS.md` y este track. Modelo objetivo: anonymous basic -> login -> link device to user -> policy group/template -> capabilities/limits -> runtime/cloud enforcement.
+- 2026-06-29 T009 provider-free contracts: `src/fixvox-auth/policy-groups.ts` define capabilities de producto, templates `basic-anonymous`, `translate-only`, `dictation-basic`, `pro`, `power-admin`, required-capability checks y serializacion redacted. Tests en `tests/settings/auth-policy-groups.test.ts` validan templates progresivos y fail-closed sin login real. Commits: `5881a02`, `f665b58`.
 - Infra release actual Fixvox: `C:/dev/infra/docs/runbooks/cloud-services.md` seccion `Fixvox — Releases / Auto-update`.
 - Policy/control-plane canonico: `C:/dev/fixvox/.specify/specs/003-settings-policy-control-plane/spec.md`.
 - Installer checklist canonico: `C:/dev/fixvox/.specify/specs/007-windows-release-installer/spec.md`.

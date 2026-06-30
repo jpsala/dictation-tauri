@@ -133,6 +133,16 @@ Pulido local posterior al smoke de Cloud Settings:
 - Checks: `npm run test:pipeline -- tests/settings`, `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`, `npm run build`.
 - Commit: `710f24d fix: harden settings hotkey capture`.
 
+## Update 2026-06-29: Dock companion sync dedupe
+
+Pulido live de Settings/Dock/Cloud posterior al recorder hardening:
+
+- `App.tsx` ahora calcula una sync key estable para la companion; si el snapshot esta oculto, la key es `hidden` aunque cambie el estado interno del dock.
+- `src/voice-dock/companion-state.ts` exporta `createDockCompanionSyncKey`; esto evita invocar `hide_companion` repetidamente cuando la companion ya esta oculta.
+- Tests: `tests/voice-dock/companion-state.test.ts` cubre que estados ocultos no disparen sync distinto por cambios no visibles.
+- Checks: focused companion, `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`, full `npm run test:pipeline`, `npm run build`.
+- Commit: `bb83fea fix: dedupe dock companion sync`.
+
 ## Proximo Paso
 
 Siguiente lote recomendado:
