@@ -36,7 +36,10 @@
     "tauri:dev": "tauri dev",
     "tauri:dev:hidden": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-tauri-dev-hidden.ps1",
     "tauri:build": "tauri build",
-    "release:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-windows.ps1"
+    "release:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-windows.ps1",
+    "cloud:test": "cd cloud/fixvox-proxy && bun test",
+    "cloud:dev": "cd cloud/fixvox-proxy && bun run dev",
+    "cloud:deploy": "cd cloud/fixvox-proxy && bun run deploy"
   },
   "dependencies": {
     "@heroui/react": "^3.2.1",
