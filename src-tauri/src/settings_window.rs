@@ -6,8 +6,8 @@ const SETTINGS_WINDOW_URL: &str = "index.html#settings";
 
 pub fn configure_settings_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
-        eprintln!("[dictation-tauri][settings] attaching hide-on-close to configured window");
-        attach_hide_on_close(window);
+        eprintln!("[dictation-tauri][settings] attaching close lifecycle to configured window");
+        attach_close_lifecycle(window);
     } else {
         eprintln!("[dictation-tauri][settings] configured window not found during setup");
     }
@@ -57,33 +57,28 @@ fn create_fresh_settings_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result
     .visible(false)
     .build()?;
 
-    attach_hide_on_close(window.clone());
+    attach_close_lifecycle(window.clone());
     eprintln!("[dictation-tauri][settings] created fresh window fallback");
     Ok(window)
 }
 
-fn attach_hide_on_close<R: Runtime>(window: WebviewWindow<R>) {
-    let settings_window = window.clone();
+fn attach_close_lifecycle<R: Runtime>(window: WebviewWindow<R>) {
     window.on_window_event(move |event| {
-        if let WindowEvent::CloseRequested { api, .. } = event {
-            eprintln!("[dictation-tauri][settings] close requested, hiding window");
-            api.prevent_close();
-            if let Err(error) = settings_window.hide() {
-                eprintln!("[dictation-tauri][settings] hide on close failed: {error}");
-            }
+        if let WindowEvent::CloseRequested { .. } = event {
+            eprintln!("[dictation-tauri][settings] close requested, allowing window close");
         }
     });
 }
 
-pub fn hide_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    eprintln!("[dictation-tauri][settings] hide requested");
+pub fn close_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    eprintln!("[dictation-tauri][settings] close requested by renderer");
     let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) else {
         return Ok(());
     };
     window
-        .hide()
-        .map_err(|error| format!("settings window hide failed: {error}"))?;
-    eprintln!("[dictation-tauri][settings] hide ok");
+        .close()
+        .map_err(|error| format!("settings window close failed: {error}"))?;
+    eprintln!("[dictation-tauri][settings] close ok");
     Ok(())
 }
 
@@ -93,6 +88,6 @@ pub fn show_settings_window(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn hide_settings_window(app: AppHandle) -> Result<(), String> {
-    hide_settings_window_for_app(&app)
+pub fn close_settings_window(app: AppHandle) -> Result<(), String> {
+    close_settings_window_for_app(&app)
 }

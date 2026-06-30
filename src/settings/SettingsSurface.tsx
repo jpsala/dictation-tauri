@@ -251,7 +251,7 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
     }
 
     try {
-      await invoke("hide_settings_window");
+      await invoke("close_settings_window");
     } catch (error) {
       setNotice({
         tone: "warning",
