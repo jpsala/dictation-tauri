@@ -126,10 +126,22 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
       return;
     }
 
-    const timer = window.setInterval(() => {
+    const poll = () => {
       void pollCloudLoginStatus(true);
-    }, 3_000);
-    return () => window.clearInterval(timer);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        poll();
+      }
+    };
+    const timer = window.setInterval(poll, 3_000);
+    window.addEventListener("focus", poll);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", poll);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [tauriRuntime, selectedSection, authSessionStatus?.status]);
 
   useEffect(() => {
@@ -213,6 +225,25 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
   const authPolicyView = deriveFixvoxAuthPolicyView(cloudStatus);
   const cloudProblem = summarizeFixvoxCloudProblem(cloudStatus);
   const cloudStateLocation = formatFixvoxStateLocation(cloudStatus?.statePath);
+  const loginSessionStatus = authSessionStatus?.status ?? "signed_out";
+  const loginPending = loginSessionStatus === "pending";
+  const loginSignedIn = loginSessionStatus === "signed_in";
+  const loginHeroTitle = loginSignedIn
+    ? "Google sign-in complete"
+    : loginPending
+      ? "Finish sign-in in your browser"
+      : "Sign in to unlock Fixvox Cloud";
+  const loginHeroDetail = loginSignedIn
+    ? "Settings received redacted account status. Device link and policy refresh are the next host-owned step."
+    : loginPending
+      ? "After Google finishes, return here. Settings checks automatically and you can also check manually."
+      : "Use your Fixvox account to unlock managed dictation, postprocess, transforms, assistant actions and higher limits.";
+  const authStatusHeadline = loginSignedIn ? "Signed in: device link pending" : authPolicyView.headline;
+  const authStatusDetail = loginSignedIn
+    ? "Google sign-in completed. Capabilities remain basic until the host links this device and refreshes policy."
+    : authPolicyView.detail;
+  const authStatusAccessLabel = loginSignedIn ? "Signed in" : authPolicyView.accessLabel;
+  const authStatusUserLabel = loginSignedIn ? (authSessionStatus?.userRedacted ?? "user redacted") : authPolicyView.userLabel;
 
   async function previewCandidate(nextShortcut = editingShortcut) {
     setBusyAction("preview");
@@ -630,14 +661,14 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
           </div>
 
           <div className="settings-hotkey-list" aria-label="Fixvox Cloud status">
-            <div className="settings-hotkey-row" data-health={authPolicyView.tone}>
+            <div className="settings-hotkey-row" data-health={loginSignedIn ? "success" : authPolicyView.tone}>
               <div className="settings-hotkey-copy">
-                <strong>{authPolicyView.headline}</strong>
-                <span>{authPolicyView.detail}</span>
+                <strong>{authStatusHeadline}</strong>
+                <span>{authStatusDetail}</span>
               </div>
               <div className="settings-hotkey-value" aria-label="Fixvox Cloud auth status">
-                <kbd>{authPolicyView.accessLabel}</kbd>
-                <small>{authPolicyView.userLabel}</small>
+                <kbd>{authStatusAccessLabel}</kbd>
+                <small>{authStatusUserLabel}</small>
               </div>
             </div>
             <div className="settings-hotkey-row" data-health={cloudHealth.tone}>
@@ -709,27 +740,34 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
               </div>
             </div>
 
-            <button
-              type="button"
-              className="settings-hotkey-recorder settings-cloud-signin-button"
-              disabled={!tauriRuntime || Boolean(busyAction)}
-              onClick={() => void startCloudLogin()}
-              aria-label="Start Fixvox Cloud sign in"
-            >
-              <span>{busyAction === "login" ? "Opening browser…" : authPolicyView.actionLabel}</span>
-              <small>{authSessionStatus?.status === "pending" ? "browser pending" : "opens browser"}</small>
-            </button>
-
-            {authSessionStatus?.status === "pending" || authSessionStatus?.status === "signed_in" ? (
-              <button
-                type="button"
-                className="settings-editor-button settings-editor-button-secondary settings-cloud-login-status-button"
-                disabled={!tauriRuntime || Boolean(busyAction)}
-                onClick={() => void pollCloudLoginStatus()}
-              >
-                {busyAction === "loginStatus" ? "Checking" : "Check sign-in status"}
-              </button>
-            ) : null}
+            <div className="settings-cloud-login-hero" data-status={loginSessionStatus}>
+              <div className="settings-cloud-login-hero-copy">
+                <span>Fixvox account</span>
+                <strong>{loginHeroTitle}</strong>
+                <small>{loginHeroDetail}</small>
+              </div>
+              <div className="settings-cloud-login-hero-actions">
+                <button
+                  type="button"
+                  className="settings-cloud-login-primary"
+                  disabled={!tauriRuntime || Boolean(busyAction)}
+                  onClick={() => void startCloudLogin()}
+                  aria-label="Start Fixvox Cloud sign in"
+                >
+                  {busyAction === "login" ? "Opening browser…" : loginSignedIn ? "Sign in again" : "Sign in with Google"}
+                </button>
+                {loginPending || loginSignedIn ? (
+                  <button
+                    type="button"
+                    className="settings-editor-button settings-editor-button-secondary settings-cloud-login-status-button"
+                    disabled={!tauriRuntime || Boolean(busyAction)}
+                    onClick={() => void pollCloudLoginStatus()}
+                  >
+                    {busyAction === "loginStatus" ? "Checking" : "Check sign-in status"}
+                  </button>
+                ) : null}
+              </div>
+            </div>
 
             <input
               className="settings-hotkey-recorder settings-cloud-invite-input"
