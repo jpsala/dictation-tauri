@@ -16,10 +16,10 @@ primary_refs:
   - docs/topics/source-project-map.md
   - docs/topics/fixvox-capability-map.md
   - specs/009-fixvox-cloud-runtime-port/plan.md
-  - C:/dev/fixvox/proxy/src/index.ts
-  - C:/dev/fixvox/src/app/backend/speech-to-text.ts
-  - C:/dev/fixvox/src/app/backend/managed-proxy.ts
-  - C:/dev/fixvox/src/app/backend/control-plane.ts
+  - specs/016-fixvox-cloud-consolidation/plan.md
+  - cloud/fixvox-proxy/src/index.ts
+  - src-tauri/src/fixvox_cloud.rs
+  - src-tauri/src/runtime_transcription.rs
 ---
 
 # Fixvox Cloud Runtime Port
@@ -50,7 +50,7 @@ Para Dictation Tauri, la ruta deseada es:
 Dictation Tauri -> Rust/Tauri host -> Fixvox Worker -> Groq
 ```
 
-Estado corregido 2026-06-29: Dictation Tauri ya tiene camino managed cloud en Rust/Tauri para STT y chat postprocess, y mantiene Groq directo como BYOK/dev fallback explicito. El gap de **runtime efectivo** tambien quedo cerrado para dictado normal: Tauri resuelve provider/model/prompt/postprocess desde policy/cache/runtimePolicy host-owned, usa `whisper-large-v3-turbo` para policy Pro efectiva, respeta postprocess disabled cuando Fixvox lo saltea, aplica preflight cache/prewarm + soft-timeout in-flight, VAD/no-speech y MP3 para audios largos.
+Estado corregido 2026-06-30: Dictation Tauri ya tiene camino managed cloud en Rust/Tauri para STT y chat postprocess, y mantiene Groq directo como BYOK/dev fallback explicito. El gap de **runtime efectivo** tambien quedo cerrado para dictado normal: Tauri resuelve provider/model/prompt/postprocess desde policy/cache/runtimePolicy host-owned, usa `whisper-large-v3-turbo` para policy Pro efectiva, respeta postprocess disabled cuando Fixvox lo saltea, aplica preflight cache/prewarm + soft-timeout in-flight, VAD/no-speech y MP3 para audios largos. El Worker productivo ya vive en este repo bajo `cloud/fixvox-proxy/` y fue desplegado desde aca; `C:/dev/fixvox` queda solo como referencia legacy/historica para este flujo.
 
 El camino directo sigue siendo util como BYOK/dev fallback, pero no debe ser default silencioso ni fuente de verdad si queremos compartir infraestructura, costos, policy y telemetria con Fixvox.
 
@@ -114,7 +114,7 @@ Requiere header:
 X-Device-Id: <device-id>
 ```
 
-No requiere que el desktop envie API key de Groq. El Worker posee `GROQ_API_KEY` server-side.
+No requiere que el desktop envie API key de Groq. El Worker posee `GROQ_API_KEY` server-side. Para cambios de endpoints/policy nuevos, editar `cloud/fixvox-proxy/` en este repo; no usar `C:/dev/fixvox/proxy` salvo investigacion legacy explicita.
 
 Para speech, el body es multipart OpenAI-compatible:
 

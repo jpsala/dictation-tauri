@@ -59,8 +59,8 @@ Este mapa no convierte ningun proyecto fuente en dependencia. Todo lo adoptado d
 | Voice runtime process | Fixvox | `adopt` | Para dictado/texto normal usar el proceso Fixvox como canon: audio prep, STT, prompts, policy, postprocess, sanitizer, fallback y materializacion. No reinventar prompts/reglas. |
 | Voice runtime shell | Dictation Tauri | `adapt` | Mantener Tauri/Rust para dock, hotkeys, ventanas, tray, foco/clipboard, permisos y packaging. |
 | STT/TTS/benchmarks | Fixvox | `adopt-process` | Reusar contratos, prompts, matrices y evidencia como canon del proceso; harness propio solo como envoltorio Tauri/test. |
-| Model routing | Fixvox | `adopt-process` | Managed cloud Fixvox, provider/model/policy/prompts y postprocess como fuente de verdad; mock/provider-free solo para tests. |
-| Policy/control plane | Fixvox | `adapt` | Reusar contratos cloud (`/v2/device/register`, preflight, policy/defaults) desde Rust/Tauri, no internals Bun. |
+| Model routing | Fixvox/Tauri Cloud | `adopt-process` | Managed cloud Fixvox, provider/model/policy/prompts y postprocess como fuente de verdad; mock/provider-free solo para tests. Worker operativo en `cloud/fixvox-proxy/`. |
+| Policy/control plane | Tauri Cloud | `owned` | Contratos cloud (`/v2/device/register`, preflight, policy/defaults, desktop login link) viven en `cloud/fixvox-proxy/` y Rust/Tauri; `C:/dev/fixvox` queda legacy/reference. |
 | Wake words/assistant/Quick Chat | Fixvox | `parked` | No entran en MVP; usar solo para diseno futuro de rutas. |
 | UIA/Koffi/Python/PowerShell helper | Fixvox | `reject` | No reintroducir en hot path sin nueva decision explicita. |
 
@@ -213,9 +213,9 @@ Regla:
 
 ### ModelGateway Y Managed Cloud
 
-Estado: `adapt` desde Fixvox.
+Estado: `owned` para Tauri Cloud, con aprendizaje historico desde Fixvox.
 
-Actualizacion 2026-06-20: Fixvox no es solo referencia futura de proxy; su infraestructura cloud managed es el camino recomendado para el siguiente runtime real. El codigo desktop se reimplementa en Rust/Tauri, pero se pueden adoptar contratos, policy, prompts, headers de telemetria, usage/cost y fail-closed managed behavior.
+Actualizacion 2026-06-30: la infraestructura cloud managed necesaria para Fixvox Tauri vive en este repo bajo `cloud/fixvox-proxy/` y ya fue desplegada desde aca. `C:/dev/fixvox` no debe ser dependencia operativa para cambios nuevos de Worker/policy; queda como referencia legacy si hace falta entender decisiones previas. El codigo desktop se reimplementa en Rust/Tauri, y los contratos/policy/prompts/headers/usage/fail-closed managed behavior se mantienen como source propio en este repo.
 
 Implementar una frontera propia:
 
@@ -232,7 +232,7 @@ Adapters:
 - directo local para BYOK/dev, configurado por `.env`/variables locales desde host Rust/Tauri, no desde UI React;
 - managed Fixvox cloud como camino principal post-008, usando `X-Device-Id`, `/v1/audio/transcriptions`, `/v2/execution/preflight` y headers `X-Fixvox-*`.
 
-Regla: acoplarse a contratos HTTP documentados, no a legacy Fixvox desktop internals. Si Tauri/Rust pide un diseño distinto para side effects, packaging, storage o seguridad, preferir el diseño propio.
+Regla: acoplarse a contratos HTTP documentados y al Worker `cloud/fixvox-proxy/`, no a legacy Fixvox desktop internals ni a `C:/dev/fixvox/proxy`. Si Tauri/Rust pide un diseño distinto para side effects, packaging, storage o seguridad, preferir el diseño propio.
 
 ### Delivery Y Target Assurance
 
@@ -258,7 +258,7 @@ No reimplementar ahora:
 
 ### Policy / Control Plane
 
-Estado: `reference` desde Fixvox.
+Estado: `owned` en `cloud/fixvox-proxy/`; `reference` historica desde Fixvox.
 
 Lecciones utiles:
 
@@ -267,12 +267,19 @@ Lecciones utiles:
 - policy efectiva debe resolver una sola vez antes de ejecutar;
 - postprocess debe depender de runtime/policy, no de prompts o recipes sueltas.
 
-No implementar en MVP 0-3:
+Ya implementado/operativo para el nuevo flujo:
 
-- admin/control plane;
-- roles por device;
-- policy sync remota;
-- cuotas/capabilities remotas.
+- device register/activate;
+- admin policy assignment;
+- signed-in authPolicy/capabilities;
+- fail-closed runtime enforcement;
+- Cloud deploy desde este repo.
+
+Pendiente segun futuro alcance:
+
+- UI admin mas pulida para grupos/users;
+- release/otra PC smoke post-cutover;
+- legacy demotion final de docs antiguas.
 
 ### Recovery UI
 

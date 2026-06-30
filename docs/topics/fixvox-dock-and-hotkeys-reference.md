@@ -30,7 +30,7 @@ No significa copiar legacy Fixvox desktop internals ni portar archivos literal. 
 
 ## Decision
 
-Para cualquier trabajo durable de dock, estado de dictado, delivery/recovery o hotkeys en Dictation Tauri, estudiar y contrastar primero `C:/dev/fixvox`.
+Para cualquier trabajo durable de dock, estado de dictado, delivery/recovery o hotkeys en Dictation Tauri, `C:/dev/fixvox` puede usarse como referencia UX legacy si hace falta, pero no es dependencia operativa ni fuente para Cloud/Worker. Preferir primero el codigo y specs de este repo.
 
 Fixvox es referencia fuerte para:
 

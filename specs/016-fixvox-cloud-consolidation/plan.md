@@ -4,6 +4,8 @@
 
 Migrate in safe stages. First vendor/copy the Worker into this repo and prove tests run locally. Then make `dictation-tauri` the deploy source with explicit approval. Finally reduce `C:\dev\fixvox` to legacy/reference status for the new Tauri product.
 
+Status 2026-06-30: all stages completed for the Tauri Cloud Worker. Production deploys for `auth-fixvox.jpsala.dev` now use `cloud/fixvox-proxy/` from this repo; `C:\dev\fixvox` is legacy/reference only for this product surface.
+
 ## Target Layout
 
 - `cloud/fixvox-proxy/` — Cloudflare Worker source copied from `C:\dev\fixvox\proxy`.
@@ -19,7 +21,7 @@ Migrate in safe stages. First vendor/copy the Worker into this repo and prove te
 1. **Bootstrap copy**: copy Worker source/config excluding `node_modules`, `.wrangler`, `.dev.vars`; run provider-free tests.
 2. **Docs + ownership**: update active track/spec/working memory so future sessions start here.
 3. **Cutover deploy**: with JP approval, deploy `cloud/fixvox-proxy` from this repo and rerun T021.
-4. **Legacy demotion**: document `C:\dev\fixvox` as legacy/reference for Tauri Cloud; no longer required for new endpoint work.
+4. **Legacy demotion**: document `C:\dev\fixvox` as legacy/reference for Tauri Cloud; no longer required for new endpoint work. **Done 2026-06-30.**
 5. **Optional cleanup**: extract shared contracts/types if duplication appears between desktop and Worker.
 
 ## Risks
