@@ -23,6 +23,9 @@ loadEnvFile(path.join(repoRoot, 'cloud', 'fixvox-proxy', '.dev.vars'))
 loadEnvFile(path.join(process.env.HOME || '', '.config', 'dictation-tauri', 'admin.env'))
 loadEnvFile(path.join(process.env.HOME || '', '.config', 'dictation-tauri', 'admin-web.env'))
 const WEB_TOKEN = process.env.FIXVOX_ADMIN_WEB_TOKEN || process.env.FIXVOX_ADMIN_PASSWORD || ''
+const GOOGLE_CLIENT_ID = process.env.FIXVOX_ADMIN_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLOUD_CLIENT_ID || ''
+const GOOGLE_CLIENT_SECRET = process.env.FIXVOX_ADMIN_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLOUD_CLIENT_SECRET || ''
+const ALLOWED_EMAILS = new Set(String(process.env.FIXVOX_ADMIN_ALLOWED_EMAILS || '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean))
 
 function loadEnvFile(file) {
   if (!file || !fs.existsSync(file)) return
@@ -168,17 +171,57 @@ async function getPiVersion() {
   })
 }
 
-function isAuthed(req) {
-  if (!WEB_TOKEN) return false
+function readSession(req) {
   const cookie = req.headers.cookie || ''
   const match = cookie.match(/(?:^|;\s*)fixvox_admin_session=([^;]+)/)
   const token = match?.[1]
-  return token && sessions.get(token) && sessions.get(token) > Date.now()
+  const session = token ? sessions.get(token) : null
+  if (!session || session.expiresAt <= Date.now()) return null
+  return session
 }
-function setSession(res) {
+function isAuthed(req) {
+  return Boolean(readSession(req))
+}
+function setSession(res, user = { provider: 'token', email: null }) {
   const token = crypto.randomBytes(24).toString('base64url')
-  sessions.set(token, Date.now() + 1000 * 60 * 60 * 24)
+  sessions.set(token, { ...user, expiresAt: Date.now() + 1000 * 60 * 60 * 24 })
   res.setHeader('Set-Cookie', `fixvox_admin_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=86400`)
+}
+function clearSession(res) {
+  res.setHeader('Set-Cookie', 'fixvox_admin_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0')
+}
+function googleLoginEnabled() {
+  return Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET)
+}
+function buildExternalUrl(req, pathname) {
+  const proto = req.headers['x-forwarded-proto'] || (req.headers.host?.startsWith('127.0.0.1') ? 'http' : 'https')
+  return `${proto}://${req.headers.host}${pathname}`
+}
+async function exchangeGoogleCode(req, code) {
+  const redirectUri = buildExternalUrl(req, '/auth/google/callback')
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET,
+    code,
+    grant_type: 'authorization_code',
+    redirect_uri: redirectUri,
+  })
+  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  })
+  const tokenPayload = await tokenResponse.json().catch(() => ({}))
+  if (!tokenResponse.ok) throw new Error(tokenPayload.error_description || tokenPayload.error || 'Google token exchange failed')
+  const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${tokenPayload.access_token}` },
+  })
+  const user = await userResponse.json().catch(() => ({}))
+  if (!userResponse.ok) throw new Error('Google userinfo failed')
+  const email = String(user.email || '').toLowerCase()
+  if (!email || user.email_verified === false) throw new Error('Google email no verificado')
+  if (ALLOWED_EMAILS.size > 0 && !ALLOWED_EMAILS.has(email)) throw new Error('Email no autorizado para Fixvox Admin')
+  return { provider: 'google', email, name: user.name || email }
 }
 
 function sendJson(res, status, data) {
@@ -211,7 +254,8 @@ function html(res, body) {
   res.end(body)
 }
 function loginHtml(error = '') {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fixvox Admin</title><link rel="stylesheet" href="/assets/styles.css"></head><body><main class="login"><div class="login-card"><p class="eyebrow">Fixvox Admin</p><h1>Control room</h1><p>Ingresá el token admin web para continuar.</p>${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}<form method="post"><input name="token" type="password" autofocus autocomplete="current-password" placeholder="Token"><button>Entrar</button></form></div></main></body></html>`
+  const googleButton = googleLoginEnabled() ? '<a class="google-login" href="/auth/google/start">Entrar con Google</a>' : '<p class="muted">Google login no configurado todavía.</p>'
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fixvox Admin</title><link rel="stylesheet" href="/assets/styles.css"></head><body><main class="login"><div class="login-card"><p class="eyebrow">Fixvox Admin</p><h1>Control room</h1><p>Entrá con Google. El token queda como fallback operativo.</p>${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}${googleButton}<details><summary>Fallback con token</summary><form method="post"><input name="token" type="password" autocomplete="current-password" placeholder="Token"><button>Entrar con token</button></form></details></div></main></body></html>`
 }
 function appHtml() {
   return fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
@@ -238,6 +282,41 @@ const server = http.createServer(async (req, res) => {
       if (serveStatic(req, res, url.pathname)) return
       return sendJson(res, 404, { error: { message: 'Asset not found' } })
     }
+    if (url.pathname === '/auth/google/start') {
+      if (!googleLoginEnabled()) return html(res, loginHtml('Google login no configurado.'))
+      const state = crypto.randomBytes(18).toString('base64url')
+      sessions.set(`oauth:${state}`, { expiresAt: Date.now() + 10 * 60 * 1000 })
+      const redirectUri = buildExternalUrl(req, '/auth/google/callback')
+      const googleUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+      googleUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID)
+      googleUrl.searchParams.set('redirect_uri', redirectUri)
+      googleUrl.searchParams.set('response_type', 'code')
+      googleUrl.searchParams.set('scope', 'openid email profile')
+      googleUrl.searchParams.set('state', state)
+      googleUrl.searchParams.set('prompt', 'select_account')
+      res.writeHead(302, { location: googleUrl.toString() })
+      return res.end()
+    }
+    if (url.pathname === '/auth/google/callback') {
+      try {
+        const state = url.searchParams.get('state') || ''
+        const code = url.searchParams.get('code') || ''
+        const oauthState = sessions.get(`oauth:${state}`)
+        sessions.delete(`oauth:${state}`)
+        if (!state || !code || !oauthState || oauthState.expiresAt <= Date.now()) throw new Error('Google login state invalido o expirado')
+        const user = await exchangeGoogleCode(req, code)
+        setSession(res, user)
+        res.writeHead(302, { location: '/admin/pi' })
+        return res.end()
+      } catch (error) {
+        return html(res, loginHtml(error instanceof Error ? error.message : 'Google login falló.'))
+      }
+    }
+    if (url.pathname === '/logout') {
+      clearSession(res)
+      res.writeHead(302, { location: '/login' })
+      return res.end()
+    }
     if (url.pathname === '/login' && req.method === 'GET') return html(res, loginHtml())
     if (url.pathname === '/login' && req.method === 'POST') {
       const body = new URLSearchParams(await readBody(req))
@@ -259,6 +338,7 @@ const server = http.createServer(async (req, res) => {
       production: ADMIN_ENV === 'production',
       adminBaseUrl: ADMIN_BASE_URL,
       piCwd: PI_CWD,
+      user: readSession(req) ? { provider: readSession(req).provider, email: readSession(req).email || null, name: readSession(req).name || null } : null,
       guardrails: [
         'No push/deploy/systemd/tunnel sin aprobacion explicita.',
         'No mutar policies/users en production sin confirmacion explicita.',
