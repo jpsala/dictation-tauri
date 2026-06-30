@@ -70,6 +70,35 @@ pub(crate) struct FixvoxAuthPolicyStatus {
     pub(crate) redacted: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FixvoxAuthSessionState {
+    pub(crate) status: String,
+    pub(crate) flow: String,
+    pub(crate) session_id: String,
+    pub(crate) state_nonce: String,
+    pub(crate) user_id: Option<String>,
+    pub(crate) user_email: Option<String>,
+    pub(crate) session_secret: Option<String>,
+    pub(crate) refresh_secret: Option<String>,
+    pub(crate) issued_at: String,
+    pub(crate) expires_at: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FixvoxAuthSessionStatus {
+    pub(crate) status: String,
+    pub(crate) flow: Option<String>,
+    pub(crate) user_redacted: Option<String>,
+    pub(crate) session_id_redacted: Option<String>,
+    pub(crate) state_redacted: Option<String>,
+    pub(crate) expires_at: Option<String>,
+    pub(crate) secrets_present: bool,
+    pub(crate) session_path: String,
+    pub(crate) redacted: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FixvoxCloudLoginStartStatus {
@@ -675,7 +704,7 @@ pub(crate) fn preflight_denial_error_code(decision: &PreflightDecision) -> Strin
     }
 }
 
-pub(crate) fn resolve_device_state_path(
+fn resolve_fixvox_app_data_dir(
     env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
 ) -> Result<PathBuf, FixvoxCloudError> {
     let base = clean_env_value(env_lookup("APPDATA"))
@@ -689,9 +718,19 @@ pub(crate) fn resolve_device_state_path(
             )
         })?;
 
-    Ok(PathBuf::from(base)
-        .join("dictation-tauri")
-        .join("fixvox-device-state.json"))
+    Ok(PathBuf::from(base).join("dictation-tauri"))
+}
+
+pub(crate) fn resolve_device_state_path(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<PathBuf, FixvoxCloudError> {
+    Ok(resolve_fixvox_app_data_dir(env_lookup)?.join("fixvox-device-state.json"))
+}
+
+pub(crate) fn resolve_auth_session_state_path(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<PathBuf, FixvoxCloudError> {
+    Ok(resolve_fixvox_app_data_dir(env_lookup)?.join("fixvox-auth-session.v1.json"))
 }
 
 pub(crate) fn build_device_state_from_register(
@@ -1093,6 +1132,64 @@ pub(crate) fn read_device_state(
     })
 }
 
+pub(crate) fn persist_auth_session_state(
+    path: &Path,
+    state: &FixvoxAuthSessionState,
+) -> Result<(), FixvoxCloudError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|_| {
+            error(
+                "FIXVOX_AUTH_SESSION_STATE_DIR_FAILED",
+                "Fixvox auth session directory could not be created.",
+            )
+        })?;
+    }
+
+    let body = serde_json::to_string_pretty(state).map_err(|_| {
+        error(
+            "FIXVOX_AUTH_SESSION_STATE_SERIALIZE_FAILED",
+            "Fixvox auth session state could not be serialized.",
+        )
+    })?;
+
+    std::fs::write(path, body).map_err(|_| {
+        error(
+            "FIXVOX_AUTH_SESSION_STATE_WRITE_FAILED",
+            "Fixvox auth session state could not be written.",
+        )
+    })
+}
+
+pub(crate) fn read_auth_session_state(
+    path: &Path,
+) -> Result<Option<FixvoxAuthSessionState>, FixvoxCloudError> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let body = std::fs::read_to_string(path).map_err(|_| {
+        error(
+            "FIXVOX_AUTH_SESSION_STATE_READ_FAILED",
+            "Fixvox auth session state could not be read.",
+        )
+    })?;
+
+    serde_json::from_str(&body).map(Some).map_err(|_| {
+        error(
+            "FIXVOX_AUTH_SESSION_STATE_INVALID",
+            "Fixvox auth session state did not match the expected contract.",
+        )
+    })
+}
+
+pub(crate) fn get_fixvox_auth_session_status_with_env(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<FixvoxAuthSessionStatus, FixvoxCloudError> {
+    let path = resolve_auth_session_state_path(env_lookup)?;
+    let state = read_auth_session_state(&path)?;
+    Ok(build_auth_session_status(path, state.as_ref()))
+}
+
 pub(crate) fn get_fixvox_cloud_status_with_env(
     env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
 ) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
@@ -1127,15 +1224,32 @@ pub(crate) fn start_fixvox_cloud_login_with_env(
     open_external_browser: bool,
 ) -> Result<FixvoxCloudLoginStartStatus, FixvoxCloudError> {
     let backend_base_url = resolve_backend_base_url(env_lookup)?;
+    let session_path = resolve_auth_session_state_path(env_lookup)?;
     let state_nonce = generate_login_state_nonce();
+    let session_id = generate_login_session_id();
     let verification_url = build_fixvox_login_verification_url(&backend_base_url, &state_nonce);
+
+    let session_state = FixvoxAuthSessionState {
+        status: "pending".to_string(),
+        flow: "device_code_polling".to_string(),
+        session_id: session_id.clone(),
+        state_nonce: state_nonce.clone(),
+        user_id: None,
+        user_email: None,
+        session_secret: None,
+        refresh_secret: None,
+        issued_at: current_unix_timestamp_string(),
+        expires_at: Some((current_unix_timestamp() + 600).to_string()),
+    };
+    persist_auth_session_state(&session_path, &session_state)?;
 
     if open_external_browser {
         open_external_browser_url(&verification_url)?;
     }
 
     Ok(build_fixvox_login_start_status(
-        state_nonce,
+        &session_id,
+        &state_nonce,
         open_external_browser,
     ))
 }
@@ -1143,6 +1257,11 @@ pub(crate) fn start_fixvox_cloud_login_with_env(
 #[tauri::command]
 pub fn get_fixvox_cloud_status() -> Result<FixvoxCloudStatus, FixvoxCloudError> {
     get_fixvox_cloud_status_with_env(&read_env_value)
+}
+
+#[tauri::command]
+pub fn get_fixvox_auth_session_status() -> Result<FixvoxAuthSessionStatus, FixvoxCloudError> {
+    get_fixvox_auth_session_status_with_env(&read_env_value)
 }
 
 #[tauri::command]
@@ -1546,11 +1665,15 @@ fn generate_install_id() -> String {
     format!("install_{now:x}_{:x}", std::process::id())
 }
 
-fn current_unix_timestamp_string() -> String {
-    let seconds = SystemTime::now()
+fn current_unix_timestamp() -> u64 {
+    SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
-        .unwrap_or(0);
+        .unwrap_or(0)
+}
+
+fn current_unix_timestamp_string() -> String {
+    let seconds = current_unix_timestamp();
     format!("unix:{seconds}")
 }
 
@@ -1830,8 +1953,46 @@ fn build_fixvox_login_verification_url(base_url: &str, state_nonce: &str) -> Str
     )
 }
 
+fn build_auth_session_status(
+    path: PathBuf,
+    state: Option<&FixvoxAuthSessionState>,
+) -> FixvoxAuthSessionStatus {
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("fixvox-auth-session.v1.json");
+
+    match state {
+        Some(state) => FixvoxAuthSessionStatus {
+            status: state.status.clone(),
+            flow: Some(state.flow.clone()),
+            user_redacted: redact_identifier(
+                state.user_id.as_deref().or(state.user_email.as_deref()),
+            ),
+            session_id_redacted: redact_identifier(Some(&state.session_id)),
+            state_redacted: redact_identifier(Some(&state.state_nonce)),
+            expires_at: state.expires_at.clone(),
+            secrets_present: state.session_secret.is_some() || state.refresh_secret.is_some(),
+            session_path: format!("{} · host app data", file_name),
+            redacted: true,
+        },
+        None => FixvoxAuthSessionStatus {
+            status: "signed_out".to_string(),
+            flow: None,
+            user_redacted: None,
+            session_id_redacted: None,
+            state_redacted: None,
+            expires_at: None,
+            secrets_present: false,
+            session_path: format!("{} · host app data", file_name),
+            redacted: true,
+        },
+    }
+}
+
 fn build_fixvox_login_start_status(
-    state_nonce: String,
+    session_id: &str,
+    state_nonce: &str,
     browser_opened: bool,
 ) -> FixvoxCloudLoginStartStatus {
     FixvoxCloudLoginStartStatus {
@@ -1843,8 +2004,9 @@ fn build_fixvox_login_start_status(
         browser_opened,
         polling_interval_seconds: 3,
         expires_in_seconds: 600,
-        session_id_redacted: "pending-cloud-session".to_string(),
-        state_redacted: redact_identifier(Some(&state_nonce))
+        session_id_redacted: redact_identifier(Some(session_id))
+            .unwrap_or_else(|| "redacted".to_string()),
+        state_redacted: redact_identifier(Some(state_nonce))
             .unwrap_or_else(|| "redacted".to_string()),
         redacted: true,
     }
@@ -1853,6 +2015,14 @@ fn build_fixvox_login_start_status(
 fn generate_login_state_nonce() -> String {
     format!(
         "fxv_{}_{}",
+        current_unix_timestamp_string(),
+        std::process::id(),
+    )
+}
+
+fn generate_login_session_id() -> String {
+    format!(
+        "fxv_session_{}_{}",
         current_unix_timestamp_string(),
         std::process::id(),
     )
@@ -1959,6 +2129,43 @@ mod tests {
         assert!(policy.capabilities.can_use_managed_transcription);
         assert!(policy.capabilities.can_see_advanced_settings);
         assert!(policy.capabilities.can_use_debug_tools);
+    }
+
+    #[test]
+    fn auth_session_status_never_exposes_host_owned_secrets() {
+        let state = FixvoxAuthSessionState {
+            status: "signed_in".to_string(),
+            flow: "device_code_polling".to_string(),
+            session_id: "fxv_session_sensitive_1234567890".to_string(),
+            state_nonce: "fxv_state_sensitive_1234567890".to_string(),
+            user_id: Some("user_sensitive_1234567890".to_string()),
+            user_email: Some("jp@example.invalid".to_string()),
+            session_secret: Some("secret-session-material".to_string()),
+            refresh_secret: Some("secret-refresh-material".to_string()),
+            issued_at: "unix:1".to_string(),
+            expires_at: Some("unix:2".to_string()),
+        };
+
+        let status = build_auth_session_status(
+            PathBuf::from(
+                "C:/Users/JP/AppData/Roaming/dictation-tauri/fixvox-auth-session.v1.json",
+            ),
+            Some(&state),
+        );
+        let serialized = serde_json::to_string(&status).expect("status serializes");
+
+        assert!(status.redacted);
+        assert!(status.secrets_present);
+        assert_eq!(
+            status.session_path,
+            "fixvox-auth-session.v1.json · host app data"
+        );
+        assert!(!serialized.contains("secret-session-material"));
+        assert!(!serialized.contains("secret-refresh-material"));
+        assert!(!serialized.contains("jp@example.invalid"));
+        assert!(!serialized.contains("user_sensitive_1234567890"));
+        assert!(!serialized.contains("fxv_session_sensitive_1234567890"));
+        assert!(!serialized.contains("fxv_state_sensitive_1234567890"));
     }
 
     #[test]

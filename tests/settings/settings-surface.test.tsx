@@ -154,6 +154,7 @@ describe("SettingsSurface", () => {
     expect(source).toContain("selectedSection === \"hotkeys\"");
     expect(source).toContain("selectedSection === \"cloud\"");
     expect(source).toContain("getFixvoxCloudStatus");
+    expect(source).toContain("getFixvoxAuthSessionStatus");
     expect(source).toContain("activateFixvoxDevice");
     expect(source).toContain("startFixvoxCloudLogin");
     expect(source).toContain("startCloudLogin");

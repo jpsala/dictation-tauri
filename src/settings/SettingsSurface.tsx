@@ -13,6 +13,7 @@ import {
   deriveFixvoxAuthPolicyView,
   deriveFixvoxCloudHealth,
   formatFixvoxStateLocation,
+  getFixvoxAuthSessionStatus,
   getFixvoxCloudStatus,
   refreshFixvoxPolicy,
   registerFixvoxDevice,
@@ -20,6 +21,7 @@ import {
   startFixvoxCloudLogin,
   summarizeFixvoxCloudProblem,
   summarizeFixvoxPolicyCapabilities,
+  type FixvoxAuthSessionStatus,
   type FixvoxCloudStatus,
   type FixvoxCloudOperation,
 } from "./fixvox-cloud-control";
@@ -81,6 +83,7 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
   const [busyAction, setBusyAction] = useState<BusyAction | undefined>();
   const [captureState, setCaptureState] = useState<CaptureState>("idle");
   const [cloudStatus, setCloudStatus] = useState<FixvoxCloudStatus | undefined>(initialCloudStatus);
+  const [authSessionStatus, setAuthSessionStatus] = useState<FixvoxAuthSessionStatus | undefined>();
   const [cloudNotice, setCloudNotice] = useState<EditorNotice>({
     tone: "idle",
     message: "Local cloud status loads from host-owned app data.",
@@ -345,8 +348,12 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
   async function loadCloudStatus() {
     setBusyAction("status");
     try {
-      const status = await getFixvoxCloudStatus();
+      const [status, sessionStatus] = await Promise.all([
+        getFixvoxCloudStatus(),
+        getFixvoxAuthSessionStatus(),
+      ]);
       setCloudStatus(status);
+      setAuthSessionStatus(sessionStatus);
       const health = deriveFixvoxCloudHealth(status);
       setCloudNotice({
         tone: health.tone,
@@ -384,6 +391,16 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
         return;
       }
 
+      setAuthSessionStatus({
+        status: "pending",
+        flow: login.flow,
+        sessionIdRedacted: login.sessionIdRedacted,
+        stateRedacted: login.stateRedacted,
+        expiresAt: `+${login.expiresInSeconds}s`,
+        secretsPresent: false,
+        sessionPath: "fixvox-auth-session.v1.json · host app data",
+        redacted: true,
+      });
       setCloudNotice({
         tone: login.browserOpened ? "success" : "warning",
         message: login.browserOpened
@@ -638,7 +655,8 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
               </div>
               <div className="settings-hotkey-editor-state" aria-label="Fixvox Cloud auth action">
                 <span>{authPolicyView.limitsLabel}</span>
-                <span>{authPolicyView.actionHint}</span>
+                <span>{authSessionStatus ? `Session ${authSessionStatus.status}` : authPolicyView.actionHint}</span>
+                {authSessionStatus?.sessionIdRedacted ? <span>{authSessionStatus.sessionIdRedacted}</span> : null}
               </div>
             </div>
 
@@ -699,8 +717,8 @@ export function SettingsSurface({ initialSection = "hotkeys", initialCloudStatus
 
             <div className="settings-hotkey-editor-feedback" data-tone={cloudNotice.tone}>
               <span>IDs redacted</span>
-              <span>{cloudStateLocation}</span>
-              <span>{cloudProblem}</span>
+              <span>{authSessionStatus?.sessionPath ?? cloudStateLocation}</span>
+              <span>{authSessionStatus?.secretsPresent ? "session secrets host-owned" : cloudProblem}</span>
               <strong>{cloudNotice.message}</strong>
             </div>
           </section>

@@ -68,6 +68,18 @@ export type FixvoxCloudLoginStartStatus = {
   redacted: true;
 };
 
+export type FixvoxAuthSessionStatus = {
+  status: "signed_out" | "pending" | "signed_in" | "expired" | string;
+  flow?: "device_code_polling" | string;
+  userRedacted?: string;
+  sessionIdRedacted?: string;
+  stateRedacted?: string;
+  expiresAt?: string;
+  secretsPresent: boolean;
+  sessionPath: string;
+  redacted: true;
+};
+
 export type FixvoxCloudHealthTone = "idle" | "success" | "warning" | "danger";
 
 export type FixvoxCloudHealth = {
@@ -101,6 +113,14 @@ export async function getFixvoxCloudStatus(): Promise<FixvoxCloudStatus | undefi
   }
 
   return invoke<FixvoxCloudStatus>("get_fixvox_cloud_status");
+}
+
+export async function getFixvoxAuthSessionStatus(): Promise<FixvoxAuthSessionStatus | undefined> {
+  if (!isTauri()) {
+    return undefined;
+  }
+
+  return invoke<FixvoxAuthSessionStatus>("get_fixvox_auth_session_status");
 }
 
 export async function registerFixvoxDevice(): Promise<FixvoxCloudStatus | undefined> {
