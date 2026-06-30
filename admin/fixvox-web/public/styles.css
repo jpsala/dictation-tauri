@@ -202,3 +202,70 @@ td small { color: #667085; }
   .composer { align-items: flex-start; }
   .composer-buttons { flex-direction: row; }
 }
+
+/* Activity panel polish: keep it readable instead of a wall of tiny pills. */
+.pi-grid { grid-template-columns: minmax(0, 1fr) 340px; }
+.activity-card { background: #fbfcfe; }
+.activity-section { padding: 14px; }
+.tool-list { gap: 10px; max-height: 310px; padding-right: 2px; }
+.tool-card {
+  border-color: #e2e8f0;
+  background: #fff;
+  padding: 0;
+  box-shadow: 0 1px 2px #0f172a08;
+}
+.tool-card.done, .tool-card.running, .tool-card.error { background: #fff; }
+.tool-head {
+  align-items: flex-start;
+  padding: 10px 10px 9px;
+}
+.tool-title {
+  min-width: 0;
+  flex: 1;
+}
+.tool-title strong {
+  display: block;
+  color: #172033;
+  font-size: 13px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-title small {
+  display: block;
+  margin-top: 3px;
+  color: #667085;
+  font-size: 11px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  flex: 0 0 9px;
+  margin-top: 4px;
+  background: #94a3b8;
+}
+.tool-dot.done { background: #22c55e; }
+.tool-dot.running { background: #3b82f6; }
+.tool-dot.error { background: #ef4444; }
+.tool-status {
+  flex: 0 0 auto;
+  font-size: 10px;
+  padding: 2px 6px;
+}
+.tool-card pre {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid #eef2f7;
+  border-radius: 0;
+  max-height: 160px;
+  background: #f8fafc;
+}
+.tool-overflow-note { margin: 8px 0 0; font-size: 12px; }
+.admin-data { max-height: 260px; }
+.activity-section.session p code { word-break: break-all; }
