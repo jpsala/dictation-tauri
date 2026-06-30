@@ -246,7 +246,7 @@ function renderHeader() {
   const health = state.health
   const session = state.session?.sessionName || state.session?.sessionId || 'sin sesión'
   const envName = state.env?.environment || 'unknown'
-  header.innerHTML = `<div><h2>Pi Chat Fixvox</h2><div class="muted">Control room para Dictation Tauri + Fixvox Cloud</div></div><div class="chips"><span class="chip ${state.env?.production ? 'prod' : 'local'}">${esc(envName)}</span><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `Pi ${esc(health.piVersion || '')}` : 'Pi no listo'}</span><span class="chip">${esc(state.status)}</span><span class="chip">${esc(session)}</span></div>`
+  header.innerHTML = `<div><h2>Pi Chat Fixvox</h2><div class="muted">Control room para Dictation Tauri + Fixvox Cloud</div></div><div class="chips"><span class="chip ${state.env?.production ? 'prod' : 'local'}">${esc(envName)}</span><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `Pi ${esc(health.piVersion || '')}` : 'Pi no listo'}</span><span class="chip">${esc(state.status)}</span><span class="chip">${esc(session)}</span><span class="chip">${esc(state.env?.user?.email || state.env?.user?.provider || 'auth')}</span><a class="chip" href="/logout">salir</a></div>`
 }
 function renderMessages() {
   const box = $('#messages'); if (!box) return
