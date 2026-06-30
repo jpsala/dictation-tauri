@@ -54,7 +54,7 @@ Este archivo es router operativo, no historia. Si un detalle crece, moverlo a to
 | Estudio de fuentes | `docs/tracks/source-project-study-plan.md` | Plan vivo para Copicu/Fixvox. |
 | Settings/UI foundation | `docs/tracks/settings-window-and-ui-foundation.md` | Decision HeroUI v3 y handoff para pantalla Settings real. |
 | Fixvox Tauri cloud/release | `docs/tracks/fixvox-tauri-cloud-release.md` | Plan para convertir este repo en cliente desktop Fixvox instalable, activable y policy-driven contra Fixvox Cloud. |
-| Usuarios registrados / poder producto | `docs/tracks/fixvox-registered-users-opportunities.md` | Mapa de posibilidades ahora que hay login, device link, authPolicy, capabilities y enforcement Cloud. |
+| Usuarios registrados / poder producto | `docs/tracks/fixvox-registered-users-opportunities.md` | Roadmap implementable para admin usuarios/grupos, usage/quota, planes/capabilities, personalizacion y beta/otra PC. |
 
 ## Decisiones Vigentes
 

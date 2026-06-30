@@ -99,7 +99,75 @@ Pensar y priorizar que se vuelve posible ahora que Fixvox Tauri tiene usuarios r
 
 ## Proximo Paso Recomendado
 
-Hacer una sesion de diseño/decision con JP para elegir una primera apuesta. Recomendacion tecnica: empezar por **Admin de usuarios/grupos + usage/quota visible**, porque desbloquea monetizacion, soporte, debugging y rollout seguro sin tocar demasiado UX desktop.
+Primera apuesta recomendada: **Admin de usuarios/grupos + usage/quota visible**. Desbloquea monetizacion, soporte, debugging y rollout seguro sin tocar demasiado UX desktop.
+
+## Roadmap De Implementacion
+
+### Phase A — Admin operativo minimo
+
+Objetivo: poder operar usuarios/devices/policies desde este repo sin scripts sueltos.
+
+- [ ] A1 Mapear modelo actual de `DeviceRecord`, `accountId`, policy templates, usage y admin endpoints en `cloud/fixvox-proxy/`.
+- [ ] A2 Agregar endpoint admin redacted para buscar/listar usuarios registrados por cuenta, device y policy sin exponer emails completos ni account IDs crudos.
+- [ ] A3 Agregar endpoint admin para asignar policy a cuenta/user, no solo a device, con fallback device-level documentado.
+- [ ] A4 Agregar tests Worker para listar usuarios, asignar policy por account y verificar redaccion.
+- [ ] A5 Documentar runbook admin local: listar, asignar Pro/basic, restaurar Pro, verificar policy.
+
+### Phase B — Usage/quota visible
+
+Objetivo: ver costo/uso y controlar limites antes de abrir beta mas amplia.
+
+- [ ] B1 Definir metricas por user/device: STT seconds, LLM actions, prewarm, failures, quota remaining.
+- [ ] B2 Exponer endpoint admin de usage por account/device con IDs redacted.
+- [ ] B3 Mostrar quota/usage en admin page existente o panel nuevo simple.
+- [ ] B4 Tests de quota/usage: agregacion, redaccion, empty state y over-limit.
+- [ ] B5 Smoke redacted con usuario real aprobado.
+
+### Phase C — Planes/capabilities vendibles
+
+Objetivo: convertir capabilities actuales en planes de producto administrables.
+
+- [ ] C1 Formalizar templates: `basic-anonymous`, `alpha-basic`, `dictation-basic`, `pro`, `power-admin`.
+- [ ] C2 Definir matriz de capabilities/limits por template.
+- [ ] C3 Agregar migracion/compatibilidad para devices existentes.
+- [ ] C4 UI Settings: explicar plan actual, limites y next-step sin filtrar datos sensibles.
+- [ ] C5 T022-style smoke para cada template critico: unlock/deny fail-closed.
+
+### Phase D — Personalizacion por usuario
+
+Objetivo: que registrarse mejore el dictado.
+
+- [ ] D1 Guardar prompt profile por account/policy.
+- [ ] D2 Permitir vocabulario/palabras frecuentes redacted-safe por account.
+- [ ] D3 Runtime: incluir prompt/profile desde policy snapshot host-owned.
+- [ ] D4 Tests provider-free de prompt routing y no leakage.
+- [ ] D5 Smoke real acotado con fixture no sensible.
+
+### Phase E — Beta/otra PC
+
+Objetivo: probar crecimiento real fuera de la maquina dev.
+
+- [ ] E1 Crear installer fresh post-cutover.
+- [ ] E2 Otra PC install smoke: login Google, device link, Pro managed dictation.
+- [ ] E3 Waitlist/basic denied smoke: login permitido, managed dictation denied fail-closed.
+- [ ] E4 Release/runbook: que tocar para onboard/offboard un usuario.
+- [ ] E5 Decidir si publicar canal nuevo o mantener artifact local.
+
+## Decisiones Pendientes
+
+- Cual es el primer plan comercial o beta real: `pro`, `founder`, `dictation-basic`.
+- Si policy principal debe asignarse a account, device o ambos.
+- Si el trial inicial requiere aprobacion manual o auto-Pro limitado.
+- Que datos de usage son aceptables en admin sin volverse sensibles.
+- Si prompts/vocabulario por usuario entran antes o despues de otra PC smoke.
+
+## Checks Base Para Cada Batch
+
+- `npm run cloud:test`
+- `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`
+- `npm run build`
+- `cd src-tauri && cargo fmt --check && CARGO_TARGET_DIR=target/pi-registered-users cargo check`
+- Si toca produccion: deploy solo con aprobacion + smoke redacted correspondiente.
 
 ## Guardrails
 
