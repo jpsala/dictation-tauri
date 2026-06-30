@@ -75,8 +75,9 @@ describe("SettingsSurface", () => {
     expect(html).toContain("Basic anonymous");
     expect(html).toContain("no managed dictation");
     expect(html).toContain("managed dictation, postprocess, transforms, assistant actions, advanced settings and higher limits require Fixvox Cloud login");
-    expect(html).toContain("Login is not wired yet; the next step is a host-owned browser flow.");
+    expect(html).toContain("Browser sign-in is host-owned; Settings only receives redacted session status.");
     expect(html).toContain("Start Fixvox Cloud sign in");
+    expect(html).toContain("opens browser");
     expect(html).toContain("fixvox-device-state.json · host app data");
     expect(html).not.toContain("user_1234567890abcdef");
     expect(html).not.toContain("dev_test_1234567890abcdef");
@@ -155,10 +156,12 @@ describe("SettingsSurface", () => {
     expect(source).toContain("selectedSection === \"cloud\"");
     expect(source).toContain("getFixvoxCloudStatus");
     expect(source).toContain("getFixvoxAuthSessionStatus");
+    expect(source).toContain("pollFixvoxCloudLogin");
+    expect(source).toContain("pollCloudLoginStatus");
     expect(source).toContain("activateFixvoxDevice");
     expect(source).toContain("startFixvoxCloudLogin");
     expect(source).toContain("startCloudLogin");
-    expect(source).toContain("window.confirm");
+    expect(source).not.toContain("Open the external browser to start Fixvox Cloud sign-in?");
     expect(source).not.toContain("void applyCandidate(candidate.shortcut)");
     expect(source).not.toContain("Save ${editingShortcut}");
   });
