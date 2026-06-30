@@ -957,13 +957,23 @@ fn build_auth_policy_status_from_register(
         _ if user_value.is_some() => "signed_in".to_string(),
         _ => "anonymous".to_string(),
     };
-    let capabilities = policy_template_id
-        .as_deref()
-        .map(product_capabilities_for_policy_template)
-        .filter(|capabilities| !capabilities.is_empty())
-        .unwrap_or_else(|| {
-            product_capabilities_from_policy_capabilities(&policy_snapshot.capabilities)
-        });
+    let capabilities = json_string_array(
+        &snapshot.auth,
+        &[
+            "capabilities",
+            "productCapabilities",
+            "product_capabilities",
+        ],
+    )
+    .unwrap_or_else(|| {
+        policy_template_id
+            .as_deref()
+            .map(product_capabilities_for_policy_template)
+            .filter(|capabilities| !capabilities.is_empty())
+            .unwrap_or_else(|| {
+                product_capabilities_from_policy_capabilities(&policy_snapshot.capabilities)
+            })
+    });
     let limits = if snapshot.limits.is_null()
         || snapshot
             .limits
@@ -1046,6 +1056,20 @@ fn json_string(value: &serde_json::Value, keys: &[&str]) -> Option<String> {
             .get(*key)
             .and_then(|entry| entry.as_str())
             .and_then(|entry| clean_env_value(Some(entry.to_string())))
+    })
+}
+
+fn json_string_array(value: &serde_json::Value, keys: &[&str]) -> Option<Vec<String>> {
+    keys.iter().find_map(|key| {
+        value.get(*key).and_then(|entry| {
+            entry.as_array().map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| item.as_str())
+                    .filter_map(|item| clean_env_value(Some(item.to_string())))
+                    .collect::<Vec<_>>()
+            })
+        })
     })
 }
 
@@ -2662,6 +2686,43 @@ mod tests {
         );
         assert!(!serialized.contains("user_sensitive_1234567890"));
         assert!(!serialized.contains("jp@example.invalid"));
+    }
+
+    #[test]
+    fn auth_policy_honors_explicit_empty_capabilities() {
+        let snapshot = DeviceRegisterSnapshot {
+            ok: true,
+            device_id: "dev_auth_basic".to_string(),
+            activated: true,
+            policy_id: "alpha-basic".to_string(),
+            policy_label: "Alpha Basic".to_string(),
+            auth: json!({
+                "accessMode": "signed_in",
+                "userRedacted": "user redacted",
+                "policyTemplateId": "alpha-basic",
+                "policyTemplateLabel": "Alpha Basic",
+                "capabilities": []
+            }),
+            features: json!({ "managedTranscription": true }),
+            defaults: json!({}),
+            limits: json!({}),
+            telemetry: json!({}),
+            transport_policy: json!({ "speech": { "mode": "proxied" } }),
+            transcript: None,
+            voice_policy: None,
+            voice_routing: None,
+            speech: None,
+            prompts: None,
+            user_settings_defaults: None,
+        };
+        let config = FixvoxCloudRuntimeConfig {
+            backend_base_url: PREFERRED_FIXVOX_BACKEND_URL.to_string(),
+            install_id: "install_test".to_string(),
+            device_id: None,
+        };
+        let state = build_device_state_from_register(&config, &snapshot);
+        let auth_policy = state.auth_policy.expect("signed-in auth policy");
+        assert!(auth_policy.capabilities.is_empty());
     }
 
     #[test]

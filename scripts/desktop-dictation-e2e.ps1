@@ -248,7 +248,7 @@ function Wait-ForDictationActivated([string]$WebSocketUrl, [int]$TimeoutSeconds 
   while ((Get-Date) -lt $deadline) {
     $state = Get-ProductUiState $WebSocketUrl
     $samples += $state
-    if ($state.captureState -eq 'Listening') {
+    if ($state.captureState -eq 'Listening' -or $state.captureState -eq 'Recording') {
       return [ordered]@{ activated = $true; final = $state; samples = $samples }
     }
     if ($state.captureState -eq 'Failed' -or $state.pipelineState -eq 'Setup needed') {

@@ -64,6 +64,15 @@ export type DeviceRegisterResponse = {
   auth: {
     required: boolean;
     providers: string[];
+    accessMode?: "anonymous" | "signed_in";
+    provider?: "google";
+    userId?: string;
+    userRedacted?: string;
+    groupLabel?: string;
+    policyTemplateId?: string;
+    policyTemplateLabel?: string;
+    capabilities?: string[];
+    redacted?: true;
   };
   features: Record<string, boolean>;
   defaults: Record<string, unknown> | null;
@@ -522,6 +531,55 @@ function devicePolicyAssignmentChanged(previous: DeviceRecord, nextRecord: Devic
     || previous.policyLabel !== nextRecord.policyLabel
     || previous.status !== nextRecord.status
     || JSON.stringify(previous.cohorts) !== JSON.stringify(nextRecord.cohorts);
+}
+
+function productCapabilitiesForPolicyTemplate(policyId: string | null): string[] {
+  switch ((policyId ?? "").trim().toLowerCase()) {
+    case "pro":
+      return [
+        "translate",
+        "dictation",
+        "postprocess",
+        "selection_transform",
+        "assistant_actions",
+        "custom_prompts",
+        "advanced_settings",
+        "managed_stt",
+        "managed_llm",
+      ];
+    case "alpha-full":
+    case "dictation-basic":
+      return ["dictation", "postprocess", "managed_stt", "managed_llm"];
+    case "translate-only":
+      return ["translate", "managed_llm"];
+    default:
+      return [];
+  }
+}
+
+function buildDeviceRegisterAuthPolicy(record: DeviceRecord, providers: string[]): DeviceRegisterResponse["auth"] {
+  if (record.accountId) {
+    return {
+      required: false,
+      providers,
+      accessMode: "signed_in",
+      provider: "google",
+      userId: "user redacted",
+      userRedacted: "user redacted",
+      groupLabel: record.policyLabel ?? "Basic",
+      policyTemplateId: record.policyId ?? "basic-anonymous",
+      policyTemplateLabel: record.policyLabel ?? "Basic",
+      capabilities: productCapabilitiesForPolicyTemplate(record.policyId),
+      redacted: true,
+    };
+  }
+
+  return {
+    required: false,
+    providers,
+    accessMode: "anonymous",
+    redacted: true,
+  };
 }
 
 function buildDeviceKey(deviceId: string): string {
@@ -1028,12 +1086,9 @@ export async function registerDevice(
     activated: isActivePolicy,
     policyId: isActivePolicy ? nextRecord.policyId : null,
     policyLabel: isActivePolicy ? nextRecord.policyLabel : null,
-    accountId: nextRecord.accountId,
+    accountId: null,
     minVersion: null,
-    auth: {
-      required: false,
-      providers: options.authProviders ?? [],
-    },
+    auth: buildDeviceRegisterAuthPolicy(nextRecord, options.authProviders ?? []),
     features: buildFeatureFlagsFromRuntimePolicy(effectivePolicy as never),
     defaults,
     cohorts: nextRecord.cohorts,

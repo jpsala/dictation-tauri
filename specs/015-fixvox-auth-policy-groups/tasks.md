@@ -41,7 +41,7 @@
 ## Phase 7: Gated Real Smoke
 
 - [x] T021 With explicit JP approval, run a redacted login/link smoke against Fixvox Cloud. Browser Google OAuth handoff completed; provider-free host link contract now calls `/desktop/login/link-device`, persists returned policy/authPolicy, and Settings shows active policy when capabilities arrive. Real smoke 2026-06-30 first exposed missing Cloud route (`FIXVOX_LOGIN_DEVICE_LINK_REJECTED` / `Not found`); local `C:/dev/fixvox` patch was deployed with approval and rerun passed. Evidence: `artifacts/desktop-control/fixvox-login-link-smoke/20260630-T021-post-deploy/report.json`. T022 was not run.
-- [ ] T022 With explicit JP approval, verify a signed-in policy group unlocks managed dictation and a denied group fails closed.
+- [x] T022 With explicit JP approval, verify a signed-in policy group unlocks managed dictation and a denied group fails closed. Pro managed dictation E2E passed with redacted report `artifacts/desktop-control/dictation-e2e/20260630-T022-pro-managed-r2/report.json`; denied alpha-basic signed-in policy smoke passed with fail-closed `FIXVOX_CAPABILITY_NOT_ALLOWED` before provider and restored Pro in `artifacts/desktop-control/policy-deny-smoke/20260630-T022-denied-policy-r2/report.json`.
 
 ## Guardrails
 
