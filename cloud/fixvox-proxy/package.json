@@ -1,0 +1,13 @@
+{
+  "name": "fixvox-proxy",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "bun test src"
+  },
+  "devDependencies": {
+    "wrangler": "^4.8.0"
+  }
+}

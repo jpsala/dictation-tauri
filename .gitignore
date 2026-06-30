@@ -1,6 +1,8 @@
 # Secrets and local environment
 .env
 .env.*
+.dev.vars
+**/.dev.vars
 !.env.example
 
 # Dependencies

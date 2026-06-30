@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-30T03:47:43.521Z
+Generated: 2026-06-30T03:55:52.336Z
 
 ## Topics
 
@@ -55,6 +55,7 @@ Generated: 2026-06-30T03:47:43.521Z
 - [013-verified-paste-observer](../../specs/013-verified-paste-observer/)
 - [014-fixvox-parity-tray-settings-hotkeys](../../specs/014-fixvox-parity-tray-settings-hotkeys/)
 - [015-fixvox-auth-policy-groups](../../specs/015-fixvox-auth-policy-groups/)
+- [016-fixvox-cloud-consolidation](../../specs/016-fixvox-cloud-consolidation/)
 
 ## Skills
 

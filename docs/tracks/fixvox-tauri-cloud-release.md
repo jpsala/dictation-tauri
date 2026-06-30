@@ -24,13 +24,14 @@ source_refs:
 
 ## Objetivo
 
-Llegar lo antes posible a un Fixvox Tauri instalable en otra PC, activable contra Fixvox Cloud y capaz de dictar usando managed transcription/policies sin depender de `.env` local ni de Groq BYOK en la maquina destino.
+Llegar lo antes posible a un Fixvox Tauri instalable en otra PC, activable contra Fixvox Cloud y capaz de dictar usando managed transcription/policies sin depender de `.env` local ni de Groq BYOK en la maquina destino. Desde 2026-06-30, el objetivo operativo incluye que este repo sea el dueño de Fixvox Tauri + Cloud para no depender de `C:/dev/fixvox` en trabajo nuevo.
 
 Decision de producto 2026-06-27: Dictation Tauri es el nuevo cliente desktop de Fixvox. Fixvox Cloud (`auth-fixvox.jpsala.dev`) es el control-plane canonico para device, activation, policy/preflight y managed runtime. No crear otro cloud/tenant salvo decision explicita posterior.
 
 ## Estado Actual
 
 - Local/dev ya funciona con Tauri/Rust, dock, tray/hotkeys, Settings y managed transcription parcial.
+- `cloud/fixvox-proxy/` ahora vive en este repo como copia inicial del Worker productivo; tests provider-free pasan desde este repo. Produccion aun fue desplegada por ultima vez desde `C:/dev/fixvox`; el cutover para desplegar desde este repo queda como etapa gated de `specs/016-fixvox-cloud-consolidation/`.
 - Installer Windows local inicial ya genera NSIS unsigned como `Fixvox Tauri_0.1.0_x64-setup.exe` bajo `src-tauri/target/release/bundle/nsis/` con `npm run release:windows`.
 - Ruta cloud actual en este repo usa `src-tauri/src/fixvox_cloud.rs` y `src-tauri/src/runtime_transcription.rs` para readiness, preflight y managed STT cuando existen `FIXVOX_INSTALL_ID` + `FIXVOX_DEVICE_ID`.
 - BYOK/direct Groq sigue siendo fallback/dev, no norte de producto.
@@ -40,7 +41,7 @@ Decision de producto 2026-06-27: Dictation Tauri es el nuevo cliente desktop de 
 
 ## Proximo Paso
 
-Bootstrap inicial completado: installer local reproducible + release channel separado documentado para Tauri. Device identity/status host-owned y Settings activation estan implementados. Smoke real autorizado por JP diagnostico Cloudflare 1010 sin User-Agent; con `fixvox-tauri/<version>` el device local quedo Pro. T005 ya agrega snapshot/capabilities policy-driven y T006 ya endurece el runtime para preferir device state persistido y no caer silenciosamente a BYOK. El smoke instalado local aislado ya paso; JP dejo la prueba en otra PC en pausa. UX de Cloud Settings ahora muestra health/next-step/actionable errors, repair/refresh, sign-in Google sin modal y polling redacted de session status; JP confirmo que el flow OAuth termina y Settings muestra signed-in redacted. Decision 2026-06-29: login cloud para todo lo que supere el modo basico, con grupos/policy templates/capabilities administrables desde Fixvox Cloud; ver `specs/015-fixvox-auth-policy-groups/`. T021 real link/policy refresh ya paso post-deploy; pendiente T022 signed-in policy unlock/denied group smoke con aprobacion explicita.
+Bootstrap inicial completado: installer local reproducible + release channel separado documentado para Tauri. Device identity/status host-owned y Settings activation estan implementados. Smoke real autorizado por JP diagnostico Cloudflare 1010 sin User-Agent; con `fixvox-tauri/<version>` el device local quedo Pro. T005 ya agrega snapshot/capabilities policy-driven y T006 ya endurece el runtime para preferir device state persistido y no caer silenciosamente a BYOK. El smoke instalado local aislado ya paso; JP dejo la prueba en otra PC en pausa. UX de Cloud Settings ahora muestra health/next-step/actionable errors, repair/refresh, sign-in Google sin modal y polling redacted de session status; JP confirmo que el flow OAuth termina y Settings muestra signed-in redacted. Decision 2026-06-29: login cloud para todo lo que supere el modo basico, con grupos/policy templates/capabilities administrables desde Fixvox Cloud; ver `specs/015-fixvox-auth-policy-groups/`. T021 real link/policy refresh ya paso post-deploy; pendiente T022 signed-in policy unlock/denied group smoke con aprobacion explicita. Nuevo arco `016`: consolidar el Cloud Worker en este repo; Phase 1 bootstrap copy listo, cutover deploy desde `cloud/fixvox-proxy` pendiente/gated.
 
 ## Release Bootstrap Inicial
 
@@ -248,3 +249,4 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 - Policy/control-plane canonico: `C:/dev/fixvox/.specify/specs/003-settings-policy-control-plane/spec.md`.
 - Installer checklist canonico: `C:/dev/fixvox/.specify/specs/007-windows-release-installer/spec.md`.
 - Runtime cloud actual en este repo: `src-tauri/src/fixvox_cloud.rs`, `src-tauri/src/runtime_transcription.rs`, `src/host-runtime/readiness.ts`.
+- Cloud Worker consolidado en este repo desde 2026-06-30: `cloud/fixvox-proxy/` contiene el source/config/tests copiados desde `C:/dev/fixvox/proxy`, incluyendo el endpoint `POST /desktop/login/link-device`. `npm run cloud:test` pasa (65/65). `npm run cloud:deploy` existe pero sigue gated por aprobacion explicita.

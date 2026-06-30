@@ -1,0 +1,29 @@
+name = "fixvox-proxy"
+main = "src/index.ts"
+compatibility_date = "2026-03-16"
+workers_dev = true
+
+[vars]
+AUTH_PUBLIC_BASE_URL = "https://auth-fixvox.jpsala.dev"
+DISCORD_ALPHA_GUILD_ID = "1485634976136302715"
+DISCORD_SUPPORT_CHANNEL_IDS = "1485636512652464180,1485636540402110515"
+
+[[routes]]
+pattern = "auth-fixvox.jpsala.dev"
+custom_domain = true
+
+[[kv_namespaces]]
+binding = "USAGE"
+id = "b7ab9c28343849029fca15547afb455b"
+preview_id = "a7d287e75d8b4ee7bfc9ad7ff31fd012"
+
+[[durable_objects.bindings]]
+name = "USAGE_COUNTERS"
+class_name = "UsageCounterDurableObject"
+
+[[migrations]]
+tag = "usage-counters-v1"
+new_sqlite_classes = ["UsageCounterDurableObject"]
+
+[triggers]
+crons = ["0 */6 * * *"]
