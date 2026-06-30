@@ -157,6 +157,36 @@ describe("desktop auth handoff", () => {
 
     const deviceRecord = await store.get(`control:device:${payload.deviceId}`);
     expect(deviceRecord).toContain("google:google-sub-123456");
+
+    const refresh = await worker.fetch(
+      new Request("https://example.com/v2/device/register", {
+        method: "POST",
+        body: JSON.stringify({
+          installId: "install-link-device",
+          deviceId: payload.deviceId,
+          version: "0.1.0",
+          platform: "windows",
+          arch: "x64",
+          hostname: "dev-host",
+          ts: "2026-06-30T00:03:00.000Z",
+        }),
+      }),
+      createEnv(store) as never,
+      {} as ExecutionContext,
+    );
+    expect(refresh.status).toBe(200);
+    const refreshPayload = await refresh.json() as { accountId: string | null; auth: Record<string, unknown> };
+    expect(refreshPayload.accountId).toBe(null);
+    expect(refreshPayload.auth).toMatchObject({
+      accessMode: "signed_in",
+      userRedacted: "user redacted",
+      policyTemplateId: "alpha-basic",
+      capabilities: [],
+      redacted: true,
+    });
+    const refreshSerialized = JSON.stringify(refreshPayload);
+    expect(refreshSerialized).not.toContain("person@example.com");
+    expect(refreshSerialized).not.toContain("google-sub-123456");
   });
 
   test("rejects desktop device link before Google login completes", async () => {
