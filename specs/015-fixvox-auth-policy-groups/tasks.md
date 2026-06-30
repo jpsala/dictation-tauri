@@ -8,9 +8,9 @@
 
 ## Phase 2: Provider-Free Contracts
 
-- [ ] T004 Define shared auth/policy group vocabulary: user, group, policy template, capabilities, limits, signed-in state.
-- [ ] T005 Add provider-free tests for capability templates: `basic-anonymous`, `translate-only`, `dictation-basic`, `pro`, `power/admin`.
-- [ ] T006 Add required-capability helper tests so runtime fails closed before managed calls.
+- [x] T004 Define shared auth/policy group vocabulary: user, group, policy template, capabilities, limits, signed-in state.
+- [x] T005 Add provider-free tests for capability templates: `basic-anonymous`, `translate-only`, `dictation-basic`, `pro`, `power/admin`.
+- [x] T006 Add required-capability helper tests so runtime fails closed before managed calls.
 
 ## Phase 3: Settings Cloud UX
 
