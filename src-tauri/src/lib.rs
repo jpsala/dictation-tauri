@@ -30,6 +30,7 @@ pub fn run() {
             runtime_transcription::prewarm_fixvox_managed_transcription,
             runtime_transcription::transcribe_captured_audio,
             fixvox_cloud::get_fixvox_cloud_status,
+            fixvox_cloud::get_fixvox_auth_session_status,
             fixvox_cloud::register_fixvox_device,
             fixvox_cloud::refresh_fixvox_policy,
             fixvox_cloud::activate_fixvox_device,
