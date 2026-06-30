@@ -33,6 +33,13 @@ Poder trabajar en Fixvox Tauri/Cloud desde el VPS productivo por SSH/Pi sin depe
 - Helpers creados:
   - `dictation-tauri-pi` -> `cd /home/jpsal/dev/dictation-tauri && pi "$@"`.
   - `dictation-tauri-console` -> tmux session `dictation-tauri` en ese repo.
+  - `fixvox-admin` -> admin CLI redacted-safe para `health`, `devices`, `policies` y `assign-device-policy ... --yes`.
+- Auth remoto verificado:
+  - Wrangler autenticado (`wrangler whoami` OK, output no registrado).
+  - `wrangler deploy --dry-run` OK desde `cloud/fixvox-proxy`.
+  - `ADMIN_API_KEY` provisionado fuera del repo en `~/.config/dictation-tauri/admin.env` con `chmod 600`.
+  - `fixvox-admin devices 2` OK contra produccion, imprime IDs redacted por defecto.
+  - `dictation-tauri-pi --no-tools ... -p` respondio `PI_REMOTE_OK`, confirmando modelo Pi remoto usable.
 
 ## Comandos De Entrada
 
@@ -61,6 +68,16 @@ Checks rapidos:
 ```bash
 ssh vps 'dictation-tauri-pi --version'
 ssh vps 'cd ~/dev/dictation-tauri && npm run cloud:test'
+ssh vps 'cd ~/dev/dictation-tauri/cloud/fixvox-proxy && wrangler deploy --dry-run'
+ssh vps 'fixvox-admin health'
+ssh vps 'fixvox-admin devices 5'
+ssh vps 'fixvox-admin policies'
+```
+
+Admin mutation existente, usar solo con aprobacion:
+
+```bash
+ssh vps 'fixvox-admin assign-device-policy <deviceId> <policyId> "<Label>" --yes'
 ```
 
 ## Que Se Puede Hacer Ahi
@@ -69,6 +86,8 @@ ssh vps 'cd ~/dev/dictation-tauri && npm run cloud:test'
 - Iterar `cloud/fixvox-proxy/` y tests Worker.
 - Preparar cambios de admin/users/groups/usage/quota.
 - Operar con Pi remoto en el repo, bajo los mismos guardrails de este proyecto.
+- Preguntar a Pi remoto desde SSH (`dictation-tauri-pi`) con modelo autenticado.
+- Ver devices/policies y asignar policy a device con `fixvox-admin` bajo aprobacion.
 - Hacer deploy Cloudflare Worker solo con aprobacion explicita.
 
 ## Limitaciones
@@ -76,13 +95,15 @@ ssh vps 'cd ~/dev/dictation-tauri && npm run cloud:test'
 - Windows/Tauri GUI, Cua local y smokes desktop reales siguen requiriendo una maquina Windows.
 - El repo remoto tiene commits locales que aun no estan en GitHub; hasta que haya push aprobado, GitHub no es la fuente completa.
 - No se configuro servicio/autostart/tunnel nuevo para Dictation Tauri; el acceso inicial es por SSH/tmux.
-- No copiar secretos ni `.env` al repo remoto salvo decision explicita y acotada.
+- Admin actual aun es incompleto para producto: hay asignacion device-level y runtime policy JSON, pero faltan endpoints/UI de user-level groups, crear grupos/templates desde admin y usage/quota dashboard.
+- No copiar secretos ni `.env` al repo; el admin key remoto vive fuera del repo en `~/.config/dictation-tauri/admin.env`.
 
 ## Proximo Paso Recomendado
 
-1. Decidir si se aprueba `git push` para que GitHub y VPS queden alineados.
-2. Si JP quiere UI web persistente, crear un ttyd/tunnel separado para Dictation Tauri con aprobacion explicita.
-3. Si JP quiere agent remoto always-on para este repo, crear servicio systemd user separado y documentarlo en `C:/dev/infra`.
+1. Implementar Phase A del track `docs/tracks/fixvox-registered-users-opportunities.md`: admin users/groups real, account-level assignment y tests.
+2. Decidir si se aprueba `git push` para que GitHub y VPS queden alineados.
+3. Si JP quiere UI web persistente, crear un ttyd/tunnel separado para Dictation Tauri con aprobacion explicita.
+4. Si JP quiere agent remoto always-on para este repo, crear servicio systemd user separado y documentarlo en `C:/dev/infra`.
 
 ## Guardrails
 
