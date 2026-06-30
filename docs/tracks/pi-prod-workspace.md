@@ -33,12 +33,13 @@ Poder trabajar en Fixvox Tauri/Cloud desde el VPS productivo por SSH/Pi sin depe
 - Helpers creados:
   - `dictation-tauri-pi` -> `cd /home/jpsal/dev/dictation-tauri && pi "$@"`.
   - `dictation-tauri-console` -> tmux session `dictation-tauri` en ese repo.
-  - `fixvox-admin` -> admin CLI redacted-safe para `health`, `devices`, `accounts`, `policies`, `assign-device-policy ... --yes` y `assign-account-policy ... --yes` (account commands requieren deploy aprobado del Worker nuevo).
+  - `fixvox-admin` -> admin CLI redacted-safe para `health`, `devices`, `accounts`, `policies`, `assign-device-policy ... --yes` y `assign-account-policy ... --yes`.
 - Auth remoto verificado:
   - Wrangler autenticado (`wrangler whoami` OK, output no registrado).
   - `wrangler deploy --dry-run` OK desde `cloud/fixvox-proxy`.
   - `ADMIN_API_KEY` provisionado fuera del repo en `~/.config/dictation-tauri/admin.env` con `chmod 600`.
   - `fixvox-admin devices 2` OK contra produccion, imprime IDs redacted por defecto.
+  - Deploy aprobado 2026-06-30 desde VPS: Worker version `6c2501dd-e7af-4e8b-9697-9251aad5c8c3`; `fixvox-admin accounts 5` OK post-deploy.
   - `dictation-tauri-pi --no-tools ... -p` respondio `PI_REMOTE_OK`, confirmando modelo Pi remoto usable.
 
 ## Comandos De Entrada
@@ -88,7 +89,7 @@ ssh vps 'fixvox-admin assign-device-policy <deviceId> <policyId> "<Label>" --yes
 - Operar con Pi remoto en el repo, bajo los mismos guardrails de este proyecto.
 - Preguntar a Pi remoto desde SSH (`dictation-tauri-pi`) con modelo autenticado.
 - Ver devices/policies y asignar policy a device con `fixvox-admin` bajo aprobacion.
-- Usar `fixvox-admin accounts` / `assign-account-policy` despues de deploy aprobado del Worker que agrega esos endpoints.
+- Usar `fixvox-admin accounts` / `assign-account-policy` para operar policies por cuenta; mutations requieren aprobacion explicita.
 - Hacer deploy Cloudflare Worker solo con aprobacion explicita.
 
 ## Limitaciones

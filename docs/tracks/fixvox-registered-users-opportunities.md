@@ -111,7 +111,7 @@ Objetivo: poder operar usuarios/devices/policies desde este repo sin scripts sue
 - [x] A2 Agregar endpoint admin redacted para buscar/listar usuarios registrados por cuenta, device y policy sin exponer emails completos ni account IDs crudos.
 - [x] A3 Agregar endpoint admin para asignar policy a cuenta/user, no solo a device, con fallback device-level documentado.
 - [x] A4 Agregar tests Worker para listar usuarios, asignar policy por account y verificar redaccion.
-- [ ] A5 Documentar runbook admin local: listar, asignar Pro/basic, restaurar Pro, verificar policy.
+- [x] A5 Documentar runbook admin local: listar, asignar Pro/basic, restaurar Pro, verificar policy.
 
 ### Phase B — Usage/quota visible
 
@@ -169,7 +169,46 @@ Objetivo: probar crecimiento real fuera de la maquina dev.
 - Script versionado `scripts/fixvox-admin.mjs` + `npm run cloud:admin` permite `health`, `devices`, `accounts`, `policies`, `assign-device-policy` y `assign-account-policy` con redaccion por defecto.
 - Tests nuevos en `cloud/fixvox-proxy/src/managed-execution.test.ts` cubren listado redacted y assign por account sin leakage de `google:<sub>`.
 - Checks pasados: `npm run cloud:test` (67/67), focused `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control` (148/148), `npm run build`, `cd src-tauri && cargo fmt --check && CARGO_TARGET_DIR=target/pi-admin-users cargo check`.
-- No deploy, no push.
+- Deploy aprobado por JP con `go` y ejecutado desde VPS: Worker version `6c2501dd-e7af-4e8b-9697-9251aad5c8c3`.
+- Post-deploy VPS: `node scripts/fixvox-admin.mjs accounts 5` OK; lista `accountHandle`, devices redacted y policy Pro sin exponer account ID crudo. `npm run cloud:test` en VPS sigue OK (67/67).
+- No push.
+
+## Runbook Admin Account-Level
+
+Listar estado:
+
+```bash
+ssh vps 'cd ~/dev/dictation-tauri && node scripts/fixvox-admin.mjs health'
+ssh vps 'cd ~/dev/dictation-tauri && node scripts/fixvox-admin.mjs accounts 20'
+ssh vps 'cd ~/dev/dictation-tauri && node scripts/fixvox-admin.mjs devices 20'
+ssh vps 'cd ~/dev/dictation-tauri && node scripts/fixvox-admin.mjs policies'
+```
+
+Asignar policy por cuenta (requiere aprobacion explicita porque muta produccion):
+
+```bash
+ssh vps 'cd ~/dev/dictation-tauri && node scripts/fixvox-admin.mjs assign-account-policy <accountHandle> pro "Pro" --yes'
+ssh vps 'cd ~/dev/dictation-tauri && node scripts/fixvox-admin.mjs assign-account-policy <accountHandle> alpha-basic "Alpha Basic" --yes'
+```
+
+Asignar/restaurar por device como fallback:
+
+```bash
+ssh vps 'cd ~/dev/dictation-tauri && node scripts/fixvox-admin.mjs assign-device-policy <deviceId> pro "Pro" --yes'
+```
+
+Verificacion despues de mutar:
+
+```bash
+ssh vps 'cd ~/dev/dictation-tauri && node scripts/fixvox-admin.mjs accounts 20'
+ssh vps 'cd ~/dev/dictation-tauri && node scripts/fixvox-admin.mjs devices 20'
+```
+
+Notas:
+
+- `accounts` imprime `accountHandle` estable y `accountIdRedacted`; no imprime `google:<sub>`.
+- `assign-account-policy` actualiza devices existentes de esa cuenta y guarda assignment para futuros devices linkeados.
+- `assign-device-policy` sigue siendo fallback si se necesita corregir un device puntual.
 
 ## Checks Base Para Cada Batch
 
