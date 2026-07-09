@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-09T12:02:40.491Z
+Generated: 2026-07-09T12:19:37.969Z
 
 ## Topics
 
@@ -25,7 +25,7 @@ Generated: 2026-07-09T12:02:40.491Z
 - active: [minimal-implementation](../topics/minimal-implementation.md) - ponytail, minimal implementation, implementacion minima, solucion minima, yagni, over-engineering, bloat, boilerplate, dependencias innecesarias, diff minimo, revisar complejidad
 - active: [os-quality](../topics/os-quality.md) - perfect os, proyecto perfecto, dejar en condiciones, calidad agentica, optimizar contexto, docs livianos, docs indexados, comandos os, os help
 - active: [pi-agentic-os](../topics/pi-agentic-os.md) - pi os, /aos-continuar, /aos-sync, /aos-plan-implementar, ask_user, computer use, cua-driver, browser automation
-- active: [pi-extension-stack](../topics/pi-extension-stack.md) - extensiones pi, paquetes pi, pi packages, sincronizar pi, web_search, web_research, codemapper, fff, taskflow, pi-code-planner, advisor, pi-lens
+- active: [pi-extension-stack](../topics/pi-extension-stack.md) - extensiones pi, paquetes pi, pi packages, sincronizar pi, web_search, web_research, codemapper, fff, fffind, ffgrep, taskflow, pi-code-planner, advisor, pi-lens, pi-footer, image_generate
 - active: [privacy-and-dictation-data](../topics/privacy-and-dictation-data.md) - privacidad, audio, transcripciones, dictado, logs, storage, modelos
 - active: [product-direction](../topics/product-direction.md) - producto, MVP, alcance, direccion, no human interaction, automatizacion
 - active: [selection-and-assistant-actions](../topics/selection-and-assistant-actions.md) - texto seleccionado, seleccion, assistant mode, asistente, quick chat, alt-q, presets, hotkeys

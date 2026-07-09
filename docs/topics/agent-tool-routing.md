@@ -65,7 +65,7 @@ La version verificable vive en `docs/reference/tool-routing.yaml`.
 gobernando.
 - `dgoal/until-done/planner -> advisor|ask_user|lens|web` como apoyo.
 - `taskflow -> workers read-only`; el orquestador integra y escribe.
-- `pi-dynamic-workflows` solo via `aos-dynamic-workflows-pilot`/`pi-workflow`, preferentemente read-only, para comparar fan-out pesado contra `taskflow`.
+- `pi-dynamic-workflows` solo via `aos-dynamic-workflows-pilot`/`pi-workflow`, preferentemente read-only, para comparar fan-out pesado contra `taskflow`; keyword trigger off por defecto y config JSON sin BOM.
 - `manual -> cualquier apoyo chico` si no crea estado persistente ni fan-out caro.
 
 ## Nesting Prohibido
@@ -73,7 +73,7 @@ gobernando.
 - `dgoal -> until-done` o `until-done -> dgoal`.
 - `planner -> dgoal/until-done` salvo decision explicita de migrar de motor.
 - `taskflow detached -> taskflow detached`.
-- `pi-dynamic-workflows` como reemplazo default de `taskflow`, `/ultracode` permanente o trigger generico `workflow`.
+- `pi-dynamic-workflows` como reemplazo default de `taskflow`, `/ultracode` permanente, trigger generico `workflow`, o settings con BOM/corruptos que hagan volver al default.
 - dos branches paralelas escribiendo los mismos archivos.
 - desktop/browser automation con cuentas/canales reales sin `ask_user`.
 

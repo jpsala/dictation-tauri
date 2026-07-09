@@ -12,8 +12,8 @@ Piloto experimental y opt-in. `taskflow` sigue siendo el default AOS para orques
 1. No asumir que `@quintinshaw/pi-dynamic-workflows` esta instalado.
 2. Si no esta instalado, pedir confirmacion antes de instalar globalmente. Incluir comando exacto, backup de settings, motivo y rollback.
 3. Si esta instalado, endurecer triggers antes de usarlo:
-   - preferido: `/workflows-trigger set pi-workflow`
-   - alternativa: `/workflows-trigger off`
+   - default seguro: `/workflows-trigger off`
+   - alternativa para pilotos: `/workflows-trigger set pi-workflow`
 4. No activar `/ultracode` ni keyword trigger generico `workflow` como default AOS.
 
 ## Preflight Obligatorio
@@ -23,9 +23,19 @@ Antes de lanzar un piloto:
 1. JP pidio explicitamente `aos-dynamic-workflows-pilot`, `pi-workflow` o comparar contra `taskflow`.
 2. Verificar que el paquete/tool/comandos esten disponibles; si falta, pedir permiso antes de instalar globalmente.
 3. Antes de instalar o tocar config global, respaldar `C:\Users\jpsal\.pi\agent\settings.json`.
-4. Endurecer trigger: preferir `/workflows-trigger set pi-workflow`; alternativa `/workflows-trigger off`.
-5. Declarar objetivo, presupuesto/concurrency si aplica, y criterio de cierre.
-6. No usar `/ultracode`, trigger generico `workflow`, ni side effects destructivos/externos/privados sin `ask_user`.
+4. Endurecer trigger: preferir `/workflows-trigger off`; alternativa para pilotos: `/workflows-trigger set pi-workflow`.
+5. Si se edita `C:/Users/jpsal/.pi/workflows/settings.json` a mano, guardarlo como JSON UTF-8 **sin BOM**. BOM/config corrupta hace que el paquete ignore el setting y vuelva al default `workflow`, inyectando `[workflows mode is ON]` en mensajes normales. Config segura:
+
+```json
+{
+  "keywordTriggerEnabled": false,
+  "keywordTriggerWord": "pi-workflow"
+}
+```
+
+6. Correr `/reload` y verificar con `/workflows-trigger status` antes de seguir.
+7. Declarar objetivo, presupuesto/concurrency si aplica, y criterio de cierre.
+8. No usar `/ultracode`, trigger generico `workflow`, ni side effects destructivos/externos/privados sin `ask_user`.
 
 ## Cuando Usarlo
 
