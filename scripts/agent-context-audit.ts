@@ -24,18 +24,12 @@ try {
 }
 
 const requiredAosPiPrompts = [
-  "aos-cerrar.md",
-  "aos-checkpoint.md",
-  "aos-continuar-sesion.md",
+  "aos-evaluar-skills.md",
   "aos-fanout.md",
-  "aos-gol.md",
   "aos-guardar-sesion.md",
   "aos-help.md",
-  "aos-nueva-sesion.md",
-  "aos-nueva-sesion-con-gol.md",
   "aos-orquestar.md",
   "aos-sigamos.md",
-  "aos-siguiente.md",
 ];
 
 const requiredAosPiExtensions = [
@@ -169,13 +163,13 @@ function listDirs(path: string) {
   const fullPath = join(root, path);
   if (!existsSync(fullPath)) return [];
   return readdirSync(fullPath, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
     .map((entry) => `${path}/${entry.name}`.replaceAll("\\", "/"))
     .sort();
 }
 
 function backtickedSkillRefs(content: string) {
-  return [...content.matchAll(/`([^`*\/]+)\/`/g)].map((match) => match[1]).sort();
+  return [...content.matchAll(/`([^`*/]+)\/`/g)].map((match) => match[1]).sort();
 }
 
 function walkMarkdownFiles(dir: string): string[] {
@@ -194,6 +188,20 @@ function listFileNames(path: string, extension?: string) {
     .filter((entry) => entry.isFile() && (!extension || entry.name.endsWith(extension)))
     .map((entry) => entry.name)
     .sort();
+}
+
+
+function packageName() {
+  if (!exists("package.json")) return undefined;
+  try {
+    return JSON.parse(read("package.json"))?.name as string | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isAosUpstreamManager() {
+  return packageName() === "agentic-os";
 }
 
 for (const path of ["AGENTS.md", "docs/WORKING_MEMORY.md", "docs/TOPICS.md"]) {
@@ -239,9 +247,8 @@ if ((exists("docs/topics/agentic-os-operations.md") || exists("docs/skills/aos-r
   add("warn", "AGENTS.md should keep a short `aos-realinear-os` pointer to docs/topics/agentic-os-operations.md");
 }
 
-if ((exists("docs/skills/aos-cerrar-sesion") || exists("docs/skills/aos-continuar-sesion"))
-  && (!agents.includes("aos-cerrar-sesion") || !agents.includes("aos-continuar-sesion"))) {
-  add("warn", "AGENTS.md should keep short pointers for `aos-cerrar-sesion` and `aos-continuar-sesion`");
+if (exists("docs/skills/aos-cerrar-sesion") && !agents.includes("aos-cerrar-sesion")) {
+  add("warn", "AGENTS.md should keep short pointer for `aos-cerrar-sesion`");
 }
 
 if (docsReadme) {
@@ -261,6 +268,10 @@ if (exists("docs/USER_GUIDE.md") && !topicsIndex.includes("USER_GUIDE.md")) {
 
 if (exists("docs/OS_PROJECTS.md") && !topicsIndex.includes("OS_PROJECTS.md")) {
   add("warn", "docs/OS_PROJECTS.md exists but is not listed in docs/TOPICS.md");
+}
+
+if (exists("docs/OS_PROJECTS.md") && !isAosUpstreamManager()) {
+  add("error", "docs/OS_PROJECTS.md is manager-only AOS registry data; downstream repos must not carry the upstream project registry");
 }
 
 if (exists("docs/topics/agentic-os-operations.md") && !topicsIndex.includes("topics/agentic-os-operations.md")) {

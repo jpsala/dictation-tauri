@@ -1,0 +1,160 @@
+# AOS tool routing policy v1
+# Human-readable guide: docs/topics/agent-tool-routing.md
+version: 1
+
+runtime_state:
+  path: .pi/state/aos-routing.json
+  gitignored: true
+  command: /aos-routing status|set <engine> [goal]|clear
+  enforcement: advisory
+
+engines:
+  manual:
+    kind: root
+    use_when: small reversible local change
+    allows: [advisor, ask_user, lens, web, librarian, bash]
+    forbids: []
+  planner:
+    kind: root
+    use_when: large feature with stages, TDD, worktree, or planner artifacts
+    allows: [advisor, ask_user, lens, web, librarian, taskflow]
+    forbids: [dgoal, until_done]
+  dgoal:
+    kind: root
+    use_when: long phased goal with task ledger and independent phase checks
+    allows: [advisor, ask_user, lens, web, librarian, taskflow]
+    forbids: [planner, until_done]
+  until_done:
+    kind: root
+    use_when: autonomous loop with explicit done criteria and verify command
+    allows: [advisor, ask_user, lens, web, librarian]
+    forbids: [planner, dgoal]
+  long_task:
+    kind: root
+    use_when: clear sequential TODO list
+    allows: [advisor, ask_user, lens, web, librarian]
+    forbids: [planner, dgoal, until_done]
+  taskflow:
+    kind: orchestration
+    use_when: fan-out, DAG, audit, review, map-reduce, multi-repo read-only work
+    allows: [advisor, ask_user, lens, web, librarian, council]
+    forbids: [taskflow_detached_nested]
+  pi_dynamic_workflows:
+    kind: orchestration_pilot
+    use_when: >-
+      explicit pi-workflow pilot for heavy fan-out, deep research,
+      adversarial review, codebase-wide audit, or benchmark against taskflow
+    allows: [advisor, ask_user, lens, web, librarian]
+    forbids:
+      - default_replacement
+      - generic_workflow_trigger
+      - ultracode_default
+      - overlapping_parallel_writes
+
+scenarios:
+  small_fix:
+    primary: manual
+    support: [lens, bash]
+    gates: []
+  large_feature_tdd:
+    primary: planner
+    support: [advisor, lens, bash]
+    gates: [advisor_if_architecture]
+  phased_goal:
+    primary: dgoal
+    support: [taskflow, advisor, lens, bash]
+    gates: [dgoal_check]
+  verify_command_loop:
+    primary: until_done
+    support: [advisor, lens, bash]
+    gates: [verify_command]
+  sequential_todo:
+    primary: long_task
+    support: [lens, bash]
+    gates: [ask_user_if_side_effects]
+  multi_repo_audit:
+    primary: taskflow
+    support: [advisor]
+    gates: [read_only_workers]
+  pi_dynamic_workflows_pilot:
+    primary: pi_dynamic_workflows
+    support: [advisor, taskflow_baseline]
+    gates:
+      - explicit_opt_in
+      - safe_trigger
+      - budget_or_concurrency
+      - comparison_table
+  external_research:
+    primary: manual
+    support: [web_search, fetch_content, web_answer, web_research, librarian]
+    gates: [no_secrets]
+  prod_or_external_side_effect:
+    primary: ask_user
+    support: [advisor]
+    gates: [explicit_confirmation]
+  architecture_decision:
+    primary: advisor
+    support: []
+    gates: [advisor]
+  code_changed:
+    primary: lens
+    support: [bash]
+    gates: [repo_checks]
+
+forbidden_nesting:
+  - parent: dgoal
+    child: until_done
+    reason: two goal loops would compete for done criteria
+  - parent: until_done
+    child: dgoal
+    reason: two goal loops would compete for task ownership
+  - parent: planner
+    child: dgoal
+    reason: planner owns the implementation state
+  - parent: planner
+    child: until_done
+    reason: planner owns the implementation state
+  - parent: taskflow
+    child: taskflow_detached
+    reason: detached recursive DAG can become unbounded
+  - parent: taskflow_branch
+    child: write_same_files
+    reason: parallel writers conflict; orchestrator owns writes
+  - parent: pi_dynamic_workflows
+    child: generic_workflow_trigger
+    reason: pilot must be opt-in via pi-workflow or explicit tool use
+  - parent: pi_dynamic_workflows
+    child: ultracode_default
+    reason: >-
+      exhaustive standing mode can consume unbounded tokens and compete with
+      AOS routing
+  - parent: pi_dynamic_workflows_branch
+    child: write_same_files
+    reason: parallel edits require explicit worktree isolation
+
+required_gates:
+  ask_user:
+    triggers:
+      - prod
+      - deploy
+      - install
+      - commit
+      - push
+      - destructive
+      - external_send
+      - private_data
+      - costly_fanout
+      - ambiguous_scope
+      - pi_dynamic_workflows_install
+  advisor:
+    triggers:
+      - architecture
+      - storage
+      - security
+      - prod
+      - decisions_md_worthy
+      - long_loop
+  lens:
+    triggers: [code_changed]
+  repo_checks:
+    triggers: [done_claim]

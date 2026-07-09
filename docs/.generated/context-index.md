@@ -2,17 +2,20 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-06-30T15:14:03.168Z
+Generated: 2026-07-09T12:02:40.491Z
 
 ## Topics
 
+- active: [agent-tool-routing](../topics/agent-tool-routing.md) - tool routing, routing decision, combinar tools, elegir herramienta, dgoal, until-done, taskflow, advisor, ask_user
 - active: [agentic-os-operations](../topics/agentic-os-operations.md) - crear sistema agentico, migrar sistema agentico, actualizar norte, aos, init os, adopt os, update os, adaptar proyecto, repo nuevo, realinear os, auditar sistema agentico, reparar sistema agentico, drift de contexto
 - active: [agentic-os](../topics/agentic-os.md) - norte, working memory, aos, agentic os, memoria viva, audit docs, tracks, cerrar sesion, continuar sesion, siguiente, handoff thread, nuevo thread, context index, Small Batches, small batches, commits atomicos
+- active: [app-design-loop](../topics/app-design-loop.md) - design loop, app design, UI polish, screenshot Playwright, Impeccable, accounts, admin web, settings, dock, companion, onboarding, public UI
 - active: [automation-and-reference-fixtures](../topics/automation-and-reference-fixtures.md) - fixtures, audio sintetico, TTS, STT, benchmarks, Fixvox, fixvox, sin interaccion humana
 - draft: [backend-and-model-routing](../topics/backend-and-model-routing.md) - backend, proxy, model routing, proveedores, API keys, Groq, OpenAI, OpenRouter, xAI
 - active: [dictation-tauri-foundation](../topics/dictation-tauri-foundation.md) - tauri, port, fundacion, stack, comandos, src-tauri
 - draft: [dictation-workflow](../topics/dictation-workflow.md) - dictado, workflow, flujo, estados, pipeline, listening, transcribing
 - active: [docs-knowledge-system](../topics/docs-knowledge-system.md) - documentacion, docs, topics, indice, contexto liviano, tracks, context bloat, contaminacion de contexto
+- active: [fixvox-assistant-lulu-reference](../topics/fixvox-assistant-lulu-reference.md) - Lulu, asistente Fixvox, assistant prefix, Quick Chat Fixvox, Smart Agent, comportamiento Fixvox, paridad asistente
 - active: [fixvox-capability-map](../topics/fixvox-capability-map.md) - Fixvox, Fixbox, fixvox, capacidades Fixvox, alcance producto, mapa de producto, que copiamos, que implementamos
 - active: [fixvox-cloud-runtime-port](../topics/fixvox-cloud-runtime-port.md) - Fixvox cloud, Fixbox backend, managed runtime, proxy compartido, reemplazar Bun por Rust, Rust Tauri port, cloud infrastructure, X-Device-Id
 - active: [fixvox-dock-and-hotkeys-reference](../topics/fixvox-dock-and-hotkeys-reference.md) - Fixvox dock, dock, voice dock, hotkeys Fixvox, Alt+Space, push to talk, dictation key, paste last, Alt+Q
@@ -21,25 +24,29 @@ Generated: 2026-06-30T15:14:03.168Z
 - reference: [local-codex-skills](../topics/local-codex-skills.md) - skills locales, local skills, slash commands, docs/skills, .agents/skills, sigamos, cerrar sesion, continuar sesion, continuar sesion con gol, continuar con gol, siguiente, realinear os, evaluar skills, pasar a skills, promover a skill, que se puede pasar a skills, skill o topic, metadata mínima, metadata minima, modelo hibrido
 - active: [minimal-implementation](../topics/minimal-implementation.md) - ponytail, minimal implementation, implementacion minima, solucion minima, yagni, over-engineering, bloat, boilerplate, dependencias innecesarias, diff minimo, revisar complejidad
 - active: [os-quality](../topics/os-quality.md) - perfect os, proyecto perfecto, dejar en condiciones, calidad agentica, optimizar contexto, docs livianos, docs indexados, comandos os, os help
-- active: [pi-agentic-os](../topics/pi-agentic-os.md) - pi, pi agentic os, computer use, cua-driver, background computer use, ask_user, /aos-gol
+- active: [pi-agentic-os](../topics/pi-agentic-os.md) - pi os, /aos-continuar, /aos-sync, /aos-plan-implementar, ask_user, computer use, cua-driver, browser automation
+- active: [pi-extension-stack](../topics/pi-extension-stack.md) - extensiones pi, paquetes pi, pi packages, sincronizar pi, web_search, web_research, codemapper, fff, taskflow, pi-code-planner, advisor, pi-lens
 - active: [privacy-and-dictation-data](../topics/privacy-and-dictation-data.md) - privacidad, audio, transcripciones, dictado, logs, storage, modelos
 - active: [product-direction](../topics/product-direction.md) - producto, MVP, alcance, direccion, no human interaction, automatizacion
-- draft: [selection-and-assistant-actions](../topics/selection-and-assistant-actions.md) - texto seleccionado, seleccion, assistant mode, asistente, quick chat, alt-q, presets, hotkeys
+- active: [selection-and-assistant-actions](../topics/selection-and-assistant-actions.md) - texto seleccionado, seleccion, assistant mode, asistente, quick chat, alt-q, presets, hotkeys
 - reference: [source-project-map](../topics/source-project-map.md) - proyectos fuente, proyecto Tauri, Copicu, copicu, proyecto canonico, Fixvox, fixvox, que implementar, que portar
 - active: [speckit-workflow](../topics/speckit-workflow.md) - speckit, spec kit, spec, plan, tasks.md, feature grande, Small Batches, small batches, lotes chicos, checkpoint
 - active: [ui-design-and-impeccable](../topics/ui-design-and-impeccable.md) - UI, diseño, design, frontend, React, app shell, voice dock, settings, impeccable
 
 ## Tracks
 
+- active/high: [App Audit Autonomous Implementation Plan](../tracks/app-audit-autonomous-implementation-plan.md) - updated 2026-07-08
 - archived/high: [Fixvox Effective Runtime Parity](../tracks/archive/fixvox-effective-runtime-parity.md) - updated 2026-06-29
 - archived/low: [Prompt Para Proxima Sesion Archivado](../tracks/archive/next-session-prompt-2026-06-20.md) - updated 2026-06-20
 - archived/medium: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md) - updated 2026-06-07
-- active/high: [Fixvox Admin Web + Pi Chat](../tracks/fixvox-admin-web-pi-chat.md) - updated 2026-06-30
+- active/high: [Fixvox Admin Web + Pi Chat](../tracks/fixvox-admin-web-pi-chat.md) - updated 2026-07-02
+- active/high: [Fixvox Lulu Assistant Parity Refactor](../tracks/fixvox-lulu-assistant-parity-refactor.md) - updated 2026-07-03
+- active/high: [Fixvox Lulu Assistant Safe Architecture Plan](../tracks/fixvox-lulu-assistant-safe-architecture-plan.md) - updated 2026-07-03
 - active/high: [Fixvox Registered Users Opportunities](../tracks/fixvox-registered-users-opportunities.md) - updated 2026-06-30
 - active/high: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md) - updated 2026-06-30
 - active/high: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md) - updated 2026-06-10
 - active/high: [Pi Prod Workspace For Dictation Tauri](../tracks/pi-prod-workspace.md) - updated 2026-06-30
-- active/high: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md) - updated 2026-06-30
+- active/high: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md) - updated 2026-07-02
 - active/high: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md) - updated 2026-06-29
 
 ## Specs
@@ -57,10 +64,11 @@ Generated: 2026-06-30T15:14:03.168Z
 - [011-selection-transform-and-recovery-ergonomics](../../specs/011-selection-transform-and-recovery-ergonomics/)
 - [012-fixvox-dock-dictation-key](../../specs/012-fixvox-dock-dictation-key/)
 - [013-fixvox-text-runtime-parity](../../specs/013-fixvox-text-runtime-parity/)
-- [013-verified-paste-observer](../../specs/013-verified-paste-observer/)
 - [014-fixvox-parity-tray-settings-hotkeys](../../specs/014-fixvox-parity-tray-settings-hotkeys/)
 - [015-fixvox-auth-policy-groups](../../specs/015-fixvox-auth-policy-groups/)
 - [016-fixvox-cloud-consolidation](../../specs/016-fixvox-cloud-consolidation/)
+- [017-verified-paste-observer](../../specs/017-verified-paste-observer/)
+- [018-fixvox-audio-runtime-parity](../../specs/018-fixvox-audio-runtime-parity/)
 
 ## Skills
 
@@ -70,26 +78,4 @@ Generated: 2026-06-30T15:14:03.168Z
 
 ## Aliases
 
-| Dictation Tauri | Nombre operativo del repo en `C:\dev\dictation-tauri`; desde 2026-06-27 se entiende como el nuevo cliente desktop/Tauri de Fixvox. |
-| Nuestro proyecto | Alias conversacional para Dictation Tauri, el repo actual en `C:\dev\dictation-tauri`. |
-| Proyecto canonico | Fixvox en `C:\dev\fixvox`. Fuente de verdad sobre lo que funciona hoy en dictado, runtime de voz, backend/proxy, policies, variables de entorno, benchmarks y aprendizajes de producto. No se porta literal ni se copian sus internals legacy. |
-| Proyecto Tauri | `C:\dev\copicu`. Fuente de verdad tecnica moderna para stack Tauri, ventanas, custom chrome, superficies, Mantine, temas, settings, global shortcuts, tray, foco/paste en Windows, checks visuales y estructura de app desktop. |
-| Copicu | Nombre del proyecto Tauri de referencia en `C:\dev\copicu`. |
-| Fixvox | Nombre del producto/proyecto canonico en `C:\dev\fixvox`; Fixvox Cloud es el control-plane canonico para el nuevo cliente Tauri. |
-| Fixvox Tauri | Nombre objetivo del cliente instalable que saldra de este repo usando Fixvox Cloud para device, activation, policies y managed runtime. |
-| AOS | Agentic OS (AOS), sistema liviano de memoria, docs, topics, specs y skills. |
-| Working Memory | `docs/WORKING_MEMORY.md`, estado vivo y corto del proyecto. |
-| Topic | Documento recuperable en `docs/topics/` con frontmatter y triggers. |
-| Track | Trabajo vivo retomable en `docs/tracks/`, con YAML validado. |
-| Task | Unidad de trabajo dentro de SpecKit o `tasks.md`; no usar como carpeta de continuidad viva. |
-| Active Work | Alias historico de Track; usar `docs/tracks/` en docs nuevas. |
-| Archive | `docs/tracks/archive/`, carpeta de tracks cerradas con `status: archived`. |
-| Context Index | `docs/.generated/context-index.md`, cache generado de topics, tracks, specs, skills y aliases. |
-| SpecKit | Flujo de specs, planes y tasks para features grandes. |
-| Port foundation | Spec draft `specs/001-port-foundation/`, base inicial del port Tauri. |
-| Datos de dictado | Audio, transcripciones, prompts, logs, correcciones y metadata de captura de voz. |
-| Local Skill | Skill local portable versionada dentro del repo. |
-| Skills Canonicas | Carpeta `docs/skills/`, fuente de verdad de las skills locales. |
-| Skills Compat | `.agents/skills`, junction/toggle de compatibilidad hacia `docs/skills/`. |
-| Small Batch | Unidad de trabajo agentico chica, revisable y reversible: una task SpecKit, un comportamiento observable o una sincronizacion documental acotada, cerrada con checks y commit atomico. |
-| Context Bloat / Contaminacion De Contexto | Cuando reglas, memoria viva, topics o tracks crecen hasta volverse lectura obligatoria amplia y degradan la capacidad de una sesion nueva. |
+See [docs/GLOSSARY.md](../GLOSSARY.md) for definitions. Indexed aliases: Dictation Tauri, Nuestro proyecto, Proyecto canonico, Proyecto Tauri, Copicu, Fixvox, Fixvox Tauri, AOS, Working Memory, Topic, Track, Task, Active Work, Archive, Context Index, SpecKit, Port foundation, Datos de dictado, Local Skill, Skills Canonicas, Skills Compat, Small Batch, Context Bloat / Contaminacion De Contexto.

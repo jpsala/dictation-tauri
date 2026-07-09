@@ -7,7 +7,7 @@ Este directorio separa documentacion estable, trabajos vivos y conocimiento recu
 Leer en capas:
 
 ```text
-context-index -> WORKING_MEMORY -> TOPICS -> topic/track/spec especifico -> referencia profunda -> codigo puntual
+docs/.generated/context-index.md -> WORKING_MEMORY -> TOPICS -> topic/track/spec especifico -> referencia profunda -> codigo puntual
 ```
 
 No cargar documentos largos si el topic de entrada alcanza para decidir. Antes de abrir docs completos, buscar candidatos por nombre, frontmatter y triggers.

@@ -41,16 +41,16 @@ function Get-SkillsLinkStatus {
 function Disable-SkillsLink {
   $status = Get-SkillsLinkStatus
   if ($status.State -eq "disabled") {
-    Write-Output "OK: skills discovery already disabled ($($status.Detail))"
+    Enable-SkillsLink
+    Write-Output "REPAIRED: .agents/skills is stable; disable is a legacy no-op."
     return
   }
 
   if ($status.State -ne "enabled") {
-    throw "Refusing to disable skills discovery: $($status.State). $($status.Detail)"
+    throw "Refusing to change skills discovery: $($status.State). $($status.Detail)"
   }
 
-  [System.IO.Directory]::Delete($compat, $false)
-  Write-Output "DISABLED: removed .agents/skills junction. Canonical docs/skills was not touched. Run /reload in Pi if needed."
+  Write-Output "OK: .agents/skills kept stable; disable is a legacy no-op."
 }
 
 function Enable-SkillsLink {
@@ -61,6 +61,9 @@ switch ($action) {
   "status" {
     $status = Get-SkillsLinkStatus
     Write-Output "$($status.State): $($status.Detail)"
+    if ($status.State -like "unsafe-*") {
+      exit 1
+    }
   }
   "on" { Enable-SkillsLink }
   "enable" { Enable-SkillsLink }
@@ -73,7 +76,7 @@ switch ($action) {
     } elseif ($status.State -eq "disabled") {
       Enable-SkillsLink
     } else {
-      throw "Refusing to toggle skills discovery: $($status.State). $($status.Detail)"
+      throw "Refusing to repair skills discovery: $($status.State). $($status.Detail)"
     }
   }
   default {

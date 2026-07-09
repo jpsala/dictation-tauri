@@ -182,3 +182,7 @@ bun scripts/agent-context-audit.ts
 - Si Git empieza a detectar ruido por la compatibilidad tecnica, mantener `.agents/skills/` ignorado.
 - Despues de portar o mover el repo, correr `scripts/ensure-skills-link.ps1`. Si `.agents/skills` llego como carpeta real, el script debe preservarla como backup, copiar skills faltantes a `docs/skills/` y recrear el junction.
 - Si se necesita bajar ruido de discovery en una sesion, usar `npm run skills:off`; `npm run skills:on` restaura el junction sin tocar `docs/skills/`.
+## Dynamic Workflows Pilot
+
+- `aos-dynamic-workflows-pilot/`: piloto opt-in para comparar `pi-dynamic-workflows` contra `taskflow` sin volverlo default.
+- `.agents/skills` se mantiene como compatibility path estable; no borrarlo para limpiar slash porque algunos hosts cachean paths.

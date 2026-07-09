@@ -18,6 +18,9 @@
     "dock-companion:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dock-companion-smoke.ps1",
     "packaged-clean:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/packaged-clean-smoke.ps1",
     "hotkey-reregistration:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hotkey-reregistration-smoke.ps1",
+    "action-hotkeys:physical-smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/action-hotkeys-physical-smoke.ps1",
+    "audio-mute-cues:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/audio-mute-cues-smoke.ps1",
+    "auto-stop:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/auto-stop-silence-smoke.ps1",
     "selection-capture:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/selection-capture-smoke.ps1",
     "context:index": "bun scripts/context-index.ts",
     "context:audit": "bun scripts/agent-context-audit.ts",
@@ -44,7 +47,10 @@
     "cloud:admin": "node scripts/fixvox-admin.mjs",
     "admin:web": "node admin/fixvox-web/server.mjs",
     "admin:web:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/admin-web-local.ps1",
-    "admin:web:prod": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/admin-web-prod.ps1"
+    "admin:web:prod": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/admin-web-prod.ps1",
+    "admin:web:smoke": "node scripts/admin-web-ui-smoke.mjs",
+    "check": "bun run context:audit && bun run skills:status && bun -e \"await import('./.pi/extensions/aos-tools.ts'); console.log('aos-tools import ok')\"",
+    "check:ci": "bun scripts/agent-context-audit.ts"
   },
   "dependencies": {
     "@heroui/react": "^3.2.1",
