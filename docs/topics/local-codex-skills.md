@@ -8,14 +8,41 @@ triggers:
   - slash commands
   - docs/skills
   - .agents/skills
+  - toggle skills
+  - skills on
+  - skills off
+  - os help
+  - perfect os
+  - init os
+  - adopt os
+  - update os
   - sigamos
+  - guardar sesion
+  - documentar sesion
+  - checkpoint
+  - persistir estado
   - cerrar sesion
-  - continuar sesion
-  - continuar sesion con gol
-  - continuar con gol
-  - siguiente
+  - continuar
+  - prompt de continuidad
   - realinear os
   - evaluar skills
+  - hacer commits
+  - push
+  - publicar cambios
+  - incluir todo en la repo
+  - repo commit push
+  - ejecutar lote
+  - proximo lote
+  - avancemos
+  - orquestar
+  - aos-orquestar
+  - aos-fanout
+  - aos-fleet-update
+  - aos-threads
+  - usar threads
+  - spawn agents
+  - subagentes
+  - until-done
   - pasar a skills
   - promover a skill
   - que se puede pasar a skills
@@ -29,6 +56,7 @@ primary_refs:
   - AGENTS.md
   - docs/WORKING_MEMORY.md
   - scripts/ensure-skills-link.ps1
+  - scripts/toggle-skills-link.ps1
   - scripts/agent-context-audit.ts
 ---
 
@@ -38,13 +66,15 @@ primary_refs:
 
 Abrir este topic solo cuando el usuario pregunte por skills locales, slash commands, metadata, discovery, costo de tokens, o cuando haya que crear o revisar una skill.
 
-No abrirlo durante trabajo normal del repo ni durante `cerrar sesion`/`continuar sesion` salvo que el problema involucre skills.
+No abrirlo durante trabajo normal del repo ni durante `guardar sesion`/`nueva sesion` salvo que el problema involucre skills.
 
 ## Regla Canonica
 
 `docs/skills/` es la fuente de verdad de las skills locales del repo.
 
-`.agents/skills` existe solo como compatibilidad tecnica y puede estar habilitado por junction/symlink a `docs/skills/` o deshabilitado intencionalmente como toggle de discovery.
+`.agents/skills` existe solo como compatibilidad tecnica y debe apuntar por junction o symlink a `docs/skills/` cuando el host debe descubrir skills.
+
+`docs/skills/` siempre queda como canon. `.agents/skills` es un compatibility path estable hacia ese canon; no se borra para limpiar la paleta porque Pi/Codex pueden cachear paths de skills.
 
 No duplicar la misma skill en dos carpetas reales.
 
@@ -54,12 +84,12 @@ No todo lo que vive en memoria activa debe convertirse en skill.
 
 Usar esta regla:
 
-| Tipo | Usar cuando | Costo | Ejemplo |
-| --- | --- | --- | --- |
-| Regla activa | Debe condicionar todo trabajo y no es un comando. | Alto pero necesario. | No commitear secretos, no revertir cambios ajenos. |
-| Topic | Es conocimiento recuperable, criterio o explicacion. | Bajo demanda. | Como decidir donde poner memoria durable. |
-| Skill | Es una accion invocable, repetible y estable. | Metadata siempre descubierta. | `cerrar sesion`, `realinear os`. |
-| Skill hibrida | Se quiere descubrimiento por nombre, pero la logica vive en docs/topics/scripts. | Metadata chica + referencia externa. | `crear-track`, `regenerar-contexto`. |
+| Tipo          | Usar cuando                                                                      | Costo                                | Ejemplo                                            |
+| ------------- | -------------------------------------------------------------------------------- | ------------------------------------ | -------------------------------------------------- |
+| Regla activa  | Debe condicionar todo trabajo y no es un comando.                                | Alto pero necesario.                 | No commitear secretos, no revertir cambios ajenos. |
+| Topic         | Es conocimiento recuperable, criterio o explicacion.                             | Bajo demanda.                        | Como decidir donde poner memoria durable.          |
+| Skill         | Es una accion invocable, repetible y estable.                                    | Metadata siempre descubierta.        | `cerrar sesion`, `realinear os`.                   |
+| Skill hibrida | Se quiere descubrimiento por nombre, pero la logica vive en docs/topics/scripts. | Metadata chica + referencia externa. | `crear-track`, `regenerar-contexto`.               |
 
 Una instruccion activa puede funcionar como skill si tiene forma de accion. No conviene convertir reglas globales de seguridad o lectura en skills solo para nombrarlas.
 
@@ -116,7 +146,7 @@ Si la respuesta fuerte es "si" en 3 o mas puntos, crear skill. Si no, dejarlo co
 
 Cuando JP pida revisar que del sistema agentico se puede pasar a skills:
 
-1. Usar la skill `evaluar-skills`.
+1. Usar la skill `aos-evaluar-skills`.
 2. Leer ruta liviana: indice, working memory y topics.
 3. Buscar candidatos en `AGENTS.md`, `docs/TOPICS.md`, `docs/topics/`, `docs/tracks/` y `docs/skills/README.md`.
 4. Proponer shortlist con recomendacion: `skill`, `skill hibrida`, `topic`, `regla activa`, `track` o `no promover`.
@@ -124,53 +154,72 @@ Cuando JP pida revisar que del sistema agentico se puede pasar a skills:
 
 ## Comandos Cubiertos
 
-- `sigamos`
-- `cerrar sesion`
-- `continuar sesion`
-- `continuar sesion con gol`
-- `continuar con gol`
-- `siguiente`
+- `os help` / `ayuda os` / `comandos os`
+- `perfect os` / `dejar en condiciones`
+- `init os` / `adopt os` / `update os`
+- `aos-sigamos`
+- `avancemos` / siguiente paso en esta sesion
+- `aos-orquestar` / `aos-fanout` / `aos-threads` / `orquestá` / `usá threads`
+- `guardar sesion` / `documentar sesion`
+- `aos-checkpoint` / `persistir estado` / `cerrar sesion` aliases
+- `/aos-continuar` para abrir sesion nueva desde docs vivos despues de guardar
 - `realinear os`
 - `evaluar skills`
+- `repo commit push`
+- `hacer commits` / `push` / `publicar cambios`
+- Herramientas de planificación/implementación Pi: no crear skill nueva; rutear a `docs/topics/pi-extension-stack.md` o al topic local equivalente.
 
 ## Mapa De Skills
 
-| Comando o grupo | Skill | Comportamiento |
-| --- | --- | --- |
-| `sigamos` | `docs/skills/sigamos/` | Sigue en la misma sesion sin cierre ni handoff. |
-| `cerrar sesion` | `docs/skills/cerrar-sesion/` | Promueve memoria durable, regenera indice, corre audit y cierra con sintesis. |
-| `continuar sesion` | `docs/skills/continuar-sesion/` | Hace el mismo cierre de valor y prepara handoff compacto para un thread nuevo. |
-| `continuar sesion con gol`, `continuar con gol`, `siguiente` | `docs/skills/continuar-sesion-con-gol/` | Cierra con valor y pide que la nueva sesion arranque con `gol`. |
-| `realinear os` | `docs/skills/realinear-os/` | Audita y repara la capa agentica sin tocar producto salvo pedido. |
-| `evaluar skills`, `pasar a skills` | `docs/skills/evaluar-skills/` | Audita candidatos del sistema agentico para promoverlos a skills hibridas. |
+| Comando o grupo                                                       | Skill                                                          | Comportamiento                                                                                                 |
+| --------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `os help`, `ayuda os`, `comandos os`                                  | `docs/skills/aos-help/`                                        | Muestra comandos OS y cuando usarlos sin ejecutar cambios.                                                     |
+| `perfect os`, `dejar en condiciones`                                  | `docs/skills/aos-perfect-os/`                                  | Optimiza un repo para agentes: contexto, docs, continuidad, comandos y audit.                                  |
+| `init os`                                                             | `docs/skills/aos-init-os/`                                     | Inicializa AOS minimo en un proyecto nuevo o sin capa agentica.                                                |
+| `adopt os`                                                            | `docs/skills/aos-adopt-os/`                                    | Fusiona AOS en un repo existente preservando reglas y memoria local.                                           |
+| `update os`                                                           | `docs/skills/aos-update-os/`                                   | Actualiza una instalacion downstream contra el upstream sin copiar piezas manager-only.                        |
+| `aos-sigamos`                                                         | `docs/skills/aos-sigamos/`                                     | Continua con lo siguiente en la misma sesion, sin lote formal.                                                 |
+| `avancemos`, `ejecutar lote`, siguiente paso                          | `docs/skills/aos-sigamos/`                                     | Continua en esta sesion con el siguiente paso concreto; para loops largos usar tooling explicito.              |
+| `aos-orquestar`, `orquestá`, `usá threads`, `spawn agents`            | `docs/skills/aos-orquestar/`                                   | Propone o ejecuta fan-out controlado con threads/subagentes, con confirmacion si no fue pedido explicitamente. |
+| `aos-fanout`, `aos-threads`, `/aos-fanout`                            | `docs/skills/aos-fanout/`                                      | Alias intensivo: maximiza paralelismo seguro y vuelve a serial si no conviene.                                 |
+| `aos-dynamic-workflows-pilot`, `probar pi-dynamic-workflows`          | `docs/skills/aos-dynamic-workflows-pilot/`                     | Piloto opt-in para comparar `pi-dynamic-workflows` contra `taskflow` sin volverlo default.                     |
+| `aos-fleet-update`, `actualizar repos`, `actualizar nuestras repos`       | `docs/skills/aos-fleet-update/`                              | Genera un `pi_long_task` serial para actualizar repos AOS con allowlist, checks y commits locales opcionales. |
+| Pi planning tools, advisor, taskflow, dgoal, pi-lens, pi-code-planner | `docs/topics/pi-extension-stack.md`                            | No es skill nueva: topic/runbook canonico para elegir herramientas de pensamiento/implementación.              |
+| `guardar sesion`, `documentar sesion`                                 | `docs/skills/aos-guardar-sesion/`                              | Persiste valor durable en docs vivos, sin handoff ni thread nuevo.                                             |
+| `aos-checkpoint`, `persistir estado`, `cerrar sesion`                 | `docs/skills/aos-guardar-sesion/`                              | Aliases de guardar sesion; `cerrar` agrega solo sintesis final.                                                |
+| `/aos-continuar [objetivo]`                                           | `.pi/extensions/aos-tools.ts` + `.pi/prompts/aos-continuar.md` | Abre sesion Pi nueva y pasa un prompt de continuidad desde docs vivos; JP debe haber guardado antes.           |
+| `realinear os`                                                        | `docs/skills/aos-realinear-os/`                                | Audita y repara la capa agentica sin tocar producto salvo pedido.                                              |
+| `evaluar skills`, `pasar a skills`                                    | `docs/skills/evaluar-skills/`                                  | Audita candidatos del sistema agentico para promoverlos a skills hibridas.                                     |
+| `hacer commits`, `push`, `publicar cambios`, `repo commit push`       | `docs/skills/aos-repo-commit-push/`                            | Revisa inclusion, valida, commitea y pushea el batch del repo.                                                 |
 
 ## Validacion
 
 1. Verificar o alternar el enlace tecnico:
 
 ```powershell
-npm run skills:status
-npm run skills:on
-npm run skills:off
+powershell -ExecutionPolicy Bypass -File scripts/toggle-skills-link.ps1 status
+powershell -ExecutionPolicy Bypass -File scripts/toggle-skills-link.ps1 on
+# `off`/`toggle` quedan como aliases legacy no destructivos.
 powershell -ExecutionPolicy Bypass -File scripts/ensure-skills-link.ps1
 ```
 
-2. Validar una skill o todas las necesarias:
+`off` y `toggle` ya no remueven el junction/symlink `.agents/skills`; lo mantienen o lo reparan para evitar paths cacheados rotos.
+
+1. Validar una skill o todas las necesarias:
 
 ```powershell
-python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/sigamos
-python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/cerrar-sesion
-python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/continuar-sesion
-python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/continuar-sesion-con-gol
-python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/realinear-os
+python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/aos-sigamos
+python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/aos-checkpoint
+python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/aos-cerrar-sesion
+python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/aos-realinear-os
 python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/evaluar-skills
 ```
 
-3. Regenerar indice y correr audit:
+1. Regenerar indice y correr audit:
 
 ```powershell
-bun scripts/context-index.ts
-bun scripts/agent-context-audit.ts
+bun run context:index
+bun run context:audit
 ```
 
 ## Mantenimiento
@@ -180,9 +229,6 @@ bun scripts/agent-context-audit.ts
 - Si una skill necesita metadata UI, mantener `agents/openai.yaml` alineado con `SKILL.md`.
 - Preferir skills hibridas cortas cuando ya existe una fuente canonica confiable.
 - Si Git empieza a detectar ruido por la compatibilidad tecnica, mantener `.agents/skills/` ignorado.
+- Para trabajar con Codex, habilitar discovery con `bun run skills:on` o `scripts/toggle-skills-link.ps1 on`.
+- Para trabajar con Pi, mantener `.agents/skills` estable; `/aos-skills off` y `scripts/toggle-skills-link.ps1 off` son aliases legacy no destructivos.
 - Despues de portar o mover el repo, correr `scripts/ensure-skills-link.ps1`. Si `.agents/skills` llego como carpeta real, el script debe preservarla como backup, copiar skills faltantes a `docs/skills/` y recrear el junction.
-- Si se necesita bajar ruido de discovery en una sesion, usar `npm run skills:off`; `npm run skills:on` restaura el junction sin tocar `docs/skills/`.
-## Dynamic Workflows Pilot
-
-- `aos-dynamic-workflows-pilot/`: piloto opt-in para comparar `pi-dynamic-workflows` contra `taskflow` sin volverlo default.
-- `.agents/skills` se mantiene como compatibility path estable; no borrarlo para limpiar slash porque algunos hosts cachean paths.

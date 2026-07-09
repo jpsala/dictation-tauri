@@ -51,11 +51,21 @@ JP, no dependencia core de AOS.
 | Core diario | `fffind`, `ffgrep`, CodeMapper (`map/search/outline`), `ask_user`, `advisor`, `lens_diagnostics` | Orientacion, decisiones humanas, segundo juicio y feedback tecnico. |
 | Orquestacion | `taskflow`, `pi-council`, `pi-link` | Auditorias/reviews paralelas con ownership claro; no para trabajo serial chico. |
 | Piloto opt-in | `pi-dynamic-workflows` via `docs/skills/aos-dynamic-workflows-pilot/` si se instala | Comparar fan-out pesado/deep research/adversarial review contra `taskflow`; no dejar triggers genericos activos. |
-| Ejecucion larga | `pi-code-planner`, `pi-dgoal`, `/until-done`, `pi_long_task` | Elegir **uno** desde `/aos-plan-implementar`; no anidar sin decision explicita. |
+| Ejecucion larga | `pi-code-planner`, `/until-done`, `pi_long_task`; `pi-dgoal` solo experimental | Elegir **uno** desde `/aos-plan-implementar`; para fleet updates AOS usar `pi_long_task`/`/aos-fleet-update`, no `dgoal`. |
 | Research externo | `web_search`, `fetch_content`, `web_answer`, `web_research`, skill `librarian` | Usar para docs, releases, issues, APIs, internals OSS; no enviar secretos. |
 | Visual/UI | `pi-chrome`, `cua-driver`, `image_generate`, `aos-impeccable` | UI, browser signed-in y assets; pedir aprobacion para cuentas reales/envios/material privado. |
 | Global/optional | footer, Telegram/Discord remotes, MCP, RTK, themes, shims | Entorno de JP; no copiarlos como dependencia AOS ni usarlos si no aportan. |
 
+
+
+## Fleet Updates AOS
+
+Para actualizar varias repos AOS en orden, usar `/aos-fleet-update` como
+superficie local. El comando genera un `pi_long_task` serial con TODO markdown,
+allowlist de paths AOS, checks por repo y commits locales opcionales.
+
+No usar `dgoal` para este caso mientras su startup gate dependa de confirmacion
+modal fragil, fallback chino sin `pi-di18n`, y abandono por feedback vacio.
 
 ## Pi Dynamic Workflows Trigger Seguro
 

@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-09T12:19:37.969Z
+Generated: 2026-07-09T15:09:48.932Z
 
 ## Topics
 
@@ -21,10 +21,10 @@ Generated: 2026-07-09T12:19:37.969Z
 - active: [fixvox-dock-and-hotkeys-reference](../topics/fixvox-dock-and-hotkeys-reference.md) - Fixvox dock, dock, voice dock, hotkeys Fixvox, Alt+Space, push to talk, dictation key, paste last, Alt+Q
 - active: [fixvox-local-to-production-workflow](../topics/fixvox-local-to-production-workflow.md) - local first, modo local, pasar a producción, promote to production, fixvox admin env, cloud dev local
 - active: [grammarly-like-input-intelligence](../topics/grammarly-like-input-intelligence.md) - Grammarly, input box, focused input, UI Automation, text field detection, floating widget, overlay, TextPattern, ValuePattern
-- reference: [local-codex-skills](../topics/local-codex-skills.md) - skills locales, local skills, slash commands, docs/skills, .agents/skills, sigamos, cerrar sesion, continuar sesion, continuar sesion con gol, continuar con gol, siguiente, realinear os, evaluar skills, pasar a skills, promover a skill, que se puede pasar a skills, skill o topic, metadata mínima, metadata minima, modelo hibrido
+- reference: [local-codex-skills](../topics/local-codex-skills.md) - skills locales, local skills, slash commands, docs/skills, .agents/skills, toggle skills, skills on, skills off, os help, perfect os, init os, adopt os, update os, sigamos, guardar sesion, documentar sesion, checkpoint, persistir estado, cerrar sesion, continuar, prompt de continuidad, realinear os, evaluar skills, hacer commits, push, publicar cambios, incluir todo en la repo, repo commit push, ejecutar lote, proximo lote, avancemos, orquestar, aos-orquestar, aos-fanout, aos-fleet-update, aos-threads, usar threads, spawn agents, subagentes, until-done, pasar a skills, promover a skill, que se puede pasar a skills, skill o topic, metadata mínima, metadata minima, modelo hibrido
 - active: [minimal-implementation](../topics/minimal-implementation.md) - ponytail, minimal implementation, implementacion minima, solucion minima, yagni, over-engineering, bloat, boilerplate, dependencias innecesarias, diff minimo, revisar complejidad
 - active: [os-quality](../topics/os-quality.md) - perfect os, proyecto perfecto, dejar en condiciones, calidad agentica, optimizar contexto, docs livianos, docs indexados, comandos os, os help
-- active: [pi-agentic-os](../topics/pi-agentic-os.md) - pi os, /aos-continuar, /aos-sync, /aos-plan-implementar, ask_user, computer use, cua-driver, browser automation
+- active: [pi-agentic-os](../topics/pi-agentic-os.md) - pi os, pi agentic os, /aos-continuar, /aos-sync, /aos-skills, /aos-plan-implementar, /aos-orquestar, /aos-fanout, ask_user, taskflow, advisor, pi-lens, computer use
 - active: [pi-extension-stack](../topics/pi-extension-stack.md) - extensiones pi, paquetes pi, pi packages, sincronizar pi, web_search, web_research, codemapper, fff, fffind, ffgrep, taskflow, pi-code-planner, advisor, pi-lens, pi-footer, image_generate
 - active: [privacy-and-dictation-data](../topics/privacy-and-dictation-data.md) - privacidad, audio, transcripciones, dictado, logs, storage, modelos
 - active: [product-direction](../topics/product-direction.md) - producto, MVP, alcance, direccion, no human interaction, automatizacion
