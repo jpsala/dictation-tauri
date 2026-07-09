@@ -1,4 +1,5 @@
 # Skills Locales
+- `aos-dynamic-workflows-pilot/`: piloto opt-in para comparar `pi-dynamic-workflows` contra `taskflow` sin volverlo default.
 
 `docs/skills/` es la fuente canonica de las skills locales del repo.
 
@@ -16,9 +17,9 @@
 - `sigamos/`: continuar el trabajo activo en la misma sesion.
 - `cerrar-sesion/`: cierre de valor sin transcript.
 - `continuar-sesion/`: cierre de valor mas handoff compacto para sesion nueva.
-- `continuar-sesion-con-gol/`: variante de continuidad que pide arrancar la proxima sesion con `gol`.
 - `realinear-os/`: auditoria y reparacion de la capa agentica.
 - `evaluar-skills/`: auditar que partes del sistema agentico conviene promover a skills hibridas.
+- `plan-implementar/`: crear/revisar/ejecutar planes acotados eligiendo un solo motor principal.
 
 ## Validacion
 

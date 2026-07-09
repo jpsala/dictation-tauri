@@ -119,10 +119,13 @@ lines.push("", "## Aliases", "");
 
 if (exists("docs/GLOSSARY.md")) {
   const glossary = read("docs/GLOSSARY.md");
-  const rows = glossary
+  const aliases = glossary
     .split(/\r?\n/)
-    .filter((line) => /^\| .+ \| .+ \|$/.test(line) && !line.includes("---"));
-  for (const row of rows.slice(1)) lines.push(row);
+    .filter((line) => /^\| .+ \| .+ \|$/.test(line) && !line.includes("---"))
+    .slice(1)
+    .map((row) => row.split("|")[1]?.trim())
+    .filter(Boolean);
+  lines.push(`See [docs/GLOSSARY.md](../GLOSSARY.md) for definitions. Indexed aliases: ${aliases.join(", ")}.`);
 } else {
   lines.push("- Missing docs/GLOSSARY.md");
 }

@@ -4,6 +4,114 @@ Registro corto de decisiones durables.
 
 ## Aprobadas
 
+### 2026-07-04 - Simplificar continuidad Pi a `/aos-continuar` post-guardado
+
+Estado: accepted
+
+Decision: AOS deja un unico comando Pi para abrir una sesion/thread nuevo: `/aos-continuar [objetivo]`. JP se hace cargo de correr `/aos-guardar-sesion` primero cuando haya valor durable. `/aos-continuar` no guarda, no compacta, no ejecuta `gol` y no duplica docs: crea una sesion nueva con `ctx.newSession()` y le pasa un prompt de continuidad que referencia `docs/.generated/context-index.md`, `docs/WORKING_MEMORY.md`, `docs/TOPICS.md`, topic/track/spec puntual y estado git. `--preview` abre la sesion nueva con el prompt en el editor sin enviarlo automaticamente.
+
+Motivo: los comandos previos (`/aos-nueva-sesion`, `/aos-continuar-sesion`, `/aos-nueva-sesion-con-gol`, `/aos-continuar-con-gol`, `/aos-siguiente`) mezclaban guardado, handoff y ejecucion, generando ambiguedad. JP quiere revisar/controlar el guardado por separado y tener una continuidad confiable basada en docs vivos.
+
+Proximo paso: usar `/aos-continuar` despues de `/aos-guardar-sesion` y ejecutar `/reload` tras actualizar el adapter Pi.
+
+### 2026-07-04 - Usar internet libremente y pedir permiso antes de instalar
+
+Estado: accepted
+
+Decision: los agentes deben usar web/internet libremente por defecto cuando conocimiento externo o cambiante evite adivinar, priorizando fuentes oficiales y sin enviar secretos, `.env`, codigo privado sensible, datos personales ni credenciales. Si evidencia online contradice el repo local, docs del proyecto o comportamiento observado, deben consultar a JP antes de decidir y presentar ambas evidencias con fuentes e impacto. Para instalar dependencias, CLIs, paquetes de sistema, herramientas auxiliares o binarios/scripts remotos, deben pedir autorizacion explicita con comando exacto, alcance, motivo, riesgos, alternativas, cambios esperados y rollback.
+
+Motivo: JP quiere recuperar poder agente usando conocimiento disponible en internet en vez de inferir de memoria, pero conservar control humano sobre cambios de entorno/instalaciones y sobre conflictos entre fuentes externas y realidad local.
+
+Proximo paso: aplicar la politica desde `AGENTS.md` y `docs/topics/pi-agentic-os.md`.
+
+### 2026-07-03 - Assistant UI se decide solo por AssistantSurface/PipelineUiResult
+
+Estado: accepted
+
+Decision: Las respuestas exitosas de `Lulu ...` no pueden renderizarse desde señales legacy de transcript/review (`resultSource`, `delivery available`, `transcriptReview`, `assistantModeEnabled`). El pipeline debe mapear `AssistantIntentResult` a `AssistantSurface` y luego a `PipelineUiResult`; esa surface es la unica fuente de verdad para UI assistant. Solo `insertText` usa delivery paste Fixvox-like; `notify`, `showMarkdown`, `optionPicker` y `quickChat` se manejan fuera de transcript review/recovery.
+
+Motivo: JP reporto fugas visuales donde assistant success terminaba como Quick Chat universal, `Lulu ready`, `Assistant reply is available`, `Transcript ready`, `RECOVERY` o preview residual en el dock. Centralizar la decision evita que capas de UI reinterpretan assistant como transcript especial.
+
+Alcance: `src/pipeline/ui-result.ts`, `src/pipeline/types.ts`, `src/App.tsx`, `src/assistant/quick-response.ts`, `src/assistant/intent-result.ts` y tests focales. Smokes live en ingles: `artifacts/lulu-assistant-safe-architecture/english-live-20260703-1725/report.json` y `artifacts/desktop-control/dictation-e2e/lulu-arithmetic-en-20260703-1713/report.json`. Proximo paso: logging redacted de `assistant intent/surface/delivery` y Smart Agent/tool loop real.
+
+### 2026-07-03 - Lulu es prefijo dentro de captura, no wake word always-on
+
+Estado: accepted
+
+Decision: Dictation Tauri soporta `Lulu ...` solo como prefijo dentro de una captura iniciada por el usuario (hotkey/dock/Quick Chat), no como escucha permanente de microfono. El prefijo routea el texto posterior a una ruta assistant/Quick Chat review-only: no pega dictado normal, no reemplaza seleccion y no ejecuta side effects externos salvo comandos locales explicitamente soportados o comandos managed/cloud gated por policy.
+
+Motivo: JP quiere recuperar el modo asistente de Fixvox sin el costo de privacidad, energia y ruido de un wake word real always-on. Mantenerlo dentro de capturas iniciadas por usuario conserva el modelo seguro del producto y evita escuchar en background.
+
+Alcance: implementado parser provider-free (`src/assistant/voice-prefix.ts`), Quick Chat local (`src/assistant/quick-response.ts`), tarjeta/input companion, historia local corta, comandos locales reversibles (`activar preset`, `open-settings`, `show-history`) y bridge managed gated `run_assistant_chat` contra Fixvox Cloud cuando la policy permite `assistant_action` + `managed_llm`. Falta streaming/multi-turn rico y comandos cloud/externos; esos deben seguir fail-closed y pedir confirmacion si mutan produccion o sistemas externos.
+
+### 2026-07-02 - Action hotkeys editables son host-owned y persistidos por accion
+
+Estado: accepted
+
+Decision: Los shortcuts de acciones globales `preset_picker` y `paste_last_safe` son editables desde Settings por recorder host-owned, no por registro frontend. Se persisten en app data como `action-hotkey-preferences.v1.json`, se aplican al hook nativo Windows dinamico y mantienen defaults Fixvox-like `Alt+Q` y `Alt+Shift+X`.
+
+Motivo: JP pidio que los hotkeys se editen presionando la combinacion, no eligiendo alternativas fijas. Las acciones picker/paste-last necesitan la misma ergonomia que la dictation key, pero sin colisionar con `Alt+Space`, Escape ni shortcuts reservados.
+
+Alcance: `src-tauri/src/desktop_control.rs` posee preview/apply/readback de action hotkeys, captura nativa generalizada y runtime hook dinamico; `src/desktop-control/tauri-host-control.ts` expone solo comandos Tauri; `SettingsSurface` muestra recorders compactos para dictation key, preset picker y paste-last. Smoke versionado: `npm run action-hotkeys:physical-smoke -- -AllowDesktopSideEffects -StopExisting`; evidencia passing en `artifacts/desktop-control/action-hotkeys-physical-smoke/20260702-action-hotkeys-script-smoke/report.json`.
+
+### 2026-07-01 - Windows Terminal/Tabby son targets explicitos validos, con paste por clipboard
+
+Estado: accepted
+
+Decision: Windows Terminal, Tabby, PowerShell/cmd y otros targets terminal-like no deben reemplazar el cache de una app editable cuando aparecen como foreground incidental, pero si el usuario inicia el dictado con el terminal enfocado deben ser target explicito valido. Para delivery a terminal se usa paste por clipboard restaurado, no `KEYEVENTF_UNICODE`, porque Windows Terminal no expone un textarea/UIA editable confiable y la inyeccion Unicode directa es inconsistente.
+
+Motivo: JP reporto que Windows Terminal funcionaba hasta hace poco; el bloqueo de terminal-like targets protegia el cache pero rompio el caso legitimo de dictar al terminal. La UX esperada es que el target actual gane cuando el gesto empieza ahi, manteniendo proteccion contra focos incidentales de terminal durante tray/menu.
+
+Alcance: `src/delivery/tauri-desktop-delivery.ts` vuelve a retornar terminal current targets; `src-tauri/src/desktop_delivery.rs` usa clipboard paste para terminal-like delivery y restaura/limpia clipboard best-effort. Validaciones unitarias pasaron en `tests/desktop-control/tauri-desktop-delivery.test.ts`, `tests/desktop-control/desktop-delivery-rust.test.ts` y `cargo check`. Falta smoke manual controlado con terminal editable antes de considerar cerrado el dogfood.
+
+### 2026-07-01 - Presets iniciales reales para selection transform
+
+Estado: accepted
+
+Decision: El primer set real de presets para selection transform en Fixvox Tauri es `translate`, `rewrite`, `shorten` y `professional`. El preset activo se muestra/selecciona desde companion/tray y el runtime managed lo convierte en una instruccion concreta antes de llamar `transform_selected_text`; ya no es metadata visual-only.
+
+Motivo: JP quiere acciones rapidas tipo Fixvox sin esperar a Assistant/Quick Chat completo. Estos cuatro presets cubren los casos de mayor frecuencia y mantienen el flujo directo: seleccionar texto -> elegir preset -> dictar/confirmar instruccion -> reemplazo directo con fail-closed.
+
+Alcance: `Alt+Q` picker y hotkeys por preset quedan como siguiente fase; el smoke redacted en Chrome con `PresetId translate` paso en `artifacts/desktop-control/selection-browser-smoke/20260701-browser-chrome-preset-translate-r4/report.json`.
+
+### 2026-07-01 - Admin control-plane usa Profiles, Engines, Prompts, Budgets y Groups
+
+Estado: accepted
+
+Decision: Fixvox Admin/Cloud organiza la configuracion managed como `Account -> Profile -> Engines -> Prompts -> Budgets -> Groups/overrides`. Los usuarios finales no eligen modelos; el admin asigna motores concretos por funcion (`transcription`, `postprocess`, `selectionTransform`), prompts versionables/editables, budgets por profile y override por account. Groups son targeting visible/asignable y tambien pueden resolver runtime profile antes de overrides account/device.
+
+Motivo: JP necesita controlar costo/calidad/rollout por usuario o conjunto sin exponer infraestructura a end users. Separar Profile base, Engines, Prompts, Budgets y Groups permite operar precio, calidad y acceso desde Cloud/Admin con telemetry auditable por `profileId`, `engineId` y `promptId`.
+
+Alcance:
+
+- Admin Web/Cloud mantienen catalogos editables de motores y prompts, con pricing visible cuando hay snapshot.
+- Runtime managed resuelve profile -> engine -> provider/model -> prompt para chat/postprocess/selectionTransform y audio transcription.
+- Budgets se aplican primero por account override y luego por profile; `block` puede responder `402 budget_exceeded` con `budgetSource`.
+- Usage debe mostrar costo/requests por engine, prompt y profile.
+- Groups ya pueden crearse/asignarse a accounts y afectar runtime con `Profile base -> Group -> Account -> Device`; `profile.policySource`, `groups` y `matchedGroup` quedan expuestos para auditoria en preflight/Admin Web.
+
+Deploy: aprobado por JP con "ok" el 2026-07-01; Worker production deployado como version `30699929-1641-4bf7-8ced-71d9a8940f20`, Admin Web VPS reiniciado y smokeado (`/healthz`, `/admin/pi` -> `/login`, `fixvox-admin accounts 5`, remote `npm run cloud:test` 77 pass).
+
+Proximo paso: validar visualmente con login Google real si JP quiere revisar UI production; no hacer push sin aprobacion aparte.
+
+### 2026-06-30 - Selection transform reemplaza directo como Fixvox
+
+Estado: accepted
+
+Decision: Cuando hay texto seleccionado y JP dicta una instruccion (ej. seleccionar `hola amigo` y dictar `en ingles`), Fixvox Tauri debe tratar la transcripcion como instruccion sobre la seleccion, transformar via Fixvox Cloud y reemplazar directamente la seleccion en el target guardado. Si el transform sale OK no debe abrir ventana de review/companion ni requerir `Paste last`; debe comportarse como Fixvox con `reviewBeforeDelivery=false`.
+
+Motivo: JP espera el modelo operacional de Fixvox: selection source -> LLM transform -> `replaceSelection`. El modo review-only resulto friccion y confundia el flujo; los fallos tampoco deben terminar pegando la instruccion dictada ni el texto original.
+
+Alcance:
+
+- Capturar la seleccion real contra el target editable guardado al iniciar/usar la dictation key.
+- Usar STT managed para la instruccion y Fixvox Cloud chat para el transform.
+- En exito, entregar con `deliveryStrategy: paste_send` al target guardado, preservando evidencia honesta (`paste_sent` != `paste_observed`).
+- En fallo, fallar cerrado: no pegar transcript, no pegar original, no inventar transform.
+- El clipboard roundtrip queda como fallback tecnico vigilado y debe restaurar best-effort; cualquier ruta nueva de seleccion/replace requiere tests/smoke y cuidado de side effects.
+
+Proximo paso: harden de captura/replace en browsers/Electron, especialmente minimizar efectos visibles de clipboard y sumar smoke real redacted del caso `hola amigo` -> instruccion `en ingles`.
+
 ### 2026-06-29 - Login cloud para capacidades mas alla de lo basico
 
 Estado: accepted

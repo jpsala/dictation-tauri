@@ -34,16 +34,19 @@ primary_refs:
 | Fixvox/Fixbox, que copiamos, capacidades existentes, alcance comparado | [Mapa de capacidades Fixvox](topics/fixvox-capability-map.md) | Inventario filtrado de capacidades Fixvox y estado decidido para MVP/early/later. |
 | Dictado, flujo, pipeline, estados, listening, transcribing, delivery | [Workflow de dictado](topics/dictation-workflow.md) | Modelo de fases de ejecucion y preguntas de UX/runtime. |
 | Fixtures, audio sintetico, TTS, STT, benchmarks, Fixvox, pruebas sin JP | [Automatizacion y fixtures](topics/automation-and-reference-fixtures.md) | Como usar recursos de Fixvox sin copiar arquitectura ni secretos. |
-| Texto seleccionado, Assistant Mode, Quick Chat, Alt+Q, presets, hotkeys de acciones | [Seleccion y acciones asistidas](topics/selection-and-assistant-actions.md) y [Fixvox Dock/Hotkeys Reference](topics/fixvox-dock-and-hotkeys-reference.md) para hotkeys | Separa dictado directo de transformaciones sobre seleccion y superficies asistidas. |
+| Texto seleccionado, Assistant Mode, Quick Chat, Alt+Q, presets, hotkeys de acciones | [Seleccion y acciones asistidas](topics/selection-and-assistant-actions.md), [Referencia Fixvox Lulu/Assistant](topics/fixvox-assistant-lulu-reference.md) para paridad de `Lulu`, [Track Lulu parity refactor](tracks/fixvox-lulu-assistant-parity-refactor.md) para el trabajo activo, y [Fixvox Dock/Hotkeys Reference](topics/fixvox-dock-and-hotkeys-reference.md) para hotkeys | Separa dictado directo de transformaciones sobre seleccion y superficies asistidas; evita confundir `Lulu` con Quick Chat/recovery/transcript. |
 | Grammarly, input box, focused input, UI Automation, overlay junto al campo | [Grammarly-like input intelligence](topics/grammarly-like-input-intelligence.md) | Estrategia para detectar el campo activo, bounding rect, patrones UIA y observer sin guardar contenido crudo. |
 | Backend, proxy, model routing, proveedores, API keys, Groq/OpenAI/OpenRouter/xAI | [Backend y model routing](topics/backend-and-model-routing.md) | Decision de ModelGateway hibrido y orden de adapters. |
 | Fixvox cloud, Fixbox backend, managed runtime, proxy compartido, reemplazar Bun por Rust/Tauri | [Fixvox Cloud Runtime Port](topics/fixvox-cloud-runtime-port.md) | Camino para usar la infraestructura cloud de Fixvox desde un runtime Rust/Tauri propio. |
 | Modo local, pasar a produccion, promote, deploy seguro, admin env local/prod | [Fixvox Local-First → Produccion](topics/fixvox-local-to-production-workflow.md) | Playbook para desarrollar local-first y promover a produccion con checks, aprobaciones y banners de entorno. |
+| Diseño de cualquier pantalla, app design, UI polish, screenshot Playwright, Accounts, admin web, settings, dock, onboarding | [App Design Loop](topics/app-design-loop.md) | Runbook corto del loop validado para diseñar cualquier superficie con mock/local, Impeccable, screenshots, council opcional, smokes y evidencia. |
 | UI, diseño, frontend, React, app shell, voice dock, settings, impeccable | [UI Design e Impeccable](topics/ui-design-and-impeccable.md) y [Fixvox Dock/Hotkeys Reference](topics/fixvox-dock-and-hotkeys-reference.md) para dock/hotkeys | Cuando y como usar impeccable para superficies React/Tauri, y como respetar la ergonomia Fixvox del dock/dictation key. |
 | Documentacion, topics, indice, contexto liviano, tracks | [Sistema de conocimiento](topics/docs-knowledge-system.md) | Explica como leer, crear y dividir docs sin cargar todo. |
 | Norte, AOS, sistema agentico, memoria viva, audit de contexto, Small Batches | [Agentic OS (AOS)](topics/agentic-os.md) | Operacion del sistema agentico escalable del proyecto. |
+| Ponytail, implementacion minima, YAGNI, over-engineering, diff minimo, dependencias innecesarias | [Implementacion minima y Ponytail](topics/minimal-implementation.md) | Politica liviana para resolver con el menor diff correcto, subordinada a AOS y sin instalar paquetes. |
 | `aos-realinear-os`, crear, migrar, actualizar o auditar sistema agentico | [Operaciones del sistema agentico](topics/agentic-os-operations.md) | Como reparar o adaptar AOS sin copiar un template ciego ni manager-only. |
-| Pi, computer use, cua-driver, automatizacion UI real | [Pi Agentic OS](topics/pi-agentic-os.md) | Politica local para usar Pi/computer use con fixtures, sandbox, evidencia y confirmaciones. |
+| Pi, computer use, cua-driver, automatizacion UI real | [Pi Agentic OS](topics/pi-agentic-os.md), [Pi Extension Stack](topics/pi-extension-stack.md) | Politica local para usar Pi/computer use con fixtures, sandbox, evidencia y confirmaciones. |
+| Pi tools, web research, taskflow, advisor, lens, paquetes Pi | [Pi Extension Stack](topics/pi-extension-stack.md), [Pi Planning & Implementation Tooling](topics/pi-planning-implementation-tooling.md) | Elegir tools Pi sin copiar inventario global ni instalar paquetes sin permiso. |
 | `aos-perfect-os`, dejar en condiciones, calidad agentica | [Calidad Agentica / Perfect OS](topics/os-quality.md) | Checklist de contexto, docs, tracks, skills/adapters, indice y audit. |
 | Skills locales, slash commands, comandos Codex, docs/skills, .agents/skills, pasar a skills, evaluar skills | [Skills locales de Codex](topics/local-codex-skills.md) | Skills portables versionadas en `docs/skills/`; `.agents/skills` es compatibilidad local. |
 | Port Tauri, stack inicial, estructura, comandos, fundacion | [Fundacion Dictation Tauri](topics/dictation-tauri-foundation.md) | Contexto inicial del port y decisiones pendientes. |
@@ -51,6 +54,8 @@ primary_refs:
 | Proyectos fuente, que implementar, que portar, adopt/adapt/reference, Copicu vs Fixvox | [Mapa de proyectos fuente](topics/source-project-map.md) | Decision map estable de que se adopta, adapta, referencia, posterga o rechaza desde cada repo fuente. |
 | Privacidad, audio, transcripciones, logs, modelos, storage | [Privacidad y datos de dictado](topics/privacy-and-dictation-data.md) | Reglas para tratar datos sensibles de dictado. |
 | SpecKit, spec, plan, tasks.md, feature grande | [SpecKit y planificacion](topics/speckit-workflow.md) | Como trabajar con specs y constitucion. |
+
+| Routing de tools, taskflow, pi-workflow, advisor, dgoal | [agent-tool-routing](topics/agent-tool-routing.md), [pi-extension-stack](topics/pi-extension-stack.md) |
 
 ## Documentos Raiz
 
@@ -69,6 +74,7 @@ primary_refs:
 - `docs/skills/impeccable/`: skill local para UI/frontend.
 - `docs/skills/speckit-*`: Skills locales para workflow SpecKit.
 - `docs/skills/{sigamos,cerrar-sesion,continuar-sesion,continuar-sesion-con-gol,realinear-os,evaluar-skills}/`: comandos AOS locales; `aos-*` son aliases en `AGENTS.md`.
+- `docs/topics/minimal-implementation.md`: politica liviana opcional de implementacion minima/Ponytail; no instala dependencias.
 - `.specify/`: infraestructura y templates de SpecKit.
 
 ## Reglas De Mantenimiento
