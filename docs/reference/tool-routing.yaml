@@ -72,6 +72,11 @@ scenarios:
     primary: long_task
     support: [lens, bash]
     gates: [ask_user_if_side_effects]
+  aos_fleet_update:
+    primary: long_task
+    support: [git, bash, repo_checks]
+    gates: [ask_user_if_commit_or_push]
+    forbids: [dgoal, parallel_writes, push]
   multi_repo_audit:
     primary: taskflow
     support: [advisor]
@@ -102,6 +107,9 @@ scenarios:
     gates: [repo_checks]
 
 forbidden_nesting:
+  - parent: aos_fleet_update
+    child: dgoal
+    reason: dgoal startup gate/i18n is too fragile for JP fleet ops
   - parent: dgoal
     child: until_done
     reason: two goal loops would compete for done criteria
@@ -154,6 +162,12 @@ required_gates:
       - prod
       - decisions_md_worthy
       - long_loop
+    skip_when:
+      - cheap_orientation
+      - repo_checks
+      - small_step_in_decided_playbook
+      - obvious_confirmation
+    cadence: once_per_risk_cluster
   lens:
     triggers: [code_changed]
   repo_checks:

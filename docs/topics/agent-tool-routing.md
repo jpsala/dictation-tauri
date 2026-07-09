@@ -52,6 +52,7 @@ es cambio chico; validar con <check>`.
 | Objetivo largo por fases | dgoal | taskflow read-only, advisor, lens | dgoal_check por fase |
 | Loop con verify command claro | until-done | advisor, lens, checks | verify command |
 | TODO secuencial claro | long-task | checks | ask_user si costo/side effects |
+| Fleet update AOS serial | long-task via `/aos-fleet-update` | checks, git, registry | commits solo si JP los pidio; no push |
 | Auditoria/fan-out/multi-repo | taskflow | advisor/council si aporta | workers read-only por defecto |
 | Fan-out pesado experimental/benchmark | pi-dynamic-workflows | taskflow baseline, advisor | opt-in explicito, trigger seguro, tabla comparativa |
 | Research externo/versionado | manual/research | web_search, fetch_content, web_answer, librarian | no secretos/datos privados |
@@ -61,6 +62,7 @@ La version verificable vive en `docs/reference/tool-routing.yaml`.
 
 ## Nesting Permitido
 
+- `long-task -> checks/git` para fleet updates AOS seriales; `/aos-fleet-update` arma el TODO y mantiene commits por repo aislados.
 - `dgoal -> taskflow` solo como auditoria/research/review acotada; dgoal sigue
 gobernando.
 - `dgoal/until-done/planner -> advisor|ask_user|lens|web` como apoyo.
@@ -70,6 +72,7 @@ gobernando.
 
 ## Nesting Prohibido
 
+- `dgoal` como default para fleet updates AOS mientras mantenga UX/i18n/gate fragil.
 - `dgoal -> until-done` o `until-done -> dgoal`.
 - `planner -> dgoal/until-done` salvo decision explicita de migrar de motor.
 - `taskflow detached -> taskflow detached`.
@@ -97,7 +100,9 @@ Usarlo cuando arranca o termina un loop principal:
 - `ask_user`: prod, deploy, installs, commits/push, envios externos, datos
 privados, acciones destructivas, fan-out costoso o scope ambiguo.
 - `advisor`: arquitectura/storage/prod/security, decisiones `DECISIONS.md`-worthy
-o loops largos.
+o loops largos. No usarlo para confirmar obviedades, orientación barata,
+checks, ni pasos chicos de un playbook ya decidido; una vez por racimo de
+riesgo alcanza.
 - `lens`: despues de tocar codigo; si hay error real, resolver o documentar por
 que es ruido ambiental.
 - checks del repo: siempre mandan sobre heuristicas.
@@ -107,7 +112,7 @@ que es ruido ambiental.
 Elegir la opcion mas chica que no pierda seguridad:
 
 ```text
-manual < long-task < until-done < planner < dgoal < taskflow/council
+manual < long-task < until-done < planner < taskflow/council
 ```
 
 Si dos motores parecen igual de buenos, usar `ask_user` o `advisor`, pero no

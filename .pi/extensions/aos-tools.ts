@@ -73,6 +73,14 @@ type PlanImplementationOptions = {
   from?: string;
 };
 
+type FleetUpdateOptions = {
+  repos: string[];
+  preview: boolean;
+  dryRun: boolean;
+  commit: boolean;
+  goal: string;
+};
+
 type RoutingEngine = Exclude<PlanImplementationTool, "auto">;
 
 type RoutingState = {
@@ -613,6 +621,56 @@ function parsePlanImplementationArgs(
   return { options };
 }
 
+function parseFleetUpdateArgs(
+  raw: string,
+): { options?: FleetUpdateOptions; error?: string } {
+  const tokens = splitCommandArgs(raw.trim());
+  const repos: string[] = [];
+  const goalTokens: string[] = [];
+  const options: FleetUpdateOptions = {
+    repos,
+    preview: false,
+    dryRun: true,
+    commit: false,
+    goal: "",
+  };
+  let readingGoal = false;
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (readingGoal) {
+      goalTokens.push(token);
+      continue;
+    }
+    if (token === "--preview") {
+      options.preview = true;
+      continue;
+    }
+    if (token === "--execute") {
+      options.dryRun = false;
+      continue;
+    }
+    if (token === "--dry-run") {
+      options.dryRun = true;
+      continue;
+    }
+    if (token === "--commit") {
+      options.commit = true;
+      options.dryRun = false;
+      continue;
+    }
+    if (token === "--goal") {
+      readingGoal = true;
+      continue;
+    }
+    if (token.startsWith("--")) return { error: `Flag no reconocido: ${token}` };
+    repos.push(token);
+  }
+
+  options.goal = goalTokens.join(" ").trim();
+  return { options };
+}
+
 async function buildStatusMarkdown(
   pi: ExtensionAPI,
   ctx: ExtensionCommandContext,
@@ -810,6 +868,129 @@ Guardrails:
 - Usa Ponytail solo si esta activo o JP lo pidio: V0 minimo, reusable y verificable; no recortes seguridad ni requisitos explicitos.
 - No reconstruyas contexto desde transcript; docs versionados mandan.
 - Distingui cambios preexistentes de cambios hechos en este lote.`;
+}
+
+function buildFleetUpdatePrompt(
+  ctx: ExtensionCommandContext,
+  options: FleetUpdateOptions,
+  git: { branch: string; dirty: string; changedCount: number },
+): string {
+  const repos = options.repos.length
+    ? options.repos
+    : ["copicu", "constelaciones", "dictation-tauri", "pi", "infra", "telegram", "whatsapp", "discord"];
+  const repoList = repos.map((repo, index) => `${index + 1}. ${repo}`).join("\n");
+  const progress = repos.map((repo, index) => `- [ ] TODO ${index + 1} — Actualizar ${repo}`).join("\n");
+  const todoItems = repos
+    .map((repo, index) => {
+      const title = `TODO ${index + 1} — Actualizar ${repo}`;
+      const commitStep = options.commit
+        ? "Crear commit local del repo; no push."
+        : "Dejar diff listo sin commit.";
+      return `## ${title}
+
+**Goal:** Propagar solo mejoras AOS permitidas a ${repo}.
+
+**Status:**
+
+- [ ] Inspeccionar git y detectar dirty state preexistente.
+- [ ] Aplicar solo docs/scripts AOS allowlisted.
+- [ ] Ejecutar ensure-skills-link si existe, context:index y context:audit.
+- [ ] Stagear solo paths AOS permitidos; excluir producto/runtime/datos.
+- [ ] ${commitStep}
+
+**Verify:** Checks AOS del repo sin errores; warnings preexistentes documentados.
+
+**Done when:** ${repo} queda actualizado, validado y aislado de dirty state ajeno.`;
+    })
+    .join("\n\n---\n\n");
+  const mode = options.dryRun ? "dry-run: no escribir ni commitear" : "execute: escribir cambios locales";
+  const goal = options.goal || "Actualizar repos AOS en orden con pi-long-task.";
+
+  return `Routing Decision
+- Intent: implement
+- Primary engine: long-task
+- Why: fleet update serial con TODOs claros; dgoal queda evitado por UX/gate/i18n.
+- Support tools: checks locales, git, lens solo si se toca codigo TS.
+- Forbidden nesting: dgoal, until-done, planner, pi-dynamic-workflows, writers paralelos.
+- Required gates: ask_user solo para installs, push, destructivo o scope ambiguo.
+- Verification: checks AOS por repo + registry upstream + bun run check final.
+
+Usa pi_long_task con commit=false. El commit por repo, si esta permitido, debe hacerse manualmente dentro de cada TODO con git -C <repo>, staging allowlisted y sin push.
+
+Objetivo: ${goal}
+Modo: ${mode}
+Repos en orden:
+${repoList}
+
+Estado Git upstream al generar este prompt:
+- CWD: ${ctx.cwd}
+- Branch: ${git.branch}
+- Worktree: ${git.changedCount ? `${git.changedCount} archivo(s) con cambios` : "limpio"}
+
+Cambios visibles upstream:
+\`\`\`text
+${git.dirty}
+\`\`\`
+
+Contrato global:
+- No tocar tabby ni finances.
+- No hacer push.
+- Preservar dirty state preexistente en cada repo.
+- No tocar producto/runtime/deploy/datos privados.
+- Para WhatsApp respetar casing tracked DOCS/docs.
+- Al final actualizar docs/OS_PROJECTS.md en C:/dev/os con resultados y correr bun run context:index && bun run check.
+
+# Pi Long Task TODO
+
+Global instructions:
+
+- Trabajar serialmente en el orden listado.
+- Usar el repo upstream C:/dev/os como fuente canonica.
+- Cambios permitidos: docs/skills/aos-dynamic-workflows-pilot/SKILL.md, docs/topics/pi-extension-stack.md, docs/topics/agent-tool-routing.md, docs/reference/tool-routing.yaml, docs/.generated/context-index.md y equivalentes por casing local; mas docs/OS_PROJECTS.md solo en upstream al cierre.
+- Si aparece un error real de audit/check o no se puede aislar dirty state, marcar el TODO blocked y seguir solo si no compromete el orden ni mezcla cambios.
+- No usar dgoal. No usar pi-dynamic-workflows.
+
+## Progress
+
+${progress}
+- [ ] TODO ${repos.length + 1} — Actualizar registry upstream y validar cierre
+
+---
+
+${todoItems}
+
+---
+
+## TODO ${repos.length + 1} — Actualizar registry upstream y validar cierre
+
+**Goal:** Registrar commits/resultados del lote en C:/dev/os.
+
+**Status:**
+
+- [ ] Actualizar docs/OS_PROJECTS.md con commit/status/warnings por repo.
+- [ ] Regenerar docs/.generated/context-index.md.
+- [ ] Ejecutar bun run check en C:/dev/os.
+- [ ] ${options.commit ? "Crear commit upstream de registry/cierre." : "Dejar diff upstream listo sin commit."}
+
+**Verify:** bun run check pasa en C:/dev/os.
+
+**Done when:** Registry upstream refleja el lote y no hubo push ni commits de producto/runtime.
+`;
+}
+
+async function createFleetUpdatePrompt(
+  pi: ExtensionAPI,
+  ctx: ExtensionCommandContext,
+  options: FleetUpdateOptions,
+): Promise<void> {
+  const git = await gitSummary(pi);
+  const prompt = buildFleetUpdatePrompt(ctx, options, git);
+  if (options.preview) {
+    ctx.ui.setEditorText(prompt);
+    ctx.ui.notify("Prompt de fleet update cargado en el editor.", "info");
+    return;
+  }
+  await pi.sendUserMessage(prompt);
 }
 
 async function createPlanImplementationPrompt(
@@ -1060,6 +1241,23 @@ export default function osTools(pi: ExtensionAPI) {
       }
 
       await createContinuationSession(pi, ctx, parsed.options);
+    },
+  });
+
+  pi.registerCommand("aos-fleet-update", {
+    description:
+      "Generar un pi_long_task serial para actualizar repos AOS: --dry-run, --execute, --commit, --preview",
+    handler: async (args: string, ctx: ExtensionCommandContext) => {
+      const parsed = parseFleetUpdateArgs(args);
+      if (parsed.error || !parsed.options) {
+        ctx.ui.notify(
+          parsed.error ?? "No pude parsear /aos-fleet-update.",
+          "error",
+        );
+        return;
+      }
+
+      await createFleetUpdatePrompt(pi, ctx, parsed.options);
     },
   });
 
