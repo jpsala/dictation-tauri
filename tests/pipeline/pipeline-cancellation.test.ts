@@ -53,6 +53,45 @@ describe("simulated pipeline cancellation and evidence", () => {
     expect(deriveRunSummaryFromEvents(events)).toEqual(summary);
   });
 
+  it("cancels at delivering before running delivery side effects", async () => {
+    let deliveryCalls = 0;
+    const service = new PipelineService({
+      createRunId: () => "run-cancel-delivery-001",
+      transcriptionAdapter: {
+        async transcribe() {
+          return {
+            text: "transcript ready before cancellation",
+            latencyMs: 12,
+          };
+        },
+      },
+      deliveryAdapter: {
+        async deliver() {
+          deliveryCalls += 1;
+          return { status: "delivered" };
+        },
+      },
+    });
+
+    const summary = await service.run({
+      fixtureId: "clean-note",
+      cancelAtState: "delivering",
+    });
+
+    expect(summary.terminalState).toBe("cancelled");
+    expect(summary.states).toEqual([
+      "idle",
+      "listening",
+      "transcribing",
+      "delivering",
+      "cancelled",
+    ]);
+    expect(summary.output).toBeUndefined();
+    expect(summary.delivery).toBeUndefined();
+    expect(deliveryCalls).toBe(0);
+    expect(summary.events.some((event) => event.type === "delivery_completed")).toBe(false);
+  });
+
   it("rejects overlapping runs without mutating the active run", async () => {
     const events: PipelineEvent[] = [];
     const runIds = ["run-overlap-001", "run-overlap-002"];

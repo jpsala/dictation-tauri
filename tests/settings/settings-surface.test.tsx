@@ -1,3 +1,4 @@
+// @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -5,19 +6,30 @@ import { SettingsSurface } from "../../src/settings/SettingsSurface";
 import type { FixvoxCloudStatus } from "../../src/settings/fixvox-cloud-control";
 
 describe("SettingsSurface", () => {
-  it("renders a compact section scaffold with a host-owned hotkey editor", () => {
-    const html = renderToStaticMarkup(<SettingsSurface />);
+  it("renders a compact hotkeys scaffold with a host-owned hotkey editor", () => {
+    const html = renderToStaticMarkup(<SettingsSurface initialSection="hotkeys" />);
 
     expect(html).toContain("Keyboard shortcuts");
-    expect(html).toContain("General");
+    expect(html).toContain("Fixvox");
+    expect(html).toContain("Desktop settings");
+    expect(html).toContain("Current policy");
+    expect(html).toContain("Settings");
+    expect(html).toContain("Essentials");
     expect(html).toContain("Cloud");
     expect(html).toContain("Dock");
     expect(html).toContain("Delivery");
     expect(html).toContain("Presets");
     expect(html).toContain("Dictation key");
     expect(html).toContain("Paste last");
+    expect(html).toContain("Quick Chat");
+    expect(html).toContain("Result history");
+    expect(html).toContain("Preset picker");
+    expect(html).toContain("Stop and submit");
+    expect(html).toContain("Assistant mode");
+    expect(html).toContain("Press Enter after paste");
     expect(html).toContain("Cancel recording");
-    expect(html).toContain("Active");
+    expect(html).toContain("9 keys");
+    expect(html).toContain("Shortcuts");
     expect(html).toContain("Dictation key editor");
     expect(html).toContain("Alt+Space");
     expect(html).toContain("Check current shortcut");
@@ -156,6 +168,35 @@ describe("SettingsSurface", () => {
     expect(html).not.toContain("gsk_");
   });
 
+  it("renders local preset administration for starter prompt overrides", () => {
+    const html = renderToStaticMarkup(<SettingsSurface initialSection="presets" />);
+
+    expect(html).toContain("Preset prompt editor");
+    expect(html).toContain("Edit starter prompts and add local custom presets used by Alt+Q");
+    expect(html).toContain("Como yo (español)");
+    expect(html).toContain("Corregir texto");
+    expect(html).toContain("Fix Writing");
+    expect(html).toContain("Like me (English)");
+    expect(html).toContain("Import Cloud defaults");
+    expect(html).toContain("Add preset");
+    expect(html).toContain("Name");
+    expect(html).toContain("Picker key");
+    expect(html).toContain("Enabled");
+    expect(html).toContain("Hotkey");
+    expect(html).toContain("Provider");
+    expect(html).toContain("Model");
+    expect(html).toContain("No confirm");
+    expect(html).toContain("Duplicate");
+    expect(html).toContain("Save prompt");
+    expect(html).toContain("Reset starter");
+    expect(html).toContain("Starter locked");
+    expect(html).toContain("Local app data");
+    expect(html).toContain("No Cloud defaults");
+    expect(html).toContain("Alt+Q reads on next run");
+    expect(html).not.toContain("raw transcript");
+    expect(html).not.toContain("token");
+  });
+
   it("wires the single shortcut field to record key presses and save through the host", () => {
     const source = readFileSync("src/settings/SettingsSurface.tsx", "utf8");
 
@@ -174,9 +215,29 @@ describe("SettingsSurface", () => {
     expect(source).not.toContain("disabled={!isActive}");
     expect(source).toContain("selectedSection === \"hotkeys\"");
     expect(source).toContain("selectedSection === \"cloud\"");
+    expect(source).toContain("selectedSection === \"presets\"");
+    expect(source).toContain("getTauriActionHotkeyConfig");
+    expect(source).toContain("applyTauriActionHotkeyRegistration");
+    expect(source).toContain("essentialsTabs");
+    expect(source).toContain("role=\"tablist\"");
+    expect(source).toContain("createSelectionTransformCustomPreset");
+    expect(source).toContain("deleteSelectionTransformCustomPreset");
+    expect(source).toContain("saveSelectionTransformPresetCustomization");
+    expect(source).toContain("resetSelectionTransformPresetCustomization");
+    expect(source).toContain("extractCloudSelectionPresetDefaults");
+    expect(source).toContain("importCloudSelectionPresetDefaults");
     expect(source).not.toContain("close_settings_window");
     expect(source).not.toContain("closeSettingsWindow");
     expect(source).toContain("getFixvoxCloudStatus");
+    expect(source).toContain("getUserPreferences");
+    expect(source).toContain("setUserPreferences");
+    expect(source).toContain("autoStopOnSilenceEnabled");
+    expect(source).toContain("autoStopSilenceMs");
+    expect(source).toContain("Auto-stop after silence");
+    expect(source).toContain("muteOutputDuringRecording");
+    expect(source).toContain("Mute output while recording");
+    expect(source).toContain("dictationSoundCuesEnabled");
+    expect(source).toContain("Dictation sound cues");
     expect(source).toContain("getFixvoxAuthSessionStatus");
     expect(source).toContain("pollFixvoxCloudLogin");
     expect(source).toContain("pollCloudLoginStatus");
@@ -187,5 +248,21 @@ describe("SettingsSurface", () => {
     expect(source).not.toContain("Open the external browser to start Fixvox Cloud sign-in?");
     expect(source).not.toContain("void applyCandidate(candidate.shortcut)");
     expect(source).not.toContain("Save ${editingShortcut}");
+  });
+
+  it("notifies the dock runtime when host-owned user preferences change", () => {
+    const settingsControlSource = readFileSync("src/settings/user-preferences-control.ts", "utf8");
+    const appSource = readFileSync("src/App.tsx", "utf8");
+
+    expect(settingsControlSource).toContain("settings://user-preferences-changed");
+    expect(settingsControlSource).toContain("emit(userPreferencesChangedEvent, next)");
+    expect(appSource).toContain("userPreferencesChangedEvent");
+    expect(appSource).toContain("getUserPreferences()");
+    expect(appSource).toContain("userPreferencesRef.current.pressEnterAfterPaste");
+    expect(settingsControlSource).toContain("autoStopOnSilenceEnabled");
+    expect(settingsControlSource).toContain("defaultAutoStopSilenceMs");
+    expect(settingsControlSource).toContain("createMuteOutputPolicy");
+    expect(appSource).toContain("forcePressEnterAfterPasteRef.current");
+    expect(appSource).toContain("reviewBeforeDelivery ? \"review_only\" : \"paste_send\"");
   });
 });

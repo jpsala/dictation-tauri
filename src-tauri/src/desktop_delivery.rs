@@ -16,8 +16,12 @@ pub struct DesktopDeliveryTarget {
     window_title: String,
     window_class: String,
     process_id: u32,
+    #[serde(default)]
+    process_name: Option<String>,
     input_like: bool,
     reason: String,
+    #[serde(default)]
+    cache_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -80,7 +84,7 @@ pub fn cache_current_desktop_delivery_target_for_tray(reason: &str) {
     }
 }
 
-fn cache_delivery_target_if_editable(reason: &str, target: DesktopDeliveryTarget) {
+fn cache_delivery_target_if_editable(reason: &str, mut target: DesktopDeliveryTarget) {
     if !target.input_like {
         if reason != "foreground_watcher" {
             eprintln!(
@@ -91,6 +95,17 @@ fn cache_delivery_target_if_editable(reason: &str, target: DesktopDeliveryTarget
         return;
     }
 
+    if is_terminal_like_target(&target) {
+        if reason != "foreground_watcher" {
+            eprintln!(
+                "[dictation-tauri][delivery-target] skipped terminal-like target reason={} target_reason={}",
+                reason, target.reason
+            );
+        }
+        return;
+    }
+
+    target.cache_reason = Some(reason.to_string());
     let process_id = target.process_id;
     let window_class = target.window_class.clone();
     let title_length = target.window_title.len();
@@ -108,6 +123,27 @@ fn cache_delivery_target_if_editable(reason: &str, target: DesktopDeliveryTarget
             "[dictation-tauri][delivery-target] cached reason={reason} pid={process_id} class={window_class} title_len={title_length}"
         );
     }
+}
+
+fn is_terminal_like_target(target: &DesktopDeliveryTarget) -> bool {
+    let haystack = format!(
+        "{} {} {}",
+        target.process_name.as_deref().unwrap_or_default(),
+        target.window_class,
+        target.window_title
+    )
+    .to_lowercase();
+
+    haystack.contains("tabby.exe")
+        || haystack.contains("windowsterminal.exe")
+        || haystack.contains("powershell.exe")
+        || haystack.contains("pwsh.exe")
+        || haystack.contains("cmd.exe")
+        || haystack.contains("cascadia_hosting_window_class")
+        || haystack.contains("consolewindowclass")
+        || haystack.contains("windows powershell")
+        || haystack.contains("powershell")
+        || haystack.contains("command prompt")
 }
 
 #[tauri::command]
@@ -128,6 +164,11 @@ pub fn observe_desktop_paste(
     platform::observe_desktop_paste(text, target, timeout_ms)
 }
 
+#[tauri::command]
+pub fn copy_text_to_clipboard(text: String) -> Result<(), String> {
+    platform::copy_text_to_clipboard(text)
+}
+
 #[cfg(windows)]
 mod platform {
     use super::{
@@ -140,20 +181,22 @@ mod platform {
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
     use windows_sys::Win32::{
-        Foundation::{BOOL, HWND, LPARAM},
+        Foundation::{CloseHandle, BOOL, HWND, LPARAM},
         System::{
             DataExchange::{
                 CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable,
                 OpenClipboard, SetClipboardData,
             },
             Memory::{GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE},
-            Threading::{AttachThreadInput, GetCurrentThreadId},
+            Threading::{
+                AttachThreadInput, GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW,
+                PROCESS_QUERY_LIMITED_INFORMATION,
+            },
         },
         UI::{
             Input::KeyboardAndMouse::{
                 SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
-                KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RETURN, VK_RWIN,
-                VK_SHIFT, VK_V,
+                VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RETURN, VK_RWIN, VK_SHIFT, VK_V,
             },
             WindowsAndMessaging::{
                 BringWindowToTop, EnumChildWindows, GetClassNameW, GetForegroundWindow,
@@ -164,7 +207,24 @@ mod platform {
         },
     };
 
+    const CF_BITMAP_FORMAT: u32 = 2;
+    const CF_DIB_FORMAT: u32 = 8;
     const CF_UNICODETEXT_FORMAT: u32 = 13;
+    const CF_DIBV5_FORMAT: u32 = 17;
+
+    #[derive(Clone, Debug, Default)]
+    struct ClipboardSnapshot {
+        text: Option<String>,
+        dib: Option<Vec<u8>>,
+        dib_v5: Option<Vec<u8>>,
+    }
+
+    pub fn copy_text_to_clipboard(text: String) -> Result<(), String> {
+        if text.trim().is_empty() {
+            return Err("Cannot copy empty text.".to_string());
+        }
+        write_clipboard_text(&text)
+    }
 
     pub fn capture_desktop_delivery_target() -> Result<DesktopDeliveryTarget, String> {
         let hwnd = unsafe { GetForegroundWindow() };
@@ -178,7 +238,14 @@ mod platform {
         unsafe {
             GetWindowThreadProcessId(hwnd, &mut process_id);
         }
-        let probe = format!("{} {}", window_title, window_class).to_lowercase();
+        let process_name = get_process_name(process_id);
+        let probe = format!(
+            "{} {} {}",
+            window_title,
+            window_class,
+            process_name.as_deref().unwrap_or_default()
+        )
+        .to_lowercase();
         let is_own_process = process_id == std::process::id();
         let is_own_surface = is_own_process
             || window_title == "Dictation Dock"
@@ -201,8 +268,10 @@ mod platform {
             window_title,
             window_class,
             process_id,
+            process_name,
             input_like,
             reason,
+            cache_reason: None,
         })
     }
 
@@ -266,36 +335,9 @@ mod platform {
         } else {
             read_observable_window_text(hwnd)
         };
-        let direct_result = (|| {
-            focus_window(hwnd);
-            thread::sleep(Duration::from_millis(80));
-            release_modifier_keys()?;
-            thread::sleep(Duration::from_millis(20));
-            send_unicode_text(&text)?;
-            if press_enter_after_paste {
-                thread::sleep(Duration::from_millis(80));
-                send_enter()?;
-            }
-            thread::sleep(direct_input_settle_delay(&target));
-            release_modifier_keys()?;
-            Ok::<(), String>(())
-        })();
-
-        let used_clipboard_fallback = match direct_result {
-            Ok(()) => false,
-            Err(error) if allow_clipboard_paste_fallback() => {
-                eprintln!(
-                    "[dictation-tauri][desktop-delivery] direct unicode input failed; using explicit clipboard fallback: {error}"
-                );
-                deliver_text_with_clipboard(&text, &target, hwnd, press_enter_after_paste)?;
-                true
-            }
-            Err(error) => {
-                return Err(format!(
-                    "Direct text input failed before clipboard fallback was used: {error}. Set DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK=true to allow temporary clipboard paste fallback."
-                ));
-            }
-        };
+        eprintln!("[dictation-tauri][desktop-delivery] using Fixvox-like clipboard paste delivery");
+        deliver_text_with_clipboard(&text, &target, hwnd, press_enter_after_paste)?;
+        let used_clipboard_fallback = true;
 
         let observable_after = if skip_bounded_observer {
             None
@@ -315,22 +357,13 @@ mod platform {
                 "paste_sent"
             },
             reason: if observed && used_clipboard_fallback {
-                "Clipboard fallback insertion was verified by a bounded Win32 text observer on the saved target."
-                    .to_string()
-            } else if observed {
-                "Direct text input was verified by a bounded Win32 text observer on the saved target without using the clipboard."
+                "Fixvox-like clipboard paste was verified by a bounded Win32 text observer on the saved target."
                     .to_string()
             } else if used_clipboard_fallback && press_enter_after_paste {
-                "Clipboard fallback paste and Enter commands were sent to the saved foreground target without observation."
-                    .to_string()
-            } else if used_clipboard_fallback {
-                "Clipboard fallback paste command was sent to the saved foreground target without observation."
-                    .to_string()
-            } else if press_enter_after_paste {
-                "Direct text input and Enter were sent to the saved foreground target without using the clipboard or observation."
+                "Fixvox-like clipboard paste and Enter commands were sent to the saved foreground target without observation."
                     .to_string()
             } else {
-                "Direct text input was sent to the saved foreground target without using the clipboard or observation."
+                "Fixvox-like clipboard paste command was sent to the saved foreground target without observation."
                     .to_string()
             },
             target,
@@ -343,7 +376,7 @@ mod platform {
         hwnd: HWND,
         press_enter_after_paste: bool,
     ) -> Result<(), String> {
-        let previous_clipboard = read_clipboard_text();
+        let previous_clipboard = read_clipboard_snapshot();
         write_clipboard_text(text)?;
 
         let paste_result = (|| {
@@ -359,36 +392,26 @@ mod platform {
             Ok::<(), String>(())
         })();
 
-        if let Some(previous) = previous_clipboard {
-            let _ = write_clipboard_text(&previous);
-        }
+        restore_clipboard_snapshot(previous_clipboard);
 
         paste_result
     }
 
-    fn allow_clipboard_paste_fallback() -> bool {
-        std::env::var("DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK")
-            .map(|value| {
-                matches!(
-                    value.to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on"
-                )
-            })
-            .unwrap_or(false)
+    fn clear_clipboard_text() -> Result<(), String> {
+        unsafe {
+            if OpenClipboard(ptr::null_mut()) == 0 {
+                return Err("Clipboard could not be opened for clear.".to_string());
+            }
+            EmptyClipboard();
+            CloseClipboard();
+        }
+        Ok(())
     }
 
     fn should_skip_bounded_observer(target: &DesktopDeliveryTarget) -> bool {
         let class_name = target.window_class.to_ascii_lowercase();
         class_name.contains("chrome_widgetwin")
             || class_name.contains("chrome_renderwidgethosthwnd")
-    }
-
-    fn direct_input_settle_delay(target: &DesktopDeliveryTarget) -> Duration {
-        if should_skip_bounded_observer(target) {
-            return Duration::from_millis(80);
-        }
-
-        Duration::from_millis(80)
     }
 
     fn clipboard_restore_delay(target: &DesktopDeliveryTarget) -> Duration {
@@ -530,23 +553,6 @@ mod platform {
         )
     }
 
-    fn send_unicode_text(text: &str) -> Result<(), String> {
-        for chunk in text.encode_utf16().collect::<Vec<_>>().chunks(512) {
-            let mut inputs = Vec::with_capacity(chunk.len() * 2);
-            for code_unit in chunk {
-                inputs.push(unicode_input(*code_unit, false));
-                inputs.push(unicode_input(*code_unit, true));
-            }
-            send_keyboard_inputs(
-                &mut inputs,
-                "Direct text input could not be sent without the clipboard.",
-            )?;
-            thread::sleep(Duration::from_millis(1));
-        }
-
-        Ok(())
-    }
-
     fn send_ctrl_v() -> Result<(), String> {
         send_keyboard_inputs(
             &mut [
@@ -590,21 +596,6 @@ mod platform {
         }
     }
 
-    fn unicode_input(code_unit: u16, key_up: bool) -> INPUT {
-        INPUT {
-            r#type: INPUT_KEYBOARD,
-            Anonymous: INPUT_0 {
-                ki: KEYBDINPUT {
-                    wVk: 0,
-                    wScan: code_unit,
-                    dwFlags: KEYEVENTF_UNICODE | if key_up { KEYEVENTF_KEYUP } else { 0 },
-                    time: 0,
-                    dwExtraInfo: 0,
-                },
-            },
-        }
-    }
-
     fn key_input(key: VIRTUAL_KEY, key_up: bool) -> INPUT {
         INPUT {
             r#type: INPUT_KEYBOARD,
@@ -634,6 +625,32 @@ mod platform {
         let mut buffer = vec![0u16; 256];
         let copied = unsafe { GetClassNameW(hwnd, buffer.as_mut_ptr(), buffer.len() as i32) };
         String::from_utf16_lossy(&buffer[..copied as usize])
+    }
+
+    fn get_process_name(process_id: u32) -> Option<String> {
+        if process_id == 0 {
+            return None;
+        }
+
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, process_id);
+            if handle.is_null() {
+                return None;
+            }
+
+            let mut buffer = vec![0u16; 1024];
+            let mut len = buffer.len() as u32;
+            let ok = QueryFullProcessImageNameW(handle, 0, buffer.as_mut_ptr(), &mut len);
+            CloseHandle(handle);
+            if ok == 0 || len == 0 {
+                return None;
+            }
+
+            let path = String::from_utf16_lossy(&buffer[..len as usize]);
+            path.rsplit(['\\', '/'])
+                .next()
+                .map(|value| value.to_string())
+        }
     }
 
     fn read_window_text_surfaces(hwnd: HWND) -> Vec<String> {
@@ -722,59 +739,146 @@ mod platform {
             .unwrap_or_else(|_| "0".to_string())
     }
 
-    fn read_clipboard_text() -> Option<String> {
+    fn read_clipboard_snapshot() -> Option<ClipboardSnapshot> {
         unsafe {
-            if IsClipboardFormatAvailable(CF_UNICODETEXT_FORMAT) == 0
-                || OpenClipboard(ptr::null_mut()) == 0
-            {
+            let has_known_format = IsClipboardFormatAvailable(CF_UNICODETEXT_FORMAT) != 0
+                || IsClipboardFormatAvailable(CF_DIB_FORMAT) != 0
+                || IsClipboardFormatAvailable(CF_DIBV5_FORMAT) != 0
+                || IsClipboardFormatAvailable(CF_BITMAP_FORMAT) != 0;
+            if !has_known_format || OpenClipboard(ptr::null_mut()) == 0 {
                 return None;
             }
-            let handle = GetClipboardData(CF_UNICODETEXT_FORMAT);
-            if handle.is_null() {
-                CloseClipboard();
-                return None;
-            }
-            let ptr = GlobalLock(handle) as *const u16;
-            if ptr.is_null() {
-                CloseClipboard();
-                return None;
-            }
-            let size = GlobalSize(handle) / 2;
-            let slice = std::slice::from_raw_parts(ptr, size);
-            let nul = slice
-                .iter()
-                .position(|value| *value == 0)
-                .unwrap_or(slice.len());
-            let text = String::from_utf16_lossy(&slice[..nul]);
-            GlobalUnlock(handle);
+
+            let snapshot = ClipboardSnapshot {
+                text: read_clipboard_text_open(),
+                dib: read_clipboard_format_bytes_open(CF_DIB_FORMAT),
+                dib_v5: read_clipboard_format_bytes_open(CF_DIBV5_FORMAT),
+            };
             CloseClipboard();
-            Some(text)
+
+            if snapshot.text.is_some() || snapshot.dib.is_some() || snapshot.dib_v5.is_some() {
+                Some(snapshot)
+            } else {
+                None
+            }
         }
+    }
+
+    unsafe fn read_clipboard_text_open() -> Option<String> {
+        if IsClipboardFormatAvailable(CF_UNICODETEXT_FORMAT) == 0 {
+            return None;
+        }
+        let handle = GetClipboardData(CF_UNICODETEXT_FORMAT);
+        if handle.is_null() {
+            return None;
+        }
+        let ptr = GlobalLock(handle) as *const u16;
+        if ptr.is_null() {
+            return None;
+        }
+        let size = GlobalSize(handle) / 2;
+        let slice = std::slice::from_raw_parts(ptr, size);
+        let nul = slice
+            .iter()
+            .position(|value| *value == 0)
+            .unwrap_or(slice.len());
+        let text = String::from_utf16_lossy(&slice[..nul]);
+        GlobalUnlock(handle);
+        Some(text)
+    }
+
+    unsafe fn read_clipboard_format_bytes_open(format: u32) -> Option<Vec<u8>> {
+        if IsClipboardFormatAvailable(format) == 0 {
+            return None;
+        }
+        let handle = GetClipboardData(format);
+        if handle.is_null() {
+            return None;
+        }
+        let size = GlobalSize(handle);
+        if size == 0 {
+            return None;
+        }
+        let source = GlobalLock(handle) as *const u8;
+        if source.is_null() {
+            return None;
+        }
+        let bytes = std::slice::from_raw_parts(source, size).to_vec();
+        GlobalUnlock(handle);
+        Some(bytes)
+    }
+
+    fn restore_clipboard_snapshot(snapshot: Option<ClipboardSnapshot>) {
+        let Some(snapshot) = snapshot else {
+            let _ = clear_clipboard_text();
+            return;
+        };
+
+        unsafe {
+            if OpenClipboard(ptr::null_mut()) == 0 {
+                return;
+            }
+            EmptyClipboard();
+            let mut restored = false;
+            if let Some(text) = snapshot.text {
+                restored = write_clipboard_text_open(&text) || restored;
+            }
+            if let Some(dib_v5) = snapshot.dib_v5 {
+                restored = write_clipboard_format_bytes_open(CF_DIBV5_FORMAT, &dib_v5) || restored;
+            }
+            if let Some(dib) = snapshot.dib {
+                restored = write_clipboard_format_bytes_open(CF_DIB_FORMAT, &dib) || restored;
+            }
+            if !restored {
+                EmptyClipboard();
+            }
+            CloseClipboard();
+        }
+    }
+
+    unsafe fn write_clipboard_text_open(text: &str) -> bool {
+        let mut encoded: Vec<u16> = text.encode_utf16().collect();
+        encoded.push(0);
+        let bytes = encoded.len() * std::mem::size_of::<u16>();
+        let handle = GlobalAlloc(GMEM_MOVEABLE, bytes);
+        if handle.is_null() {
+            return false;
+        }
+        let destination = GlobalLock(handle) as *mut c_void;
+        if destination.is_null() {
+            return false;
+        }
+        ptr::copy_nonoverlapping(encoded.as_ptr() as *const c_void, destination, bytes);
+        GlobalUnlock(handle);
+        !SetClipboardData(CF_UNICODETEXT_FORMAT, handle).is_null()
+    }
+
+    unsafe fn write_clipboard_format_bytes_open(format: u32, bytes: &[u8]) -> bool {
+        if bytes.is_empty() {
+            return false;
+        }
+        let handle = GlobalAlloc(GMEM_MOVEABLE, bytes.len());
+        if handle.is_null() {
+            return false;
+        }
+        let destination = GlobalLock(handle) as *mut c_void;
+        if destination.is_null() {
+            return false;
+        }
+        ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_void, destination, bytes.len());
+        GlobalUnlock(handle);
+        !SetClipboardData(format, handle).is_null()
     }
 
     fn write_clipboard_text(text: &str) -> Result<(), String> {
         let mut encoded: Vec<u16> = text.encode_utf16().collect();
         encoded.push(0);
-        let bytes = encoded.len() * std::mem::size_of::<u16>();
-
         unsafe {
             if OpenClipboard(ptr::null_mut()) == 0 {
                 return Err("Clipboard could not be opened.".to_string());
             }
             EmptyClipboard();
-            let handle = GlobalAlloc(GMEM_MOVEABLE, bytes);
-            if handle.is_null() {
-                CloseClipboard();
-                return Err("Clipboard memory could not be allocated.".to_string());
-            }
-            let destination = GlobalLock(handle) as *mut c_void;
-            if destination.is_null() {
-                CloseClipboard();
-                return Err("Clipboard memory could not be locked.".to_string());
-            }
-            ptr::copy_nonoverlapping(encoded.as_ptr() as *const c_void, destination, bytes);
-            GlobalUnlock(handle);
-            if SetClipboardData(CF_UNICODETEXT_FORMAT, handle).is_null() {
+            if !write_clipboard_text_open(text) {
                 CloseClipboard();
                 return Err("Clipboard text could not be set.".to_string());
             }
@@ -859,6 +963,10 @@ mod platform {
             "Desktop delivery is only available on Windows for target {}.",
             target.frame_hwnd
         ))
+    }
+
+    pub fn copy_text_to_clipboard(_text: String) -> Result<(), String> {
+        Err("Clipboard copy is only available on Windows.".to_string())
     }
 
     pub fn observe_desktop_paste(

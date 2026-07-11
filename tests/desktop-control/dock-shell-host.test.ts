@@ -1,3 +1,4 @@
+// @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -14,6 +15,9 @@ describe("Dock shell host visibility", () => {
     expect(traySource).toContain("host_command_payload(HostMenuAction::HideDock), None");
 
     expect(dockSource).toContain("static DOCK_VISIBLE: AtomicBool");
+    expect(dockSource).toContain("read_user_preferences_for_app");
+    expect(dockSource).toContain("show_dock_on_startup");
+    expect(dockSource).toContain("configured hidden by user preference");
     expect(dockSource).toContain("DOCK_VISIBLE.store(false");
     expect(dockSource).toContain("DOCK_VISIBLE.store(true");
     expect(dockSource).toContain("if !DOCK_VISIBLE.load");

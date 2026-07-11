@@ -6,14 +6,16 @@ import {
 } from "../../src/selection-transform";
 
 describe("fixture selection transforms", () => {
-  it("rewrites selected text without provider calls", () => {
-    const result = runFixtureSelectionTransform(createRequest({ presetId: "rewrite" }));
+  it("corrects Spanish selected text without provider calls", () => {
+    const result = runFixtureSelectionTransform(
+      createRequest({ presetId: "corregir-texto", selectedText: "hola amigo" }),
+    );
 
     expect(result).toMatchObject({
       status: "ok",
-      output: "Rewritten: Please make this sentence clearer.",
+      output: "Hola, amigo.",
       action: "replace_selection",
-      presetId: "rewrite",
+      presetId: "corregir-texto",
       evidence: {
         selectionAvailable: true,
         source: "fixture",
@@ -23,28 +25,38 @@ describe("fixture selection transforms", () => {
     });
   });
 
-  it("shortens selected text deterministically", () => {
+  it("corrects English selected text deterministically", () => {
     const result = runFixtureSelectionTransform(
       createRequest({
-        presetId: "shorten",
-        selectedText:
-          "This selected text has far too many words for a compact desktop recovery note.",
+        presetId: "fix-writing",
+        selectedText: "helo frend",
       }),
     );
 
-    expect(result.output).toBe("This selected text has far too many words…");
+    expect(result.output).toBe("Hello friend.");
     expect(result.status).toBe("ok");
   });
 
-  it("bulletizes selected text deterministically", () => {
+  it("keeps Como yo text close to the source in fixture mode", () => {
     const result = runFixtureSelectionTransform(
       createRequest({
-        presetId: "bulletize",
-        selectedText: "First point. Second point; still second. Third point.",
+        presetId: "como-yo-es",
+        selectedText: "che, revisá este PR",
       }),
     );
 
-    expect(result.output).toBe("- First point\n- Second point; still second\n- Third point");
+    expect(result.output).toBe("che, revisá este PR");
+  });
+
+  it("keeps Like me English text close to the source in fixture mode", () => {
+    const result = runFixtureSelectionTransform(
+      createRequest({
+        presetId: "like-me-en",
+        selectedText: "Ok, lets check this PR",
+      }),
+    );
+
+    expect(result.output).toBe("Ok, lets check this PR");
   });
 
   it("returns actionable recovery for unsupported presets", () => {
@@ -67,7 +79,7 @@ describe("fixture selection transforms", () => {
 
   it("skips transform when no selected text is available", () => {
     const result = runFixtureSelectionTransform(
-      createRequest({ presetId: "rewrite", selectedText: " " }),
+      createRequest({ presetId: "corregir-texto", selectedText: " " }),
     );
 
     expect(result).toMatchObject({
@@ -82,7 +94,7 @@ describe("fixture selection transforms", () => {
 
   it("rejects provider-enabled fixture requests", () => {
     const result = runFixtureSelectionTransform(
-      createRequest({ presetId: "rewrite", allowProviderCall: true }),
+      createRequest({ presetId: "corregir-texto", allowProviderCall: true }),
     );
 
     expect(result.status).toBe("failed");
@@ -106,7 +118,7 @@ function createRequest(
       source: "fixture",
     }),
     instructionTranscript: "Rewrite this so it is clearer.",
-    presetId: "rewrite",
+    presetId: "corregir-texto",
     mode: "fixture",
     allowProviderCall: false,
     ...overrides,

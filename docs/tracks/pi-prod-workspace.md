@@ -29,7 +29,7 @@ Poder trabajar en Fixvox Tauri/Cloud desde el VPS productivo por SSH/Pi sin depe
 - Repo remoto preparado: `/home/jpsal/dev/dictation-tauri`.
 - El repo se inicializo desde bundle local con todos los commits actuales; `origin` apunta a `https://github.com/jpsala/dictation-tauri.git`.
 - Estado remoto al crear: `main...origin/main [ahead 45, behind 2]` porque no se hizo push desde local.
-- Cloud Worker tests pasan en VPS: `cd ~/dev/dictation-tauri && npm run cloud:test` -> 65/65.
+- Cloud Worker tests pasan en VPS: `cd ~/dev/dictation-tauri && npm run cloud:test`; ultimo deploy/sync 2026-07-01 -> 77/77.
 - Helpers creados:
   - `dictation-tauri-pi` -> `cd /home/jpsal/dev/dictation-tauri && pi "$@"`.
   - `dictation-tauri-console` -> tmux session `dictation-tauri` en ese repo.
@@ -40,6 +40,7 @@ Poder trabajar en Fixvox Tauri/Cloud desde el VPS productivo por SSH/Pi sin depe
   - `ADMIN_API_KEY` provisionado fuera del repo en `~/.config/dictation-tauri/admin.env` con `chmod 600`.
   - `fixvox-admin devices 2` OK contra produccion, imprime IDs redacted por defecto.
   - Deploy aprobado 2026-06-30 desde VPS: Worker version `6c2501dd-e7af-4e8b-9697-9251aad5c8c3`; `fixvox-admin accounts 5` OK post-deploy.
+  - Deploy aprobado 2026-07-01 desde local: Worker version `30699929-1641-4bf7-8ced-71d9a8940f20`; se sincronizaron fuentes Cloud/Admin al VPS por scp/tar, se reinicio `fixvox-admin-web.service`, `fixvox-admin accounts 5` OK y remote `npm run cloud:test` -> 77/77.
   - `dictation-tauri-pi --no-tools ... -p` respondio `PI_REMOTE_OK`, confirmando modelo Pi remoto usable.
 
 ## Comandos De Entrada
@@ -98,13 +99,13 @@ ssh vps 'fixvox-admin assign-device-policy <deviceId> <policyId> "<Label>" --yes
 - El repo remoto tiene commits locales que aun no estan en GitHub; hasta que haya push aprobado, GitHub no es la fuente completa.
 - Admin web MVP activo: `https://fixvox.jpsala.dev/admin/pi`, service `fixvox-admin-web.service` en `127.0.0.1:8787`, login token fuera del repo en `~/.config/dictation-tauri/admin-web.env`.
 - Se creo experimentalmente `dictation-tauri-pi-console.service` (ttyd local-only en `127.0.0.1:7682`) durante el spike de consola web. El ingress publico `fixvox-pi-console.jpsala.dev` fue retirado de la config del tunnel porque JP prefiere admin web estilo Constelaciones; tratar ese servicio como fallback tecnico/cleanup pendiente, no producto.
-- Admin actual aun es incompleto para producto: hay listado/assignment account-level y device-level, pero faltan UI de grupos, crear grupos/templates desde admin y usage/quota dashboard.
+- Admin actual ya cubre Accounts/Devices/Profiles/Usage, Groups runtime, profile efectivo/source, budgets, engines, prompts y pricing básico; sigue pendiente validacion visual production con Google login y paridad fina con Constelaciones.
 - No copiar secretos ni `.env` al repo; el admin key remoto vive fuera del repo en `~/.config/dictation-tauri/admin.env`.
 
 ## Proximo Paso Recomendado
 
-1. Mejorar admin web `https://fixvox.jpsala.dev/admin/pi`: tool logs, confirmations, tabs accounts/devices/policies/usage.
-2. Decidir si se aprueba `git push` para que GitHub y VPS queden alineados.
+1. Hacer browser smoke visual production con Google login en `https://fixvox.jpsala.dev/admin/pi` si JP quiere revisar UI real.
+2. Decidir si se aprueba `git push` para que GitHub, local y VPS queden alineados.
 3. Si JP quiere agent remoto always-on separado para este repo, crear servicio systemd user separado y documentarlo en `C:/dev/infra`.
 
 ## Guardrails

@@ -1,6 +1,14 @@
+// @ts-expect-error Bun provides this module in `bun test`; root TS config does not ship Bun ambient types.
 import { describe, expect, test } from "bun:test";
 
-import { activateDevice, assignControlPlaneAdminDevicePolicy, listControlPlaneAdminDevices, registerDevice } from "./control-plane-store";
+import {
+  activateDevice,
+  assignControlPlaneAdminDevicePolicy,
+  assignControlPlaneAdminSelectionPresetDefaults,
+  getControlPlaneAdminVariantConfig,
+  listControlPlaneAdminDevices,
+  registerDevice,
+} from "./control-plane-store";
 import { putRuntimePolicy } from "./runtime-policy-store";
 
 function createKvStore() {
@@ -46,6 +54,94 @@ describe("control-plane device activation", () => {
     expect(response.limits?.managedUsage.policy.policyId).toBe("alpha-basic");
     expect(response.limits?.managedUsage.policy.matchedCohort).toBe("alpha-basic");
   });
+
+  test("exposes Fixvox preset prompt defaults for Settings sync", async () => {
+    const kv = createKvStore();
+
+    const response = await registerDevice(kv.store, {
+      installId: "install-presets",
+      version: "0.1.0",
+      platform: "win32",
+    });
+    const userSettingsDefaults = response.defaults?.userSettingsDefaults as Record<string, unknown> | undefined;
+    const selectionPresets = userSettingsDefaults?.selectionPresets as Record<string, unknown> | undefined;
+    const items = selectionPresets?.items as Array<Record<string, unknown>> | undefined;
+    const promptConfig = await getControlPlaneAdminVariantConfig(kv.store);
+
+    expect(selectionPresets).toMatchObject({ source: "fixvox-cloud-admin", schemaVersion: 1 });
+    expect(items?.map((item) => item.id)).toEqual(["como-yo-es", "corregir-texto", "fix-writing", "like-me-en"]);
+    expect(items?.map((item) => item.promptId)).toEqual([
+      "preset.como-yo-es",
+      "preset.corregir-texto",
+      "preset.fix-writing",
+      "preset.like-me-en",
+    ]);
+    expect(items?.find((item) => item.id === "como-yo-es")).toMatchObject({
+      label: "Como yo (español)",
+      pickerKey: "Y",
+      hotkey: "Alt+T, Y",
+      provider: "openrouter",
+      enabled: true,
+      confirm: false,
+      promptContent: expect.stringContaining("voseo argentino"),
+    });
+    expect(promptConfig.promptOptions.map((prompt) => prompt.id)).toEqual(expect.arrayContaining([
+      "preset.como-yo-es",
+      "preset.corregir-texto",
+      "preset.fix-writing",
+      "preset.like-me-en",
+    ]));
+    expect(promptConfig.promptOptions.find((prompt) => prompt.id === "preset.fix-writing")).toMatchObject({
+      kind: "selectionTransform",
+      source: "built-in",
+      content: expect.stringContaining("Return only the corrected text"),
+    });
+});
+
+test("updates Cloud selection preset defaults and syncs preset prompts", async () => {
+    const kv = createKvStore();
+
+    const result = await assignControlPlaneAdminSelectionPresetDefaults(kv.store, {
+      source: "fixvox-cloud-admin",
+      items: [
+            {
+                id: "corregir-texto",
+                label: "Corregir texto",
+                promptId: "preset.corregir-texto",
+                hotkey: "Alt+T, C",
+                pickerKey: "C",
+                provider: "openrouter",
+                model: null,
+                enabled: true,
+                confirm: false,
+                promptContent: "Corregí y devolvé solo el texto final actualizado.",
+            },
+      ],
+    });
+    const registered = await registerDevice(kv.store, {
+      installId: "install-presets-updated",
+      version: "0.1.0",
+      platform: "win32",
+    });
+    const userSettingsDefaults = registered.defaults?.userSettingsDefaults as Record<string, unknown> | undefined;
+    const selectionPresets = userSettingsDefaults?.selectionPresets as Record<string, unknown> | undefined;
+    const items = selectionPresets?.items as Array<Record<string, unknown>> | undefined;
+    const promptConfig = await getControlPlaneAdminVariantConfig(kv.store);
+
+    expect(result.ok).toBe(true);
+    expect(items).toHaveLength(1);
+    expect(items?.[0]).toMatchObject({
+      id: "corregir-texto",
+      promptId: "preset.corregir-texto",
+      pickerKey: "C",
+      promptContent: "Corregí y devolvé solo el texto final actualizado.",
+    });
+    expect(promptConfig.promptOptions.find((prompt) => prompt.id === "preset.corregir-texto")).toMatchObject({
+      source: "custom",
+      kind: "selectionTransform",
+      content: "Corregí y devolvé solo el texto final actualizado.",
+    });
+});
 
   test("migrates an existing null-policy device to alpha-basic", async () => {
     const kv = createKvStore();

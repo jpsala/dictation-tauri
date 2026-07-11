@@ -2,13 +2,14 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   hostSelectionCaptureCommand,
+  hostSelectionCaptureForTargetCommand,
   hostSelectionCaptureRoute,
   routeSelectionCaptureOutcome,
   selectionCaptureStatuses,
   type SelectionCaptureOutcome,
 } from "../../src/selection-transform";
 
-const forbiddenHostSelectionSideEffectMarkers = [
+const forbiddenRendererSelectionSideEffectMarkers = [
   "navigator.clipboard",
   "document.execCommand",
   "sendKeys",
@@ -17,23 +18,20 @@ const forbiddenHostSelectionSideEffectMarkers = [
   "tauri_plugin_clipboard_manager",
   "enigo",
   "keybd_event",
-  "SendInput",
-  "GetClipboardData",
-  "SetClipboardData",
-  "OpenClipboard",
 ] as const;
 
 describe("host selection capture boundary", () => {
-  it("declares the selected route as host-owned, UI Automation first, and non-mutating", () => {
+  it("declares the selected route as host-owned, UI Automation first, with clipboard fallback", () => {
     expect(hostSelectionCaptureCommand).toBe("capture_selection_context");
+    expect(hostSelectionCaptureForTargetCommand).toBe("capture_selection_context_for_target");
     expect(hostSelectionCaptureRoute).toEqual({
       owner: "tauri_host",
-      primaryStrategy: "windows_ui_automation",
-      mutatesClipboard: false,
-      sendsKeyboardShortcut: false,
+      primaryStrategy: "windows_ui_automation_then_clipboard_roundtrip",
+      mutatesClipboard: true,
+      sendsKeyboardShortcut: true,
       touchesFocus: false,
       persistsSelection: false,
-      allowsClipboardRoundtrip: false,
+      allowsClipboardRoundtrip: true,
     });
   });
 
@@ -92,23 +90,31 @@ describe("host selection capture boundary", () => {
     const appSource = readFileSync("src/App.tsx", "utf8");
 
     expect(hostSource).toContain("pub fn capture_selection_context()");
+    expect(hostSource).toContain("pub fn capture_selection_context_for_target");
     expect(libSource).toContain("selection_capture::capture_selection_context");
+    expect(libSource).toContain("selection_capture::capture_selection_context_for_target");
     expect(appSource).not.toContain("capture_selection_context");
   });
 
-  it("keeps TS and Rust boundary files free of clipboard, keyboard, and paste side effects", () => {
+  it("keeps renderer selection boundary free of clipboard, keyboard, and paste side effects", () => {
     const sources = [
       "src/selection-transform/host-capture-boundary.ts",
-      "src-tauri/src/selection_capture.rs",
       "src-tauri/Cargo.toml",
     ];
 
     for (const path of sources) {
       const source = readFileSync(path, "utf8");
-      for (const marker of forbiddenHostSelectionSideEffectMarkers) {
+      for (const marker of forbiddenRendererSelectionSideEffectMarkers) {
         expect(source, `${path} must not contain ${marker}`).not.toContain(marker);
       }
     }
+
+    const hostSource = readFileSync("src-tauri/src/selection_capture.rs", "utf8");
+    expect(hostSource).toContain("GetClipboardData");
+    expect(hostSource).toContain("SetClipboardData");
+    expect(hostSource).toContain("SendInput");
+    expect(hostSource).not.toContain("paste_observed");
+    expect(hostSource).not.toContain("paste_sent");
   });
 
   it("redacts foreground target labels before returning host selection metadata", () => {

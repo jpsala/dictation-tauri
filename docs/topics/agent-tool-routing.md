@@ -60,6 +60,22 @@ es cambio chico; validar con <check>`.
 
 La version verificable vive en `docs/reference/tool-routing.yaml`.
 
+## Routing GPT-5.6
+
+Para elegir modelo y nivel de razonamiento dentro del motor ya seleccionado:
+
+| Trabajo | Ruta preferida |
+| --- | --- |
+| Pi normal y planificacion compacta | Sol medium |
+| Planificacion sustantiva, arquitectura, advisor y conformance | Sol high |
+| Trabajo mecanico barato | Luna medium |
+| Implementacion background acotada | Luna xhigh; reintentar con Luna max |
+| Implementacion interactiva sensible a latencia | Terra high |
+| Trabajo de alta garantia | Terra max, validado por Sol xhigh |
+
+Tests, conformance y riesgo prevalecen sobre las heuristicas de costo. Los
+cambios de settings requieren reload o una sesion nueva cuando aplique.
+
 ## Nesting Permitido
 
 - `long-task -> checks/git` para fleet updates AOS seriales; `/aos-fleet-update` arma el TODO y mantiene commits por repo aislados.

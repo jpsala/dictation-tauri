@@ -60,4 +60,23 @@ describe("App global hotkey dictation-key seam", () => {
     expect(listenerBlock).not.toContain("canStart");
     expect(listenerBlock).not.toContain("canStop");
   });
+
+  it("prepares equivalent start context for button and hotkey starts", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+    const helperStart = source.indexOf("async function prepareDictationStartContext");
+    const helperEnd = source.indexOf("async function rememberSelectionTransformContext", helperStart);
+    const helperBlock = source.slice(helperStart, helperEnd);
+    const startCaptureStart = source.indexOf("async function startCapture");
+    const startCaptureEnd = source.indexOf("async function stopCapture", startCaptureStart);
+    const startCaptureBlock = source.slice(startCaptureStart, startCaptureEnd);
+    const listenerStart = source.indexOf("const handleGlobalHotkey");
+    const listenerEnd = source.indexOf("void listenForTauriGlobalHotkey", listenerStart);
+    const listenerBlock = source.slice(listenerStart, listenerEnd);
+
+    expect(helperBlock).toContain("selectionContextRef.current = undefined");
+    expect(helperBlock).toContain("savedDeliveryTargetRef.current = options.targetSnapshot?.inputLike");
+    expect(startCaptureBlock).toContain("await prepareDictationStartContext();");
+    expect(listenerBlock).toContain("await prepareDictationStartContext({ targetSnapshot: event.targetSnapshot });");
+    expect(listenerBlock).not.toContain("savedDeliveryTargetRef.current = event.targetSnapshot");
+  });
 });

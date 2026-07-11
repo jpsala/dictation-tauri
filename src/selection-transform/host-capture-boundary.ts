@@ -6,15 +6,16 @@ import type {
 } from "./types";
 
 export const hostSelectionCaptureCommand = "capture_selection_context";
+export const hostSelectionCaptureForTargetCommand = "capture_selection_context_for_target";
 
 export const hostSelectionCaptureRoute: HostSelectionCaptureRoute = {
   owner: "tauri_host",
-  primaryStrategy: "windows_ui_automation",
-  mutatesClipboard: false,
-  sendsKeyboardShortcut: false,
+  primaryStrategy: "windows_ui_automation_then_clipboard_roundtrip",
+  mutatesClipboard: true,
+  sendsKeyboardShortcut: true,
   touchesFocus: false,
   persistsSelection: false,
-  allowsClipboardRoundtrip: false,
+  allowsClipboardRoundtrip: true,
 };
 
 export function routeSelectionCaptureOutcome(

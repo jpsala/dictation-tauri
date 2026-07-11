@@ -1,3 +1,5 @@
+import type { AssistantSurface } from "../pipeline/types";
+import type { SelectionTransformPresetId } from "../selection-transform";
 import type {
   DockActivePreset,
   DockRecoveryState,
@@ -7,7 +9,7 @@ import type {
 export const dockCompanionStateEvent = "dock-companion://state";
 export const dockCompanionCommandEvent = "dock-companion://command";
 
-export type DockCompanionPresetId = "rewrite" | "shorten" | "bulletize";
+export type DockCompanionPresetId = SelectionTransformPresetId;
 
 export type DockCompanionCommandPayload =
   | {
@@ -16,7 +18,7 @@ export type DockCompanionCommandPayload =
     }
   | {
       source: "dock_companion";
-      command: "dismiss_recovery" | "dismiss_result_history" | "dismiss_settings";
+      command: "dismiss_recovery" | "dismiss_result_history" | "dismiss_settings" | "dismiss_assistant";
     }
   | {
       source: "dock_companion";
@@ -31,11 +33,16 @@ export type DockCompanionCommandPayload =
   | {
       source: "dock_companion";
       command: "clear_preset";
+    }
+  | {
+      source: "dock_companion";
+      command: "send_assistant_message";
+      message: string;
     };
 
 export type DockCompanionHistoryEntry = {
   id: string;
-  source: "dictation" | "selection_transform";
+  source: "dictation" | "selection_transform" | "assistant";
   text?: string;
   textLength: number;
   deliveryEvidence?: {
@@ -49,6 +56,13 @@ export type DockCompanionHistoryItem = {
   label: string;
   textLength: number;
   deliveryStatus: string;
+  textPreview: string;
+  hoverPreview: string;
+};
+
+export type DockCompanionAssistantMessage = {
+  id: string;
+  textLength: number;
   textPreview: string;
   hoverPreview: string;
 };
@@ -71,6 +85,13 @@ export type DockCompanionSnapshot = {
     open: boolean;
     activePreset?: DockActivePreset;
   };
+  assistant: {
+    open: boolean;
+    runId?: string;
+    message?: string;
+    surface?: AssistantSurface;
+    messages: DockCompanionAssistantMessage[];
+  };
 };
 
 export function createDockCompanionSnapshot(input: {
@@ -79,6 +100,12 @@ export function createDockCompanionSnapshot(input: {
   resultHistoryEntries: readonly DockCompanionHistoryEntry[];
   settingsPanelOpen: boolean;
   activePreset?: DockActivePreset;
+  assistant?: {
+    open: boolean;
+    runId?: string;
+    message?: string;
+    surface?: AssistantSurface;
+  };
 }): DockCompanionSnapshot {
   const historyItems = input.resultHistoryEntries
     .slice(-20)
@@ -95,13 +122,15 @@ export function createDockCompanionSnapshot(input: {
         hoverPreview: truncateHistoryPreview(normalizedText, 180),
       };
     });
+  const assistantMessages = createAssistantMessages(input.resultHistoryEntries, input.assistant);
 
   return {
     schemaVersion: 1,
     visible: Boolean(
       input.voiceDockState.recovery ||
         input.resultHistoryOpen ||
-        input.settingsPanelOpen,
+        input.settingsPanelOpen ||
+        input.assistant?.open,
     ),
     status: {
       phase: input.voiceDockState.phase,
@@ -118,6 +147,45 @@ export function createDockCompanionSnapshot(input: {
       open: input.settingsPanelOpen,
       activePreset: input.activePreset,
     },
+    assistant: {
+      open: input.assistant?.open ?? false,
+      runId: input.assistant?.runId,
+      message: input.assistant?.message,
+      surface: input.assistant?.surface,
+      messages: assistantMessages,
+    },
+  };
+}
+
+function createAssistantMessages(
+  entries: readonly DockCompanionHistoryEntry[],
+  current: { runId?: string; message?: string } | undefined,
+): DockCompanionAssistantMessage[] {
+  const messages = entries
+    .filter((entry) => entry.source === "assistant" && entry.text)
+    .slice(-10)
+    .reverse()
+    .map((entry) => createAssistantMessage(entry.id, entry.text ?? "", entry.textLength));
+
+  const currentMessage = current?.message?.trim();
+  if (current?.runId && currentMessage && !messages.some((message) => message.id.includes(current.runId ?? ""))) {
+    messages.unshift(createAssistantMessage(`${current.runId}:assistant-current`, currentMessage, currentMessage.length));
+  }
+
+  return messages;
+}
+
+function createAssistantMessage(
+  id: string,
+  text: string,
+  textLength: number,
+): DockCompanionAssistantMessage {
+  const normalizedText = normalizeHistoryPreview(text);
+  return {
+    id,
+    textLength,
+    textPreview: truncateHistoryPreview(normalizedText, 72),
+    hoverPreview: truncateHistoryPreview(normalizedText, 220),
   };
 }
 
@@ -163,6 +231,10 @@ export function createEmptyDockCompanionSnapshot(): DockCompanionSnapshot {
     },
     settings: {
       open: false,
+    },
+    assistant: {
+      open: false,
+      messages: [],
     },
   };
 }

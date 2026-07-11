@@ -1,7 +1,7 @@
 ---
 status: active
 started: 2026-06-27
-updated: 2026-06-30
+updated: 2026-07-11
 priority: high
 owner: JP
 related:
@@ -31,7 +31,7 @@ Decision de producto 2026-06-27: Dictation Tauri es el nuevo cliente desktop de 
 
 - Local/dev ya funciona con Tauri/Rust, dock, tray/hotkeys, Settings y managed transcription parcial.
 - `cloud/fixvox-proxy/` ahora vive en este repo como source operativo del Worker productivo; tests provider-free pasan desde este repo. Cutover deploy desde este repo ya se ejecuto con aprobacion. Versiones: `f23ad375-5056-483d-8f0a-417a5450bd76` para cutover inicial; `8218d344-adfc-467e-bd12-b4ad271e1826` para auth capabilities explícitas en refresh signed-in. T021 y T022 rerun OK.
-- Installer Windows local inicial ya genera NSIS unsigned como `Fixvox Tauri_0.1.0_x64-setup.exe` bajo `src-tauri/target/release/bundle/nsis/` con `npm run release:windows`.
+- Installer Windows local genera NSIS unsigned como `Fixvox Tauri_0.1.0_x64-setup.exe` e incluye FFmpeg 7.1.1 Essentials GPLv3 como sidecar versionado, sin depender del `PATH` de la PC destino.
 - Ruta cloud actual en este repo usa `src-tauri/src/fixvox_cloud.rs` y `src-tauri/src/runtime_transcription.rs` para readiness, preflight y managed STT cuando existen `FIXVOX_INSTALL_ID` + `FIXVOX_DEVICE_ID`.
 - BYOK/direct Groq sigue siendo fallback/dev, no norte de producto.
 - Control-plane/policies canonicos para Tauri ahora viven en `cloud/fixvox-proxy/`; infra documenta release artifacts en `jpsala/fixvox-releases`.
@@ -47,6 +47,7 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 - Identidad instalable: `Fixvox Tauri` con app identifier separado `dev.jpsala.fixvox-tauri`.
 - Canal/asset inicial local: NSIS Windows x64 generado bajo `src-tauri/target/release/bundle/nsis/` por `npm run release:windows`.
 - Nombre esperado de artefacto local Tauri: `Fixvox Tauri_<version>_x64-setup.exe`; si se publica mas adelante, renombrar/subir como canal separado, por ejemplo `fixvox-tauri-win-x64` o `Fixvox-Tauri-Setup.exe`, sin pisar artifacts legacy/Electrobun.
+- Sidecar Windows x64: `src-tauri/binaries/ffmpeg-x86_64-pc-windows-{gnu,msvc}.exe`; ambos aliases contienen el mismo binario y Tauri instala `ffmpeg.exe` junto a la app. Licencia, procedencia y hashes viven en `src-tauri/third-party/ffmpeg/`.
 - Guardrail: este batch solo genera artefactos locales unsigned; publicar/subir release, tocar secrets o usar invite codes reales requiere aprobacion explicita.
 
 ## Incidencias / Gotchas Activos
@@ -147,7 +148,7 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 
 ### T006 — Managed transcription sin BYOK en PC nueva
 
-- Estado: implementation-done / smoke-real-pending
+- Estado: implementation-done / packaged-local-smoke-done / other-PC-smoke-pending
 - Tipo: smoke/implementation
 - Objetivo: PC instalada + activada dicta usando Fixvox Cloud sin `GROQ_API_KEY` local.
 - Pasos:
@@ -249,3 +250,5 @@ Bootstrap inicial completado: installer local reproducible + release channel sep
 - Installer checklist canonico para Tauri: este track + `npm run release:windows`; referencias Electrobun viejas son legacy/historia, no fuente operativa.
 - Runtime cloud actual en este repo: `src-tauri/src/fixvox_cloud.rs`, `src-tauri/src/runtime_transcription.rs`, `src/host-runtime/readiness.ts`.
 - Cloud Worker consolidado en este repo desde 2026-06-30: `cloud/fixvox-proxy/` contiene el source/config/tests operativos, incluyendo el endpoint `POST /desktop/login/link-device`. `npm run cloud:test` pasa (65/65). Cutover deploy desde este repo paso; version vigente tras T022 `8218d344-adfc-467e-bd12-b4ad271e1826`; futuros deploys siguen gated por aprobacion explicita.
+- 2026-07-09 release local: `src-tauri/target/release/bundle/nsis/Fixvox Tauri_0.1.0_x64-setup.exe` regenerado con SHA256 `0b89ad995ecc238bc583b16018b325a64f1f86617145b6a4a31c215283a025ff`; pasaron 43 archivos/218 tests y completaron frontend, `cargo check` y bundle NSIS. Instalacion silenciosa exit `0`, registro HKCU y ejecutable `C:/Users/jpsal/AppData/Local/Fixvox Tauri/dictation-tauri.exe` version `0.1.0`; no hubo publish/deploy. Gotchas: un `InstallLocation` viejo del smoke aislado hizo que el primer `/S` reutilizara `artifacts/...`, corregido con `/S /D=%LOCALAPPDATA%\Fixvox Tauri`; `cargo fmt --check` detecto drift en `desktop_delivery.rs`, `native_capture.rs` y `runtime_transcription.rs`, pero `scripts/release-windows.ps1` no propago el fallo.
+- 2026-07-11 FFmpeg sidecar y compresión corta: se fijó Gyan FFmpeg 7.1.1 Essentials GPLv3 (SHA256 exe `b90225987bdd042cca09a1efb5e34e9848f2d1dbf5fbcd388753a44145522997`), se incluyeron licencia/notices y aliases Tauri GNU/MSVC, y el runtime ahora prefiere el sidecar con `CREATE_NO_WINDOW`, fallback a `PATH` y fallback seguro a WAV. NSIS local de ~29,8 MB fue construido, extraído, instalado y lanzado; contenía app, FFmpeg, WebView2Loader y notices. Smoke real instalado corto: `2,61 s`, WAV `501164 B` -> MP3 `16460 B`, compresión `107 ms`, upstream `331 ms`, `status=ok`, postprocess off y sin flash de consola. No hubo publish/deploy; falta validación física en otra PC.

@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type {
+  AudioSpeechClass,
+  AudioSpeechDecision,
+} from "../../src/capture/audio-analysis";
 import { createFakeCaptureArtifact } from "../../src/capture/fake-gateway";
 import type { CaptureResult } from "../../src/capture/types";
 import { createCapturedAudioTranscriptionAdapter } from "../../src/model-gateway/direct-stt";
@@ -82,8 +86,81 @@ describe("captured audio pipeline integration", () => {
       "state_changed",
       "run_completed",
     ]);
+    expect(summary.runtimeTelemetryStages).toMatchObject([
+      { stage: "capture", status: "ok" },
+      { stage: "audio-prep", status: "ok" },
+      { stage: "stt", status: "ok", provider: "captured-dry-run", model: "fake-artifact" },
+      { stage: "postprocess", status: "skipped" },
+      { stage: "delivery", status: "ok" },
+    ]);
     expect(JSON.stringify(summary)).not.toContain("bytesBase64");
     expect(JSON.stringify(summary)).not.toContain("providerPayload");
+  });
+
+  it("forwards a local no-speech decision to host transcription", async () => {
+    const capture = createCapturedAudioResult(makeSpeechDecision("no-speech"));
+    const request = createCapturedAudioPipelineRequest(capture);
+    const events: PipelineEvent[] = [];
+    let transcribeCalls = 0;
+    const service = new PipelineService({
+      createRunId: () => "captured-run-no-speech",
+      onEvent: (event) => events.push(event),
+      transcriptionAdapter: {
+        async transcribe() {
+          transcribeCalls += 1;
+          return { text: "host accepted audio", latencyMs: 1 };
+        },
+      },
+    });
+
+    const summary = await service.run(request);
+
+    expect(transcribeCalls).toBe(1);
+    expect(summary).toMatchObject({
+      inputKind: "microphone",
+      terminalState: "done",
+      states: ["idle", "listening", "transcribing", "delivering", "done"],
+      transcript: "host accepted audio",
+      capture: {
+        captureId: "capture-001",
+        localSpeechDecision: { class: "no-speech", redacted: true },
+      },
+    });
+    expect(events.some((event) => event.type === "transcription_completed")).toBe(
+      true,
+    );
+    expect(summary.runtimeTelemetryStages).toMatchObject([
+      { stage: "capture", status: "ok" },
+      { stage: "audio-prep", status: "ok" },
+      { stage: "stt", status: "ok" },
+      { stage: "postprocess", status: "skipped" },
+      { stage: "delivery", status: "ok" },
+    ]);
+    expect(JSON.stringify(summary)).not.toContain("samples");
+    expect(JSON.stringify(summary)).not.toContain("providerPayload");
+  });
+
+  it("forwards a local too-short decision to host transcription", async () => {
+    const capture = createCapturedAudioResult(makeSpeechDecision("too-short"));
+    const request = createCapturedAudioPipelineRequest(capture);
+    let transcribeCalls = 0;
+    const service = new PipelineService({
+      createRunId: () => "captured-run-too-short",
+      transcriptionAdapter: {
+        async transcribe() {
+          transcribeCalls += 1;
+          return { text: "host accepted short audio", latencyMs: 1 };
+        },
+      },
+    });
+
+    const summary = await service.run(request);
+
+    expect(transcribeCalls).toBe(1);
+    expect(summary).toMatchObject({
+      terminalState: "done",
+      transcript: "host accepted short audio",
+    });
   });
 
   it("surfaces missing-provider setup as a redacted captured-audio failure", async () => {
@@ -168,7 +245,9 @@ describe("captured audio pipeline integration", () => {
   });
 });
 
-function createCapturedAudioResult(): Extract<CaptureResult, { ok: true }> {
+function createCapturedAudioResult(
+  localSpeechDecision?: AudioSpeechDecision,
+): Extract<CaptureResult, { ok: true }> {
   const artifact = createFakeCaptureArtifact();
 
   return {
@@ -182,9 +261,32 @@ function createCapturedAudioResult(): Extract<CaptureResult, { ok: true }> {
       mimeType: artifact.mimeType,
       sizeBytes: artifact.sizeBytes,
       artifact,
+      localSpeechDecision,
       deviceKind: "audioinput",
       deviceLabel: "redacted-test-device",
     },
     artifact,
+  };
+}
+
+function makeSpeechDecision(
+  classification: AudioSpeechClass,
+): AudioSpeechDecision {
+  return {
+    class: classification,
+    reason:
+      classification === "too-short"
+        ? "audio_too_short_for_speech_detection"
+        : "local_voice_activity_no_speech",
+    voiceActivity: {
+      durationMs: classification === "too-short" ? 80 : 900,
+      frameCount: classification === "too-short" ? 3 : 30,
+      voicedFrameCount: 0,
+      voicedMs: 0,
+      rmsPpm: 0,
+      peakPpm: 0,
+      hasSpeech: false,
+    },
+    redacted: true,
   };
 }

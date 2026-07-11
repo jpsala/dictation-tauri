@@ -4,6 +4,9 @@ import {
   buildRegisterDefaultsFromRuntimePolicy,
   buildTransportPolicyFromRuntimePolicy,
   getRuntimePolicy,
+  putRuntimePolicy,
+  type RegisterSelectionPresetDefault,
+  type RegisterUserSettingsDefaults,
 } from "./runtime-policy-store";
 import { getRecipePolicy } from "./recipe-policy-store";
 
@@ -101,10 +104,28 @@ export type ExecutionPreflightPayload = {
   deviceId?: string | null;
   installId?: string | null;
   usageKind?: string | null;
+  engineKind?: string | null;
   estimate?: number | null;
 };
 
 export type ExecutionMode = "managed" | "byok";
+
+export type ExecutionEngineResolution = {
+  profile: {
+    policyId: string | null;
+    policyLabel: string | null;
+    policySource: "base" | "group" | "account" | "device";
+    accountHandle: string | null;
+    accountBudget: ControlPlaneAdminPolicyBudget | null;
+    groups: string[];
+    matchedGroup: string | null;
+  };
+  engines: {
+    selectedKind: ControlPlaneAdminEngineKind;
+    selected: ControlPlaneAdminEngineOption | null;
+    byKind: Record<ControlPlaneAdminEngineKind, ControlPlaneAdminEngineOption | null>;
+  };
+};
 
 export type ExecutionPreflightResponse = {
   ok: true;
@@ -112,6 +133,8 @@ export type ExecutionPreflightResponse = {
   reason: string | null;
   retryAfterSeconds?: number | null;
   limits?: DeviceLimits | null;
+  profile?: ExecutionEngineResolution["profile"] | null;
+  engines?: ExecutionEngineResolution["engines"] | null;
 };
 
 export type ManagedUsageWindowName = "rolling5h" | "weekly";
@@ -216,11 +239,65 @@ export type ControlPlaneAdminAccountDeviceRow = {
 export type ControlPlaneAdminAccountRow = {
   accountHandle: string;
   accountIdRedacted: string;
+  userRedacted: string;
+  userEmail: string | null;
+  provider: string | null;
+  variants: string[];
+  segments: string[];
+  groups: string[];
   policyId: string | null;
   policyLabel: string | null;
+  effectivePolicyId: string | null;
+  effectivePolicyLabel: string | null;
+  effectivePolicySource: ExecutionEngineResolution["profile"]["policySource"];
+  matchedGroup: string | null;
+  accountBudget: ControlPlaneAdminPolicyBudget | null;
   deviceCount: number;
   devices: ControlPlaneAdminAccountDeviceRow[];
   lastSeenAt: string;
+};
+
+export type ControlPlaneAdminAccountVariantOption = {
+  id: string;
+  label: string;
+  description: string;
+  preset: string;
+  effects: string[];
+  source: "built-in" | "custom";
+};
+
+export type ControlPlaneAdminGroupOption = {
+  id: string;
+  label: string;
+  description: string;
+  policyId?: string | null;
+  policyLabel?: string | null;
+  source: "built-in" | "custom";
+};
+
+export type ControlPlaneAdminEngineKind = "transcription" | "postprocess" | "selectionTransform";
+
+export type ControlPlaneAdminEngineOption = {
+  id: string;
+  label: string;
+  kind: ControlPlaneAdminEngineKind;
+  tier: string;
+  provider: string;
+  model: string;
+  notes: string;
+  promptKey: string;
+  promptSummary: string;
+  source: "built-in" | "custom";
+};
+
+export type ControlPlaneAdminPromptOption = {
+  id: string;
+  label: string;
+  kind: ControlPlaneAdminEngineKind | "assistant";
+  version: string;
+  summary: string;
+  content: string;
+  source: "built-in" | "custom";
 };
 
 export type ControlPlaneAdminAccountList = {
@@ -228,6 +305,11 @@ export type ControlPlaneAdminAccountList = {
   source: "default" | "stored";
   updatedAt: string;
   policyOptions: ControlPlaneAdminPolicyOption[];
+  availableSegments: string[];
+  variantOptions: ControlPlaneAdminAccountVariantOption[];
+  groupOptions: ControlPlaneAdminGroupOption[];
+  policyVariants: Record<string, string[]>;
+  policyEngines: Record<string, ControlPlaneAdminPolicyEngineSelection>;
   accounts: ControlPlaneAdminAccountRow[];
   nextCursor: string | null;
 };
@@ -244,8 +326,159 @@ export type ControlPlaneAdminAccountPolicyResponse = {
   source: "default" | "stored";
   updatedAt: string;
   policyOptions: ControlPlaneAdminPolicyOption[];
+  availableSegments: string[];
+  variantOptions: ControlPlaneAdminAccountVariantOption[];
   account: ControlPlaneAdminAccountRow;
   devicesUpdated: number;
+};
+
+export type ControlPlaneAdminAccountSegmentsPayload = {
+  accountHandle?: string | null;
+  accountId?: string | null;
+  variants?: string[] | null;
+  segments?: string[] | null;
+};
+
+export type ControlPlaneAdminAccountBudgetPayload = {
+  accountHandle?: string | null;
+  accountId?: string | null;
+  budget?: Partial<ControlPlaneAdminPolicyBudget> | null;
+};
+
+export type ControlPlaneAdminAccountGroupsPayload = {
+  accountHandle?: string | null;
+  accountId?: string | null;
+  groups?: string[] | null;
+};
+
+export type ControlPlaneAdminAccountSegmentsResponse = {
+  ok: true;
+  source: "default" | "stored";
+  updatedAt: string;
+  policyOptions: ControlPlaneAdminPolicyOption[];
+  availableSegments: string[];
+  variantOptions: ControlPlaneAdminAccountVariantOption[];
+  account: ControlPlaneAdminAccountRow;
+};
+
+export type ControlPlaneAdminAccountBudgetResponse = {
+  ok: true;
+  source: "default" | "stored";
+  updatedAt: string;
+  policyOptions: ControlPlaneAdminPolicyOption[];
+  availableSegments: string[];
+  variantOptions: ControlPlaneAdminAccountVariantOption[];
+  account: ControlPlaneAdminAccountRow;
+};
+
+export type ControlPlaneAdminAccountGroupsResponse = {
+  ok: true;
+  source: "default" | "stored";
+  updatedAt: string;
+  policyOptions: ControlPlaneAdminPolicyOption[];
+  groupOptions: ControlPlaneAdminGroupOption[];
+  account: ControlPlaneAdminAccountRow;
+};
+
+export type ControlPlaneAdminGroupPayload = {
+  id?: string | null;
+  label?: string | null;
+  description?: string | null;
+  policyId?: string | null;
+  policyLabel?: string | null;
+};
+
+export type ControlPlaneAdminAccountVariantPayload = {
+  id?: string | null;
+  label?: string | null;
+  description?: string | null;
+  preset?: string | null;
+};
+
+export type ControlPlaneAdminAccountVariantDeletePayload = {
+  id?: string | null;
+};
+
+export type ControlPlaneAdminPolicyVariantsPayload = {
+  policyId?: string | null;
+  variants?: string[] | null;
+};
+
+export type ControlPlaneAdminPolicyEngineSelection = {
+  transcription?: string;
+  postprocess?: string;
+  selectionTransform?: string;
+};
+
+export type ControlPlaneAdminPolicyBudget = {
+  dailyUsd: number | null;
+  monthlyUsd: number | null;
+  mode: "block" | "warn";
+};
+
+export type ControlPlaneAdminEnginePayload = {
+  id?: string | null;
+  label?: string | null;
+  kind?: string | null;
+  tier?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  notes?: string | null;
+  promptKey?: string | null;
+  promptSummary?: string | null;
+};
+
+export type ControlPlaneAdminEngineDeletePayload = {
+  id?: string | null;
+};
+
+export type ControlPlaneAdminPromptPayload = {
+  id?: string | null;
+  label?: string | null;
+  kind?: string | null;
+  version?: string | null;
+  summary?: string | null;
+  content?: string | null;
+};
+
+export type ControlPlaneAdminPromptDeletePayload = {
+  id?: string | null;
+};
+
+export type ControlPlaneAdminSelectionPresetDefaultPayload = {
+  source?: string | null;
+  selectionPresets?: unknown;
+  items?: unknown;
+  syncPrompts?: boolean | null;
+};
+
+export type ControlPlaneAdminPolicyEnginesPayload = {
+  policyId?: string | null;
+  engines?: ControlPlaneAdminPolicyEngineSelection | null;
+};
+
+export type ControlPlaneAdminPolicyBudgetPayload = {
+  policyId?: string | null;
+  budget?: Partial<ControlPlaneAdminPolicyBudget> | null;
+};
+
+export type ControlPlaneAdminVariantConfig = {
+  variantOptions: ControlPlaneAdminAccountVariantOption[];
+  availableSegments: string[];
+  engineOptions: ControlPlaneAdminEngineOption[];
+  promptOptions: ControlPlaneAdminPromptOption[];
+  policyVariants: Record<string, string[]>;
+  policyEngines: Record<string, ControlPlaneAdminPolicyEngineSelection>;
+  policyBudgets: Record<string, ControlPlaneAdminPolicyBudget>;
+};
+
+export type ControlPlaneAdminAccountVariantResponse = {
+  ok: true;
+  source: "default" | "stored";
+  updatedAt: string;
+  variant: ControlPlaneAdminAccountVariantOption;
+  variantOptions: ControlPlaneAdminAccountVariantOption[];
+  availableSegments: string[];
 };
 
 export type FeedbackEvent = {
@@ -342,6 +575,98 @@ type AccountPolicyAssignment = {
   policyLabel: string;
   updatedAt: string;
 };
+
+type AccountSegmentsAssignment = {
+  accountHandle: string;
+  accountId: string;
+  segments: string[];
+  updatedAt: string;
+};
+
+type AccountBudgetAssignment = {
+  accountHandle: string;
+  accountId: string;
+  budget: ControlPlaneAdminPolicyBudget;
+  updatedAt: string;
+};
+
+type AccountGroupsAssignment = {
+  accountHandle: string;
+  accountId: string;
+  groups: string[];
+  updatedAt: string;
+};
+
+type AccountVariantsStore = {
+  variants: ControlPlaneAdminAccountVariantOption[];
+  deletedBuiltIns: string[];
+  engines: ControlPlaneAdminEngineOption[];
+  deletedBuiltInEngines: string[];
+  prompts: ControlPlaneAdminPromptOption[];
+  deletedBuiltInPrompts: string[];
+  groups: ControlPlaneAdminGroupOption[];
+  deletedBuiltInGroups: string[];
+  policyVariants: Record<string, string[]>;
+  policyEngines: Record<string, ControlPlaneAdminPolicyEngineSelection>;
+  policyBudgets: Record<string, ControlPlaneAdminPolicyBudget>;
+};
+
+const VARIANT_PRESET_EFFECTS: Record<string, string[]> = {
+  access: ["adminAccess: elevated", "safeMutations: allowedWithConfirmation"],
+  manualTesting: ["rollout: manual", "feedbackPriority: high"],
+  debug: ["showDebugTools: true", "verboseDiagnostics: true"],
+  voiceQuality: ["voiceMode: best", "postProcess: on"],
+  lowCost: ["modelTier: low-cost", "postProcess: minimal"],
+  newUi: ["uiVariant: next", "showAdvancedSettings: true"],
+  privateAlpha: ["alphaFeatures: private", "requiresManualReview: true"],
+  trial: ["quotaTier: trial", "advancedSettings: limited"],
+  custom: ["customOverride: define-before-production"],
+};
+
+const BUILT_IN_GROUPS: ControlPlaneAdminGroupOption[] = [
+  { id: "friends", label: "Friends", description: "Usuarios cercanos y amigos con feedback manual.", policyId: "pro", policyLabel: "Pro", source: "built-in" },
+  { id: "private-alpha", label: "Private alpha", description: "Usuarios en alpha privada con acceso controlado.", policyId: "alpha-full", policyLabel: "Alpha Full", source: "built-in" },
+  { id: "trial", label: "Trial", description: "Usuarios de prueba con límites bajos.", policyId: "alpha-basic", policyLabel: "Alpha Basic", source: "built-in" },
+  { id: "paid", label: "Paid", description: "Usuarios pagos o habilitados comercialmente.", policyId: "pro", policyLabel: "Pro", source: "built-in" },
+];
+
+const BUILT_IN_ACCOUNT_VARIANTS: ControlPlaneAdminAccountVariantOption[] = [
+  { id: "owner", label: "Owner", description: "acceso owner y cambios rápidos", preset: "access", effects: VARIANT_PRESET_EFFECTS.access, source: "built-in" },
+  { id: "friend", label: "Amigo", description: "usuario cercano para pruebas manuales", preset: "manualTesting", effects: VARIANT_PRESET_EFFECTS.manualTesting, source: "built-in" },
+  { id: "tester", label: "Tester", description: "recibe variantes en prueba", preset: "manualTesting", effects: VARIANT_PRESET_EFFECTS.manualTesting, source: "built-in" },
+  { id: "trial", label: "Trial", description: "usuario en prueba controlada", preset: "trial", effects: VARIANT_PRESET_EFFECTS.trial, source: "built-in" },
+  { id: "debug-tools", label: "Debug tools", description: "muestra herramientas/debug avanzado", preset: "debug", effects: VARIANT_PRESET_EFFECTS.debug, source: "built-in" },
+  { id: "best-voice", label: "Best voice", description: "prioriza calidad de voz y post-proceso", preset: "voiceQuality", effects: VARIANT_PRESET_EFFECTS.voiceQuality, source: "built-in" },
+  { id: "cheap-model", label: "Cheap model", description: "prioriza costo bajo", preset: "lowCost", effects: VARIANT_PRESET_EFFECTS.lowCost, source: "built-in" },
+  { id: "new-ui", label: "New UI", description: "habilita variantes nuevas de UI", preset: "newUi", effects: VARIANT_PRESET_EFFECTS.newUi, source: "built-in" },
+  { id: "private-alpha", label: "Private alpha", description: "features alpha privadas", preset: "privateAlpha", effects: VARIANT_PRESET_EFFECTS.privateAlpha, source: "built-in" },
+];
+
+const BUILT_IN_PROMPTS: ControlPlaneAdminPromptOption[] = [
+  { id: "none", label: "Sin prompt", kind: "assistant", version: "v1", summary: "No aplica prompt de sistema.", content: "", source: "built-in" },
+  { id: "transcriptBase", label: "Transcript base", kind: "transcription", version: "v1", summary: "Español rioplatense técnico; conserva comandos, URLs, modelos, archivos y puntuación hablada literal.", content: "Transcribe el audio con precisión. Mantén español rioplatense cuando corresponda, conserva términos técnicos, nombres de modelos, URLs, comandos, paths y puntuación hablada cuando sea claramente intencional.", source: "built-in" },
+  { id: "postProcessBase", label: "Post-process base", kind: "postprocess", version: "v1", summary: "Limpia dictado español/bilingüe con cambios mínimos; reconstruye tokens técnicos y listas cuando está claro.", content: "Limpia el dictado manteniendo el significado. Corrige errores evidentes de STT, reconstruye términos técnicos, puntuación y listas cuando sea claro. No agregues explicaciones ni cambies intención.", source: "built-in" },
+  { id: "selectionTransformBase", label: "Selection transform base", kind: "selectionTransform", version: "v1", summary: "Reescribe el texto seleccionado según la instrucción del usuario preservando intención y formato.", content: "Aplica la instrucción del usuario al texto seleccionado. Devuelve solo el texto final transformado. Preserva formato, intención y tono salvo que la instrucción pida lo contrario.", source: "built-in" },
+  { id: "translateBase", label: "Translate base", kind: "selectionTransform", version: "v1", summary: "Traduce de forma fiel y natural, preservando significado, tono e intención.", content: "Traduce el texto de forma fiel y natural. Conserva significado, tono, formato y términos técnicos. Devuelve solo la traducción.", source: "built-in" },
+  { id: "preset.como-yo-es", label: "Preset · Como yo (español)", kind: "selectionTransform", version: "v1", summary: "Starter Fixvox para reescribir como JP en español/voseo, preservando estructura y ritmo.", content: "Reescribí este texto como lo escribiría JP, un developer argentino. Hacé correcciones muy menores solamente. Preservá la estructura, las palabras y el ritmo. Usá voseo argentino, mezcla natural de español e inglés técnico y devolvé solo el texto final, sin explicaciones.", source: "built-in" },
+  { id: "preset.corregir-texto", label: "Preset · Corregir texto", kind: "selectionTransform", version: "v1", summary: "Starter Fixvox para corregir gramática, ortografía y claridad sin cambiar estilo.", content: "Corregí la gramática, ortografía y claridad. Mantené el significado y estilo. Devolvé solo el texto corregido, sin explicaciones.", source: "built-in" },
+  { id: "preset.fix-writing", label: "Preset · Fix Writing", kind: "selectionTransform", version: "v1", summary: "Starter Fixvox para corregir writing en inglés preservando tono e idioma.", content: "Fix grammar, spelling, and clarity in the following text. Keep the original tone and language. Return only the corrected text, no explanations.", source: "built-in" },
+  { id: "preset.like-me-en", label: "Preset · Like me (English)", kind: "selectionTransform", version: "v1", summary: "Starter Fixvox para reescribir/traducir al inglés estilo JP, no nativo, directo y conversacional.", content: "Rewrite this text as JP would write it in English. Always return English text. Preserve meaning, structure, wording choices and rhythm as much as possible. Make only minor fixes when clearly wrong. Return only the fixed text, no explanations.", source: "built-in" },
+  { id: "assistant.quickChat", label: "Assistant quick chat", kind: "assistant", version: "v1", summary: "Respuesta rápida de bajo costo para assistant/default targets.", content: "Respondé de forma breve, útil y directa.", source: "built-in" },
+];
+
+const BUILT_IN_POLICY_ENGINES: ControlPlaneAdminEngineOption[] = [
+  { id: "stt-off", label: "STT off", kind: "transcription", tier: "off", provider: "none", model: "off", notes: "No usa transcripción managed.", promptKey: "none", promptSummary: "Sin prompt.", source: "built-in" },
+  { id: "stt-groq-whisper-turbo", label: "Groq Whisper Turbo", kind: "transcription", tier: "balanced", provider: "groq", model: "whisper-large-v3-turbo", notes: "Default histórico de Fixvox: mejor balance calidad/precio/velocidad para dictado managed.", promptKey: "transcriptBase", promptSummary: "Español rioplatense técnico; conserva comandos, URLs, modelos, archivos y puntuación hablada literal.", source: "built-in" },
+  { id: "postprocess-off", label: "Postprocess off", kind: "postprocess", tier: "off", provider: "none", model: "off", notes: "Sin post-proceso managed.", promptKey: "none", promptSummary: "Sin prompt.", source: "built-in" },
+  { id: "postprocess-groq-gpt-oss-120b", label: "Groq GPT-OSS 120B post", kind: "postprocess", tier: "balanced", provider: "groq", model: "openai/gpt-oss-120b", notes: "Default histórico de post-proceso: buena calidad/precio/velocidad para cleanup bilingüe.", promptKey: "postProcessBase", promptSummary: "Limpia dictado español/bilingüe con cambios mínimos; reconstruye tokens técnicos y listas cuando está claro.", source: "built-in" },
+  { id: "transform-off", label: "Transform off", kind: "selectionTransform", tier: "off", provider: "none", model: "off", notes: "Sin transformación de selección managed.", promptKey: "none", promptSummary: "Sin prompt.", source: "built-in" },
+  { id: "transform-groq-llama-70b", label: "Groq Llama 70B transform", kind: "selectionTransform", tier: "balanced", provider: "groq", model: "llama-3.3-70b-versatile", notes: "Default histórico para traducción/transformación de selección.", promptKey: "selectionTransformBase", promptSummary: "Reescribe el texto seleccionado según la instrucción del usuario preservando intención y formato.", source: "built-in" },
+  { id: "translate-groq-llama-70b", label: "Groq Llama 70B translate", kind: "selectionTransform", tier: "balanced", provider: "groq", model: "llama-3.3-70b-versatile", notes: "Ruta histórica de traducción natural/fiel.", promptKey: "translateBase", promptSummary: "Traduce de forma fiel y natural, preservando significado, tono e intención.", source: "built-in" },
+  { id: "assistant-groq-8b-instant", label: "Groq 8B assistant", kind: "postprocess", tier: "cheap", provider: "groq", model: "llama-3.1-8b-instant", notes: "Ruta histórica barata/rápida para assistant/default targets; disponible para profiles económicos.", promptKey: "assistant.quickChat", promptSummary: "Prompt base vacío en política actual; útil para respuestas rápidas de bajo costo.", source: "built-in" },
+  { id: "postprocess-openrouter-premium", label: "OpenRouter post premium", kind: "postprocess", tier: "premium", provider: "openrouter", model: "anthropic/claude-sonnet-4", notes: "Opción premium editable para cuentas habilitadas; no era el default histórico.", promptKey: "postProcessBase", promptSummary: "Mismo prompt de cleanup; modelo premium para mayor calidad cuando justifique costo.", source: "built-in" },
+  { id: "transform-openrouter-premium", label: "OpenRouter transform premium", kind: "selectionTransform", tier: "premium", provider: "openrouter", model: "anthropic/claude-sonnet-4", notes: "Opción premium editable para transformación/traducción avanzada; no era el default histórico.", promptKey: "selectionTransformBase", promptSummary: "Mismo prompt de transformación; modelo premium para casos habilitados.", source: "built-in" },
+];
 
 const BUILT_IN_POLICY_ASSIGNMENTS: Record<string, PolicyProfileAssignment> = {
   "alpha-basic": {
@@ -652,6 +977,22 @@ function buildAccountPolicyKey(accountHandle: string): string {
   return `control:account:${accountHandle}:policy`;
 }
 
+function buildAccountSegmentsKey(accountHandle: string): string {
+  return `control:account:${accountHandle}:segments`;
+}
+
+function buildAccountBudgetKey(accountHandle: string): string {
+  return `control:account:${accountHandle}:budget`;
+}
+
+function buildAccountGroupsKey(accountHandle: string): string {
+  return `control:account:${accountHandle}:groups`;
+}
+
+function buildAccountVariantsKey(): string {
+  return "control:account:variants";
+}
+
 function redactLongIdentifier(value: string | null | undefined): string {
   const candidate = value?.trim() ?? "";
   if (!candidate || candidate.length <= 10) return "redacted";
@@ -660,6 +1001,20 @@ function redactLongIdentifier(value: string | null | undefined): string {
 
 function redactAccountId(_accountId: string): string {
   return "account redacted";
+}
+
+function redactAccountUser(accountId: string): { userRedacted: string; userEmail: string | null; provider: string | null } {
+  const [providerRaw = "", ...rest] = accountId.split(":");
+  const provider = providerRaw.trim().toLowerCase() || null;
+  const value = rest.join(":").trim();
+  if (provider === "google" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) {
+    const email = value.toLowerCase();
+    const [local, domain] = email.split("@");
+    const initial = local?.[0] ?? "u";
+    return { provider, userEmail: email, userRedacted: `${initial}…@${domain}` };
+  }
+  if (provider === "google") return { provider, userEmail: null, userRedacted: "google user redacted" };
+  return { provider, userEmail: null, userRedacted: "user redacted" };
 }
 
 function buildFeedbackKey(id: string): string {
@@ -918,14 +1273,6 @@ async function buildDeviceLimits(store: KvNamespaceLike, runtimePolicy: Record<s
   };
 }
 
-function getRetryAfterSeconds(limits: ManagedUsageLimits): number | null {
-  const blockedWindow = limits.blockedWindow;
-  if (!blockedWindow) return null;
-  const resetMs = Date.parse(limits.windows[blockedWindow].resetsAt);
-  if (!Number.isFinite(resetMs)) return null;
-  return Math.max(1, Math.ceil((resetMs - Date.now()) / 1000));
-}
-
 function getQuotaRetryAfterSeconds(limits: ManagedUsageLimits | ManagedQuotaLimits): number | null {
   const blockedWindow = limits.blockedWindow;
   if (!blockedWindow) return null;
@@ -1084,8 +1431,417 @@ async function readAccountPolicyAssignment(store: KvNamespaceLike, accountId: st
   return assignment;
 }
 
+async function readAccountSegmentsAssignment(store: KvNamespaceLike, accountId: string): Promise<AccountSegmentsAssignment | null> {
+  const accountHandle = await buildAccountHandle(accountId);
+  const assignment = parseJson<AccountSegmentsAssignment | null>(await store.get(buildAccountSegmentsKey(accountHandle)), null);
+  if (!assignment || assignment.accountId !== accountId || assignment.accountHandle !== accountHandle) return null;
+  return assignment;
+}
+
+async function readAccountBudgetAssignment(store: KvNamespaceLike, accountId: string): Promise<AccountBudgetAssignment | null> {
+  const accountHandle = await buildAccountHandle(accountId);
+  const assignment = parseJson<AccountBudgetAssignment | null>(await store.get(buildAccountBudgetKey(accountHandle)), null);
+  if (!assignment || assignment.accountId !== accountId || assignment.accountHandle !== accountHandle) return null;
+  return { ...assignment, budget: sanitizePolicyBudget(assignment.budget, null) };
+}
+
+async function readAccountGroupsAssignment(store: KvNamespaceLike, accountId: string): Promise<AccountGroupsAssignment | null> {
+  const accountHandle = await buildAccountHandle(accountId);
+  const assignment = parseJson<AccountGroupsAssignment | null>(await store.get(buildAccountGroupsKey(accountHandle)), null);
+  if (!assignment || assignment.accountId !== accountId || assignment.accountHandle !== accountHandle) return null;
+  return assignment;
+}
+
+function sanitizeVariantId(value: unknown): string | null {
+  const candidate = sanitizeString(value)?.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  return candidate && candidate.length >= 2 && candidate.length <= 48 ? candidate : null;
+}
+
+function sanitizeEngineId(value: unknown): string | null {
+  return sanitizeVariantId(value);
+}
+
+function sanitizeEngineKind(value: unknown): ControlPlaneAdminEngineKind | null {
+  return value === "transcription" || value === "postprocess" || value === "selectionTransform" ? value : null;
+}
+
+async function readAccountVariantsStore(store: KvNamespaceLike): Promise<AccountVariantsStore> {
+  const raw = parseJson<unknown>(await store.get(buildAccountVariantsKey()), null);
+  if (Array.isArray(raw)) return { variants: raw as ControlPlaneAdminAccountVariantOption[], deletedBuiltIns: [], engines: [], deletedBuiltInEngines: [], prompts: [], deletedBuiltInPrompts: [], groups: [], deletedBuiltInGroups: [], policyVariants: {}, policyEngines: {}, policyBudgets: {} };
+  if (raw && typeof raw === "object") {
+    const record = raw as Partial<AccountVariantsStore>;
+    const rawPolicyVariants = record.policyVariants && typeof record.policyVariants === "object" ? record.policyVariants : {};
+    const rawPolicyEngines = record.policyEngines && typeof record.policyEngines === "object" ? record.policyEngines : {};
+    const rawPolicyBudgets = record.policyBudgets && typeof record.policyBudgets === "object" ? record.policyBudgets : {};
+    return {
+      variants: Array.isArray(record.variants) ? record.variants : [],
+      deletedBuiltIns: sanitizeStringArray(record.deletedBuiltIns),
+      engines: Array.isArray(record.engines) ? record.engines : [],
+      deletedBuiltInEngines: sanitizeStringArray(record.deletedBuiltInEngines),
+      prompts: Array.isArray(record.prompts) ? record.prompts : [],
+      deletedBuiltInPrompts: sanitizeStringArray(record.deletedBuiltInPrompts),
+      groups: Array.isArray(record.groups) ? record.groups : [],
+      deletedBuiltInGroups: sanitizeStringArray(record.deletedBuiltInGroups),
+      policyVariants: Object.fromEntries(Object.entries(rawPolicyVariants).map(([policyId, variants]) => [policyId, sanitizeStringArray(variants)])),
+      policyEngines: sanitizePolicyEnginesMap(rawPolicyEngines as Record<string, unknown>),
+      policyBudgets: sanitizePolicyBudgetsMap(rawPolicyBudgets as Record<string, unknown>),
+    };
+  }
+  return { variants: [], deletedBuiltIns: [], engines: [], deletedBuiltInEngines: [], prompts: [], deletedBuiltInPrompts: [], groups: [], deletedBuiltInGroups: [], policyVariants: {}, policyEngines: {}, policyBudgets: {} };
+}
+
+async function writeAccountVariantsStore(store: KvNamespaceLike, value: AccountVariantsStore): Promise<void> {
+  await store.put(buildAccountVariantsKey(), JSON.stringify(value), { expirationTtl: ACCOUNT_POLICY_TTL_SECONDS });
+}
+
+function normalizeAccountVariantOption(option: Partial<ControlPlaneAdminAccountVariantOption>, source: "built-in" | "custom" = "custom"): ControlPlaneAdminAccountVariantOption | null {
+  const id = sanitizeVariantId(option?.id);
+  const label = sanitizeString(option?.label);
+  const description = sanitizeString(option?.description);
+  const preset = sanitizeString(option?.preset) ?? "custom";
+  const effects = sanitizeStringArray(option?.effects);
+  if (!id || !label || !description) return null;
+  return { id, label, description, preset, effects: effects.length ? effects : (VARIANT_PRESET_EFFECTS[preset] ?? VARIANT_PRESET_EFFECTS.custom), source };
+}
+
+async function readAccountVariantOptions(store: KvNamespaceLike): Promise<ControlPlaneAdminAccountVariantOption[]> {
+  const stored = await readAccountVariantsStore(store);
+  const deleted = new Set(stored.deletedBuiltIns.map((id) => sanitizeVariantId(id)).filter((id): id is string => Boolean(id)));
+  const byId = new Map<string, ControlPlaneAdminAccountVariantOption>();
+  for (const option of BUILT_IN_ACCOUNT_VARIANTS) if (!deleted.has(option.id)) byId.set(option.id, option);
+  for (const option of stored.variants) {
+    const normalized = normalizeAccountVariantOption(option, "custom");
+    if (!normalized) continue;
+    byId.set(normalized.id, normalized);
+  }
+  return [...byId.values()];
+}
+
+function normalizeGroupOption(option: Partial<ControlPlaneAdminGroupOption>, source: "built-in" | "custom" = "custom"): ControlPlaneAdminGroupOption | null {
+  const id = sanitizeVariantId(option?.id);
+  const label = sanitizeString(option?.label);
+  const description = sanitizeString(option?.description) ?? "Grupo personalizado";
+  const policyId = sanitizeString(option?.policyId) ?? null;
+  const policyLabel = policyId ? sanitizeString(option?.policyLabel) ?? formatPolicyLabel(policyId) : null;
+  if (!id || !label) return null;
+  return { id, label, description, policyId, policyLabel, source };
+}
+
+async function readGroupOptions(store: KvNamespaceLike): Promise<ControlPlaneAdminGroupOption[]> {
+  const stored = await readAccountVariantsStore(store);
+  const deleted = new Set(stored.deletedBuiltInGroups.map((id) => sanitizeVariantId(id)).filter((id): id is string => Boolean(id)));
+  const byId = new Map<string, ControlPlaneAdminGroupOption>();
+  for (const option of BUILT_IN_GROUPS) if (!deleted.has(option.id)) byId.set(option.id, option);
+  for (const option of stored.groups) {
+    const normalized = normalizeGroupOption(option, "custom");
+    if (!normalized) continue;
+    byId.set(normalized.id, normalized);
+  }
+  return [...byId.values()];
+}
+
+function sanitizeAccountGroups(value: unknown, groupOptions: ControlPlaneAdminGroupOption[]): string[] {
+  const allowed = new Set(groupOptions.map((option) => option.id));
+  const normalized = sanitizeStringArray(value)
+    .map((group) => sanitizeVariantId(group))
+    .filter((group): group is string => Boolean(group));
+  return [...new Set(normalized.filter((group) => allowed.has(group)))];
+}
+
+function normalizeEngineOption(option: Partial<ControlPlaneAdminEngineOption>, source: "built-in" | "custom" = "custom"): ControlPlaneAdminEngineOption | null {
+  const id = sanitizeEngineId(option?.id);
+  const label = sanitizeString(option?.label);
+  const kind = sanitizeEngineKind(option?.kind);
+  const tier = sanitizeString(option?.tier) ?? "custom";
+  const provider = sanitizeString(option?.provider) ?? "custom";
+  const model = sanitizeString(option?.model) ?? "custom";
+  const notes = sanitizeString(option?.notes) ?? "motor personalizado";
+  const promptKey = sanitizeString(option?.promptKey) ?? "custom";
+  const promptSummary = sanitizeString(option?.promptSummary) ?? "Prompt editable/custom.";
+  if (!id || !label || !kind) return null;
+  return { id, label, kind, tier, provider, model, notes, promptKey, promptSummary, source };
+}
+
+async function readPolicyEngineOptions(store: KvNamespaceLike): Promise<ControlPlaneAdminEngineOption[]> {
+  const stored = await readAccountVariantsStore(store);
+  const deleted = new Set(stored.deletedBuiltInEngines.map((id) => sanitizeEngineId(id)).filter((id): id is string => Boolean(id)));
+  const byId = new Map<string, ControlPlaneAdminEngineOption>();
+  for (const option of BUILT_IN_POLICY_ENGINES) if (!deleted.has(option.id)) byId.set(option.id, option);
+  for (const option of stored.engines) {
+    const normalized = normalizeEngineOption(option, "custom");
+    if (!normalized) continue;
+    byId.set(normalized.id, normalized);
+  }
+  return [...byId.values()];
+}
+
+function sanitizePromptKind(value: unknown): ControlPlaneAdminPromptOption["kind"] | null {
+  return value === "assistant" ? "assistant" : sanitizeEngineKind(value);
+}
+
+function normalizePromptOption(option: Partial<ControlPlaneAdminPromptOption>, source: "built-in" | "custom" = "custom"): ControlPlaneAdminPromptOption | null {
+  const id = sanitizeString(option?.id)?.trim();
+  const label = sanitizeString(option?.label);
+  const kind = sanitizePromptKind(option?.kind);
+  const version = sanitizeString(option?.version) ?? "v1";
+  const summary = sanitizeString(option?.summary) ?? "Prompt personalizado.";
+  const content = typeof option?.content === "string" ? option.content : "";
+  if (!id || !label || !kind) return null;
+  return { id, label, kind, version, summary, content, source };
+}
+
+function normalizeSelectionPresetDefault(value: unknown): RegisterSelectionPresetDefault | null {
+  const item = sanitizeRecord(value);
+  if (!item) return null;
+  const id = sanitizeString(item.id)?.trim();
+  const label = sanitizeString(item.label) ?? sanitizeString(item.name) ?? id;
+  const promptId = sanitizeString(item.promptId) ?? sanitizeString(item.prompt_id) ?? (id ? `preset.${id}` : null);
+  if (!id || !label || !promptId) return null;
+  return {
+    id,
+    label,
+    promptId,
+    hotkey: sanitizeString(item.hotkey) ?? "",
+    pickerKey: sanitizeString(item.pickerKey) ?? sanitizeString(item.picker_key) ?? "",
+    provider: sanitizeString(item.provider),
+    model: sanitizeString(item.model),
+    enabled: item.enabled === undefined ? true : Boolean(item.enabled),
+    confirm: Boolean(item.confirm),
+    promptContent: sanitizeString(item.promptContent) ?? sanitizeString(item.prompt_content) ?? "",
+  };
+}
+
+function normalizeSelectionPresetDefaultsPayload(payload: ControlPlaneAdminSelectionPresetDefaultPayload): NonNullable<RegisterUserSettingsDefaults["selectionPresets"]> {
+  const selectionPresets = sanitizeRecord(payload.selectionPresets);
+  const rawItems: unknown[] = Array.isArray(payload.items)
+    ? payload.items
+    : Array.isArray(selectionPresets?.items)
+      ? selectionPresets.items
+      : [];
+  const items = rawItems.map(normalizeSelectionPresetDefault).filter((item): item is RegisterSelectionPresetDefault => Boolean(item));
+  if (!items.length) throw new Error("selection preset defaults require at least one valid item");
+  return {
+    schemaVersion: 1,
+    source: sanitizeString(payload.source) ?? sanitizeString(selectionPresets?.source) ?? "fixvox-cloud-admin",
+    items,
+  };
+}
+
+function promptOptionFromSelectionPreset(item: RegisterSelectionPresetDefault): ControlPlaneAdminPromptOption | null {
+  if (!item.promptContent) return null;
+  return normalizePromptOption({
+    id: item.promptId,
+    label: `Preset - ${item.label}`,
+    kind: "selectionTransform",
+    version: "v1",
+    summary: `Selection preset default synced from ${item.id}.`,
+    content: item.promptContent,
+  }, "custom");
+}
+
+async function readPromptOptions(store: KvNamespaceLike): Promise<ControlPlaneAdminPromptOption[]> {
+  const stored = await readAccountVariantsStore(store);
+  const deleted = new Set(stored.deletedBuiltInPrompts.map((id) => sanitizeString(id)).filter((id): id is string => Boolean(id)));
+  const byId = new Map<string, ControlPlaneAdminPromptOption>();
+  for (const option of BUILT_IN_PROMPTS) if (!deleted.has(option.id)) byId.set(option.id, option);
+  for (const option of stored.prompts) {
+    const normalized = normalizePromptOption(option, "custom");
+    if (!normalized) continue;
+    byId.set(normalized.id, normalized);
+  }
+  return [...byId.values()];
+}
+
+function sanitizeAccountSegments(value: unknown, variantOptions: ControlPlaneAdminAccountVariantOption[]): string[] {
+  const allowed = new Set(variantOptions.map((option) => option.id));
+  const normalized = sanitizeStringArray(value)
+    .map((segment) => sanitizeVariantId(segment))
+    .filter((segment): segment is string => Boolean(segment));
+  return [...new Set(normalized.filter((segment) => allowed.has(segment)))];
+}
+
+function variantIds(options: ControlPlaneAdminAccountVariantOption[]): string[] {
+  return options.map((option) => option.id);
+}
+
+function sanitizePolicyVariantsMap(value: Record<string, string[]>, variantOptions: ControlPlaneAdminAccountVariantOption[]): Record<string, string[]> {
+  return Object.fromEntries(Object.entries(value).map(([policyId, variants]) => [policyId, sanitizeAccountSegments(variants, variantOptions)]).filter(([, variants]) => variants.length > 0));
+}
+
+function defaultEngineId(kind: ControlPlaneAdminEngineKind): string {
+  return kind === "transcription" ? "stt-groq-whisper-turbo" : kind === "postprocess" ? "postprocess-groq-gpt-oss-120b" : "transform-groq-llama-70b";
+}
+
+function defaultPolicyEngineSelection(policyId: string | null): ControlPlaneAdminPolicyEngineSelection {
+  const normalized = sanitizeString(policyId)?.toLowerCase();
+  return normalized === "alpha-basic"
+    ? { transcription: "stt-groq-whisper-turbo", postprocess: "postprocess-off", selectionTransform: "transform-off" }
+    : { transcription: "stt-groq-whisper-turbo", postprocess: "postprocess-groq-gpt-oss-120b", selectionTransform: "transform-groq-llama-70b" };
+}
+
+function sanitizePolicyEngineSelection(value: unknown, engineOptions?: ControlPlaneAdminEngineOption[], policyId?: string | null): ControlPlaneAdminPolicyEngineSelection {
+  const defaults = defaultPolicyEngineSelection(policyId ?? null);
+  const withDefaults = value && typeof value === "object" ? { ...defaults, ...(value as Record<string, unknown>) } : defaults;
+  return sanitizePolicyEngineSelectionValue(withDefaults, engineOptions);
+}
+
+function sanitizePolicyEngineSelectionValue(value: unknown, engineOptions?: ControlPlaneAdminEngineOption[]): ControlPlaneAdminPolicyEngineSelection {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const pick = (key: ControlPlaneAdminEngineKind): string => {
+    const selected = sanitizeEngineId(record[key]) ?? defaultEngineId(key);
+    if (!engineOptions) return selected;
+    return engineOptions.some((engine) => engine.kind === key && engine.id === selected) ? selected : defaultEngineId(key);
+  };
+  return {
+    transcription: pick("transcription"),
+    postprocess: pick("postprocess"),
+    selectionTransform: pick("selectionTransform"),
+  };
+}
+
+function sanitizePolicyEnginesMap(value: Record<string, unknown>, engineOptions?: ControlPlaneAdminEngineOption[]): Record<string, ControlPlaneAdminPolicyEngineSelection> {
+  return Object.fromEntries(Object.entries(value).map(([policyId, engines]) => [policyId, sanitizePolicyEngineSelection(engines, engineOptions, policyId)]));
+}
+
+function sanitizeBudgetAmount(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Number(parsed.toFixed(4)) : null;
+}
+
+function defaultPolicyBudget(policyId: string | null): ControlPlaneAdminPolicyBudget {
+  const normalized = sanitizeString(policyId)?.toLowerCase();
+  if (normalized === "pro") return { dailyUsd: 5, monthlyUsd: 50, mode: "warn" };
+  if (normalized === "alpha-full") return { dailyUsd: 1, monthlyUsd: 10, mode: "block" };
+  if (normalized === "alpha-basic") return { dailyUsd: 0.25, monthlyUsd: 2, mode: "block" };
+  return { dailyUsd: 0.5, monthlyUsd: 5, mode: "block" };
+}
+
+function sanitizePolicyBudget(value: unknown, policyId: string | null): ControlPlaneAdminPolicyBudget {
+  const defaults = defaultPolicyBudget(policyId);
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    dailyUsd: sanitizeBudgetAmount(record.dailyUsd) ?? defaults.dailyUsd,
+    monthlyUsd: sanitizeBudgetAmount(record.monthlyUsd) ?? defaults.monthlyUsd,
+    mode: record.mode === "warn" ? "warn" : record.mode === "block" ? "block" : defaults.mode,
+  };
+}
+
+function sanitizePolicyBudgetsMap(value: Record<string, unknown>): Record<string, ControlPlaneAdminPolicyBudget> {
+  return Object.fromEntries(Object.entries(value).map(([policyId, budget]) => [policyId, sanitizePolicyBudget(budget, policyId)]));
+}
+
+function resolvePreflightEngineKind(payload: ExecutionPreflightPayload, usageKind: UsageEvent["kind"]): ControlPlaneAdminEngineKind {
+  const explicit = sanitizeEngineKind(payload.engineKind);
+  if (explicit) return explicit;
+  return usageKind === "transcription" ? "transcription" : usageKind === "aiAction" ? "postprocess" : "postprocess";
+}
+
+function resolvePolicyEnginesForPreflight(
+  policyId: string | null,
+  storedSelection: ControlPlaneAdminPolicyEngineSelection | undefined,
+  engineOptions: ControlPlaneAdminEngineOption[],
+  selectedKind: ControlPlaneAdminEngineKind,
+): ExecutionEngineResolution["engines"] {
+  const selection = sanitizePolicyEngineSelection(storedSelection, engineOptions, policyId);
+  const findEngine = (kind: ControlPlaneAdminEngineKind): ControlPlaneAdminEngineOption | null => {
+    const id = selection[kind] ?? defaultEngineId(kind);
+    return engineOptions.find((engine) => engine.kind === kind && engine.id === id) ?? null;
+  };
+  const byKind = {
+    transcription: findEngine("transcription"),
+    postprocess: findEngine("postprocess"),
+    selectionTransform: findEngine("selectionTransform"),
+  };
+  return { selectedKind, selected: byKind[selectedKind], byKind };
+}
+
+export async function getControlPlaneAdminVariantConfig(store: KvNamespaceLike): Promise<ControlPlaneAdminVariantConfig> {
+  const variantOptions = await readAccountVariantOptions(store);
+  const engineOptions = await readPolicyEngineOptions(store);
+  const promptOptions = await readPromptOptions(store);
+  const stored = await readAccountVariantsStore(store);
+  return {
+    variantOptions,
+    availableSegments: variantIds(variantOptions),
+    engineOptions,
+    promptOptions,
+    policyVariants: sanitizePolicyVariantsMap(stored.policyVariants, variantOptions),
+    policyEngines: sanitizePolicyEnginesMap(stored.policyEngines, engineOptions),
+    policyBudgets: sanitizePolicyBudgetsMap(stored.policyBudgets),
+  };
+}
+
 function resolvePolicyOptionLabel(options: ControlPlaneAdminPolicyOption[], policyId: string, fallback?: string | null): string {
   return sanitizeString(fallback) ?? options.find((option) => option.policyId === policyId)?.policyLabel ?? formatPolicyLabel(policyId);
+}
+
+type EffectiveRuntimeProfile = ExecutionEngineResolution["profile"];
+
+async function resolveEffectiveRuntimeProfile(
+  store: KvNamespaceLike,
+  runtimePolicy: Record<string, unknown>,
+  record: DeviceRecord,
+): Promise<EffectiveRuntimeProfile> {
+  const accountHandle = record.accountId ? await buildAccountHandle(record.accountId) : null;
+  const accountAssignment = record.accountId ? await readAccountPolicyAssignment(store, record.accountId) : null;
+  const accountBudget = record.accountId ? (await readAccountBudgetAssignment(store, record.accountId))?.budget ?? null : null;
+  const groupOptions = record.accountId ? await readGroupOptions(store) : [];
+  const groupsAssignment = record.accountId ? await readAccountGroupsAssignment(store, record.accountId) : null;
+  const activeGroups = sanitizeAccountGroups(groupsAssignment?.groups ?? [], groupOptions);
+  const policyOptions = buildAdminPolicyOptions(runtimePolicy);
+  const groupMatch = activeGroups
+    .map((groupId) => groupOptions.find((option) => option.id === groupId && option.policyId))
+    .find((option): option is ControlPlaneAdminGroupOption & { policyId: string } => Boolean(option?.policyId && policyOptions.some((policy) => policy.policyId === option.policyId)));
+
+  if (accountAssignment) {
+    return {
+      policyId: accountAssignment.policyId,
+      policyLabel: accountAssignment.policyLabel,
+      policySource: "account",
+      accountHandle,
+      accountBudget,
+      groups: activeGroups,
+      matchedGroup: null,
+    };
+  }
+
+  const deviceOverride = record.policyId && record.policyId !== DEFAULT_POLICY_ID && policyOptions.some((option) => option.policyId === record.policyId)
+    ? { policyId: record.policyId, policyLabel: record.policyLabel ?? resolvePolicyOptionLabel(policyOptions, record.policyId) }
+    : null;
+  if (deviceOverride) {
+    return {
+      policyId: deviceOverride.policyId,
+      policyLabel: deviceOverride.policyLabel,
+      policySource: "device",
+      accountHandle,
+      accountBudget,
+      groups: activeGroups,
+      matchedGroup: null,
+    };
+  }
+
+  if (groupMatch) {
+    return {
+      policyId: groupMatch.policyId,
+      policyLabel: groupMatch.policyLabel ?? resolvePolicyOptionLabel(policyOptions, groupMatch.policyId),
+      policySource: "group",
+      accountHandle,
+      accountBudget,
+      groups: activeGroups,
+      matchedGroup: groupMatch.id,
+    };
+  }
+
+  return {
+    policyId: record.policyId,
+    policyLabel: record.policyLabel,
+    policySource: "base",
+    accountHandle,
+    accountBudget,
+    groups: activeGroups,
+    matchedGroup: null,
+  };
 }
 
 async function buildControlPlaneAdminAccountRow(
@@ -1094,13 +1850,44 @@ async function buildControlPlaneAdminAccountRow(
   records: DeviceRecord[],
 ): Promise<ControlPlaneAdminAccountRow> {
   const assignment = await readAccountPolicyAssignment(store, accountId);
+  const segmentsAssignment = await readAccountSegmentsAssignment(store, accountId);
+  const budgetAssignment = await readAccountBudgetAssignment(store, accountId);
+  const groupsAssignment = await readAccountGroupsAssignment(store, accountId);
+  const variantOptions = await readAccountVariantOptions(store);
+  const groupOptions = await readGroupOptions(store);
+  const activeVariants = sanitizeAccountSegments(segmentsAssignment?.segments ?? [], variantOptions);
+  const activeGroups = sanitizeAccountGroups(groupsAssignment?.groups ?? [], groupOptions);
   const accountHandle = await buildAccountHandle(accountId);
   const sorted = [...records].sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt));
+  const runtimePolicy = await getRuntimePolicy(store);
+  const effectiveProfile = sorted[0]
+    ? await resolveEffectiveRuntimeProfile(store, runtimePolicy.policy as Record<string, unknown>, sorted[0])
+    : {
+      policyId: assignment?.policyId ?? null,
+      policyLabel: assignment?.policyLabel ?? null,
+      policySource: assignment ? "account" as const : "base" as const,
+      accountHandle,
+      accountBudget: budgetAssignment?.budget ?? null,
+      groups: activeGroups,
+      matchedGroup: null,
+    };
+  const accountUser = redactAccountUser(accountId);
   return {
     accountHandle,
     accountIdRedacted: redactAccountId(accountId),
+    userRedacted: accountUser.userRedacted,
+    userEmail: accountUser.userEmail,
+    provider: accountUser.provider,
+    variants: activeVariants,
+    segments: activeVariants,
+    groups: activeGroups,
     policyId: assignment?.policyId ?? null,
     policyLabel: assignment?.policyLabel ?? null,
+    effectivePolicyId: effectiveProfile.policyId,
+    effectivePolicyLabel: effectiveProfile.policyLabel,
+    effectivePolicySource: effectiveProfile.policySource,
+    matchedGroup: effectiveProfile.matchedGroup,
+    accountBudget: budgetAssignment?.budget ?? null,
     deviceCount: sorted.length,
     devices: sorted.slice(0, 20).map((record) => ({
       deviceIdRedacted: redactLongIdentifier(record.deviceId),
@@ -1194,21 +1981,23 @@ export async function registerDevice(
 
   const runtimePolicy = await getRuntimePolicy(store);
   const recipePolicy = await getRecipePolicy(store);
-  const isActivePolicy = nextRecord.activated && nextRecord.status === "active" && Boolean(nextRecord.policyId);
-  const effectivePolicy = applyPolicyProfiles(runtimePolicy.policy as Record<string, unknown>, isActivePolicy ? nextRecord.policyId : null);
-  const defaults = buildRegisterDefaultsFromRuntimePolicy(effectivePolicy as never, nextRecord.cohorts);
+  const profile = await resolveEffectiveRuntimeProfile(store, runtimePolicy.policy as Record<string, unknown>, nextRecord);
+  const effectiveRecord: DeviceRecord = { ...nextRecord, policyId: profile.policyId, policyLabel: profile.policyLabel };
+  const isActivePolicy = nextRecord.activated && nextRecord.status === "active" && Boolean(profile.policyId);
+  const effectivePolicy = applyPolicyProfiles(runtimePolicy.policy as Record<string, unknown>, isActivePolicy ? profile.policyId : null);
+  const defaults = buildRegisterDefaultsFromRuntimePolicy(effectivePolicy as never, effectiveRecord.cohorts);
   defaults.recipePolicy = recipePolicy.policy;
-  const limits = await buildDeviceLimits(store, effectivePolicy as Record<string, unknown>, nextRecord);
+  const limits = await buildDeviceLimits(store, effectivePolicy as Record<string, unknown>, effectiveRecord);
 
   return {
     ok: true,
     deviceId,
     activated: isActivePolicy,
-    policyId: isActivePolicy ? nextRecord.policyId : null,
-    policyLabel: isActivePolicy ? nextRecord.policyLabel : null,
+    policyId: isActivePolicy ? profile.policyId : null,
+    policyLabel: isActivePolicy ? profile.policyLabel : null,
     accountId: null,
     minVersion: null,
-    auth: buildDeviceRegisterAuthPolicy(nextRecord, options.authProviders ?? []),
+    auth: buildDeviceRegisterAuthPolicy(effectiveRecord, options.authProviders ?? []),
     features: buildFeatureFlagsFromRuntimePolicy(effectivePolicy as never),
     defaults,
     cohorts: nextRecord.cohorts,
@@ -1336,32 +2125,27 @@ export async function listControlPlaneAdminAccounts(
   )))).sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt));
   const page = accounts.slice(offset, offset + limit);
   const policy = runtimePolicy.policy as Record<string, unknown>;
+  const variantConfig = await getControlPlaneAdminVariantConfig(store);
 
   return {
     ok: true,
     source: runtimePolicy.source,
     updatedAt: runtimePolicy.updatedAt,
     policyOptions: buildAdminPolicyOptions(policy),
+    availableSegments: variantConfig.availableSegments,
+    variantOptions: variantConfig.variantOptions,
+    groupOptions: await readGroupOptions(store),
+    policyVariants: variantConfig.policyVariants,
+    policyEngines: variantConfig.policyEngines,
     accounts: page,
     nextCursor: accounts.length > offset + page.length ? String(offset + page.length) : null,
   };
 }
 
-export async function assignControlPlaneAdminAccountPolicy(
+async function resolveAdminAccountId(
   store: KvNamespaceLike,
-  payload: ControlPlaneAdminAccountPolicyPayload,
-): Promise<ControlPlaneAdminAccountPolicyResponse> {
-  const runtimePolicy = await getRuntimePolicy(store);
-  const policy = runtimePolicy.policy as Record<string, unknown>;
-  const policyOptions = buildAdminPolicyOptions(policy);
-  const policyId = sanitizeString(payload.policyId);
-  if (!policyId) {
-    throw new Error("policyId is required");
-  }
-  if (!policyOptions.some((option) => option.policyId === policyId)) {
-    throw new Error("unknown policyId");
-  }
-
+  payload: { accountHandle?: string | null; accountId?: string | null },
+): Promise<{ accountId: string; accountHandle: string; records: DeviceRecord[] }> {
   const requestedHandle = sanitizeString(payload.accountHandle);
   let accountId = sanitizeString(payload.accountId);
   const records = await readRecentDeviceRecords(store);
@@ -1374,14 +2158,29 @@ export async function assignControlPlaneAdminAccountPolicy(
       }
     }
   }
-  if (!accountId) {
-    throw new Error("account not found");
+  if (!accountId) throw new Error("account not found");
+  const accountHandle = await buildAccountHandle(accountId);
+  if (requestedHandle && requestedHandle !== accountHandle) throw new Error("account not found");
+  return { accountId, accountHandle, records };
+}
+
+export async function assignControlPlaneAdminAccountPolicy(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminAccountPolicyPayload,
+): Promise<ControlPlaneAdminAccountPolicyResponse> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const policy = runtimePolicy.policy as Record<string, unknown>;
+  const policyOptions = buildAdminPolicyOptions(policy);
+  const variantOptions = await readAccountVariantOptions(store);
+  const policyId = sanitizeString(payload.policyId);
+  if (!policyId) {
+    throw new Error("policyId is required");
+  }
+  if (!policyOptions.some((option) => option.policyId === policyId)) {
+    throw new Error("unknown policyId");
   }
 
-  const accountHandle = await buildAccountHandle(accountId);
-  if (requestedHandle && requestedHandle !== accountHandle) {
-    throw new Error("account not found");
-  }
+  const { accountId, accountHandle, records } = await resolveAdminAccountId(store, payload);
   const policyLabel = resolvePolicyOptionLabel(policyOptions, policyId, payload.policyLabel);
   const updatedAt = new Date().toISOString();
   const assignment: AccountPolicyAssignment = { accountHandle, accountId, policyId, policyLabel, updatedAt };
@@ -1412,8 +2211,367 @@ export async function assignControlPlaneAdminAccountPolicy(
     source: runtimePolicy.source,
     updatedAt: runtimePolicy.updatedAt,
     policyOptions,
+    availableSegments: variantIds(variantOptions),
+    variantOptions,
     account: await buildControlPlaneAdminAccountRow(store, accountId, accountRecords),
     devicesUpdated,
+  };
+}
+
+export async function assignControlPlaneAdminAccountBudget(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminAccountBudgetPayload,
+): Promise<ControlPlaneAdminAccountBudgetResponse> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const policy = runtimePolicy.policy as Record<string, unknown>;
+  const policyOptions = buildAdminPolicyOptions(policy);
+  const variantOptions = await readAccountVariantOptions(store);
+  const { accountId, accountHandle, records } = await resolveAdminAccountId(store, payload);
+  const budget = sanitizePolicyBudget(payload.budget, null);
+  const updatedAt = new Date().toISOString();
+  const assignment: AccountBudgetAssignment = { accountHandle, accountId, budget, updatedAt };
+  await store.put(buildAccountBudgetKey(accountHandle), JSON.stringify(assignment), {
+    expirationTtl: ACCOUNT_POLICY_TTL_SECONDS,
+  });
+  return {
+    ok: true,
+    source: runtimePolicy.source,
+    updatedAt: runtimePolicy.updatedAt,
+    policyOptions,
+    availableSegments: variantIds(variantOptions),
+    variantOptions,
+    account: await buildControlPlaneAdminAccountRow(store, accountId, records),
+  };
+}
+
+export async function createControlPlaneAdminGroup(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminGroupPayload,
+): Promise<{ ok: true; source: "default" | "stored"; updatedAt: string; group: ControlPlaneAdminGroupOption; groupOptions: ControlPlaneAdminGroupOption[] }> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const label = sanitizeString(payload.label);
+  if (!label) throw new Error("label is required");
+  const id = sanitizeVariantId(payload.id) ?? sanitizeVariantId(label);
+  if (!id) throw new Error("invalid group id");
+  const policyOptions = buildAdminPolicyOptions(runtimePolicy.policy as Record<string, unknown>);
+  const policyId = sanitizeString(payload.policyId) ?? null;
+  if (policyId && !policyOptions.some((option) => option.policyId === policyId)) throw new Error("unknown policyId");
+  const policyLabel = policyId ? resolvePolicyOptionLabel(policyOptions, policyId, payload.policyLabel) : null;
+  const group = normalizeGroupOption({
+    id,
+    label,
+    description: sanitizeString(payload.description) ?? undefined,
+    policyId,
+    policyLabel,
+  }, "custom");
+  if (!group) throw new Error("invalid group payload");
+  const stored = await readAccountVariantsStore(store);
+  await writeAccountVariantsStore(store, {
+    ...stored,
+    groups: [...stored.groups.filter((option) => sanitizeVariantId(option.id) !== id), group].sort((left, right) => left.id.localeCompare(right.id)),
+    deletedBuiltInGroups: stored.deletedBuiltInGroups.filter((deletedId) => sanitizeVariantId(deletedId) !== id),
+  });
+  return { ok: true, source: runtimePolicy.source, updatedAt: runtimePolicy.updatedAt, group, groupOptions: await readGroupOptions(store) };
+}
+
+export async function assignControlPlaneAdminAccountGroups(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminAccountGroupsPayload,
+): Promise<ControlPlaneAdminAccountGroupsResponse> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const policy = runtimePolicy.policy as Record<string, unknown>;
+  const policyOptions = buildAdminPolicyOptions(policy);
+  const groupOptions = await readGroupOptions(store);
+  const { accountId, accountHandle, records } = await resolveAdminAccountId(store, payload);
+  const groups = sanitizeAccountGroups(payload.groups, groupOptions);
+  const updatedAt = new Date().toISOString();
+  const assignment: AccountGroupsAssignment = { accountHandle, accountId, groups, updatedAt };
+  await store.put(buildAccountGroupsKey(accountHandle), JSON.stringify(assignment), {
+    expirationTtl: ACCOUNT_POLICY_TTL_SECONDS,
+  });
+  return {
+    ok: true,
+    source: runtimePolicy.source,
+    updatedAt: runtimePolicy.updatedAt,
+    policyOptions,
+    groupOptions,
+    account: await buildControlPlaneAdminAccountRow(store, accountId, records),
+  };
+}
+
+export async function assignControlPlaneAdminAccountSegments(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminAccountSegmentsPayload,
+): Promise<ControlPlaneAdminAccountSegmentsResponse> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const policy = runtimePolicy.policy as Record<string, unknown>;
+  const policyOptions = buildAdminPolicyOptions(policy);
+  const variantOptions = await readAccountVariantOptions(store);
+  const { accountId, accountHandle } = await resolveAdminAccountId(store, payload);
+  const segments = sanitizeAccountSegments(payload.variants ?? payload.segments, variantOptions);
+  const updatedAt = new Date().toISOString();
+  const assignment: AccountSegmentsAssignment = { accountHandle, accountId, segments, updatedAt };
+  await store.put(buildAccountSegmentsKey(accountHandle), JSON.stringify(assignment), {
+    expirationTtl: ACCOUNT_POLICY_TTL_SECONDS,
+  });
+  const accountRecords = (await readRecentDeviceRecords(store)).filter((record) => record.accountId === accountId);
+  return {
+    ok: true,
+    source: runtimePolicy.source,
+    updatedAt: runtimePolicy.updatedAt,
+    policyOptions,
+    availableSegments: variantIds(variantOptions),
+    variantOptions,
+    account: await buildControlPlaneAdminAccountRow(store, accountId, accountRecords),
+  };
+}
+
+export async function createControlPlaneAdminAccountVariant(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminAccountVariantPayload,
+): Promise<ControlPlaneAdminAccountVariantResponse> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const label = sanitizeString(payload.label);
+  if (!label) throw new Error("label is required");
+  const id = sanitizeVariantId(payload.id) ?? sanitizeVariantId(label);
+  if (!id) throw new Error("invalid variant id");
+  const preset = sanitizeString(payload.preset) ?? "custom";
+  const description = sanitizeString(payload.description) ?? "variante personalizada";
+  const effects = VARIANT_PRESET_EFFECTS[preset] ?? VARIANT_PRESET_EFFECTS.custom;
+  const stored = await readAccountVariantsStore(store);
+  const variant: ControlPlaneAdminAccountVariantOption = { id, label, description, preset, effects, source: "custom" };
+  const nextStore: AccountVariantsStore = {
+    ...stored,
+    variants: [...stored.variants.filter((option) => sanitizeVariantId(option.id) !== id), variant].sort((left, right) => left.id.localeCompare(right.id)),
+    deletedBuiltIns: stored.deletedBuiltIns.filter((deletedId) => sanitizeVariantId(deletedId) !== id),
+  };
+  await writeAccountVariantsStore(store, nextStore);
+  const variantOptions = await readAccountVariantOptions(store);
+  return {
+    ok: true,
+    source: runtimePolicy.source,
+    updatedAt: runtimePolicy.updatedAt,
+    variant,
+    variantOptions,
+    availableSegments: variantIds(variantOptions),
+  };
+}
+
+export async function assignControlPlaneAdminPolicyVariants(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminPolicyVariantsPayload,
+): Promise<ControlPlaneAdminVariantConfig & { ok: true; source: "default" | "stored"; updatedAt: string }> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const policy = runtimePolicy.policy as Record<string, unknown>;
+  const policyOptions = buildAdminPolicyOptions(policy);
+  const policyId = sanitizeString(payload.policyId);
+  if (!policyId) throw new Error("policyId is required");
+  if (!policyOptions.some((option) => option.policyId === policyId)) throw new Error("unknown policyId");
+  const stored = await readAccountVariantsStore(store);
+  const variantOptions = await readAccountVariantOptions(store);
+  const variants = sanitizeAccountSegments(payload.variants, variantOptions);
+  const nextPolicyVariants = { ...stored.policyVariants };
+  if (variants.length) nextPolicyVariants[policyId] = variants;
+  else delete nextPolicyVariants[policyId];
+  await writeAccountVariantsStore(store, { ...stored, policyVariants: nextPolicyVariants });
+  const config = await getControlPlaneAdminVariantConfig(store);
+  return { ok: true, source: runtimePolicy.source, updatedAt: runtimePolicy.updatedAt, ...config };
+}
+
+export async function assignControlPlaneAdminPolicyEngines(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminPolicyEnginesPayload,
+): Promise<ControlPlaneAdminVariantConfig & { ok: true; source: "default" | "stored"; updatedAt: string }> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const policy = runtimePolicy.policy as Record<string, unknown>;
+  const policyOptions = buildAdminPolicyOptions(policy);
+  const policyId = sanitizeString(payload.policyId);
+  if (!policyId) throw new Error("policyId is required");
+  if (!policyOptions.some((option) => option.policyId === policyId)) throw new Error("unknown policyId");
+  const stored = await readAccountVariantsStore(store);
+  const engineOptions = await readPolicyEngineOptions(store);
+  await writeAccountVariantsStore(store, { ...stored, policyEngines: { ...stored.policyEngines, [policyId]: sanitizePolicyEngineSelection(payload.engines, engineOptions) } });
+  const config = await getControlPlaneAdminVariantConfig(store);
+  return { ok: true, source: runtimePolicy.source, updatedAt: runtimePolicy.updatedAt, ...config };
+}
+
+export async function assignControlPlaneAdminPolicyBudget(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminPolicyBudgetPayload,
+): Promise<ControlPlaneAdminVariantConfig & { ok: true; source: "default" | "stored"; updatedAt: string }> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const policy = runtimePolicy.policy as Record<string, unknown>;
+  const policyOptions = buildAdminPolicyOptions(policy);
+  const policyId = sanitizeString(payload.policyId);
+  if (!policyId) throw new Error("policyId is required");
+  if (!policyOptions.some((option) => option.policyId === policyId)) throw new Error("unknown policyId");
+  const stored = await readAccountVariantsStore(store);
+  await writeAccountVariantsStore(store, { ...stored, policyBudgets: { ...stored.policyBudgets, [policyId]: sanitizePolicyBudget(payload.budget, policyId) } });
+  const config = await getControlPlaneAdminVariantConfig(store);
+  return { ok: true, source: runtimePolicy.source, updatedAt: runtimePolicy.updatedAt, ...config };
+}
+
+export async function createControlPlaneAdminEngine(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminEnginePayload,
+): Promise<ControlPlaneAdminVariantConfig & { ok: true; source: "default" | "stored"; updatedAt: string; engine: ControlPlaneAdminEngineOption }> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const label = sanitizeString(payload.label);
+  if (!label) throw new Error("label is required");
+  const id = sanitizeEngineId(payload.id) ?? sanitizeEngineId(label);
+  if (!id) throw new Error("invalid engine id");
+  const engine = normalizeEngineOption({
+    id,
+    label,
+    kind: sanitizeEngineKind(payload.kind) ?? undefined,
+    tier: sanitizeString(payload.tier) ?? undefined,
+    provider: sanitizeString(payload.provider) ?? undefined,
+    model: sanitizeString(payload.model) ?? undefined,
+    notes: sanitizeString(payload.notes) ?? undefined,
+    promptKey: sanitizeString(payload.promptKey) ?? undefined,
+    promptSummary: sanitizeString(payload.promptSummary) ?? undefined,
+  }, "custom");
+  if (!engine) throw new Error("invalid engine payload");
+  const stored = await readAccountVariantsStore(store);
+  await writeAccountVariantsStore(store, {
+    ...stored,
+    engines: [...stored.engines.filter((option) => sanitizeEngineId(option.id) !== id), engine].sort((left, right) => left.id.localeCompare(right.id)),
+    deletedBuiltInEngines: stored.deletedBuiltInEngines.filter((deletedId) => sanitizeEngineId(deletedId) !== id),
+  });
+  const config = await getControlPlaneAdminVariantConfig(store);
+  return { ok: true, source: runtimePolicy.source, updatedAt: runtimePolicy.updatedAt, engine, ...config };
+}
+
+export async function deleteControlPlaneAdminEngine(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminEngineDeletePayload,
+): Promise<ControlPlaneAdminVariantConfig & { ok: true; source: "default" | "stored"; updatedAt: string; engine: ControlPlaneAdminEngineOption }> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const id = sanitizeEngineId(payload.id);
+  if (!id) throw new Error("engine id is required");
+  const stored = await readAccountVariantsStore(store);
+  const isBuiltIn = BUILT_IN_POLICY_ENGINES.some((option) => option.id === id);
+  const fallbackByKind = Object.fromEntries(BUILT_IN_POLICY_ENGINES.filter((engine) => engine.id === id).map((engine) => [engine.kind, defaultEngineId(engine.kind)]));
+  const policyEngines = Object.fromEntries(Object.entries(stored.policyEngines).map(([policyId, engines]) => [policyId, {
+    ...engines,
+    transcription: engines.transcription === id ? fallbackByKind.transcription ?? defaultEngineId("transcription") : engines.transcription,
+    postprocess: engines.postprocess === id ? fallbackByKind.postprocess ?? defaultEngineId("postprocess") : engines.postprocess,
+    selectionTransform: engines.selectionTransform === id ? fallbackByKind.selectionTransform ?? defaultEngineId("selectionTransform") : engines.selectionTransform,
+  }]));
+  await writeAccountVariantsStore(store, {
+    ...stored,
+    engines: stored.engines.filter((option) => sanitizeEngineId(option.id) !== id),
+    deletedBuiltInEngines: isBuiltIn ? [...new Set([...stored.deletedBuiltInEngines, id])] : stored.deletedBuiltInEngines.filter((deletedId) => sanitizeEngineId(deletedId) !== id),
+    policyEngines,
+  });
+  const config = await getControlPlaneAdminVariantConfig(store);
+  return { ok: true, source: runtimePolicy.source, updatedAt: runtimePolicy.updatedAt, engine: { id, label: id, kind: "postprocess", tier: "custom", provider: "deleted", model: "deleted", notes: "deleted", promptKey: "deleted", promptSummary: "deleted", source: "custom" }, ...config };
+}
+
+export async function assignControlPlaneAdminSelectionPresetDefaults(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminSelectionPresetDefaultPayload,
+): Promise<ControlPlaneAdminVariantConfig & { ok: true; source: "default" | "stored"; updatedAt: string; selectionPresets: NonNullable<RegisterUserSettingsDefaults["selectionPresets"]>; policy: Record<string, unknown> }> {
+  const selectionPresets = normalizeSelectionPresetDefaultsPayload(payload);
+  const runtimePolicy = await getRuntimePolicy(store);
+  const nextPolicy = cloneJsonRecord(runtimePolicy.policy);
+  const defaults = isPlainRecord(nextPolicy.userSettingsDefaults) ? cloneJsonRecord(nextPolicy.userSettingsDefaults) : {};
+  defaults.selectionPresets = selectionPresets;
+  nextPolicy.userSettingsDefaults = defaults;
+
+  const storedPolicy = await putRuntimePolicy(store, nextPolicy);
+
+  if (payload.syncPrompts !== false) {
+    const promptOptions = selectionPresets.items.map(promptOptionFromSelectionPreset).filter((prompt): prompt is ControlPlaneAdminPromptOption => Boolean(prompt));
+    if (promptOptions.length) {
+      const stored = await readAccountVariantsStore(store);
+      const promptIds = new Set(promptOptions.map((prompt) => prompt.id));
+      await writeAccountVariantsStore(store, {
+        ...stored,
+        prompts: [
+          ...stored.prompts.filter((option) => !promptIds.has(sanitizeString(option.id) ?? "")),
+          ...promptOptions,
+        ].sort((left, right) => String(left.id).localeCompare(String(right.id))),
+        deletedBuiltInPrompts: stored.deletedBuiltInPrompts.filter((deletedId) => !promptIds.has(sanitizeString(deletedId) ?? "")),
+      });
+    }
+  }
+
+  const config = await getControlPlaneAdminVariantConfig(store);
+  return { ok: true, source: runtimePolicy.source, updatedAt: storedPolicy.updatedAt, selectionPresets, policy: storedPolicy.policy, ...config };
+}
+
+export async function createControlPlaneAdminPrompt(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminPromptPayload,
+): Promise<ControlPlaneAdminVariantConfig & { ok: true; source: "default" | "stored"; updatedAt: string; prompt: ControlPlaneAdminPromptOption }> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const label = sanitizeString(payload.label);
+  if (!label) throw new Error("label is required");
+  const id = sanitizeString(payload.id)?.trim() || sanitizeString(label)?.replace(/\s+/g, ".");
+  if (!id) throw new Error("invalid prompt id");
+  const prompt = normalizePromptOption({
+    id,
+    label,
+    kind: sanitizePromptKind(payload.kind) ?? undefined,
+    version: sanitizeString(payload.version) ?? undefined,
+    summary: sanitizeString(payload.summary) ?? undefined,
+    content: typeof payload.content === "string" ? payload.content : undefined,
+  }, "custom");
+  if (!prompt) throw new Error("invalid prompt payload");
+  const stored = await readAccountVariantsStore(store);
+  await writeAccountVariantsStore(store, {
+    ...stored,
+    prompts: [...stored.prompts.filter((option) => sanitizeString(option.id) !== id), prompt].sort((left, right) => left.id.localeCompare(right.id)),
+    deletedBuiltInPrompts: stored.deletedBuiltInPrompts.filter((deletedId) => sanitizeString(deletedId) !== id),
+  });
+  const config = await getControlPlaneAdminVariantConfig(store);
+  return { ok: true, source: runtimePolicy.source, updatedAt: runtimePolicy.updatedAt, prompt, ...config };
+}
+
+export async function deleteControlPlaneAdminPrompt(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminPromptDeletePayload,
+): Promise<ControlPlaneAdminVariantConfig & { ok: true; source: "default" | "stored"; updatedAt: string; prompt: ControlPlaneAdminPromptOption }> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const id = sanitizeString(payload.id)?.trim();
+  if (!id) throw new Error("prompt id is required");
+  const stored = await readAccountVariantsStore(store);
+  const isBuiltIn = BUILT_IN_PROMPTS.some((option) => option.id === id);
+  await writeAccountVariantsStore(store, {
+    ...stored,
+    prompts: stored.prompts.filter((option) => sanitizeString(option.id) !== id),
+    deletedBuiltInPrompts: isBuiltIn ? [...new Set([...stored.deletedBuiltInPrompts, id])] : stored.deletedBuiltInPrompts.filter((deletedId) => sanitizeString(deletedId) !== id),
+  });
+  const config = await getControlPlaneAdminVariantConfig(store);
+  return { ok: true, source: runtimePolicy.source, updatedAt: runtimePolicy.updatedAt, prompt: { id, label: id, kind: "assistant", version: "deleted", summary: "deleted", content: "", source: "custom" }, ...config };
+}
+
+export async function deleteControlPlaneAdminAccountVariant(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminAccountVariantDeletePayload,
+): Promise<ControlPlaneAdminAccountVariantResponse> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const id = sanitizeVariantId(payload.id);
+  if (!id) throw new Error("variant id is required");
+  const stored = await readAccountVariantsStore(store);
+  const isBuiltIn = BUILT_IN_ACCOUNT_VARIANTS.some((option) => option.id === id);
+  const nextPolicyVariants = Object.fromEntries(Object.entries(stored.policyVariants).map(([policyId, variants]) => [policyId, variants.filter((variantId) => sanitizeVariantId(variantId) !== id)]).filter(([, variants]) => variants.length > 0));
+  const nextStore: AccountVariantsStore = {
+    ...stored,
+    variants: stored.variants.filter((option) => sanitizeVariantId(option.id) !== id),
+    deletedBuiltIns: isBuiltIn ? [...new Set([...stored.deletedBuiltIns, id])] : stored.deletedBuiltIns.filter((deletedId) => sanitizeVariantId(deletedId) !== id),
+    policyVariants: nextPolicyVariants,
+  };
+  await writeAccountVariantsStore(store, nextStore);
+  const variantOptions = await readAccountVariantOptions(store);
+  return {
+    ok: true,
+    source: runtimePolicy.source,
+    updatedAt: runtimePolicy.updatedAt,
+    variant: { id, label: id, description: "deleted", preset: "custom", effects: [], source: "custom" },
+    variantOptions,
+    availableSegments: variantIds(variantOptions),
   };
 }
 
@@ -1472,6 +2630,26 @@ function resolveActivationCohorts(policyId: string, current: string[]): string[]
   return [...base, policyId];
 }
 
+export async function resolveExecutionEngineForDevice(
+  store: KvNamespaceLike,
+  payload: { deviceId?: string | null; usageKind?: string | null; engineKind?: string | null },
+): Promise<ExecutionEngineResolution | null> {
+  const deviceId = sanitizeString(payload.deviceId);
+  if (!deviceId) return null;
+  const record = normalizeDeviceRecord(parseJson<DeviceRecord | null>(await store.get(buildDeviceKey(deviceId)), null));
+  if (!record || record.status !== "active") return null;
+  const kind = parseUsageKind(payload.usageKind);
+  const selectedKind = resolvePreflightEngineKind(payload, kind);
+  const runtimePolicy = await getRuntimePolicy(store);
+  const profile = await resolveEffectiveRuntimeProfile(store, runtimePolicy.policy as Record<string, unknown>, record);
+  const variantConfig = await getControlPlaneAdminVariantConfig(store);
+  const engines = resolvePolicyEnginesForPreflight(profile.policyId, variantConfig.policyEngines[profile.policyId ?? ""], variantConfig.engineOptions, selectedKind);
+  return {
+    profile,
+    engines,
+  };
+}
+
 export async function evaluateExecutionPreflight(
   store: KvNamespaceLike,
   payload: ExecutionPreflightPayload,
@@ -1517,9 +2695,15 @@ export async function evaluateExecutionPreflight(
   }
 
   const runtimePolicy = await getRuntimePolicy(store);
-  const limits = await buildDeviceLimits(store, runtimePolicy.policy as Record<string, unknown>, normalizedRecord);
-  const policy = resolveManagedUsagePolicy(runtimePolicy.policy as Record<string, unknown>, normalizedRecord);
   const kind = parseUsageKind(payload.usageKind);
+  const profile = await resolveEffectiveRuntimeProfile(store, runtimePolicy.policy as Record<string, unknown>, normalizedRecord);
+  const effectiveRecord: DeviceRecord = { ...normalizedRecord, policyId: profile.policyId, policyLabel: profile.policyLabel };
+  const effectivePolicy = applyPolicyProfiles(runtimePolicy.policy as Record<string, unknown>, profile.policyId);
+  const limits = await buildDeviceLimits(store, effectivePolicy as Record<string, unknown>, effectiveRecord);
+  const policy = resolveManagedUsagePolicy(effectivePolicy as Record<string, unknown>, effectiveRecord);
+  const selectedKind = resolvePreflightEngineKind(payload, kind);
+  const variantConfig = await getControlPlaneAdminVariantConfig(store);
+  const engines = resolvePolicyEnginesForPreflight(profile.policyId, variantConfig.policyEngines[profile.policyId ?? ""], variantConfig.engineOptions, selectedKind);
   const estimate = resolveUsageEstimate(payload, kind, policy);
   const actionEstimate = kind === "managed" ? estimate : 1;
   const quota = kind === "transcription" ? limits.transcription : kind === "aiAction" ? limits.aiActions : limits.managedUsage;
@@ -1533,6 +2717,8 @@ export async function evaluateExecutionPreflight(
       reason: "quota_exceeded",
       retryAfterSeconds: getQuotaRetryAfterSeconds(quota),
       limits,
+      profile,
+      engines,
     };
   }
 
@@ -1540,7 +2726,7 @@ export async function evaluateExecutionPreflight(
   const events = await readUsageEvents(store, deviceId, now.getTime());
   events.push({ id: crypto.randomUUID(), ts: now.toISOString(), units: estimate, actionUnits: actionEstimate, kind });
   await writeUsageEvents(store, deviceId, events);
-  const updatedLimits = await buildDeviceLimits(store, runtimePolicy.policy as Record<string, unknown>, normalizedRecord);
+  const updatedLimits = await buildDeviceLimits(store, effectivePolicy as Record<string, unknown>, effectiveRecord);
 
   return {
     ok: true,
@@ -1548,6 +2734,8 @@ export async function evaluateExecutionPreflight(
     reason: null,
     retryAfterSeconds: null,
     limits: updatedLimits,
+    profile,
+    engines,
   };
 }
 

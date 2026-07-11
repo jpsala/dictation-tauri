@@ -4,6 +4,16 @@ Registro corto de decisiones durables.
 
 ## Aprobadas
 
+### 2026-07-11 - Distribuir FFmpeg versionado como sidecar del cliente Windows
+
+Estado: accepted
+
+Decision: Fixvox Tauri distribuye Gyan FFmpeg 7.1.1 Essentials GPLv3 como ejecutable separado y versionado junto a la app Windows x64. El runtime prefiere ese sidecar, lo ejecuta con `CREATE_NO_WINDOW`, conserva fallback a FFmpeg en `PATH` para desarrollo y usa WAV original si la conversión falla. La procedencia, hashes, licencia y referencia al source/build quedan fijados en `src-tauri/third-party/ffmpeg/`.
+
+Motivo: los smokes locales mostraron que MP3 reduce aproximadamente 97% los bytes y mantiene baja latencia incluso en dictados de 2-3 segundos; depender del `PATH` no garantiza ese comportamiento en otra PC. Un sidecar mantiene la compresión reproducible sin sumar bindings/codecs nativos al proceso principal.
+
+Proximo paso: validar físicamente el installer autosuficiente en otra PC antes de publicar; futuras actualizaciones de FFmpeg deben fijar versión/hash y revisar obligaciones de redistribución.
+
 ### 2026-07-04 - Simplificar continuidad Pi a `/aos-continuar` post-guardado
 
 Estado: accepted

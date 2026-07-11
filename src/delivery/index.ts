@@ -3,6 +3,7 @@ export type {
   DeliveryRequest,
   DeliveryStatus,
   DeliveryStrategy,
+  DeliveryTargetAffinity,
   DesktopDeliveryGateway,
   DesktopTargetConfidence,
   DesktopTargetSnapshot,

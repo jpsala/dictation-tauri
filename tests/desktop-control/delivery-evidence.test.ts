@@ -211,7 +211,8 @@ describe("desktop delivery evidence foundation", () => {
       strategy: "paste_send",
       reason: "Paste command was sent to the saved foreground target without observation.",
     });
-    expect(invokeCalls[0]).toMatchObject({ pressEnterAfterPaste: false });
+    expect(invokeCalls.find((call) => "pressEnterAfterPaste" in call))
+      .toMatchObject({ pressEnterAfterPaste: false });
   });
 
   it("allows a Tauri verified observer to elevate delivery to paste_observed", async () => {
@@ -284,7 +285,8 @@ describe("desktop delivery evidence foundation", () => {
       strategy: "paste_send",
       reason: "Paste and Enter commands were sent to the saved foreground target without observation.",
     });
-    expect(invokeCalls[0]).toMatchObject({ pressEnterAfterPaste: true });
+    expect(invokeCalls.find((call) => "pressEnterAfterPaste" in call))
+      .toMatchObject({ pressEnterAfterPaste: true });
   });
 
   it("falls back when Tauri paste has no saved target", async () => {
@@ -301,7 +303,7 @@ describe("desktop delivery evidence foundation", () => {
       status: "failed",
       strategy: "paste_send",
       output: "desktop control transcript",
-      reason: "No saved editable target is available for paste delivery.",
+      reason: "No assured editable target is available for paste delivery.",
     });
   });
 

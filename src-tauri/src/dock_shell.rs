@@ -116,9 +116,15 @@ pub fn hide_dock(app: AppHandle) -> Result<(), String> {
     hide_dock_window(&app).map_err(|error| error.to_string())
 }
 
+pub fn prepare_hidden_dock_for_startup_smoke() {
+    DOCK_VISIBLE.store(false, Ordering::SeqCst);
+    remember_dock_state(DockShellState::Idle);
+}
+
 pub fn configure_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn Error>> {
     eprintln!("[dictation-tauri][dock] configure requested");
-    DOCK_VISIBLE.store(true, Ordering::SeqCst);
+    let user_preferences = crate::user_preferences::read_user_preferences_for_app(app);
+    DOCK_VISIBLE.store(user_preferences.show_dock_on_startup, Ordering::SeqCst);
     remember_dock_state(DockShellState::Idle);
 
     let window = app.get_webview_window(DOCK_WINDOW_LABEL).ok_or_else(|| {
@@ -134,17 +140,22 @@ pub fn configure_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<d
 
     window.set_skip_taskbar(true)?;
     window.set_always_on_top(true)?;
-    platform::show_dock_window_no_activate(&window, position, native_layout)?;
-    eprintln!(
-        "[dictation-tauri][dock] configured position=({}, {}) size={}x{} logical={}x{} scale={:.2}",
-        position.x,
-        position.y,
-        native_layout.width,
-        native_layout.height,
-        layout.width,
-        layout.height,
-        scale_factor
-    );
+    if user_preferences.show_dock_on_startup {
+        platform::show_dock_window_no_activate(&window, position, native_layout)?;
+        eprintln!(
+            "[dictation-tauri][dock] configured position=({}, {}) size={}x{} logical={}x{} scale={:.2}",
+            position.x,
+            position.y,
+            native_layout.width,
+            native_layout.height,
+            layout.width,
+            layout.height,
+            scale_factor
+        );
+    } else {
+        platform::hide_dock_window(&window)?;
+        eprintln!("[dictation-tauri][dock] configured hidden by user preference");
+    }
 
     Ok(())
 }

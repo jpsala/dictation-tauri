@@ -84,7 +84,7 @@ if (-not $dictation -and -not $Status) {
     -WorkingDirectory $repo `
     -RedirectStandardOutput $stdout `
     -RedirectStandardError $stderr `
-    -WindowStyle Minimized
+    -WindowStyle Hidden
   for ($attempt = 0; $attempt -lt 60; $attempt += 1) {
     Start-Sleep -Seconds 1
     $dictation = Get-Process -Name dictation-tauri -ErrorAction SilentlyContinue | Select-Object -First 1

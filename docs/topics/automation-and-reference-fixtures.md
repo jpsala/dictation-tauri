@@ -11,6 +11,9 @@ triggers:
   - Fixvox
   - fixvox
   - sin interaccion humana
+  - startup smoke
+  - smoke Tauri
+  - sin molestar
 primary_refs:
   - docs/DECISIONS.md
   - docs/topics/product-direction.md
@@ -99,6 +102,12 @@ Primer runner:
 - Comandos implementados sin provider calls: `npm run synthetic-audio:fixtures` y `npm run synthetic-audio:stt:dry-run`.
 - Reports dry-run locales: `artifacts/synthetic-audio-stt/reports/`.
 - El adapter directo local existe como shell redacted setup/provider-error; no hay comando real-provider habilitado para cierre automatico.
+
+## Smoke Tauri De Arranque Sin Side Effects
+
+`npm run tauri:startup:smoke` verifica el ejecutable Tauri real con perfil temporal y ventanas ocultas. Activa `DICTATION_TAURI_STARTUP_SMOKE=1`, que suprime tray, hotkeys/hooks de bajo nivel y el watcher de foreground; no es un sandbox de comandos nativos.
+
+Esta capa valida arranque, carga del WebView principal y aislamiento de estado. No debe iniciar captura, provider, selección, delivery, clipboard ni hotkeys físicos. El flujo DOM `Ready` y transiciones fake siguen cubiertos por Playwright; las verificaciones físicas continúan en smokes separados y gated.
 
 ## Estado MVP 3 CI-safe
 

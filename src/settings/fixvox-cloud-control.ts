@@ -19,6 +19,8 @@ export type FixvoxPolicySnapshot = {
   features?: unknown;
   capabilities: FixvoxPolicyCapabilities;
   transportPolicy?: unknown;
+  runtimePolicy?: unknown;
+  userSettingsDefaults?: unknown;
   fetchedAt: string;
   trust: string;
   stale: boolean;

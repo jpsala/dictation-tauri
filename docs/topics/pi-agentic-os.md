@@ -92,6 +92,14 @@ Heuristica corta:
 - auditoria/review/fan-out: `taskflow` o council si el paralelismo vale el costo;
 - codigo tocado: `lens_diagnostics`/LSP como feedback y checks del repo como gate.
 
+Routing GPT-5.6: Sol medium para Pi normal/plan compacto; Sol high para
+planificacion, arquitectura, advisor y conformance; Luna medium para mecanica
+barata; Luna xhigh para implementacion background acotada, con retry Luna max;
+Terra high para implementacion interactiva sensible a latencia; Terra max para
+alta garantia, validado por Sol xhigh. Tests, conformance y riesgo prevalecen
+sobre costo. Los cambios de settings requieren reload o sesion nueva cuando
+aplique.
+
 ## Human-in-the-loop
 
 Usar `ask_user`/`ask_user_question` cuando hay decision de producto, arquitectura,

@@ -147,6 +147,7 @@ describe("captured run delivery evidence", () => {
 
     expect(getTranscriptReview(summary)).toEqual({
       text: "captured fake transcript",
+      source: "dictation",
       provider: "captured-dry-run",
       model: "fake-artifact",
       latencyMs: 9,

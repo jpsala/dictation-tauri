@@ -46,6 +46,23 @@
         "visible": false
       },
       {
+        "label": "preset-picker",
+        "title": "Preset Picker",
+        "url": "index.html?surface=preset-picker",
+        "width": 420,
+        "height": 500,
+        "minWidth": 420,
+        "minHeight": 500,
+        "resizable": false,
+        "decorations": false,
+        "transparent": false,
+        "shadow": true,
+        "alwaysOnTop": true,
+        "focus": true,
+        "skipTaskbar": true,
+        "visible": false
+      },
+      {
         "label": "settings",
         "title": "Dictation Tauri Settings",
         "url": "index.html#settings",
@@ -75,8 +92,11 @@
     "category": "Productivity",
     "shortDescription": "Fixvox desktop dictation client for Windows.",
     "longDescription": "Fixvox Tauri is the Windows desktop client for Fixvox Cloud managed dictation.",
+    "externalBin": ["binaries/ffmpeg"],
     "resources": {
-      "target/release/WebView2Loader.dll": "WebView2Loader.dll"
+      "target/release/WebView2Loader.dll": "WebView2Loader.dll",
+      "third-party/ffmpeg/LICENSE.txt": "third-party/ffmpeg/LICENSE.txt",
+      "third-party/ffmpeg/NOTICE.txt": "third-party/ffmpeg/NOTICE.txt"
     },
     "windows": {
       "allowDowngrades": false,

@@ -54,8 +54,8 @@ describe("dock companion state", () => {
 
     expect(snapshot.visible).toBe(true);
     expect(snapshot.recovery).toMatchObject({
-      title: "Transcript ready",
-      message: "Review the transcript locally or copy it manually.",
+      title: "Review only",
+      message: "Nothing was inserted. Review the transcript locally or copy it manually.",
     });
     expect(snapshot.history.items).toEqual([
       {
@@ -86,15 +86,60 @@ describe("dock companion state", () => {
       resultHistoryOpen: false,
       resultHistoryEntries: [],
       settingsPanelOpen: true,
-      activePreset: { presetId: "rewrite", presetName: "Rewrite", appKey: "global" },
+      activePreset: { presetId: "corregir-texto", presetName: "Corregir texto", appKey: "global" },
     });
 
     expect(snapshot.visible).toBe(true);
     expect(snapshot.settings).toEqual({
       open: true,
-      activePreset: { presetId: "rewrite", presetName: "Rewrite", appKey: "global" },
+      activePreset: { presetId: "corregir-texto", presetName: "Corregir texto", appKey: "global" },
     });
     expect(snapshot.history.items).toEqual([]);
+  });
+
+  it("opens a lightweight assistant quick-chat panel without changing history/settings", () => {
+    const snapshot = createDockCompanionSnapshot({
+      voiceDockState: createVoiceDockState({ state: "idle" }),
+      resultHistoryOpen: false,
+      resultHistoryEntries: [
+        {
+          id: "assistant-run-0:assistant",
+          source: "assistant",
+          text: "Respuesta anterior del asistente.",
+          textLength: 31,
+          deliveryEvidence: { status: "available" },
+        },
+      ],
+      settingsPanelOpen: false,
+      assistant: {
+        open: true,
+        runId: "assistant-run-1",
+        message: "Preset activo: Corregir texto.",
+      },
+    });
+
+    expect(snapshot.visible).toBe(true);
+    expect(snapshot.assistant).toEqual({
+      open: true,
+      runId: "assistant-run-1",
+      message: "Preset activo: Corregir texto.",
+      messages: [
+        {
+          id: "assistant-run-1:assistant-current",
+          textLength: 30,
+          textPreview: "Preset activo: Corregir texto.",
+          hoverPreview: "Preset activo: Corregir texto.",
+        },
+        {
+          id: "assistant-run-0:assistant",
+          textLength: 31,
+          textPreview: "Respuesta anterior del asistente.",
+          hoverPreview: "Respuesta anterior del asistente.",
+        },
+      ],
+    });
+    expect(snapshot.history.open).toBe(false);
+    expect(snapshot.settings.open).toBe(false);
   });
 
   it("stays hidden when no companion panel is requested", () => {
@@ -117,13 +162,13 @@ describe("dock companion state", () => {
       settingsPanelOpen: false,
     });
     const hiddenRecording = createDockCompanionSnapshot({
-      voiceDockState: createVoiceDockState(session({ state: "recording" })),
+      voiceDockState: createVoiceDockState(session({ state: "listening" })),
       resultHistoryOpen: false,
       resultHistoryEntries: [],
       settingsPanelOpen: false,
     });
     const visibleHistory = createDockCompanionSnapshot({
-      voiceDockState: createVoiceDockState(session({ state: "recording" })),
+      voiceDockState: createVoiceDockState(session({ state: "listening" })),
       resultHistoryOpen: true,
       resultHistoryEntries: [],
       settingsPanelOpen: false,
@@ -142,6 +187,7 @@ describe("dock companion state", () => {
       visible: false,
       history: { open: false, totalCount: 0, items: [] },
       settings: { open: false },
+      assistant: { open: false, messages: [] },
     });
   });
 });

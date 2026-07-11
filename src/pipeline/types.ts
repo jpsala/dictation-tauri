@@ -61,11 +61,67 @@ export type DeliveryEvidence = {
   observedAt?: number;
 };
 
-export type PipelineErrorPhase = FailurePhase | "fixture";
+export type PipelineErrorPhase = FailurePhase | "selection_transform" | "fixture";
 
 export type RedactedPipelineError = {
   phase: PipelineErrorPhase;
   message: string;
+};
+
+export type RuntimeTelemetryStageName =
+  | "capture"
+  | "audio-prep"
+  | "stt"
+  | "postprocess"
+  | "selection_transform"
+  | "delivery";
+
+export type RuntimeTelemetryStageStatus =
+  | "started"
+  | "skipped"
+  | "ok"
+  | "failed"
+  | "fallback";
+
+export type RuntimeTelemetryStage = {
+  stage: RuntimeTelemetryStageName;
+  status: RuntimeTelemetryStageStatus;
+  durationMs?: number;
+  reason?: string;
+  profileId?: string;
+  engineId?: string;
+  promptId?: string;
+  model?: string;
+  provider?: string;
+  audio?: {
+    durationMs?: number;
+    originalBytes?: number;
+    uploadBytes?: number;
+    mimeType?: string;
+    source?: string;
+    compressionRatio?: string;
+    voiceActivity?: {
+      durationMs: number;
+      voicedMs: number;
+      frameCount: number;
+      voicedFrameCount: number;
+      rmsPpm: number;
+      peakPpm: number;
+      hasSpeech: boolean;
+    };
+  };
+  target?: {
+    processName?: string;
+    inputLike?: boolean;
+    confidence?: "low" | "medium" | "high";
+    reason?: string;
+  };
+  delivery?: {
+    strategy?: string;
+    evidenceStatus?: DeliveryEvidenceStatus;
+    confidence?: "low" | "medium" | "high";
+  };
+  redacted: true;
 };
 
 export type SimulatedFixture = {
@@ -261,9 +317,28 @@ export type PipelineRun = {
   error?: RedactedPipelineError;
 };
 
+export type AssistantOption = { id: string; label: string; description?: string };
+
+export type AssistantSurface =
+  | { kind: "none" }
+  | { kind: "insertText"; text: string; delivery: "paste_send" }
+  | { kind: "notify"; title?: string; message: string; level?: "info" | "success" | "warning" | "error" }
+  | { kind: "quickChat"; title?: string; initialUserText?: string; initialAssistantText?: string }
+  | { kind: "showMarkdown"; title: string; markdown: string }
+  | {
+      kind: "optionPicker";
+      title: string;
+      prompt: string;
+      options: AssistantOption[];
+    }
+  | { kind: "toolAction"; tool: string; args: Record<string, unknown> }
+  | { kind: "error"; message: string; recoverable?: boolean };
+
 export type SimulatedRunSummary = {
   runId: string;
   fixtureId: string;
+  resultSource?: "dictation" | "selection_transform" | "assistant";
+  assistantSurface?: AssistantSurface;
   inputKind: PipelineInputKind;
   events: PipelineEvent[];
   states: PipelineState[];
@@ -274,6 +349,7 @@ export type SimulatedRunSummary = {
   delivery?: DeliveryResult;
   deliveryEvidence?: DeliveryEvidence;
   error?: RedactedPipelineError;
+  runtimeTelemetryStages?: RuntimeTelemetryStage[];
   durationMs: number;
 };
 

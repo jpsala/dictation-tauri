@@ -28,7 +28,6 @@ const VAD_MIN_VOICED_MS: u64 = 150;
 const VAD_RMS_THRESHOLD: f64 = 0.002;
 const VAD_PEAK_THRESHOLD: f64 = 0.006;
 const AUDIO_COMPRESSION_MIN_BYTES: usize = 160_000;
-const AUDIO_COMPRESSION_MIN_DURATION_MS: u64 = 4_000;
 const POST_STT_NO_SPEECH_THRESHOLD: f64 = 0.85;
 const POST_STT_WEAK_NO_SPEECH_THRESHOLD: f64 = 0.7;
 const POST_STT_LOW_LOGPROB_THRESHOLD: f64 = -1.0;
@@ -71,6 +70,63 @@ pub struct HostTranscriptionRequest {
     allow_provider_call: bool,
     post_process: Option<HostPostProcessPolicy>,
 }
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HostSelectionTransformRequest {
+    run_id: String,
+    selected_text: String,
+    instruction: String,
+    preset_id: Option<String>,
+    mode: String,
+    allow_provider_call: bool,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HostAssistantChatRequest {
+    run_id: String,
+    prompt: String,
+    mode: String,
+    allow_provider_call: bool,
+    #[serde(default)]
+    history: Vec<HostAssistantChatMessage>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HostAssistantChatMessage {
+    role: String,
+    text: String,
+}
+
+#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[serde(tag = "status", rename_all = "kebab-case")]
+pub enum HostSelectionTransformResponse {
+    #[serde(rename_all = "camelCase")]
+    Ok {
+        text: String,
+        provider: String,
+        model: String,
+        latency_ms: u64,
+        request_id: Option<String>,
+        redacted: bool,
+    },
+    #[serde(rename_all = "camelCase")]
+    SetupError {
+        error: RedactedHostRuntimeError,
+        retryable: bool,
+        redacted: bool,
+    },
+    #[serde(rename_all = "camelCase")]
+    ProviderError {
+        error: RedactedHostRuntimeError,
+        retryable: bool,
+        redacted: bool,
+    },
+}
+
+pub type HostAssistantChatResponse = HostSelectionTransformResponse;
 
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -177,6 +233,8 @@ pub struct HostAudioPrepEvidence {
     compression_ms: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     compression_ratio: Option<String>,
+    optimization_status: String,
+    optimization_reason: String,
     audio_duration_ms: u64,
     voice_activity: HostVoiceActivityEvidence,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -223,6 +281,8 @@ struct SpeechUploadPayload {
     original_bytes: usize,
     compression_ms: u64,
     compression_ratio: Option<String>,
+    optimization_status: &'static str,
+    optimization_reason: &'static str,
     voice_activity: HostVoiceActivityEvidence,
     audio_duration_ms: u64,
 }
@@ -237,6 +297,8 @@ impl SpeechUploadPayload {
             upload_file_name: self.file_name.clone(),
             compression_ms: self.compression_ms,
             compression_ratio: self.compression_ratio.clone(),
+            optimization_status: self.optimization_status.to_string(),
+            optimization_reason: self.optimization_reason.to_string(),
             audio_duration_ms: self.audio_duration_ms,
             voice_activity: self.voice_activity.clone(),
             no_speech_reason,
@@ -470,6 +532,40 @@ pub async fn transcribe_captured_audio(
 }
 
 #[tauri::command]
+pub async fn transform_selected_text(
+    request: HostSelectionTransformRequest,
+) -> HostSelectionTransformResponse {
+    if request.mode != "real" || !request.allow_provider_call {
+        return HostSelectionTransformResponse::SetupError {
+            error: error(
+                "FIXVOX_SELECTION_TRANSFORM_PROVIDER_DISABLED",
+                "Selection transform requires managed Fixvox Cloud access.",
+            ),
+            retryable: false,
+            redacted: true,
+        };
+    }
+
+    transform_selected_text_with_managed_chat(request, &read_host_env_value).await
+}
+
+#[tauri::command]
+pub async fn run_assistant_chat(request: HostAssistantChatRequest) -> HostAssistantChatResponse {
+    if request.mode != "real" || !request.allow_provider_call {
+        return HostAssistantChatResponse::SetupError {
+            error: error(
+                "FIXVOX_ASSISTANT_PROVIDER_DISABLED",
+                "Assistant chat requires managed Fixvox Cloud access.",
+            ),
+            retryable: false,
+            redacted: true,
+        };
+    }
+
+    run_assistant_chat_with_managed_chat(request, &read_host_env_value).await
+}
+
+#[tauri::command]
 pub async fn prewarm_fixvox_managed_transcription() -> Result<(), RedactedHostRuntimeError> {
     let config =
         read_managed_runtime_config(&read_host_env_value, &prewarm_transcription_request())?;
@@ -488,6 +584,451 @@ pub async fn prewarm_fixvox_managed_transcription() -> Result<(), RedactedHostRu
         | Some(ProviderTranscriptionOutcome::Ok { .. })
         | None => Ok(()),
     }
+}
+
+async fn run_assistant_chat_with_managed_chat(
+    request: HostAssistantChatRequest,
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> HostAssistantChatResponse {
+    let _run_id = request.run_id.trim();
+    let prompt = request.prompt.trim();
+    if prompt.is_empty() {
+        return HostAssistantChatResponse::SetupError {
+            error: error(
+                "FIXVOX_ASSISTANT_PROMPT_MISSING",
+                "Assistant chat requires a prompt.",
+            ),
+            retryable: true,
+            redacted: true,
+        };
+    }
+
+    let persisted_device_state = read_persisted_fixvox_device_state(env_lookup);
+    if let Some(state) = persisted_device_state.as_ref() {
+        if let Err(reason) =
+            fixvox_cloud::policy_allows_managed_operation(state, "assistant_action")
+        {
+            return HostAssistantChatResponse::SetupError {
+                error: error(&reason.code, &reason.message),
+                retryable: false,
+                redacted: true,
+            };
+        }
+    }
+
+    let backend_base_url = match fixvox_cloud::resolve_backend_base_url(env_lookup) {
+        Ok(value) => value,
+        Err(reason) => {
+            return HostAssistantChatResponse::SetupError {
+                error: error(&reason.code, &reason.message),
+                retryable: true,
+                redacted: true,
+            };
+        }
+    };
+    let Some(device_id) = resolve_fixvox_device_id(env_lookup) else {
+        return HostAssistantChatResponse::SetupError {
+            error: error(
+                "FIXVOX_DEVICE_ID_MISSING",
+                "Assistant chat requires a registered Fixvox Cloud device.",
+            ),
+            retryable: true,
+            redacted: true,
+        };
+    };
+    let model = first_env_value(
+        env_lookup,
+        &[
+            "FIXVOX_ASSISTANT_MODEL",
+            "FIXVOX_CHAT_MODEL",
+            "GROQ_CHAT_MODEL",
+        ],
+    )
+    .map(|value| value.trim().to_string())
+    .filter(|value| !value.is_empty())
+    .unwrap_or_else(|| "openai/gpt-oss-120b".to_string());
+
+    let started_at = Instant::now();
+    let preview = match fixvox_cloud::build_managed_chat_completion_request_preview(
+        fixvox_cloud::FixvoxCloudConfig {
+            backend_base_url,
+            device_id: Some(device_id.clone()),
+        },
+        fixvox_cloud::ManagedChatInput {
+            transcript: build_assistant_chat_user_message(prompt, &request.history),
+            system_prompt: build_assistant_chat_system_prompt(),
+            model: model.clone(),
+            max_tokens: Some(1024),
+        },
+    ) {
+        Ok(preview) => preview,
+        Err(reason) => {
+            return HostAssistantChatResponse::SetupError {
+                error: error(&reason.code, &reason.message),
+                retryable: true,
+                redacted: true,
+            };
+        }
+    };
+
+    let client = match fixvox_cloud::fixvox_http_client() {
+        Ok(client) => client,
+        Err(_) => {
+            return HostAssistantChatResponse::ProviderError {
+                error: error(
+                    "FIXVOX_ASSISTANT_HTTP_CLIENT_FAILED",
+                    "Fixvox assistant chat HTTP client could not be created.",
+                ),
+                retryable: true,
+                redacted: true,
+            };
+        }
+    };
+    let http_response = match client
+        .post(&preview.endpoint)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header("X-Device-Id", device_id)
+        .header("X-Fixvox-Request-Context", "assistant.quick-chat")
+        .json(&preview.body)
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(_) => {
+            return HostAssistantChatResponse::ProviderError {
+                error: error(
+                    "FIXVOX_ASSISTANT_REQUEST_FAILED",
+                    "Fixvox managed assistant chat request failed.",
+                ),
+                retryable: true,
+                redacted: true,
+            };
+        }
+    };
+    let status = http_response.status();
+    let request_id = redact_request_id(
+        http_response
+            .headers()
+            .get("X-Fixvox-Request-Id")
+            .or_else(|| http_response.headers().get("x-request-id"))
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.to_string()),
+    );
+    let body = match http_response.text().await {
+        Ok(body) => body,
+        Err(_) => {
+            return HostAssistantChatResponse::ProviderError {
+                error: error(
+                    "FIXVOX_ASSISTANT_RESPONSE_READ_FAILED",
+                    "Fixvox managed assistant chat response could not be read.",
+                ),
+                retryable: true,
+                redacted: true,
+            };
+        }
+    };
+    if !status.is_success() {
+        return HostAssistantChatResponse::ProviderError {
+            error: error(
+                "FIXVOX_ASSISTANT_REQUEST_REJECTED",
+                "Fixvox managed assistant chat was rejected by the cloud service.",
+            ),
+            retryable: status.is_server_error(),
+            redacted: true,
+        };
+    }
+    let parsed = match fixvox_cloud::parse_managed_chat_json_response(&body) {
+        Ok(parsed) => parsed,
+        Err(reason) => {
+            return HostAssistantChatResponse::ProviderError {
+                error: error(&reason.code, &reason.message),
+                retryable: true,
+                redacted: true,
+            };
+        }
+    };
+    let text = sanitize_selection_transform_output(&parsed.output);
+    if text.is_empty() {
+        return HostAssistantChatResponse::ProviderError {
+            error: error(
+                "FIXVOX_ASSISTANT_EMPTY_OUTPUT",
+                "Fixvox managed assistant chat returned empty output.",
+            ),
+            retryable: true,
+            redacted: true,
+        };
+    }
+
+    HostAssistantChatResponse::Ok {
+        text,
+        provider: "fixvox-cloud".to_string(),
+        model: parsed.model.unwrap_or(model),
+        latency_ms: started_at.elapsed().as_millis() as u64,
+        request_id,
+        redacted: true,
+    }
+}
+
+async fn transform_selected_text_with_managed_chat(
+    request: HostSelectionTransformRequest,
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> HostSelectionTransformResponse {
+    let _run_id = request.run_id.trim();
+    let selected_text = request.selected_text.trim();
+    let instruction = request.instruction.trim();
+    if selected_text.is_empty() || instruction.is_empty() {
+        return HostSelectionTransformResponse::SetupError {
+            error: error(
+                "FIXVOX_SELECTION_TRANSFORM_INPUT_MISSING",
+                "Selection transform requires both selected text and dictated instruction.",
+            ),
+            retryable: true,
+            redacted: true,
+        };
+    }
+
+    let backend_base_url = match fixvox_cloud::resolve_backend_base_url(env_lookup) {
+        Ok(value) => value,
+        Err(reason) => {
+            eprintln!(
+                "[dictation-tauri][selection-transform] setup_error code={}",
+                reason.code
+            );
+            return HostSelectionTransformResponse::SetupError {
+                error: error(&reason.code, &reason.message),
+                retryable: true,
+                redacted: true,
+            };
+        }
+    };
+    let Some(device_id) = resolve_fixvox_device_id(env_lookup) else {
+        eprintln!(
+            "[dictation-tauri][selection-transform] setup_error code=FIXVOX_DEVICE_ID_MISSING"
+        );
+        return HostSelectionTransformResponse::SetupError {
+            error: error(
+                "FIXVOX_DEVICE_ID_MISSING",
+                "Selection transform requires a registered Fixvox Cloud device.",
+            ),
+            retryable: true,
+            redacted: true,
+        };
+    };
+
+    let model = first_env_value(
+        env_lookup,
+        &[
+            "FIXVOX_SELECTION_TRANSFORM_MODEL",
+            "FIXVOX_CHAT_MODEL",
+            "GROQ_CHAT_MODEL",
+        ],
+    )
+    .map(|value| value.trim().to_string())
+    .filter(|value| !value.is_empty())
+    .unwrap_or_else(|| "openai/gpt-oss-120b".to_string());
+
+    let preset = request
+        .preset_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("natural_instruction");
+    eprintln!(
+        "[dictation-tauri][selection-transform] request selected_len={} instruction_len={} preset={}",
+        selected_text.chars().count(),
+        instruction.chars().count(),
+        preset
+    );
+    let started_at = Instant::now();
+    let preview = match fixvox_cloud::build_managed_chat_completion_request_preview(
+        fixvox_cloud::FixvoxCloudConfig {
+            backend_base_url,
+            device_id: Some(device_id.clone()),
+        },
+        fixvox_cloud::ManagedChatInput {
+            transcript: build_selection_transform_user_message(selected_text, instruction, preset),
+            system_prompt: build_selection_transform_system_prompt(),
+            model: model.clone(),
+            max_tokens: Some(2048),
+        },
+    ) {
+        Ok(preview) => preview,
+        Err(reason) => {
+            return HostSelectionTransformResponse::SetupError {
+                error: error(&reason.code, &reason.message),
+                retryable: true,
+                redacted: true,
+            };
+        }
+    };
+
+    let client = match fixvox_cloud::fixvox_http_client() {
+        Ok(client) => client,
+        Err(_) => {
+            return HostSelectionTransformResponse::ProviderError {
+                error: error(
+                    "FIXVOX_SELECTION_TRANSFORM_HTTP_CLIENT_FAILED",
+                    "Fixvox selection transform HTTP client could not be created.",
+                ),
+                retryable: true,
+                redacted: true,
+            };
+        }
+    };
+    let http_response = match client
+        .post(&preview.endpoint)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header("X-Device-Id", device_id)
+        .header("X-Fixvox-Request-Context", format!("preset.{preset}"))
+        .json(&preview.body)
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(_) => {
+            return HostSelectionTransformResponse::ProviderError {
+                error: error(
+                    "FIXVOX_SELECTION_TRANSFORM_REQUEST_FAILED",
+                    "Fixvox managed selection transform request failed.",
+                ),
+                retryable: true,
+                redacted: true,
+            };
+        }
+    };
+    let request_id = redact_request_id(
+        http_response
+            .headers()
+            .get("X-Fixvox-Request-Id")
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.to_string()),
+    );
+    let status = http_response.status();
+    let body = match http_response.text().await {
+        Ok(body) => body,
+        Err(_) => {
+            return HostSelectionTransformResponse::ProviderError {
+                error: error(
+                    "FIXVOX_SELECTION_TRANSFORM_RESPONSE_READ_FAILED",
+                    "Fixvox managed selection transform response could not be read.",
+                ),
+                retryable: true,
+                redacted: true,
+            };
+        }
+    };
+    if !status.is_success() {
+        eprintln!(
+            "[dictation-tauri][selection-transform] rejected status={}",
+            status.as_u16()
+        );
+        return HostSelectionTransformResponse::ProviderError {
+            error: error(
+                "FIXVOX_SELECTION_TRANSFORM_REQUEST_REJECTED",
+                "Fixvox managed selection transform was rejected by the cloud service.",
+            ),
+            retryable: status.as_u16() >= 500,
+            redacted: true,
+        };
+    }
+
+    let parsed = match fixvox_cloud::parse_managed_chat_json_response(&body) {
+        Ok(parsed) => parsed,
+        Err(reason) => {
+            return HostSelectionTransformResponse::ProviderError {
+                error: error(&reason.code, &reason.message),
+                retryable: true,
+                redacted: true,
+            };
+        }
+    };
+    let text = sanitize_selection_transform_output(&parsed.output);
+    if text.is_empty() {
+        eprintln!("[dictation-tauri][selection-transform] empty output");
+        return HostSelectionTransformResponse::ProviderError {
+            error: error(
+                "FIXVOX_SELECTION_TRANSFORM_EMPTY_OUTPUT",
+                "Fixvox managed selection transform returned empty output.",
+            ),
+            retryable: true,
+            redacted: true,
+        };
+    }
+
+    eprintln!(
+        "[dictation-tauri][selection-transform] ok output_len={}",
+        text.chars().count()
+    );
+
+    HostSelectionTransformResponse::Ok {
+        text,
+        provider: "fixvox-cloud".to_string(),
+        model: parsed.model.unwrap_or(model),
+        latency_ms: elapsed_ms(started_at),
+        request_id,
+        redacted: true,
+    }
+}
+
+fn build_assistant_chat_system_prompt() -> String {
+    "You are Lulu, the local Fixvox desktop assistant. Answer briefly and help with dictation, presets, and desktop workflow. Do not claim that text was pasted or a system action happened unless the tool/runtime explicitly did it. Return concise plain text.".to_string()
+}
+
+fn build_assistant_chat_user_message(prompt: &str, history: &[HostAssistantChatMessage]) -> String {
+    let history_block = build_assistant_chat_history_block(history);
+    format!(
+        "Assistant prompt captured from user-initiated dictation or Quick Chat:\n{history_block}<ASSISTANT_PROMPT>\n{prompt}\n</ASSISTANT_PROMPT>\n\nReturn a concise assistant reply."
+    )
+}
+
+fn build_assistant_chat_history_block(history: &[HostAssistantChatMessage]) -> String {
+    let lines: Vec<String> = history
+        .iter()
+        .filter_map(|message| {
+            let role = match message.role.trim() {
+                "user" => "user",
+                "assistant" => "assistant",
+                _ => return None,
+            };
+            let text = message.text.trim();
+            if text.is_empty() {
+                return None;
+            }
+            Some(format!("{role}: {text}"))
+        })
+        .rev()
+        .take(8)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+
+    if lines.is_empty() {
+        return String::new();
+    }
+
+    format!(
+        "Recent local Quick Chat context (oldest to newest, redacted UI text only):\n<ASSISTANT_HISTORY>\n{}\n</ASSISTANT_HISTORY>\n\n",
+        lines.join("\n")
+    )
+}
+
+fn build_selection_transform_system_prompt() -> String {
+    "You transform selected user text according to a dictated instruction. Output only the transformed replacement text. Do not explain, do not quote the original, and do not include markdown fences unless the instruction explicitly asks for markdown. Preserve the user's meaning unless the instruction asks to translate, rewrite, shorten, or reformat.".to_string()
+}
+
+fn build_selection_transform_user_message(
+    selected_text: &str,
+    instruction: &str,
+    preset: &str,
+) -> String {
+    format!(
+        "Preset: {preset}\nInstruction dictated by user:\n<INSTRUCTION>\n{instruction}\n</INSTRUCTION>\n\nSelected text to transform:\n<SELECTED_TEXT>\n{selected_text}\n</SELECTED_TEXT>\n\nReturn only the transformed text that should replace SELECTED_TEXT."
+    )
+}
+
+fn sanitize_selection_transform_output(output: &str) -> String {
+    output.trim().trim_matches('`').trim().to_string()
 }
 
 fn prewarm_transcription_request() -> HostTranscriptionRequest {
@@ -1354,13 +1895,25 @@ fn first_env_value(
     keys.iter().find_map(|key| env_lookup(key))
 }
 
+fn resolve_ffmpeg_executable() -> PathBuf {
+    #[cfg(windows)]
+    if let Ok(executable) = env::current_exe() {
+        if let Some(directory) = executable.parent() {
+            let sidecar = directory.join("ffmpeg.exe");
+            if sidecar.is_file() {
+                return sidecar;
+            }
+        }
+    }
+
+    PathBuf::from("ffmpeg")
+}
+
 fn prepare_speech_upload_payload(audio_file_path: &Path, audio: Vec<u8>) -> SpeechUploadPayload {
     let original_bytes = audio.len();
     let voice_activity = analyze_wav_voice_activity(&audio);
     let audio_duration_ms = voice_activity.duration_ms;
-    if original_bytes < AUDIO_COMPRESSION_MIN_BYTES
-        || audio_duration_ms < AUDIO_COMPRESSION_MIN_DURATION_MS
-    {
+    if original_bytes < AUDIO_COMPRESSION_MIN_BYTES {
         return SpeechUploadPayload {
             bytes: audio,
             mime_type: "audio/wav",
@@ -1369,6 +1922,8 @@ fn prepare_speech_upload_payload(audio_file_path: &Path, audio: Vec<u8>) -> Spee
             original_bytes,
             compression_ms: 0,
             compression_ratio: None,
+            optimization_status: "skipped",
+            optimization_reason: "below_optimization_threshold",
             voice_activity,
             audio_duration_ms,
         };
@@ -1383,7 +1938,8 @@ fn prepare_speech_upload_payload(audio_file_path: &Path, audio: Vec<u8>) -> Spee
             .unwrap_or("wav")
     ));
 
-    let compression_result = Command::new("ffmpeg")
+    let mut ffmpeg = Command::new(resolve_ffmpeg_executable());
+    ffmpeg
         .arg("-y")
         .arg("-hide_banner")
         .arg("-loglevel")
@@ -1398,8 +1954,15 @@ fn prepare_speech_upload_payload(audio_file_path: &Path, audio: Vec<u8>) -> Spee
         .arg("libmp3lame")
         .arg("-b:a")
         .arg("48k")
-        .arg(&mp3_path)
-        .output();
+        .arg(&mp3_path);
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        ffmpeg.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let compression_result = ffmpeg.output();
 
     if let Ok(output) = compression_result {
         if output.status.success() {
@@ -1414,6 +1977,8 @@ fn prepare_speech_upload_payload(audio_file_path: &Path, audio: Vec<u8>) -> Spee
                         file_name: "recording.mp3".to_string(),
                         source: "ffmpeg-mp3".to_string(),
                         original_bytes,
+                        optimization_status: "applied",
+                        optimization_reason: "optimized_audio_smaller",
                         voice_activity,
                         audio_duration_ms,
                     };
@@ -1431,6 +1996,8 @@ fn prepare_speech_upload_payload(audio_file_path: &Path, audio: Vec<u8>) -> Spee
         original_bytes,
         compression_ms: elapsed_ms(started_at),
         compression_ratio: None,
+        optimization_status: "fallback",
+        optimization_reason: "conversion_failed_original_audio_used",
         voice_activity,
         audio_duration_ms,
     }
@@ -4272,6 +4839,8 @@ mod tests {
         assert_eq!(payload.file_name, "recording.wav");
         assert_eq!(evidence.upload_bytes, evidence.original_bytes);
         assert_eq!(evidence.compression_ratio, None);
+        assert_eq!(evidence.optimization_status, "skipped");
+        assert_eq!(evidence.optimization_reason, "below_optimization_threshold");
         assert_eq!(evidence.audio_duration_ms, 1_000);
         assert!(evidence.voice_activity.has_speech);
         assert!(evidence.redacted);
@@ -4296,7 +4865,32 @@ mod tests {
         assert_eq!(payload.mime_type, "audio/mpeg");
         assert_eq!(payload.file_name, "recording.mp3");
         assert!(payload.bytes.len() < wav.len());
+        assert_eq!(payload.optimization_status, "applied");
+        assert_eq!(payload.optimization_reason, "optimized_audio_smaller");
         assert!(payload.compression_ratio.is_some());
+    }
+
+    #[test]
+    fn audio_prep_falls_back_to_original_when_conversion_cannot_run() {
+        let temp_path = std::env::temp_dir().join(format!(
+            "dictation-tauri-audio-prep-missing-input-{}.wav",
+            current_time_ms()
+        ));
+        let wav = create_test_wav_bytes(5_000, 0.02);
+        let payload = prepare_speech_upload_payload(&temp_path, wav.clone());
+        let evidence = payload.evidence(None);
+
+        assert_eq!(payload.source, "wav");
+        assert_eq!(payload.mime_type, "audio/wav");
+        assert_eq!(payload.bytes.len(), wav.len());
+        assert_eq!(payload.optimization_status, "fallback");
+        assert_eq!(
+            payload.optimization_reason,
+            "conversion_failed_original_audio_used"
+        );
+        assert_eq!(evidence.upload_bytes, evidence.original_bytes);
+        assert_eq!(evidence.optimization_status, "fallback");
+        assert!(evidence.redacted);
     }
 
     #[test]

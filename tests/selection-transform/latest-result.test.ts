@@ -32,6 +32,21 @@ describe("latest result recovery", () => {
     });
   });
 
+  it("preserves selection transform source from a pipeline summary", () => {
+    const latest = latestResultFromPipelineSummary(
+      createSummary({
+        resultSource: "selection_transform",
+        output: " transformed selection ",
+      }),
+    );
+
+    expect(latest).toMatchObject({
+      runId: "latest-run",
+      text: "transformed selection",
+      source: "selection_transform",
+    });
+  });
+
   it("does not create a latest dictation result for failed or empty runs", () => {
     expect(
       latestResultFromPipelineSummary(
@@ -51,7 +66,7 @@ describe("latest result recovery", () => {
       status: "ok",
       output: " transformed selection ",
       action: "replace_selection",
-      presetId: "rewrite",
+      presetId: "corregir-texto",
       evidence: {
         selectionAvailable: true,
         source: "fixture",

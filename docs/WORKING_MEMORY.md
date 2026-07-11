@@ -2,7 +2,7 @@
 
 Router operativo corto; detalle durable vive en topics, decisions, specs o tracks.
 
-Última actualización: 2026-07-09.
+Última actualización: 2026-07-11.
 
 ## Lectura Rápida
 
@@ -26,6 +26,7 @@ Router operativo corto; detalle durable vive en topics, decisions, specs o track
 - Selection transform pasó smokes redacted; replace sigue side effect real y debe fallar cerrado.
 - Delivery normal re-resuelve target editable post-STT; selection replace usa target guardado. Clipboard fallback restaura snapshot y tiene guardrails.
 - Spec `018-fixvox-audio-runtime-parity` completa: VAD/no-speech local, auto-stop, long-audio optimization/fallback, mute/cues, telemetry redacted, docs y audit/context-index.
+- Installer Windows unsigned `0.1.0` regenerado e instalado localmente en `%LOCALAPPDATA%\Fixvox Tauri` con FFmpeg 7.1.1 Essentials GPLv3 como sidecar. Compresión MP3 validada en build instalada para dictado corto; falta smoke físico en otra PC. No se publicó ni desplegó.
 - Lulu/Fixvox assistant: `Lulu ...` es prefijo dentro de captura iniciada, no wake word always-on. Arquitectura segura: `AssistantIntentResult` -> `AssistantSurface` -> `PipelineUiResult`; solo `insertText` pastea. Smart Agent mínimo provider-free existe para presets; falta tool loop completo/estado rico/opciones no-preset.
 
 ## Guardrails
@@ -40,6 +41,8 @@ Fuentes: `C:/dev/copicu` para Tauri/UI/settings/Windows desktop; `C:/dev/fixvox`
 - Selection capture/replace debe fallar cerrado.
 - Cargo tests pueden fallar por `STATUS_ENTRYPOINT_NOT_FOUND`; usar `cargo check` salvo instrucción puntual.
 - `cargo check` puede requerir `WebView2Loader.dll` en `src-tauri/target/release`; no cambiar installer config sin revisar release path.
+- `scripts/release-windows.ps1` no corta ante `$LASTEXITCODE != 0`: `cargo fmt --check` puede detectar drift y el release continuar.
+- FFmpeg sidecar agrega ~87 MB sin comprimir (installer NSIS ~29,8 MB), se distribuye bajo GPLv3 y requiere ambos aliases de target Windows GNU/MSVC mientras convivan ambos entrypoints de build.
 - Si `tauri:dev:hidden` falla, revisar `stopWarnings` y `artifacts/live-app/<runId>/tauri-dev.log`.
 
 ## Comandos Útiles
@@ -58,9 +61,10 @@ Smokes físicos/live requieren confirmación: hotkeys, audio mute/cues, auto-sto
 
 ## Próximo Paso Probable
 
-1. Revalidar con JP en Notepad con voz real: `Alt+Space` sin keytips/menu, dictado normal pega, `Lulu what is two plus two` pega `4`.
-2. Si sigue assistant: usar `assistant_routed` para dogfood del Smart Agent mínimo y avanzar tool loop real sin regex ad-hoc fuera de `AssistantIntentResult`/`AssistantSurface`.
-3. Completar smoke físico/live `Alt+Q then Y/C/F/L` y smoke Settings/Tauri `Import Cloud defaults` contra prod.
-4. Decidir smokes live pendientes de audio runtime si JP habilita side effects.
-5. Decidir estrategia Chrome sin `--force-renderer-accessibility`.
-6. Release installer/otra PC solo con aprobación.
+1. Antes del próximo release, corregir la propagación de errores en `scripts/release-windows.ps1` y normalizar el formato Rust pendiente.
+2. Revalidar con JP en Notepad con voz real: `Alt+Space` sin keytips/menu, dictado normal pega, `Lulu what is two plus two` pega `4`.
+3. Si sigue assistant: usar `assistant_routed` para dogfood del Smart Agent mínimo y avanzar tool loop real sin regex ad-hoc fuera de `AssistantIntentResult`/`AssistantSurface`.
+4. Completar smoke físico/live `Alt+Q then Y/C/F/L` y smoke Settings/Tauri `Import Cloud defaults` contra prod.
+5. Decidir smokes live pendientes de audio runtime si JP habilita side effects.
+6. Decidir estrategia Chrome sin `--force-renderer-accessibility`.
+7. Release installer/otra PC solo con aprobación.

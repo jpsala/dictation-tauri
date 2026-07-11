@@ -6,9 +6,10 @@ import type {
 import { hasSelectedText } from "./context";
 
 const supportedFixturePresets: readonly FixtureTransformPresetId[] = [
-  "rewrite",
-  "shorten",
-  "bulletize",
+  "como-yo-es",
+  "corregir-texto",
+  "fix-writing",
+  "like-me-en",
 ];
 
 export function runFixtureSelectionTransform(
@@ -74,27 +75,31 @@ export function isSupportedFixturePreset(
 
 function applyPreset(text: string, presetId: FixtureTransformPresetId): string {
   switch (presetId) {
-    case "rewrite":
-      return `Rewritten: ${text}`;
-    case "shorten":
-      return shortenText(text);
-    case "bulletize":
-      return text
-        .split(/[.]\s+/)
-        .map((part) => part.trim())
-        .filter(Boolean)
-        .map((part) => `- ${part.replace(/[.]$/, "")}`)
-        .join("\n");
+    case "como-yo-es":
+      return text;
+    case "corregir-texto":
+      return correctSpanishFixtureText(text);
+    case "fix-writing":
+      return correctEnglishFixtureText(text);
+    case "like-me-en":
+      return text;
   }
 }
 
-function shortenText(text: string): string {
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length <= 8) {
-    return text;
+function correctSpanishFixtureText(text: string): string {
+  if (text.trim().toLowerCase() === "hola amigo") {
+    return "Hola, amigo.";
   }
 
-  return `${words.slice(0, 8).join(" ")}…`;
+  return text;
+}
+
+function correctEnglishFixtureText(text: string): string {
+  if (text.trim().toLowerCase() === "helo frend") {
+    return "Hello friend.";
+  }
+
+  return text;
 }
 
 function failureResult(

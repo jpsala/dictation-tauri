@@ -2,52 +2,52 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-09T15:09:48.932Z
+Generated: 2026-07-11T22:54:13.879Z
 
 ## Topics
 
-- active: [agent-tool-routing](../topics/agent-tool-routing.md) - tool routing, routing decision, combinar tools, elegir herramienta, dgoal, until-done, taskflow, advisor, ask_user
-- active: [agentic-os-operations](../topics/agentic-os-operations.md) - crear sistema agentico, migrar sistema agentico, actualizar norte, aos, init os, adopt os, update os, adaptar proyecto, repo nuevo, realinear os, auditar sistema agentico, reparar sistema agentico, drift de contexto
-- active: [agentic-os](../topics/agentic-os.md) - norte, working memory, aos, agentic os, memoria viva, audit docs, tracks, cerrar sesion, continuar sesion, siguiente, handoff thread, nuevo thread, context index, Small Batches, small batches, commits atomicos
-- active: [app-design-loop](../topics/app-design-loop.md) - design loop, app design, UI polish, screenshot Playwright, Impeccable, accounts, admin web, settings, dock, companion, onboarding, public UI
+- active: [agent-tool-routing](../topics/agent-tool-routing.md) - tool routing, routing decision, combinar tools, elegir herramienta, dgoal, until-done, taskflow, advisor
+- active: [agentic-os-operations](../topics/agentic-os-operations.md) - crear sistema agentico, migrar sistema agentico, actualizar norte, aos, init os, adopt os, update os, adaptar proyecto
+- active: [agentic-os](../topics/agentic-os.md) - norte, working memory, aos, agentic os, memoria viva, audit docs, tracks, cerrar sesion
+- active: [app-design-loop](../topics/app-design-loop.md) - design loop, app design, UI polish, screenshot Playwright, Impeccable, accounts, admin web, settings
 - active: [automation-and-reference-fixtures](../topics/automation-and-reference-fixtures.md) - fixtures, audio sintetico, TTS, STT, benchmarks, Fixvox, fixvox, sin interaccion humana
-- draft: [backend-and-model-routing](../topics/backend-and-model-routing.md) - backend, proxy, model routing, proveedores, API keys, Groq, OpenAI, OpenRouter, xAI
+- draft: [backend-and-model-routing](../topics/backend-and-model-routing.md) - backend, proxy, model routing, proveedores, API keys, Groq, OpenAI, OpenRouter
 - active: [dictation-tauri-foundation](../topics/dictation-tauri-foundation.md) - tauri, port, fundacion, stack, comandos, src-tauri
 - draft: [dictation-workflow](../topics/dictation-workflow.md) - dictado, workflow, flujo, estados, pipeline, listening, transcribing
 - active: [docs-knowledge-system](../topics/docs-knowledge-system.md) - documentacion, docs, topics, indice, contexto liviano, tracks, context bloat, contaminacion de contexto
 - active: [fixvox-assistant-lulu-reference](../topics/fixvox-assistant-lulu-reference.md) - Lulu, asistente Fixvox, assistant prefix, Quick Chat Fixvox, Smart Agent, comportamiento Fixvox, paridad asistente
 - active: [fixvox-capability-map](../topics/fixvox-capability-map.md) - Fixvox, Fixbox, fixvox, capacidades Fixvox, alcance producto, mapa de producto, que copiamos, que implementamos
 - active: [fixvox-cloud-runtime-port](../topics/fixvox-cloud-runtime-port.md) - Fixvox cloud, Fixbox backend, managed runtime, proxy compartido, reemplazar Bun por Rust, Rust Tauri port, cloud infrastructure, X-Device-Id
-- active: [fixvox-dock-and-hotkeys-reference](../topics/fixvox-dock-and-hotkeys-reference.md) - Fixvox dock, dock, voice dock, hotkeys Fixvox, Alt+Space, push to talk, dictation key, paste last, Alt+Q
+- active: [fixvox-dock-and-hotkeys-reference](../topics/fixvox-dock-and-hotkeys-reference.md) - Fixvox dock, dock, voice dock, hotkeys Fixvox, Alt+Space, push to talk, dictation key, paste last
 - active: [fixvox-local-to-production-workflow](../topics/fixvox-local-to-production-workflow.md) - local first, modo local, pasar a producción, promote to production, fixvox admin env, cloud dev local
-- active: [grammarly-like-input-intelligence](../topics/grammarly-like-input-intelligence.md) - Grammarly, input box, focused input, UI Automation, text field detection, floating widget, overlay, TextPattern, ValuePattern
-- reference: [local-codex-skills](../topics/local-codex-skills.md) - skills locales, local skills, slash commands, docs/skills, .agents/skills, toggle skills, skills on, skills off, os help, perfect os, init os, adopt os, update os, sigamos, guardar sesion, documentar sesion, checkpoint, persistir estado, cerrar sesion, continuar, prompt de continuidad, realinear os, evaluar skills, hacer commits, push, publicar cambios, incluir todo en la repo, repo commit push, ejecutar lote, proximo lote, avancemos, orquestar, aos-orquestar, aos-fanout, aos-fleet-update, aos-threads, usar threads, spawn agents, subagentes, until-done, pasar a skills, promover a skill, que se puede pasar a skills, skill o topic, metadata mínima, metadata minima, modelo hibrido
-- active: [minimal-implementation](../topics/minimal-implementation.md) - ponytail, minimal implementation, implementacion minima, solucion minima, yagni, over-engineering, bloat, boilerplate, dependencias innecesarias, diff minimo, revisar complejidad
-- active: [os-quality](../topics/os-quality.md) - perfect os, proyecto perfecto, dejar en condiciones, calidad agentica, optimizar contexto, docs livianos, docs indexados, comandos os, os help
-- active: [pi-agentic-os](../topics/pi-agentic-os.md) - pi os, pi agentic os, /aos-continuar, /aos-sync, /aos-skills, /aos-plan-implementar, /aos-orquestar, /aos-fanout, ask_user, taskflow, advisor, pi-lens, computer use
-- active: [pi-extension-stack](../topics/pi-extension-stack.md) - extensiones pi, paquetes pi, pi packages, sincronizar pi, web_search, web_research, codemapper, fff, fffind, ffgrep, taskflow, pi-code-planner, advisor, pi-lens, pi-footer, image_generate
+- active: [grammarly-like-input-intelligence](../topics/grammarly-like-input-intelligence.md) - Grammarly, input box, focused input, UI Automation, text field detection, floating widget, overlay, TextPattern
+- reference: [local-codex-skills](../topics/local-codex-skills.md) - skills locales, local skills, slash commands, docs/skills, .agents/skills, toggle skills, skills on, skills off
+- active: [minimal-implementation](../topics/minimal-implementation.md) - ponytail, minimal implementation, implementacion minima, solucion minima, yagni, over-engineering, bloat, boilerplate
+- active: [os-quality](../topics/os-quality.md) - perfect os, proyecto perfecto, dejar en condiciones, calidad agentica, optimizar contexto, docs livianos, docs indexados, comandos os
+- active: [pi-agentic-os](../topics/pi-agentic-os.md) - pi os, pi agentic os, /aos-continuar, /aos-sync, /aos-skills, /aos-plan-implementar, /aos-orquestar, /aos-fanout
+- active: [pi-extension-stack](../topics/pi-extension-stack.md) - extensiones pi, paquetes pi, pi packages, sincronizar pi, web_search, web_research, codemapper, fff
 - active: [privacy-and-dictation-data](../topics/privacy-and-dictation-data.md) - privacidad, audio, transcripciones, dictado, logs, storage, modelos
 - active: [product-direction](../topics/product-direction.md) - producto, MVP, alcance, direccion, no human interaction, automatizacion
 - active: [selection-and-assistant-actions](../topics/selection-and-assistant-actions.md) - texto seleccionado, seleccion, assistant mode, asistente, quick chat, alt-q, presets, hotkeys
-- reference: [source-project-map](../topics/source-project-map.md) - proyectos fuente, proyecto Tauri, Copicu, copicu, proyecto canonico, Fixvox, fixvox, que implementar, que portar
-- active: [speckit-workflow](../topics/speckit-workflow.md) - speckit, spec kit, spec, plan, tasks.md, feature grande, Small Batches, small batches, lotes chicos, checkpoint
-- active: [ui-design-and-impeccable](../topics/ui-design-and-impeccable.md) - UI, diseño, design, frontend, React, app shell, voice dock, settings, impeccable
+- reference: [source-project-map](../topics/source-project-map.md) - proyectos fuente, proyecto Tauri, Copicu, copicu, proyecto canonico, Fixvox, fixvox, que implementar
+- active: [speckit-workflow](../topics/speckit-workflow.md) - speckit, spec kit, spec, plan, tasks.md, feature grande, Small Batches, small batches
+- active: [ui-design-and-impeccable](../topics/ui-design-and-impeccable.md) - UI, diseño, design, frontend, React, app shell, voice dock, settings
 
 ## Tracks
 
-- active/high: [App Audit Autonomous Implementation Plan](../tracks/app-audit-autonomous-implementation-plan.md) - updated 2026-07-08
-- archived/high: [Fixvox Effective Runtime Parity](../tracks/archive/fixvox-effective-runtime-parity.md) - updated 2026-06-29
-- archived/low: [Prompt Para Proxima Sesion Archivado](../tracks/archive/next-session-prompt-2026-06-20.md) - updated 2026-06-20
-- archived/medium: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md) - updated 2026-06-07
-- active/high: [Fixvox Admin Web + Pi Chat](../tracks/fixvox-admin-web-pi-chat.md) - updated 2026-07-02
-- active/high: [Fixvox Lulu Assistant Parity Refactor](../tracks/fixvox-lulu-assistant-parity-refactor.md) - updated 2026-07-03
-- active/high: [Fixvox Lulu Assistant Safe Architecture Plan](../tracks/fixvox-lulu-assistant-safe-architecture-plan.md) - updated 2026-07-03
-- active/high: [Fixvox Registered Users Opportunities](../tracks/fixvox-registered-users-opportunities.md) - updated 2026-06-30
-- active/high: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md) - updated 2026-06-30
-- active/high: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md) - updated 2026-06-10
-- active/high: [Pi Prod Workspace For Dictation Tauri](../tracks/pi-prod-workspace.md) - updated 2026-06-30
-- active/high: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md) - updated 2026-07-02
-- active/high: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md) - updated 2026-06-29
+- active: [App Audit Autonomous Implementation Plan](../tracks/app-audit-autonomous-implementation-plan.md)
+- archived: [Fixvox Effective Runtime Parity](../tracks/archive/fixvox-effective-runtime-parity.md)
+- archived: [Prompt Para Proxima Sesion Archivado](../tracks/archive/next-session-prompt-2026-06-20.md)
+- archived: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md)
+- active: [Fixvox Admin Web + Pi Chat](../tracks/fixvox-admin-web-pi-chat.md)
+- active: [Fixvox Lulu Assistant Parity Refactor](../tracks/fixvox-lulu-assistant-parity-refactor.md)
+- active: [Fixvox Lulu Assistant Safe Architecture Plan](../tracks/fixvox-lulu-assistant-safe-architecture-plan.md)
+- active: [Fixvox Registered Users Opportunities](../tracks/fixvox-registered-users-opportunities.md)
+- active: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md)
+- active: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md)
+- active: [Pi Prod Workspace For Dictation Tauri](../tracks/pi-prod-workspace.md)
+- active: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md)
+- active: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md)
 
 ## Specs
 
@@ -73,8 +73,12 @@ Generated: 2026-07-09T15:09:48.932Z
 ## Skills
 
 - Canon: [docs/skills/](../skills/)
-- Operational commands: sigamos, cerrar-sesion, continuar-sesion, continuar-sesion-con-gol, realinear-os, evaluar-skills
 - Guidance: [local-codex-skills](../topics/local-codex-skills.md)
+
+## Pi Resources
+
+- Prompts: aos-gol
+- Guidance: [pi-agentic-os](../topics/pi-agentic-os.md)
 
 ## Aliases
 

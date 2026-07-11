@@ -5,9 +5,11 @@ import type {
   PipelineInputKind,
   PipelineState,
   RedactedPipelineError,
+  RuntimeTelemetryStage,
   SimulatedRunSummary,
   TerminalPipelineState,
 } from "./types";
+import { createRuntimeTelemetryStage } from "./runtime-telemetry";
 import type { CaptureMetadata } from "../capture/types";
 import { isTerminalPipelineState } from "./types";
 
@@ -38,6 +40,15 @@ export function deriveRunSummaryFromEvents(
     terminalState,
     error,
   });
+  const runtimeTelemetryStages = deriveRuntimeTelemetryStages({
+    events,
+    capture,
+    transcript,
+    delivery,
+    deliveryEvidence,
+    terminalState,
+    error,
+  });
 
   return {
     runId: firstEvent.runId,
@@ -52,6 +63,7 @@ export function deriveRunSummaryFromEvents(
     delivery,
     deliveryEvidence,
     error,
+    runtimeTelemetryStages,
     durationMs: finalEvent.at - firstEvent.at,
   };
 }
@@ -189,6 +201,97 @@ function deriveError(
   }
 
   return finalEvent.data.error;
+}
+
+function deriveRuntimeTelemetryStages(input: {
+  events: readonly PipelineEvent[];
+  capture: CaptureMetadata | undefined;
+  transcript: string | undefined;
+  delivery: DeliveryResult | undefined;
+  deliveryEvidence: DeliveryEvidence | undefined;
+  terminalState: TerminalPipelineState;
+  error: RedactedPipelineError | undefined;
+}): RuntimeTelemetryStage[] | undefined {
+  if (!input.capture && !input.transcript && !input.delivery && !input.error) {
+    return undefined;
+  }
+
+  const stages: RuntimeTelemetryStage[] = [];
+  const captureEvent = input.events.find((event) => event.type === "capture_completed" || event.type === "capture_failed");
+  if (input.capture) {
+    stages.push(createRuntimeTelemetryStage({
+      stage: "capture",
+      status: captureEvent?.type === "capture_failed" ? "failed" : "ok",
+      reason: captureEvent?.type === "capture_failed" ? captureEvent.data.error.code : undefined,
+      durationMs: input.capture.durationMs,
+      redacted: true,
+    }));
+  }
+
+  const artifact = input.capture?.artifact;
+  if (input.capture) {
+    stages.push(createRuntimeTelemetryStage({
+      stage: "audio-prep",
+      status: "ok",
+      audio: {
+        durationMs: artifact?.durationMs ?? input.capture.durationMs,
+        originalBytes: artifact?.sizeBytes ?? input.capture.sizeBytes,
+        uploadBytes: artifact?.sizeBytes ?? input.capture.sizeBytes,
+        mimeType: artifact?.mimeType ?? input.capture.mimeType,
+        source: input.capture.source,
+        voiceActivity: input.capture.localSpeechDecision?.voiceActivity,
+      },
+      redacted: true,
+    }));
+  }
+
+  const transcriptionEvent = [...input.events].reverse().find((event) => event.type === "transcription_completed");
+  if (transcriptionEvent?.type === "transcription_completed") {
+    stages.push(createRuntimeTelemetryStage({
+      stage: "stt",
+      status: "ok",
+      durationMs: transcriptionEvent.data.latencyMs,
+      provider: transcriptionEvent.data.stt?.provider,
+      model: transcriptionEvent.data.stt?.model,
+      redacted: true,
+    }));
+  } else if (input.error?.phase === "transcribing") {
+    stages.push(createRuntimeTelemetryStage({
+      stage: "stt",
+      status: "failed",
+      reason: input.error.message,
+      redacted: true,
+    }));
+  }
+
+  if (transcriptionEvent?.type === "transcription_completed") {
+    stages.push(createRuntimeTelemetryStage({
+      stage: "postprocess",
+      status: "skipped",
+      reason: "postprocess_telemetry_not_available",
+      redacted: true,
+    }));
+  }
+
+  if (input.deliveryEvidence || input.delivery || input.error?.phase === "delivering") {
+    stages.push(createRuntimeTelemetryStage({
+      stage: "delivery",
+      status: input.deliveryEvidence?.status === "failed"
+        ? "failed"
+        : input.deliveryEvidence?.status === "uncertain"
+          ? "fallback"
+          : "ok",
+      reason: input.deliveryEvidence?.reason ?? input.delivery?.reason ?? input.error?.message,
+      delivery: {
+        strategy: input.delivery?.status,
+        evidenceStatus: input.deliveryEvidence?.status,
+        confidence: input.deliveryEvidence?.status === "uncertain" ? "low" : "medium",
+      },
+      redacted: true,
+    }));
+  }
+
+  return stages.length > 0 ? stages : undefined;
 }
 
 function deriveDeliveryEvidence(input: {

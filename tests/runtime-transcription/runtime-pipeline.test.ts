@@ -196,6 +196,47 @@ describe("runtime captured-audio pipeline", () => {
     });
   });
 
+  it("treats provider no-speech placeholders as unusable without delivery", async () => {
+    const gateway: ModelGateway = {
+      async transcribe() {
+        return {
+          status: "ok",
+          text: "no speech detected",
+          provider: "groq",
+          model: "whisper-large-v3",
+          latencyMs: 10,
+        };
+      },
+    };
+    const service = new PipelineService({
+      createRunId: () => "runtime-run-placeholder",
+      transcriptionAdapter: createCapturedAudioTranscriptionAdapter({
+        gateway,
+        mode: "real",
+      }),
+    });
+
+    const summary = await service.run(
+      createCapturedAudioPipelineRequest(createCapturedAudioResult()),
+    );
+
+    expect(summary).toMatchObject({
+      terminalState: "error",
+      output: undefined,
+      delivery: undefined,
+      error: {
+        phase: "transcribing",
+        message: "Transcription looks like a non-speech placeholder.",
+      },
+      deliveryEvidence: {
+        status: "failed",
+        output: undefined,
+        reason: "Transcription looks like a non-speech placeholder.",
+      },
+    });
+    expect(summary.events.some((event) => event.type === "delivery_completed")).toBe(false);
+  });
+
   it("cancels before provider submission when the run is cancelled at transcribing", async () => {
     let providerCalls = 0;
     const gateway: ModelGateway = {

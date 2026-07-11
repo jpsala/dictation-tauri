@@ -42,5 +42,12 @@ NUL
 .idea/
 .vscode/
 
-# Local agent compatibility links
+# Local agent state and compatibility links
 .agents/skills/
+.pi/npm/
+.pi/settings.json
+.pi/taskflows/
+tmp/
+
+# Local runtime and smoke evidence
+artifacts/

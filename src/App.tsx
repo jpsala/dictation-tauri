@@ -12,7 +12,7 @@ import {
   getAppSessionCaptureResult,
   getAppSessionSummary,
 } from "./desktop-control/app-session";
-import { DesktopDictationController } from "./desktop-control/controller";
+import { DesktopDictationController, type DesktopRuntimeResult } from "./desktop-control/controller";
 import type { DesktopRecoveryAction } from "./desktop-control";
 import {
   captureTauriDesktopDeliveryTarget,
@@ -21,6 +21,7 @@ import {
   createTauriSavedTargetDeliveryGateway,
   isTauriNativePasteObserverEnabled,
   type DeliveryEvidence as DesktopDeliveryEvidence,
+  type DeliveryTargetAffinity,
   type TauriDesktopDeliveryTarget,
 } from "./delivery";
 import { createHostClientTranscriptionAdapter } from "./host-runtime/pipeline-adapter";
@@ -35,8 +36,10 @@ import type { HostRuntimeClient } from "./host-runtime/types";import {
   type RuntimeRecoveryAction,
 } from "./model-gateway/runtime-transcription";
 import { createCapturedAudioPipelineRequest } from "./pipeline/ports";
+import { formatSafeRedactedRunSummary } from "./pipeline/runtime-telemetry";
 import {
   drainTauriGlobalHotkeyEvents,
+  getTauriActionHotkeyConfig,
   listenForTauriGlobalHotkey,
   listenForTauriHostCommands,
   setTauriGlobalHotkeyListenerReady,
@@ -51,12 +54,34 @@ import {
   resetDictationKeyState,
   resolveDictationKeyEvent,
 } from "./desktop-control/dictation-key";
-import { latestResultFromPipelineSummary } from "./selection-transform";
+import {
+  hostSelectionCaptureCommand,
+  hostSelectionCaptureForTargetCommand,
+  isSelectionTransformPresetId,
+  latestResultFromPipelineSummary,
+  listSelectionTransformPresets,
+  routeSelectionCaptureOutcome,
+  runFixtureSelectionTransform,
+  selectionTransformInstructionForPreset,
+  selectionTransformPresetDisplayName,
+  selectionTransformPresetPickerKey,
+  transformSelectedTextWithHost,
+  type SelectionCaptureOutcome,
+  type SelectionContext,
+} from "./selection-transform";
 import { PipelineService } from "./pipeline/service";
 import type {
   DeliveryEvidence as PipelineDeliveryEvidence,
   SimulatedRunSummary,
 } from "./pipeline/types";
+import {
+  assistantSurfaceFromIntentResult,
+  createPipelineUiResult,
+  getCompanionSurfaceForPipelineUiResult,
+  getDockResultSourceForPipelineUiResult,
+  isAssistantHandledBySurface,
+  shouldExposeTranscriptReview,
+} from "./pipeline/ui-result";
 import {
   createDockCompanionSnapshot,
   createDockCompanionSyncKey,
@@ -72,7 +97,24 @@ import {
   type DockCompanionPresetId,
   type DockCompanionSnapshot,
 } from "./voice-dock";
+import {
+  createSoundCuePolicy,
+  requestDictationSoundCue,
+  type DictationSoundCue,
+} from "./voice-dock/sound-cues";
+import { runAssistantChatWithHost, type HostAssistantChatMessage } from "./assistant/managed-chat";
+import { createAssistantQuickResponse, type AssistantQuickResponse } from "./assistant/quick-response";
+import { parseAssistantVoicePrefix } from "./assistant/voice-prefix";
 import { SettingsSurface } from "./settings/SettingsSurface";
+import { loadSelectionPresetStore } from "./settings/preset-store-control";
+import {
+  createAutoStopSilencePolicy,
+  createMuteOutputPolicy,
+  defaultUserPreferences,
+  getUserPreferences,
+  userPreferencesChangedEvent,
+  type UserPreferences,
+} from "./settings/user-preferences-control";
 import type {
   DesktopDictationSession,
   IdleDesktopDictationState,
@@ -92,6 +134,7 @@ type PipelineUiState = {
 
 type TranscriptReview = {
   text: string;
+  source: "dictation" | "selection_transform" | "assistant";
   provider?: string;
   model?: string;
   latencyMs?: number;
@@ -102,7 +145,7 @@ type ResultHistoryEntry = {
   schemaVersion: 1;
   id: string;
   runId: string;
-  source: "dictation" | "selection_transform";
+  source: "dictation" | "selection_transform" | "assistant";
   text: string;
   textLength: number;
   createdAt: string;
@@ -165,17 +208,6 @@ function createCaptureGatewayRuntime(): CaptureGatewayRuntime {
     capturedMessage: "Fake captured audio artifact is ready.",
   };
 }
-
-const captureStateLabels: Record<CaptureState, string> = {
-  idle: "Idle",
-  permission_needed: "Permission needed",
-  requesting_permission: "Checking microphone",
-  recording: "Listening",
-  stopping: "Stopping",
-  captured: "Captured",
-  failed: "Failed",
-  cancelled: "Cancelled",
-};
 
 const pipelineStatusLabels: Record<PipelineUiState["status"], string> = {
   idle: "Not submitted",
@@ -248,6 +280,266 @@ export function applySafePasteLastRecovery(
     reason:
       "Paste last was not sent in safe mode; transcript remains available for manual copy.",
   });
+}
+
+export type AssistantRoutingTelemetry = {
+  event: "assistant_routed";
+  sessionId: string;
+  parsedKind: "assistant" | "invalid-assistant";
+  intentKind: string;
+  quickResponseIntent?: AssistantQuickResponse["intent"];
+  surfaceKind: string;
+  deliveryStrategy: "paste_send" | "review_only";
+  actionKind?: string;
+  tool?: string;
+  confirmation?: "required" | "none";
+  promptLength: number;
+  outputLength: number;
+  managedAssistantUsed: boolean;
+  redacted: true;
+};
+
+export function createAssistantRoutingTelemetry(input: {
+  sessionId: string;
+  parsed: ReturnType<typeof parseAssistantVoicePrefix>;
+  assistantResponse?: AssistantQuickResponse;
+  assistantSurface: SimulatedRunSummary["assistantSurface"];
+  deliveryStrategy: "paste_send" | "review_only";
+  output: string;
+  managedAssistantText?: string;
+}): AssistantRoutingTelemetry {
+  const result = input.assistantResponse?.result;
+  return {
+    event: "assistant_routed",
+    sessionId: input.sessionId,
+    parsedKind: input.parsed.kind === "assistant" ? "assistant" : "invalid-assistant",
+    intentKind: result?.kind ?? "parse-error",
+    quickResponseIntent: input.assistantResponse?.intent,
+    surfaceKind: input.assistantSurface?.kind ?? "none",
+    deliveryStrategy: input.deliveryStrategy,
+    actionKind: input.assistantResponse?.action?.kind,
+    tool: result?.kind === "toolAction" ? result.tool : undefined,
+    confirmation: result?.kind === "toolAction" ? result.confirmation : undefined,
+    promptLength: input.parsed.kind === "assistant" ? input.parsed.prompt.length : 0,
+    outputLength: input.output.length,
+    managedAssistantUsed: Boolean(input.managedAssistantText?.trim()),
+    redacted: true,
+  };
+}
+
+export function logAssistantRoutingTelemetry(telemetry: AssistantRoutingTelemetry): void {
+  console.info("[dictation-tauri][assistant] routed", JSON.stringify(telemetry));
+}
+
+export function applyAssistantVoicePrefixToRuntimeResult(input: {
+  runtime: DesktopRuntimeResult;
+  sessionId: string;
+  activePreset?: DockActivePreset;
+  availablePresets?: readonly { id: DockCompanionPresetId; name: string }[];
+  managedAssistantText?: string;
+}): DesktopRuntimeResult {
+  const parsed = parseAssistantVoicePrefix(input.runtime.transcript);
+  if (parsed.kind === "not-assistant") {
+    return input.runtime;
+  }
+
+  const assistantResponse = parsed.kind === "assistant"
+    ? createAssistantQuickResponse(parsed.prompt, {
+        activePresetId: input.activePreset?.presetId ?? undefined,
+        activePresetName: input.activePreset?.presetName,
+        availablePresetNames: input.availablePresets?.map((preset) => preset.name),
+        availablePresets: input.availablePresets,
+        lastActivatedPresetId: input.activePreset?.presetId ?? undefined,
+      })
+    : undefined;
+  const assistantUnavailableText =
+    "Assistant managed chat is unavailable; configure Fixvox Cloud/managed assistant to answer this Lulu request.";
+  const output = parsed.kind === "assistant"
+    ? input.managedAssistantText?.trim() ||
+      (assistantResponse?.intent === "assistant-chat" ? assistantUnavailableText : assistantResponse?.text) ||
+      assistantUnavailableText
+    : `Assistant parse error: ${parsed.reason}`;
+  const assistantDeliveryStrategy = assistantResponse?.intent === "insert-answer" ? "paste_send" : "review_only";
+  const assistantSurface = parsed.kind === "assistant"
+    ? assistantSurfaceFromIntentResult(assistantResponse?.result, output)
+    : { kind: "none" as const };
+  logAssistantRoutingTelemetry(createAssistantRoutingTelemetry({
+    sessionId: input.sessionId,
+    parsed,
+    assistantResponse,
+    assistantSurface,
+    deliveryStrategy: assistantDeliveryStrategy,
+    output,
+    managedAssistantText: input.managedAssistantText,
+  }));
+
+  const summary = isSimulatedRunSummary(input.runtime.summary)
+    ? applyDeliveryEvidenceFallback(
+        {
+          ...input.runtime.summary,
+          transcript: parsed.kind === "assistant" ? parsed.prompt : input.runtime.transcript,
+          output,
+          resultSource: "assistant",
+          assistantSurface,
+        },
+        {
+          status: "available",
+          output,
+          strategy: assistantDeliveryStrategy,
+          message: assistantDeliveryStrategy === "paste_send"
+            ? "Assistant-prefixed answer is ready for Fixvox-like paste delivery."
+            : "Assistant-prefixed dictation was routed to assistant review instead of normal delivery.",
+          reason: parsed.kind === "assistant"
+            ? assistantDeliveryStrategy === "paste_send"
+              ? "Assistant prefix detected; local answer will be pasted like Fixvox."
+              : "Assistant prefix detected; normal dictation delivery skipped."
+            : parsed.reason,
+        },
+      )
+    : input.runtime.summary;
+
+  return {
+    ...input.runtime,
+    transcript: parsed.kind === "assistant" ? parsed.prompt : input.runtime.transcript,
+    output,
+    assistantAction: assistantResponse?.action,
+    assistantSurface,
+    deliveryStrategy: assistantDeliveryStrategy,
+    deliveryReason: parsed.kind === "assistant"
+      ? assistantDeliveryStrategy === "paste_send"
+        ? "Assistant prefix detected; local answer will be pasted like Fixvox."
+        : "Assistant prefix detected; normal dictation delivery skipped."
+      : parsed.reason,
+    deliveryTargetAffinity: "saved",
+    summary,
+  };
+}
+
+export function applySelectionTransformOutputToRuntimeResult(input: {
+  runtime: DesktopRuntimeResult;
+  output: string;
+  reason?: string;
+  deliveryStrategy?: "review_only" | "paste_send";
+}): DesktopRuntimeResult {
+  const output = input.output.trim();
+  if (!output) {
+    return input.runtime;
+  }
+
+  const deliveryStrategy = input.deliveryStrategy ?? "review_only";
+  const deliveryReason = input.reason ?? (
+    deliveryStrategy === "paste_send"
+      ? "Selection transform will replace the captured selection."
+      : "Selection transform is ready for review before automatic replace-selection."
+  );
+  const summary = isSimulatedRunSummary(input.runtime.summary)
+    ? applyDeliveryEvidenceFallback(
+        {
+          ...input.runtime.summary,
+          output,
+          resultSource: "selection_transform",
+        },
+        {
+          status: deliveryStrategy === "paste_send" ? "paste_sent" : "available",
+          output,
+          strategy: deliveryStrategy,
+          message: deliveryStrategy === "paste_send"
+            ? "Selection transform was sent to replace the selected text."
+            : "Selection transform is ready for review and manual copy.",
+          reason: deliveryReason,
+        },
+      )
+    : input.runtime.summary;
+
+  return {
+    ...input.runtime,
+    output,
+    deliveryStrategy,
+    deliveryReason,
+    deliveryTargetAffinity: "saved",
+    summary,
+  };
+}
+
+export function applySelectionTransformFailureToRuntimeResult(input: {
+  runtime: DesktopRuntimeResult;
+  code?: string;
+  reason?: string;
+}): DesktopRuntimeResult {
+  const text = (input.runtime.output ?? input.runtime.transcript).trim();
+  if (!text) {
+    return input.runtime;
+  }
+
+  const reason = input.reason ?? "Selection transform failed after transcription; transcript is available for review and manual copy.";
+  const summary = isSimulatedRunSummary(input.runtime.summary)
+    ? {
+        ...input.runtime.summary,
+        output: text,
+        deliveryEvidence: {
+          status: "available" as const,
+          output: text,
+          reason,
+        },
+        error: {
+          phase: "selection_transform" as const,
+          message: reason,
+        },
+        runtimeTelemetryStages: [
+          ...(input.runtime.summary.runtimeTelemetryStages ?? []),
+          {
+            stage: "selection_transform" as const,
+            status: "failed" as const,
+            reason: input.code,
+            redacted: true as const,
+          },
+        ],
+      }
+    : input.runtime.summary;
+
+  return {
+    ...input.runtime,
+    output: text,
+    deliveryStrategy: "review_only",
+    deliveryReason: reason,
+    deliveryTargetAffinity: "saved",
+    summary,
+  };
+}
+
+export function applySelectionTransformToRuntimeResult(input: {
+  runtime: DesktopRuntimeResult;
+  sessionId: string;
+  selection?: SelectionContext;
+  presetId?: DockCompanionPresetId;
+}): DesktopRuntimeResult {
+  if (!input.selection || !input.presetId) {
+    return input.runtime;
+  }
+
+  const result = runFixtureSelectionTransform({
+    requestId: `${input.sessionId}:selection-transform`,
+    sessionId: input.sessionId,
+    selection: input.selection,
+    instructionTranscript: input.runtime.transcript,
+    presetId: input.presetId,
+    mode: "fixture",
+    allowProviderCall: false,
+  });
+
+  if (result.status !== "ok" || !result.output) {
+    return input.runtime;
+  }
+
+  return applySelectionTransformOutputToRuntimeResult({
+    runtime: input.runtime,
+    output: result.output,
+    reason: "Selection transform used the active preset without automatic replace-selection.",
+  });
+}
+
+function isSimulatedRunSummary(value: unknown): value is SimulatedRunSummary {
+  return typeof value === "object" && value !== null && "terminalState" in value;
 }
 
 export function getRuntimeRecoveryAction(
@@ -337,12 +629,33 @@ export function formatDesktopRecoveryAction(
   return `${action.label}: ${action.reason}`;
 }
 
+export function getReviewCopyLabel(
+  summary?: SimulatedRunSummary,
+): string {
+  const latestResult = latestResultFromPipelineSummary(summary);
+  return latestResult?.source === "selection_transform"
+    ? "Copy transform"
+    : latestResult?.source === "assistant"
+      ? "Copy assistant reply"
+      : "Copy transcript";
+}
+
+function describeLatestResultNoun(summary?: SimulatedRunSummary): string {
+  const latestResult = latestResultFromPipelineSummary(summary);
+  return latestResult?.source === "selection_transform"
+    ? "transform"
+    : latestResult?.source === "assistant"
+      ? "assistant reply"
+      : "transcript";
+}
+
 export function getTranscriptReview(
   summary?: SimulatedRunSummary,
 ): TranscriptReview | undefined {
   const latestResult = latestResultFromPipelineSummary(summary);
+  const uiResult = createPipelineUiResult(summary);
 
-  if (!summary || !latestResult) {
+  if (!summary || !latestResult || !shouldExposeTranscriptReview(uiResult)) {
     return undefined;
   }
 
@@ -350,11 +663,54 @@ export function getTranscriptReview(
 
   return {
     text: latestResult.text,
+    source: latestResult.source,
     provider: transcriptionEvent?.data.stt?.provider,
     model: transcriptionEvent?.data.stt?.model,
     latencyMs: transcriptionEvent?.data.latencyMs,
     requestId: transcriptionEvent?.data.stt?.requestId,
   };
+}
+
+function createAssistantQuickChatSummary(input: {
+  runId: string;
+  prompt: string;
+  output: string;
+}): SimulatedRunSummary {
+  return {
+    runId: input.runId,
+    fixtureId: "assistant-quick-chat",
+    inputKind: "microphone",
+    events: [],
+    states: ["done"],
+    terminalState: "done",
+    transcript: input.prompt,
+    output: input.output,
+    resultSource: "assistant",
+    assistantSurface: {
+      kind: "quickChat",
+      title: "Quick Chat",
+      initialUserText: input.prompt,
+      initialAssistantText: input.output,
+    },
+    deliveryEvidence: {
+      status: "available",
+      output: input.output,
+      reason: "Quick Chat local reply; normal dictation delivery skipped.",
+    },
+    durationMs: 0,
+  };
+}
+
+function createAssistantChatHistoryWindow(
+  messages: readonly HostAssistantChatMessage[],
+): HostAssistantChatMessage[] {
+  return messages
+    .map((message) => ({
+      role: message.role,
+      text: message.text.trim(),
+    }))
+    .filter((message) => message.text.length > 0)
+    .slice(-8);
 }
 
 function createHistorySummary(entry: ResultHistoryEntry): SimulatedRunSummary {
@@ -410,15 +766,49 @@ function createHistoryEntryFromSummary(
   };
 }
 
+function normalizeDockPresetId(presetId: string | null | undefined): DockCompanionPresetId | undefined {
+  return isSelectionTransformPresetId(presetId) ? presetId : undefined;
+}
+
 function presetDisplayName(presetId: DockCompanionPresetId): string {
-  switch (presetId) {
-    case "rewrite":
-      return "Rewrite";
-    case "shorten":
-      return "Shorten";
-    case "bulletize":
-      return "Bulletize";
+  return selectionTransformPresetDisplayName(presetId);
+}
+
+function presetPickerShortcut(presetId: DockCompanionPresetId): string {
+  return selectionTransformPresetPickerKey(presetId);
+}
+
+function normalizePresetChordKey(value: string | null | undefined): string | undefined {
+  const key = value?.trim();
+  if (!key || key.length !== 1) {
+    return undefined;
   }
+  return key.toUpperCase();
+}
+
+function presetChordKeyCandidates(input: { pickerKey: string; hotkey?: string | null }): string[] {
+  const keys = [normalizePresetChordKey(input.pickerKey)];
+  const finalChord = input.hotkey?.split(",").at(-1);
+  keys.push(normalizePresetChordKey(finalChord));
+  return [...new Set(keys.filter((key): key is string => Boolean(key)))];
+}
+
+function formatPresetChordLabel(rootShortcut: string, chordKey: string): string {
+  return `${rootShortcut} then ${chordKey}`;
+}
+
+function resolvePresetPickerChord(chordKey: string | null | undefined): DockCompanionPresetId | undefined {
+  const normalized = normalizePresetChordKey(chordKey);
+  if (!normalized) {
+    return undefined;
+  }
+
+  return listSelectionTransformPresets().find((preset) => {
+    const pickerKey = presetPickerShortcut(preset.id);
+    return presetChordKeyCandidates({ pickerKey, hotkey: preset.hotkey }).some(
+      (key) => key === normalized,
+    );
+  })?.id;
 }
 
 function classifyTranscriptionFailure(
@@ -458,22 +848,61 @@ function findTranscriptionCompletedEvent(summary: SimulatedRunSummary) {
   return undefined;
 }
 
+function describeTranscriptReviewTitle(review: TranscriptReview): string {
+  return review.source === "selection_transform"
+    ? "Selection transform review"
+    : review.source === "assistant"
+      ? "Assistant review"
+      : "Transcript review";
+}
+
+function describeLatestResultRecovery(review: TranscriptReview): string {
+  return review.source === "selection_transform"
+    ? "Transform result is recoverable in this session. It is review-only for now; copy manually before replacing selected text."
+    : review.source === "assistant"
+      ? "Assistant-prefixed dictation is review-only for now; normal text delivery was skipped."
+      : "Latest transcript is recoverable in this session. Paste-last safe mode does not send keys or observe insertion.";
+}
+
+export function describeDeveloperDeliveryStatus(
+  evidence: PipelineDeliveryEvidence | undefined,
+): string {
+  switch (evidence?.status) {
+    case "available":
+      return "review_only / available (not inserted)";
+    case "copied":
+      return "copied (clipboard fallback, not inserted)";
+    case "uncertain":
+      return "uncertain (verify target)";
+    case "paste_sent":
+      return "paste_sent (sent, not observer-verified)";
+    case "paste_observed":
+      return "paste_observed (verified by observer)";
+    case "failed":
+      return "failed (not inserted)";
+    default:
+      return "Not available";
+  }
+}
+
 function describeDeliveryEvidence(
   evidence: PipelineDeliveryEvidence | undefined,
 ): string | undefined {
   switch (evidence?.status) {
     case "available":
-      return "Transcript is available locally. Delivery has not been observed.";
+      return evidence.reason?.includes("Selection transform failed")
+        ? evidence.reason
+        : "Review-only result is available locally. Nothing was inserted; review or copy manually.";
     case "copied":
-      return evidence.reason ?? "Transcript copied as fallback.";
+      return evidence.reason ?? "Transcript copied as fallback; target insertion was not observed.";
     case "uncertain":
-      return evidence.reason ?? "Delivery remains uncertain; transcript is still available.";
+      return "Delivery is uncertain. Verify the target; if text is missing, copy or use safe paste-last.";
     case "paste_sent":
-      return "Paste was sent, but target insertion was not observed.";
+      return "Paste command was sent, but target insertion was not observer-verified. Verify the target before retrying.";
     case "paste_observed":
       return "Paste insertion was observed by a verified desktop observer.";
     case "failed":
-      return evidence.reason ?? "Delivery failed before a confirmed handoff.";
+      return "Delivery failed before a confirmed handoff. Check the editable target, then copy or retry.";
     default:
       return undefined;
   }
@@ -496,6 +925,12 @@ function createDockInputFromUi(input: {
   }
 
   if (input.pipelineUi.status === "done") {
+    const uiResult = createPipelineUiResult(input.pipelineUi.summary);
+
+    if (isAssistantHandledBySurface(uiResult)) {
+      return { ...sessionBase, state: "idle" };
+    }
+
     return {
       ...sessionBase,
       state:
@@ -550,7 +985,7 @@ function createDockInputFromUi(input: {
   }
 }
 
-function mapPipelineEvidenceToDesktopEvidence(
+export function mapPipelineEvidenceToDesktopEvidence(
   evidence: PipelineDeliveryEvidence | undefined,
   fallbackOutput: string | undefined,
 ): DesktopDeliveryEvidence | undefined {
@@ -566,10 +1001,7 @@ function mapPipelineEvidenceToDesktopEvidence(
   }
 
   const output = evidence.output ?? fallbackOutput;
-  const status =
-    output && (evidence.status === "uncertain" || evidence.status === "failed")
-      ? "available"
-      : evidence.status;
+  const status = evidence.status;
 
   return {
     status,
@@ -638,13 +1070,13 @@ function createSyntheticDockVu(tick: number) {
   return { level, bands };
 }
 
-function getAppSurface(): "dock" | "companion" | "settings" {
+function getAppSurface(): "dock" | "companion" | "preset-picker" | "settings" {
   if (typeof window === "undefined") {
     return "dock";
   }
 
   const surface = new URLSearchParams(window.location.search).get("surface");
-  if (surface === "companion" || surface === "settings") {
+  if (surface === "companion" || surface === "preset-picker" || surface === "settings") {
     return surface;
   }
 
@@ -735,6 +1167,178 @@ export function CompanionSurfaceView({
       (action): action is { payload: DockCompanionCommandPayload; label: string } =>
         Boolean(action),
     );
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [pickerIndex, setPickerIndex] = useState(0);
+  const [pickerPresetVersion, setPickerPresetVersion] = useState(0);
+  const [presetPickerHotkeyLabel, setPresetPickerHotkeyLabel] = useState("Alt+Q");
+  const [assistantDraft, setAssistantDraft] = useState("");
+  const pickerInputRef = useRef<HTMLInputElement>(null);
+  const pickerPresets = useMemo(
+    () => listSelectionTransformPresets().map((preset) => {
+      const pickerKey = presetPickerShortcut(preset.id);
+      const chordKeys = presetChordKeyCandidates({ pickerKey, hotkey: preset.hotkey });
+      const primaryChordKey = chordKeys[0] ?? pickerKey;
+      return {
+        presetId: preset.id,
+        name: presetDisplayName(preset.id),
+        pickerKey,
+        chordKeys,
+        hotkey: formatPresetChordLabel(presetPickerHotkeyLabel, primaryChordKey),
+      };
+    }),
+    [pickerPresetVersion, presetPickerHotkeyLabel],
+  );
+  const quickRunHint = pickerPresets.flatMap((preset) => preset.chordKeys).slice(0, 6).join("/");
+  const filteredPickerPresets = useMemo(() => {
+    const query = pickerQuery.trim().toLowerCase();
+    return query
+      ? pickerPresets.filter((preset) => [
+        preset.name,
+        preset.presetId,
+        preset.pickerKey,
+        preset.hotkey,
+        ...preset.chordKeys,
+      ].some((value) => value.toLowerCase().includes(query)))
+      : pickerPresets;
+  }, [pickerPresets, pickerQuery]);
+
+  useEffect(() => {
+    if (!snapshot.settings.open) {
+      recordPresetPickerDebug({ open: false, lastAction: "closed" });
+      return;
+    }
+    void loadSelectionPresetStore().then(() => setPickerPresetVersion((version) => version + 1));
+    void getTauriActionHotkeyConfig()
+      .then((config) => setPresetPickerHotkeyLabel(config?.presetPicker || "Alt+Q"))
+      .catch(() => setPresetPickerHotkeyLabel("Alt+Q"));
+    setPickerQuery("");
+    setPickerIndex(0);
+    recordPresetPickerDebug({ open: true, lastAction: "opened" });
+    requestAnimationFrame(() => {
+      pickerInputRef.current?.focus();
+      pickerInputRef.current?.select();
+      recordPresetPickerDebug({ inputFocused: document.activeElement === pickerInputRef.current });
+    });
+  }, [snapshot.settings.open]);
+
+  useEffect(() => {
+    if (pickerIndex >= filteredPickerPresets.length) {
+      setPickerIndex(Math.max(0, filteredPickerPresets.length - 1));
+    }
+  }, [filteredPickerPresets.length, pickerIndex]);
+
+  const recordPresetPickerDebug = (patch: Record<string, unknown>) => {
+    const previous = ((window as unknown as { __dictationPresetPickerDebug?: Record<string, unknown> })
+      .__dictationPresetPickerDebug) ?? {};
+    (window as unknown as { __dictationPresetPickerDebug: Record<string, unknown> })
+      .__dictationPresetPickerDebug = {
+        ...previous,
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      };
+  };
+
+  const executePickerPreset = (presetId: DockCompanionPresetId) => {
+    const presetName = presetDisplayName(presetId);
+    recordPresetPickerDebug({
+      lastAction: "execute",
+      lastExecutedPresetId: presetId,
+      lastExecutedPresetName: presetName,
+      query: pickerQuery,
+      selectedIndex: pickerIndex,
+    });
+    console.info("[dictation-tauri][preset-picker] execute", {
+      presetId,
+      presetName,
+      queryLength: pickerQuery.length,
+      selectedIndex: pickerIndex,
+    });
+    onCommand?.({ source: "dock_companion", command: "select_preset", presetId });
+  };
+
+  useEffect(() => {
+    if (!snapshot.settings.open) {
+      return;
+    }
+    const selectedPreset = filteredPickerPresets[pickerIndex];
+    recordPresetPickerDebug({
+      open: true,
+      query: pickerQuery,
+      selectedIndex: pickerIndex,
+      selectedPresetId: selectedPreset?.presetId ?? null,
+      selectedPresetName: selectedPreset?.name ?? null,
+      filteredCount: filteredPickerPresets.length,
+      inputFocused: document.activeElement === pickerInputRef.current,
+    });
+  }, [filteredPickerPresets, pickerIndex, pickerQuery, snapshot.settings.open]);
+
+  useEffect(() => {
+    if (!snapshot.settings.open) {
+      return;
+    }
+
+    const handlePickerKeydown = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) {
+        return;
+      }
+
+      recordPresetPickerDebug({
+        lastAction: "keydown",
+        lastKey: event.key,
+        query: pickerQuery,
+        selectedIndex: pickerIndex,
+        inputFocused: document.activeElement === pickerInputRef.current,
+      });
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCommand?.({ source: "dock_companion", command: "close_companion" });
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setPickerIndex((index) => Math.min(index + 1, filteredPickerPresets.length - 1));
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setPickerIndex((index) => Math.max(index - 1, 0));
+        return;
+      }
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const preset = filteredPickerPresets[pickerIndex];
+        if (preset) {
+          executePickerPreset(preset.presetId);
+        }
+        return;
+      }
+
+      if (event.key.length === 1 && pickerQuery.trim() === "") {
+        const preset = filteredPickerPresets.find(
+          (candidate) => candidate.chordKeys.some((key) => key.toLowerCase() === event.key.toLowerCase()),
+        );
+        if (preset) {
+          event.preventDefault();
+          executePickerPreset(preset.presetId);
+          return;
+        }
+      }
+
+      if (event.key.length === 1 && document.activeElement !== pickerInputRef.current) {
+        event.preventDefault();
+        setPickerQuery((query) => `${query}${event.key}`);
+        setPickerIndex(0);
+        pickerInputRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handlePickerKeydown);
+    return () => window.removeEventListener("keydown", handlePickerKeydown);
+  }, [filteredPickerPresets, onCommand, pickerIndex, snapshot.settings.open]);
 
   const closeButton = showChromeClose ? (
     <CompanionCommandButton
@@ -746,6 +1350,19 @@ export function CompanionSurfaceView({
       ×
     </CompanionCommandButton>
   ) : null;
+  const assistantSurface = snapshot.assistant.surface;
+  const assistantTitle = assistantSurface?.kind === "quickChat" ||
+    assistantSurface?.kind === "showMarkdown" ||
+    assistantSurface?.kind === "optionPicker"
+      ? assistantSurface.title
+      : "Assistant reply";
+  const assistantBody = assistantSurface?.kind === "showMarkdown"
+    ? assistantSurface.markdown ?? snapshot.assistant.message ?? "Lulu markdown is available."
+    : assistantSurface?.kind === "optionPicker"
+      ? assistantSurface.prompt
+      : assistantSurface?.kind === "quickChat"
+        ? assistantSurface.initialAssistantText ?? snapshot.assistant.message ?? "Quick Chat is ready."
+        : snapshot.assistant.message ?? "Lulu result is available.";
 
   return (
     <>
@@ -810,38 +1427,150 @@ export function CompanionSurfaceView({
       ) : null}
 
       {snapshot.settings.open ? (
-        <section className="dock-companion-card dock-companion-card--standalone">
+        <section
+          className="dock-companion-card dock-companion-card--standalone dock-preset-picker"
+          data-testid="preset-picker"
+          data-query={pickerQuery}
+          data-selected-index={pickerIndex}
+          data-filtered-count={filteredPickerPresets.length}
+        >
           <div className="dock-companion-title-row">
-            <p className="dock-companion-kicker">Settings</p>
+            <p className="dock-companion-kicker">Preset picker</p>
             {closeButton}
           </div>
-          <strong>Dock settings are staged.</strong>
-          <p>
-            {snapshot.settings.activePreset
-              ? `Active preset: ${snapshot.settings.activePreset.presetName}. Change or clear it here.`
-              : "Select a preset for the next selection-aware action."}
-          </p>
-          <div className="dock-companion-actions" aria-label="Preset actions">
-            {(["rewrite", "shorten", "bulletize"] as const).map((presetId) => (
-              <CompanionCommandButton
-                key={presetId}
-                payload={{ source: "dock_companion", command: "select_preset", presetId }}
-                onCommand={onCommand}
-              >
-                {presetDisplayName(presetId)}
-              </CompanionCommandButton>
+          <label className="dock-preset-picker-search" htmlFor="dock-preset-picker-search">
+            <span aria-hidden="true">⌕</span>
+            <input
+              id="dock-preset-picker-search"
+              ref={pickerInputRef}
+              autoFocus
+              value={pickerQuery}
+              onChange={(event) => {
+                setPickerQuery(event.currentTarget.value);
+                setPickerIndex(0);
+              }}
+              placeholder="Search presets…"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <div className="dock-preset-picker-which-key" aria-label="Preset multi-chord shortcuts">
+            {filteredPickerPresets.map((preset) => (
+              <span key={preset.presetId} title={preset.hotkey}>
+                <kbd>{preset.chordKeys[0] ?? preset.pickerKey}</kbd>
+                {preset.name}
+              </span>
             ))}
-            <CompanionCommandButton
-              payload={{ source: "dock_companion", command: "clear_preset" }}
-              onCommand={onCommand}
-            >
-              Clear preset
-            </CompanionCommandButton>
+          </div>
+          <div className="dock-preset-picker-list" role="listbox" aria-label="Preset picker results">
+            {filteredPickerPresets.length === 0 ? (
+              <div className="dock-preset-picker-empty">No presets found</div>
+            ) : filteredPickerPresets.map((preset, index) => (
+              <button
+                key={preset.presetId}
+                type="button"
+                role="option"
+                aria-selected={index === pickerIndex}
+                className={index === pickerIndex ? "dock-preset-picker-item selected" : "dock-preset-picker-item"}
+                onMouseEnter={() => setPickerIndex(index)}
+                onClick={() => executePickerPreset(preset.presetId)}
+              >
+                <span>{preset.name}</span>
+                <kbd>{preset.hotkey}</kbd>
+              </button>
+            ))}
+          </div>
+          <div className="dock-preset-picker-footer">
+            <span><kbd>↑↓</kbd> navigate</span>
+            <span><kbd>↵</kbd> run</span>
+            <span><kbd>{quickRunHint || "key"}</kbd> quick run</span>
+            <span><kbd>Esc</kbd> close</span>
+          </div>
+          <div className="dock-companion-assistant-note" aria-label="Assistant mode status">
+            <span>Quick Chat</span>
+            <p>
+              Separate surface. This picker hides before running a replacement preset or preset voice capture.
+            </p>
           </div>
         </section>
       ) : null}
 
-      {!snapshot.recovery && !snapshot.history.open && !snapshot.settings.open ? (
+      {snapshot.assistant.open ? (
+        <section className="dock-companion-card dock-companion-card--standalone dock-companion-assistant-card" data-testid={snapshot.assistant.surface?.kind === "quickChat" ? "assistant-quick-chat-card" : "assistant-surface-card"}>
+          <div className="dock-companion-title-row">
+            <p className="dock-companion-kicker">
+              {snapshot.assistant.surface?.kind === "quickChat" ? "Quick Chat" : "Lulu"}
+            </p>
+            <CompanionCommandButton
+              payload={{ source: "dock_companion", command: "dismiss_assistant" }}
+              onCommand={onCommand}
+              className="dock-companion-icon-button"
+              ariaLabel="Dismiss assistant reply"
+            >
+              ×
+            </CompanionCommandButton>
+          </div>
+          <strong>{assistantTitle}</strong>
+          <p>{assistantBody}</p>
+          {snapshot.assistant.surface?.kind === "optionPicker" ? (
+            <div className="dock-preset-picker-list" role="listbox" aria-label={snapshot.assistant.surface.title}>
+              {snapshot.assistant.surface.options.map((option) => {
+                const presetId = isSelectionTransformPresetId(option.id) ? option.id : undefined;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className="dock-preset-picker-item"
+                    disabled={!presetId}
+                    title={option.description ?? (presetId ? "Run preset option" : "This assistant option is not wired yet")}
+                    onClick={presetId
+                      ? () => onCommand?.({ source: "dock_companion", command: "select_preset", presetId })
+                      : undefined}
+                  >
+                    <span>{option.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          {snapshot.assistant.surface?.kind === "quickChat" ? (
+            <>
+              <form
+                className="dock-companion-assistant-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const message = assistantDraft.trim();
+                  if (!message) {
+                    return;
+                  }
+                  onCommand?.({ source: "dock_companion", command: "send_assistant_message", message });
+                  setAssistantDraft("");
+                }}
+              >
+                <input
+                  aria-label="Quick Chat message"
+                  value={assistantDraft}
+                  onChange={(event) => setAssistantDraft(event.currentTarget.value)}
+                  placeholder="Ask Lulu…"
+                />
+                <button type="submit" className="button button-secondary">Send</button>
+              </form>
+              {snapshot.assistant.messages.length > 1 ? (
+                <div className="dock-companion-history-list" aria-label="Assistant quick chat history">
+                  {snapshot.assistant.messages.map((message) => (
+                    <div key={message.id} className="dock-companion-history-item" title={message.hoverPreview}>
+                      <span className="dock-companion-history-preview">{message.textPreview}</span>
+                      <span className="dock-companion-history-meta">assistant · {message.textLength} chars</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </section>
+      ) : null}
+
+      {!snapshot.recovery && !snapshot.history.open && !snapshot.settings.open && !snapshot.assistant.open ? (
         <section className="dock-companion-card dock-companion-card--standalone">
           <div className="dock-companion-title-row">
             <p className="dock-companion-kicker">Companion</p>
@@ -858,9 +1587,51 @@ export function CompanionSurfaceView({
   );
 }
 
-function CompanionSurface() {
+const dockCompanionSnapshotStorageKey = "dictation-dock-companion-snapshot.v1";
+const dockCompanionCommandStorageKey = "dictation-dock-companion-command.v1";
+
+function readStoredDockCompanionSnapshot(): DockCompanionSnapshot | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(dockCompanionSnapshotStorageKey);
+    return raw ? JSON.parse(raw) as DockCompanionSnapshot : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function storeDockCompanionSnapshot(snapshot: DockCompanionSnapshot): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(dockCompanionSnapshotStorageKey, JSON.stringify(snapshot));
+  } catch {
+    // Snapshot persistence is best-effort; Tauri events remain the live channel.
+  }
+}
+
+function createPresetPickerSnapshot(): DockCompanionSnapshot {
+  const snapshot = createEmptyDockCompanionSnapshot();
+  return {
+    ...snapshot,
+    visible: true,
+    settings: {
+      ...snapshot.settings,
+      open: true,
+    },
+  };
+}
+
+function CompanionSurface({ surface }: { surface: "companion" | "preset-picker" }) {
   const [snapshot, setSnapshot] = useState<DockCompanionSnapshot>(() =>
-    createEmptyDockCompanionSnapshot(),
+    surface === "preset-picker"
+      ? createPresetPickerSnapshot()
+      : readStoredDockCompanionSnapshot() ?? createEmptyDockCompanionSnapshot(),
   );
 
   useEffect(() => {
@@ -872,9 +1643,13 @@ function CompanionSurface() {
     let unlisten: (() => void) | undefined;
 
     void listen<DockCompanionSnapshot>(dockCompanionStateEvent, (event) => {
-      if (!disposed) {
-        setSnapshot(event.payload);
+      if (disposed) {
+        return;
       }
+      if (surface === "preset-picker" && !event.payload.settings.open) {
+        return;
+      }
+      setSnapshot(event.payload);
     }).then((nextUnlisten) => {
       if (disposed) {
         nextUnlisten?.();
@@ -888,14 +1663,24 @@ function CompanionSurface() {
       disposed = true;
       unlisten?.();
     };
-  }, []);
+  }, [surface]);
 
   const handleCompanionCommand = (payload: DockCompanionCommandPayload) => {
     if (!isTauri()) {
       return;
     }
 
-    void emit(dockCompanionCommandEvent, payload).catch(() => undefined);
+    try {
+      window.localStorage.setItem(
+        dockCompanionCommandStorageKey,
+        JSON.stringify({ id: `${Date.now()}-${Math.random()}`, payload }),
+      );
+    } catch {
+      // Best-effort fallback bridge; Tauri events remain the primary route.
+    }
+
+    void emitTo("main", dockCompanionCommandEvent, payload)
+      .catch(() => emit(dockCompanionCommandEvent, payload).catch(() => undefined));
   };
 
   return (
@@ -911,8 +1696,8 @@ function CompanionSurface() {
 
 export function App() {
   const appSurface = getAppSurface();
-  if (appSurface === "companion") {
-    return <CompanionSurface />;
+  if (appSurface === "companion" || appSurface === "preset-picker") {
+    return <CompanionSurface surface={appSurface} />;
   }
   if (appSurface === "settings") {
     return <SettingsSurface />;
@@ -929,6 +1714,9 @@ export function App() {
   );
   const gateway = captureRuntime.gateway;
   const savedDeliveryTargetRef = useRef<TauriDesktopDeliveryTarget | undefined>(undefined);
+  const activePresetRef = useRef<DockActivePreset | undefined>(undefined);
+  const pendingPickerPresetRef = useRef<DockActivePreset | undefined>(undefined);
+  const selectionContextRef = useRef<SelectionContext | undefined>(undefined);
   const dockDragRef = useRef<{
     startScreenX: number;
     startScreenY: number;
@@ -936,7 +1724,12 @@ export function App() {
     startWindowY: number;
     scale: number;
   } | undefined>(undefined);
-  const pressEnterAfterPasteRef = useRef(false);
+  const userPreferencesRef = useRef<UserPreferences>(defaultUserPreferences);
+  const assistantChatHistoryRef = useRef<HostAssistantChatMessage[]>([]);
+  const autoStopSilencePolicyRef = useRef(createAutoStopSilencePolicy(defaultUserPreferences));
+  const muteOutputPolicyRef = useRef(createMuteOutputPolicy(defaultUserPreferences));
+  const soundCuePolicyRef = useRef(createSoundCuePolicy(defaultUserPreferences));
+  const forcePressEnterAfterPasteRef = useRef(false);
   const nativePasteObserver = useMemo(
     () =>
       isTauri() && isTauriNativePasteObserverEnabled()
@@ -950,26 +1743,96 @@ export function App() {
         ? createTauriSavedTargetDeliveryGateway({
             invoke,
             getTarget: () => savedDeliveryTargetRef.current,
-            getPressEnterAfterPaste: () => pressEnterAfterPasteRef.current,
+            getPressEnterAfterPaste: () =>
+              userPreferencesRef.current.pressEnterAfterPaste ||
+              forcePressEnterAfterPasteRef.current,
             observer: nativePasteObserver,
           })
         : undefined,
     [nativePasteObserver],
   );
   const desktopSession = useMemo(() => {
+    const baseRuntime = createHostRuntimeControllerAdapter(
+      hostRuntime.client,
+      isTauri()
+        ? {
+            mode: "real",
+            allowProviderCall: true,
+          }
+        : undefined,
+    );
     const controller = new DesktopDictationController({
       capture: createCaptureGatewayControllerAdapter(gateway),
-      runtime: createHostRuntimeControllerAdapter(
-        hostRuntime.client,
-        isTauri()
-          ? {
-              mode: "real",
-              allowProviderCall: true,
+      runtime: {
+        async transcribe(input) {
+            const base = await baseRuntime.transcribe(input);
+            const parsedAssistant = parseAssistantVoicePrefix(base.transcript);
+            const availablePresets = listSelectionTransformPresets().map((preset) => ({
+              id: preset.id,
+              name: presetDisplayName(preset.id),
+            }));
+            const localAssistantResponse = parsedAssistant.kind === "assistant"
+              ? createAssistantQuickResponse(parsedAssistant.prompt, {
+                  activePresetId: (pendingPickerPresetRef.current ?? activePresetRef.current)?.presetId ?? undefined,
+                  activePresetName: (pendingPickerPresetRef.current ?? activePresetRef.current)?.presetName,
+                  availablePresetNames: availablePresets.map((preset) => preset.name),
+                  availablePresets,
+                  lastActivatedPresetId: (pendingPickerPresetRef.current ?? activePresetRef.current)?.presetId ?? undefined,
+                })
+              : undefined;
+            let managedAssistantText: string | undefined;
+            if (
+              parsedAssistant.kind === "assistant" &&
+              (!localAssistantResponse?.handledLocally || localAssistantResponse.intent === "show-markdown") &&
+              isTauri()
+            ) {
+              const managed = await runAssistantChatWithHost(invoke, {
+                runId: input.sessionId,
+                prompt: parsedAssistant.prompt,
+                mode: "real",
+                allowProviderCall: true,
+                history: createAssistantChatHistoryWindow(assistantChatHistoryRef.current),
+              });
+              managedAssistantText = managed.status === "ok"
+                ? managed.text
+                : `Assistant unavailable: ${managed.error.message}`;
             }
-          : undefined,
-      ),
+            const runtime = applyAssistantVoicePrefixToRuntimeResult({
+              runtime: base,
+              sessionId: input.sessionId,
+              activePreset: pendingPickerPresetRef.current ?? activePresetRef.current,
+              availablePresets,
+              managedAssistantText,
+            });
+            const assistantPresetId = runtime.assistantAction?.kind === "activate-preset"
+              ? normalizeDockPresetId(runtime.assistantAction.presetId)
+              : undefined;
+            if (assistantPresetId) {
+              selectActivePreset(assistantPresetId);
+            }
+            if (runtime.assistantAction?.kind === "open-settings") {
+              if (isTauri()) {
+                void invoke("show_settings_window").catch(() => setSettingsPanelOpen(true));
+              } else {
+                setSettingsPanelOpen(true);
+              }
+            }
+            if (runtime.assistantAction?.kind === "show-history") {
+              void loadResultHistory();
+            }
+            return transformSelectionAfterTranscription({
+            runtime,
+            sessionId: input.sessionId,
+            selection: selectionContextRef.current,
+            presetId: normalizeDockPresetId(
+              (pendingPickerPresetRef.current ?? activePresetRef.current)?.presetId,
+            ),
+          });
+        },
+      },
       delivery: desktopDelivery,
       allowDesktopDeliverySideEffects: isTauri(),
+      autoStop: autoStopSilencePolicyRef.current,
     });
 
     return createAppSessionControllerFacade(controller);
@@ -981,6 +1844,11 @@ export function App() {
     () =>
       createCopyDeliveryGateway({
         async copyText(text) {
+          if (isTauri()) {
+            await invoke("copy_text_to_clipboard", { text });
+            return;
+          }
+
           const writer = navigator.clipboard?.writeText;
           if (!writer) {
             throw new Error("Clipboard fallback is unavailable in this environment.");
@@ -1015,6 +1883,7 @@ export function App() {
   const [resultHistoryEntries, setResultHistoryEntries] = useState<ResultHistoryEntry[]>([]);
   const [resultHistoryOpen, setResultHistoryOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
+  const [dismissedAssistantRunId, setDismissedAssistantRunId] = useState<string | undefined>(undefined);
   const persistedHistoryEntryIdRef = useRef<string | undefined>(undefined);
   const companionSyncKeyRef = useRef<string | undefined>(undefined);
   const hostCommandHandlerRef = useRef<
@@ -1033,6 +1902,76 @@ export function App() {
       .catch(() => {
         setEffectiveHotkeyLabel(tauriGlobalHotkeyShortcut);
       });
+  }, []);
+
+  useEffect(() => {
+    const applyPreferences = (preferences: UserPreferences) => {
+      userPreferencesRef.current = {
+        ...defaultUserPreferences,
+        ...preferences,
+        schemaVersion: 1,
+      };
+      Object.assign(
+        autoStopSilencePolicyRef.current,
+        createAutoStopSilencePolicy(userPreferencesRef.current),
+      );
+      Object.assign(
+        muteOutputPolicyRef.current,
+        createMuteOutputPolicy(userPreferencesRef.current),
+      );
+      Object.assign(
+        soundCuePolicyRef.current,
+        createSoundCuePolicy(userPreferencesRef.current),
+      );
+    };
+
+    if (!isTauri()) {
+      applyPreferences(defaultUserPreferences);
+      return;
+    }
+
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const loadPreferences = () => {
+      void getUserPreferences()
+        .then((preferences) => {
+          if (!disposed) {
+            applyPreferences(preferences);
+          }
+        })
+        .catch(() => {
+          if (!disposed) {
+            applyPreferences(defaultUserPreferences);
+          }
+        });
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        loadPreferences();
+      }
+    };
+
+    loadPreferences();
+    void listen<UserPreferences>(userPreferencesChangedEvent, (event) => {
+      if (!disposed) {
+        applyPreferences(event.payload);
+      }
+    }).then((cleanup) => {
+      if (disposed) {
+        cleanup();
+        return;
+      }
+      unlisten = cleanup;
+    });
+    window.addEventListener("focus", loadPreferences);
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+      window.removeEventListener("focus", loadPreferences);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
   useEffect(() => {
@@ -1103,17 +2042,147 @@ export function App() {
     setHostReadinessUi(await loadHostReadinessUi(hostRuntime.client));
   }
 
-  async function rememberDeliveryTarget() {
+  async function prepareDictationStartContext(options: { targetSnapshot?: TauriDesktopDeliveryTarget } = {}) {
+    selectionContextRef.current = undefined;
     if (!isTauri()) {
       savedDeliveryTargetRef.current = undefined;
       return;
     }
 
-    savedDeliveryTargetRef.current = await captureTauriDesktopDeliveryTarget(invoke);
+    savedDeliveryTargetRef.current = options.targetSnapshot?.inputLike
+      ? options.targetSnapshot
+      : await captureTauriDesktopDeliveryTarget(invoke);
   }
 
-  async function startCapture() {
-    await rememberDeliveryTarget();
+  async function rememberSelectionTransformContext() {
+    selectionContextRef.current = undefined;
+    if (!isTauri()) {
+      return;
+    }
+
+    try {
+      const target = savedDeliveryTargetRef.current;
+      const outcome = target?.frameHwnd
+        ? await invoke<SelectionCaptureOutcome>(hostSelectionCaptureForTargetCommand, {
+            frameHwnd: target.frameHwnd,
+          })
+        : await invoke<SelectionCaptureOutcome>(hostSelectionCaptureCommand);
+      const route = routeSelectionCaptureOutcome(outcome);
+      selectionContextRef.current = route.kind === "selection_transform"
+        ? route.selection
+        : undefined;
+    } catch {
+      selectionContextRef.current = undefined;
+    }
+  }
+
+  async function waitForHotkeyRelease() {
+    await new Promise((resolve) => window.setTimeout(resolve, 180));
+  }
+
+  async function transformSelectionAfterTranscription(input: {
+    runtime: DesktopRuntimeResult;
+    sessionId: string;
+    selection?: SelectionContext;
+    presetId?: DockCompanionPresetId;
+  }): Promise<DesktopRuntimeResult> {
+    if (isSimulatedRunSummary(input.runtime.summary) && input.runtime.summary.resultSource === "assistant") {
+        return input.runtime;
+    }
+
+    const selectedText = input.selection?.selectedText?.trim();
+    if (!selectedText && !input.presetId) {
+      return input.runtime;
+    }
+
+    if (!selectedText && input.presetId && isTauri()) {
+      try {
+        const response = await transformSelectedTextWithHost(invoke, {
+          runId: input.sessionId,
+          selectedText: input.runtime.transcript,
+          instruction: selectionTransformInstructionForPreset({ presetId: input.presetId }),
+          presetId: input.presetId,
+          mode: "real",
+          allowProviderCall: true,
+        });
+        if (response.status !== "ok") {
+          return applySelectionTransformFailureToRuntimeResult({
+            runtime: input.runtime,
+            code: response.error.code,
+            reason: `Selection transform failed (${response.error.code}); dictated transcript is available for review and manual copy.`,
+          });
+        }
+        return applySelectionTransformOutputToRuntimeResult({
+          runtime: input.runtime,
+          output: response.text,
+          deliveryStrategy: userPreferencesRef.current.reviewBeforeDelivery ? "review_only" : "paste_send",
+          reason: userPreferencesRef.current.reviewBeforeDelivery
+            ? "Managed preset voice transform is available for review before delivery."
+            : "Managed preset voice transform inserted the preset output.",
+        });
+      } catch {
+        return applySelectionTransformFailureToRuntimeResult({
+          runtime: input.runtime,
+        });
+      }
+    }
+
+    if (!selectedText) {
+      return applySelectionTransformToRuntimeResult(input);
+    }
+
+    if (isTauri()) {
+      try {
+        const response = await transformSelectedTextWithHost(invoke, {
+          runId: input.sessionId,
+          selectedText,
+          instruction: input.presetId
+            ? selectionTransformInstructionForPreset({
+                presetId: input.presetId,
+                dictatedInstruction: input.runtime.transcript,
+              })
+            : input.runtime.transcript,
+          ...(input.presetId ? { presetId: input.presetId } : {}),
+          mode: "real",
+          allowProviderCall: true,
+        });
+        if (response.status === "ok") {
+          return applySelectionTransformOutputToRuntimeResult({
+            runtime: input.runtime,
+            output: response.text,
+            deliveryStrategy: userPreferencesRef.current.reviewBeforeDelivery ? "review_only" : "paste_send",
+            reason: userPreferencesRef.current.reviewBeforeDelivery
+              ? "Managed selection transform is available for review before replacing the captured selection."
+              : "Managed selection transform replaced the captured selection like Fixvox.",
+          });
+        }
+
+        return applySelectionTransformFailureToRuntimeResult({
+          runtime: input.runtime,
+          code: response.error.code,
+          reason: `Selection transform failed (${response.error.code}); dictated transcript is available for review and manual copy.`,
+        });
+      } catch {
+        return applySelectionTransformFailureToRuntimeResult({
+          runtime: input.runtime,
+        });
+      }
+    }
+
+    return applySelectionTransformToRuntimeResult(input);
+  }
+
+  function queueDictationSoundCue(cue: DictationSoundCue) {
+    requestDictationSoundCue(soundCuePolicyRef.current, cue);
+  }
+
+  async function startCapture(options: { keepCurrentContext?: boolean } = {}) {
+    if (!options.keepCurrentContext) {
+      setResultHistoryOpen(false);
+      setSettingsPanelOpen(false);
+      setDismissedAssistantRunId(companionSnapshot.assistant.runId);
+      await prepareDictationStartContext();
+    }
     setDesktopRecoveryAction(undefined);
     setPipelineUi({
       status: "idle",
@@ -1127,6 +2196,7 @@ export function App() {
     const session = await desktopSession.start();
     setDesktopRecoveryAction(session.recoveryAction);
     if (session.state === "listening") {
+      queueDictationSoundCue("start");
       setCapture({
         state: "recording",
         message: captureRuntime.listeningMessage,
@@ -1134,6 +2204,8 @@ export function App() {
       return;
     }
 
+    pendingPickerPresetRef.current = undefined;
+    queueDictationSoundCue("error");
     setCapture({
       state: session.error?.code === "capture-start-failed" ? "permission_needed" : "failed",
       message: session.error?.message ?? "A capture session is already active.",
@@ -1141,6 +2213,7 @@ export function App() {
   }
 
   async function stopCapture() {
+    queueDictationSoundCue("stop");
     setCapture({
       state: "stopping",
       message: captureRuntime.stoppingMessage,
@@ -1152,54 +2225,63 @@ export function App() {
         : "Checking the safe host boundary without a provider call.",
     });
 
-    const session = await desktopSession.stop();
-    setDesktopRecoveryAction(session.recoveryAction);
-    const result = getAppSessionCaptureResult(session);
-    const summary = getAppSessionSummary(session);
+    try {
+      await rememberSelectionTransformContext();
+      const session = await desktopSession.stop();
+      setDesktopRecoveryAction(session.recoveryAction);
+      const result = getAppSessionCaptureResult(session);
+      const summary = getAppSessionSummary(session);
 
-    setCapture({
-      state: result?.ok ? "captured" : session.state === "cancelled" ? "cancelled" : "failed",
-      message: result?.ok
-        ? captureRuntime.capturedMessage
-        : session.error?.message ?? "Capture failed before pipeline submission.",
-      result,
-    });
+      setCapture({
+        state: result?.ok ? "captured" : session.state === "cancelled" ? "cancelled" : "failed",
+        message: result?.ok
+          ? captureRuntime.capturedMessage
+          : session.error?.message ?? "Capture failed before pipeline submission.",
+        result,
+      });
 
-    if (summary?.terminalState === "done") {
-      const deliveryMessage =
-        describeDeliveryEvidence(summary.deliveryEvidence) ??
-        (summary.transcript
-          ? "Transcript is available from the captured run."
-          : "Captured run completed without transcript text.");
+      if (summary?.terminalState === "done") {
+        const deliveryMessage =
+          describeDeliveryEvidence(summary.deliveryEvidence) ??
+          (summary.transcript
+            ? "Transcript is available from the captured run."
+            : "Captured run completed without transcript text.");
 
+        queueDictationSoundCue(summary.transcript ? "success" : "no-speech");
+        setPipelineUi({
+          status: "done",
+          message: deliveryMessage,
+          summary,
+        });
+        return;
+      }
+
+      if (session.state === "cancelled" || summary?.terminalState === "cancelled") {
+        setPipelineUi({
+          status: "cancelled",
+          message: "Captured run was cancelled before completion.",
+          summary,
+        });
+        return;
+      }
+
+      queueDictationSoundCue("error");
       setPipelineUi({
-        status: "done",
-        message: deliveryMessage,
+        status: "error",
+        message: session.error?.message ?? summary?.error?.message ?? "Captured run failed.",
         summary,
       });
-      return;
+    } finally {
+      pendingPickerPresetRef.current = undefined;
     }
-
-    if (session.state === "cancelled" || summary?.terminalState === "cancelled") {
-      setPipelineUi({
-        status: "cancelled",
-        message: "Captured run was cancelled before completion.",
-        summary,
-      });
-      return;
-    }
-
-    setPipelineUi({
-      status: "error",
-      message: session.error?.message ?? summary?.error?.message ?? "Captured run failed.",
-      summary,
-    });
   }
 
   async function cancelCapture() {
+    pendingPickerPresetRef.current = undefined;
     const session = await desktopSession.cancel();
     setDesktopRecoveryAction(session.recoveryAction);
     const result = getAppSessionCaptureResult(session);
+    queueDictationSoundCue("stop");
     setPipelineUi({
       status: "cancelled",
       message: "Pipeline submission was skipped because capture was cancelled.",
@@ -1213,6 +2295,7 @@ export function App() {
 
   async function submitCapturedRun(options: { useRealProvider?: boolean } = {}) {
     if (!capture.result?.ok) {
+      queueDictationSoundCue("error");
       setPipelineUi({
         status: "error",
         message: "No captured artifact is available for pipeline submission.",
@@ -1251,6 +2334,7 @@ export function App() {
             ? "Transcript is available from the captured run."
             : "Captured run completed without transcript text.");
 
+        queueDictationSoundCue(summary.transcript ? "success" : "no-speech");
         setPipelineUi({
           status: "done",
           message: deliveryMessage,
@@ -1268,12 +2352,14 @@ export function App() {
         return;
       }
 
+      queueDictationSoundCue("error");
       setPipelineUi({
         status: "error",
         message: summary.error?.message ?? "Captured run failed.",
         summary,
       });
     } catch {
+      queueDictationSoundCue("error");
       setPipelineUi({
         status: "error",
         message: "Captured run could not start because another run is active.",
@@ -1298,6 +2384,7 @@ export function App() {
       return;
     }
 
+    const resultNoun = describeLatestResultNoun(summary);
     const evidence = await copyDelivery.deliver({
       sessionId: summary.runId,
       text: latestResult.text,
@@ -1310,8 +2397,8 @@ export function App() {
       status: evidence.status === "failed" ? "error" : "done",
       message: describeDeliveryEvidence(nextSummary.deliveryEvidence) ??
         (evidence.status === "failed"
-          ? "Clipboard copy failed. Transcript remains available in the app."
-          : "Transcript copied as fallback."),
+          ? `Clipboard copy failed. Latest ${resultNoun} remains available in the app.`
+          : `Latest ${resultNoun} copied as fallback.`),
       summary: nextSummary,
     });
   }
@@ -1345,6 +2432,7 @@ export function App() {
     summary?: SimulatedRunSummary;
     text?: string;
     targetSnapshot?: TauriDesktopDeliveryTarget;
+    targetAffinity?: DeliveryTargetAffinity;
   }) {
     const summary = forced?.summary ?? pipelineUi.summary;
     const latestResult = latestResultFromPipelineSummary(summary);
@@ -1379,9 +2467,12 @@ export function App() {
     }
 
     if (isTauri()) {
-      savedDeliveryTargetRef.current = forced?.targetSnapshot?.inputLike
+      const nextTarget = forced?.targetSnapshot?.inputLike
         ? forced.targetSnapshot
         : await captureTauriDesktopDeliveryTarget(invoke);
+      if (nextTarget?.inputLike) {
+        savedDeliveryTargetRef.current = nextTarget;
+      }
     }
 
     if (!desktopDelivery) {
@@ -1394,6 +2485,7 @@ export function App() {
       text: pasteText,
       strategy: "paste_send",
       allowDesktopSideEffects: true,
+      targetAffinity: forced?.targetAffinity,
     });
     const nextSummary = applyDeliveryEvidenceFallback(pasteSummary, evidence);
 
@@ -1424,10 +2516,14 @@ export function App() {
   const canCopyTranscript = Boolean(
     latestResultFromPipelineSummary(pipelineUi.summary),
   );
+  const reviewCopyLabel = getReviewCopyLabel(pipelineUi.summary);
   const artifact = capture.result?.ok ? capture.result.artifact : undefined;
   const error = capture.result && !capture.result.ok ? capture.result.error : undefined;
   const deliveryEvidence = pipelineUi.summary?.deliveryEvidence;
+  const pipelineUiResult = createPipelineUiResult(pipelineUi.summary);
   const transcriptReview = getTranscriptReview(pipelineUi.summary);
+  const redactedRunSummary = formatSafeRedactedRunSummary(pipelineUi.summary);
+  const assistantHandledBySurface = isAssistantHandledBySurface(pipelineUiResult);
   const recoveryAction =
     getRecoveryAction(pipelineUi.summary) ??
     formatDesktopRecoveryAction(desktopRecoveryAction);
@@ -1456,6 +2552,8 @@ export function App() {
     {
       canPasteLastSafe: canCopyTranscript,
       activePreset,
+      resultSource: getDockResultSourceForPipelineUiResult(pipelineUiResult),
+      assistantModeEnabled: pipelineUiResult.kind === "assistant" && !assistantHandledBySurface,
       vuLevel: capture.state === "recording" ? dockVu.level : pipelineUi.status === "running" ? 0.42 : 0,
       vuBands: createDockVuBands(capture.state, pipelineUi.status, dockVu.bands),
     },
@@ -1469,12 +2567,32 @@ export function App() {
   const companionVoiceDockState = recoveryKey && dismissedRecoveryKey === recoveryKey
     ? { ...voiceDockState, recovery: undefined }
     : voiceDockState;
+  const assistantSurface = getCompanionSurfaceForPipelineUiResult(pipelineUiResult);
+  const assistantShouldOpen = Boolean(
+    assistantSurface &&
+      deliveryEvidence?.status !== "paste_sent" &&
+      deliveryEvidence?.status !== "paste_observed",
+  );
+  const assistantRunId = assistantShouldOpen ? pipelineUi.summary?.runId : undefined;
+  const assistantMessage = pipelineUiResult.kind === "assistant"
+    ? assistantSurface?.kind === "showMarkdown"
+      ? assistantSurface.markdown
+      : assistantSurface?.kind === "optionPicker"
+        ? assistantSurface.prompt
+        : pipelineUiResult.output
+    : undefined;
   const companionSnapshot = createDockCompanionSnapshot({
     voiceDockState: companionVoiceDockState,
     resultHistoryOpen,
     resultHistoryEntries,
     settingsPanelOpen,
     activePreset,
+    assistant: {
+      open: Boolean(assistantShouldOpen && assistantRunId !== dismissedAssistantRunId),
+      runId: assistantRunId,
+      message: assistantShouldOpen ? assistantMessage : undefined,
+      surface: assistantShouldOpen ? assistantSurface : undefined,
+    },
   });
 
   useEffect(() => {
@@ -1522,23 +2640,43 @@ export function App() {
       return;
     }
     companionSyncKeyRef.current = syncKey;
+    storeDockCompanionSnapshot(companionSnapshot);
 
-    const command = companionSnapshot.visible ? "show_companion" : "hide_companion";
-    void invoke(command)
+    const pickerVisible = companionSnapshot.settings.open;
+    const companionVisible = Boolean(companionSnapshot.recovery || companionSnapshot.history.open || companionSnapshot.assistant.open);
+    const syncPicker = invoke(pickerVisible ? "show_preset_picker" : "hide_preset_picker")
+      .then(() => {
+        if (!pickerVisible) {
+          return undefined;
+        }
+        const emitSnapshot = () => emitTo("preset-picker", dockCompanionStateEvent, companionSnapshot);
+        void window.setTimeout(() => void emitSnapshot().catch(() => undefined), 120);
+        void window.setTimeout(() => void emitSnapshot().catch(() => undefined), 350);
+        return emitSnapshot();
+      });
+    const syncCompanion = invoke(companionVisible ? "show_companion" : "hide_companion")
       .then(() =>
-        companionSnapshot.visible
+        companionVisible
           ? emitTo("dock-companion", dockCompanionStateEvent, companionSnapshot)
           : undefined,
-      )
-      .catch(() => {
-        companionSyncKeyRef.current = undefined;
-      });
+      );
+
+    void Promise.all([syncPicker, syncCompanion]).catch(() => {
+      companionSyncKeyRef.current = undefined;
+    });
   }, [companionSnapshot]);
 
-  async function loadResultHistory() {
+  async function loadResultHistory(options: { targetSnapshot?: TauriDesktopDeliveryTarget } = {}) {
     if (!isTauri()) {
       setResultHistoryOpen(true);
       return;
+    }
+
+    const historyTarget = options.targetSnapshot?.inputLike
+      ? options.targetSnapshot
+      : await captureTauriDesktopDeliveryTarget(invoke);
+    if (historyTarget?.inputLike) {
+      savedDeliveryTargetRef.current = historyTarget;
     }
 
     const entries = await invoke<ResultHistoryEntry[]>("list_result_history_entries");
@@ -1547,14 +2685,19 @@ export function App() {
   }
 
   function selectActivePreset(presetId: DockCompanionPresetId) {
-    setActivePreset({
+    const nextPreset: DockActivePreset = {
       presetId,
       presetName: presetDisplayName(presetId),
       appKey: "global",
-    });
+    };
+    activePresetRef.current = nextPreset;
+    setActivePreset(nextPreset);
   }
 
   function clearActivePreset() {
+    activePresetRef.current = undefined;
+    pendingPickerPresetRef.current = undefined;
+    selectionContextRef.current = undefined;
     setActivePreset(undefined);
   }
 
@@ -1564,6 +2707,7 @@ export function App() {
     }
     setResultHistoryOpen(false);
     setSettingsPanelOpen(false);
+    setDismissedAssistantRunId(companionSnapshot.assistant.runId);
   }
 
   function selectHistoryEntry(entryId: string) {
@@ -1580,7 +2724,170 @@ export function App() {
     });
     setResultHistoryOpen(false);
     setDesktopRecoveryAction(undefined);
-    void pasteLastToForegroundTarget({ summary, text: entry.text });
+    void pasteLastToForegroundTarget({
+      summary,
+      text: entry.text,
+      targetSnapshot: savedDeliveryTargetRef.current,
+      targetAffinity: "saved",
+    });
+  }
+
+  function recordPresetPickerMainDebug(patch: Record<string, unknown>) {
+    (window as unknown as { __dictationPresetPickerMainDebug: Record<string, unknown> })
+      .__dictationPresetPickerMainDebug = {
+        ...((window as unknown as { __dictationPresetPickerMainDebug?: Record<string, unknown> })
+          .__dictationPresetPickerMainDebug ?? {}),
+        ...patch,
+        updatedAt: new Date().toISOString(),
+      };
+  }
+
+  async function openPresetPicker(targetSnapshot?: TauriDesktopDeliveryTarget) {
+    if (isTauri()) {
+      savedDeliveryTargetRef.current = targetSnapshot?.inputLike
+        ? targetSnapshot
+        : await captureTauriDesktopDeliveryTarget(invoke);
+      await rememberSelectionTransformContext();
+    }
+
+    recordPresetPickerMainDebug({
+      lastAction: "opened",
+      hadTarget: Boolean(savedDeliveryTargetRef.current?.inputLike),
+      selectionStatus: selectionContextRef.current?.selectedText?.trim() ? "selected" : "none",
+    });
+
+    setResultHistoryOpen(false);
+    setSettingsPanelOpen(true);
+    setDesktopRecoveryAction(undefined);
+    setCapture({
+      state: "idle",
+      message: selectionContextRef.current?.selectedText?.trim()
+        ? "Action picker captured selected text for a preset transform."
+        : "Action picker is ready. Choose a preset to start a voice transform for the current target.",
+    });
+    if (isTauri()) {
+      window.setTimeout(() => {
+        void invoke("focus_preset_picker").catch(() => undefined);
+      }, 120);
+    }
+    setPipelineUi({
+      status: "idle",
+      message: selectionContextRef.current?.selectedText?.trim()
+        ? "Action picker captured selected text for a preset transform."
+        : "Action picker is ready. Choose a preset to start a voice transform for the current target.",
+      summary: pipelineUi.summary,
+    });
+  }
+
+  async function runPickerPreset(presetId: DockCompanionPresetId) {
+    recordPresetPickerMainDebug({ lastAction: "run_requested", presetId });
+    const pickerPreset: DockActivePreset = {
+      presetId,
+      presetName: presetDisplayName(presetId),
+      appKey: "global",
+    };
+    setSettingsPanelOpen(false);
+    setResultHistoryOpen(false);
+    if (isTauri()) {
+      await invoke("hide_preset_picker").catch(() => undefined);
+    }
+
+    const selectedText = selectionContextRef.current?.selectedText?.trim();
+    recordPresetPickerMainDebug({
+      lastAction: selectedText ? "run_text_path" : "run_voice_path",
+      presetId,
+      selectedTextLength: selectedText?.length ?? 0,
+    });
+    if (!selectedText) {
+      pendingPickerPresetRef.current = pickerPreset;
+      await startCapture({ keepCurrentContext: true });
+      return;
+    }
+
+    pendingPickerPresetRef.current = undefined;
+
+    const runId = `preset-picker-${Date.now()}`;
+    const startedAt = Date.now();
+    setPipelineUi({
+      status: "running",
+      message: `Running ${presetDisplayName(presetId)} on captured selected text.`,
+      summary: pipelineUi.summary,
+    });
+
+    try {
+      const response = await transformSelectedTextWithHost(invoke, {
+        runId,
+        selectedText,
+        instruction: selectionTransformInstructionForPreset({ presetId }),
+        presetId,
+        mode: "real",
+        allowProviderCall: true,
+      });
+
+      if (response.status !== "ok") {
+        throw new Error(`Preset transform failed (${response.error.code}); selected text was not replaced.`);
+      }
+
+      const baseSummary: SimulatedRunSummary = {
+        runId,
+        fixtureId: "preset-picker",
+        resultSource: "selection_transform",
+        inputKind: "simulated",
+        events: [],
+        states: ["transcribing", "delivering", "done"],
+        terminalState: "done",
+        output: response.text,
+        delivery: {
+          status: "skipped",
+          output: response.text,
+          reason: "Preset picker transform completed before desktop delivery.",
+        },
+        deliveryEvidence: {
+          status: "available",
+          output: response.text,
+          reason: "Preset picker transform completed before desktop delivery.",
+        },
+        durationMs: Date.now() - startedAt,
+      };
+
+      if (!desktopDelivery) {
+        pendingPickerPresetRef.current = undefined;
+        setPipelineUi({
+          status: "done",
+          message: "Preset transform is available. Desktop delivery is unavailable in this surface.",
+          summary: baseSummary,
+        });
+        return;
+      }
+
+      const evidence = await desktopDelivery.deliver({
+        sessionId: runId,
+        text: response.text,
+        strategy: "paste_send",
+        allowDesktopSideEffects: true,
+      });
+      const deliveredSummary = applyDeliveryEvidenceFallback(baseSummary, evidence);
+
+      pendingPickerPresetRef.current = undefined;
+      setPipelineUi({
+        status: evidence.status === "failed" ? "error" : "done",
+        message:
+          describeDeliveryEvidence(deliveredSummary.deliveryEvidence) ??
+          (evidence.status === "failed"
+            ? "Preset transform failed during desktop delivery. The transformed text remains available."
+            : "Preset transform was sent to the captured target."),
+        summary: deliveredSummary,
+      });
+    } catch (error) {
+      pendingPickerPresetRef.current = undefined;
+      setPipelineUi({
+        status: "error",
+        message: error instanceof Error
+          ? error.message
+          : "Preset transform failed; selected text was not replaced.",
+        summary: pipelineUi.summary,
+      });
+    }
   }
 
   function handleHostCommandPayload(payload: ResolvedTauriHostCommandPayload) {
@@ -1594,8 +2901,30 @@ export function App() {
         clearActivePreset();
         break;
       case "show_result_history":
-        void loadResultHistory();
+        void loadResultHistory({ targetSnapshot: payload.targetSnapshot });
         break;
+      case "show_preset_picker":
+        void openPresetPicker(payload.targetSnapshot);
+        break;
+      case "run_preset_picker_chord": {
+        const presetId = resolvePresetPickerChord(payload.chordKey);
+        recordPresetPickerMainDebug({
+          lastAction: presetId ? "native_chord_run" : "native_chord_unknown",
+          chordKey: payload.chordKey ?? null,
+          presetId: presetId ?? null,
+        });
+        if (presetId) {
+          void (async () => {
+            if (!settingsPanelOpen) {
+              await openPresetPicker(payload.targetSnapshot);
+            }
+            await runPickerPreset(presetId);
+          })();
+        } else {
+          void openPresetPicker(payload.targetSnapshot);
+        }
+        break;
+      }
       case "open_settings":
         if (isTauri()) {
           void invoke("show_settings_window").catch(() => setSettingsPanelOpen(true));
@@ -1611,6 +2940,84 @@ export function App() {
     }
   }
 
+  async function handleAssistantQuickChatMessage(message: string) {
+    const trimmed = message.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const availablePresets = listSelectionTransformPresets().map((preset) => ({
+      id: preset.id,
+      name: presetDisplayName(preset.id),
+    }));
+    const localResponse = createAssistantQuickResponse(trimmed, {
+      activePresetId: activePresetRef.current?.presetId ?? undefined,
+      activePresetName: activePresetRef.current?.presetName,
+      availablePresetNames: availablePresets.map((preset) => preset.name),
+      availablePresets,
+      lastActivatedPresetId: activePresetRef.current?.presetId ?? undefined,
+    });
+    if (localResponse.action?.kind === "activate-preset") {
+      const presetId = normalizeDockPresetId(localResponse.action.presetId);
+      if (presetId) {
+        selectActivePreset(presetId);
+      }
+    }
+    if (localResponse.action?.kind === "open-settings") {
+      if (isTauri()) {
+        void invoke("show_settings_window").catch(() => setSettingsPanelOpen(true));
+      } else {
+        setSettingsPanelOpen(true);
+      }
+    }
+    if (localResponse.action?.kind === "show-history") {
+      void loadResultHistory();
+    }
+
+    const runId = `assistant-chat-${Date.now()}`;
+    let output = localResponse.text;
+    let statusMessage = "Quick Chat local reply is available.";
+
+    if (!localResponse.handledLocally && isTauri()) {
+      setPipelineUi({
+        status: "running",
+        message: "Sending Quick Chat to managed assistant.",
+        summary: pipelineUi.summary,
+      });
+      const managed = await runAssistantChatWithHost(invoke, {
+        runId,
+        prompt: trimmed,
+        mode: "real",
+        allowProviderCall: true,
+        history: createAssistantChatHistoryWindow(assistantChatHistoryRef.current),
+      });
+      if (managed.status === "ok") {
+        output = managed.text;
+        statusMessage = "Quick Chat managed reply is available.";
+      } else {
+        output = `Assistant unavailable: ${managed.error.message}`;
+        statusMessage = "Quick Chat managed reply failed closed.";
+      }
+    }
+
+    assistantChatHistoryRef.current = createAssistantChatHistoryWindow([
+      ...assistantChatHistoryRef.current,
+      { role: "user", text: trimmed },
+      { role: "assistant", text: output },
+    ]);
+
+    setDismissedAssistantRunId(undefined);
+    setPipelineUi({
+      status: "done",
+      message: statusMessage,
+      summary: createAssistantQuickChatSummary({
+        runId,
+        prompt: trimmed,
+        output,
+      }),
+    });
+  }
+
   function handleCompanionCommandPayload(payload: DockCompanionCommandPayload) {
     switch (payload.command) {
       case "copy":
@@ -1621,7 +3028,11 @@ export function App() {
         void pasteLastToForegroundTarget();
         break;
       case "select_preset":
-        selectActivePreset(payload.presetId);
+        if (settingsPanelOpen) {
+          void runPickerPreset(payload.presetId);
+        } else {
+          selectActivePreset(payload.presetId);
+        }
         setSettingsPanelOpen(false);
         break;
       case "clear_preset":
@@ -1638,6 +3049,12 @@ export function App() {
         break;
       case "dismiss_settings":
         setSettingsPanelOpen(false);
+        break;
+      case "dismiss_assistant":
+        setDismissedAssistantRunId(companionSnapshot.assistant.runId);
+        break;
+      case "send_assistant_message":
+        void handleAssistantQuickChatMessage(payload.message);
         break;
       case "select_history_entry":
         selectHistoryEntry(payload.entryId);
@@ -1711,9 +3128,9 @@ export function App() {
         void stopCapture();
         break;
       case "stop_submit":
-        pressEnterAfterPasteRef.current = true;
+        forcePressEnterAfterPasteRef.current = true;
         void stopCapture().finally(() => {
-          pressEnterAfterPasteRef.current = false;
+          forcePressEnterAfterPasteRef.current = false;
         });
         break;
       case "cancel":
@@ -1749,6 +3166,7 @@ export function App() {
       return;
     }
 
+    pendingPickerPresetRef.current = undefined;
     const result = getAppSessionCaptureResult(session);
     const summary = getAppSessionSummary(session);
 
@@ -1849,6 +3267,31 @@ export function App() {
 
     let disposed = false;
     let unlisten: (() => void) | undefined;
+    const handledStorageCommandIds = new Set<string>();
+
+    const handleStoredCommand = (raw: string | null) => {
+      if (!raw) {
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw) as { id?: string; payload?: DockCompanionCommandPayload };
+        if (!parsed.id || !parsed.payload || handledStorageCommandIds.has(parsed.id)) {
+          return;
+        }
+        handledStorageCommandIds.add(parsed.id);
+        handleCompanionCommandPayload(parsed.payload);
+      } catch {
+        // Ignore malformed fallback bridge payloads.
+      }
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === dockCompanionCommandStorageKey) {
+        handleStoredCommand(event.newValue);
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
 
     void listen<DockCompanionCommandPayload>(dockCompanionCommandEvent, (event) => {
       if (!disposed) {
@@ -1865,9 +3308,10 @@ export function App() {
 
     return () => {
       disposed = true;
+      window.removeEventListener("storage", handleStorage);
       unlisten?.();
     };
-  }, [pipelineUi.summary, recoveryKey, resultHistoryEntries]);
+  }, [pipelineUi.summary, recoveryKey, resultHistoryEntries, settingsPanelOpen]);
 
   useEffect(() => {
     let disposed = false;
@@ -1896,9 +3340,7 @@ export function App() {
       }
 
       if (controlAction === "start") {
-        savedDeliveryTargetRef.current = event.targetSnapshot?.inputLike
-          ? event.targetSnapshot
-          : await captureTauriDesktopDeliveryTarget(invoke);
+        await prepareDictationStartContext({ targetSnapshot: event.targetSnapshot });
         setCapture({
           state: "requesting_permission",
           message: captureRuntime.permissionMessage,
@@ -1916,6 +3358,8 @@ export function App() {
             ? "Submitting captured audio for transcription."
             : "Checking the safe host boundary without a provider call.",
         });
+        await waitForHotkeyRelease();
+        await rememberSelectionTransformContext();
       }
 
       const session = await desktopSession.handle(controlAction, {
@@ -2008,7 +3452,7 @@ export function App() {
         <VoiceDock
           state={voiceDockState}
           hotkeyLabel={voiceDockHotkey}
-          transcriptPreview={transcriptReview?.text}
+          transcriptPreview={assistantHandledBySurface ? undefined : transcriptReview?.text}
           onCommand={handleVoiceDockCommand}
           onDockDragStart={handleDockDragStart}
           onDockDragMove={handleDockDragMove}
@@ -2045,7 +3489,7 @@ export function App() {
             type="button"
             className="button button-primary"
             disabled={!canStart}
-            onClick={startCapture}
+            onClick={() => void startCapture()}
           >
             Start capture
           </button>
@@ -2087,7 +3531,7 @@ export function App() {
             disabled={!canCopyTranscript}
             onClick={copyTranscriptFallback}
           >
-            Copy transcript
+            {reviewCopyLabel}
           </button>
           <button
             type="button"
@@ -2165,7 +3609,11 @@ export function App() {
           </div>
           <div>
             <dt>Delivery</dt>
-            <dd>{deliveryEvidence?.status ?? "Not available"}</dd>
+            <dd>{describeDeveloperDeliveryStatus(deliveryEvidence)}</dd>
+          </div>
+          <div>
+            <dt>Result</dt>
+            <dd>{transcriptReview?.source === "selection_transform" ? "Selection transform" : transcriptReview ? "Dictation" : "Not available"}</dd>
           </div>
           <div>
             <dt>Hotkey</dt>
@@ -2199,12 +3647,18 @@ export function App() {
           {pipelineUi.message}
         </p>
 
+        {redactedRunSummary ? (
+          <p className="evidence-line" data-testid="redacted-run-summary">
+            {redactedRunSummary}
+          </p>
+        ) : null}
+
         {transcriptReview ? (
-          <section className="transcript-review" data-testid="transcript-review">
-            <h2>Transcript review</h2>
+          <section className="transcript-review" data-testid="transcript-review" data-source={transcriptReview.source}>
+            <h2>{describeTranscriptReviewTitle(transcriptReview)}</h2>
             <p>{transcriptReview.text}</p>
             <p className="evidence-line" data-testid="latest-result-recovery">
-              Latest transcript is recoverable in this session. Paste-last safe mode does not send keys or observe insertion.
+              {describeLatestResultRecovery(transcriptReview)}
             </p>
             <dl>
               <div>

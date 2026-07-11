@@ -24,7 +24,7 @@ export type DockActivePreset = {
 };
 
 export type DockRecoveryState = {
-  kind: "copy" | "retry" | "record_again" | "setup" | "uncertain";
+  kind: "copy" | "assistant" | "retry" | "record_again" | "setup" | "uncertain";
   title: string;
   message: string;
   primaryAction?: DockCommand;
@@ -77,4 +77,5 @@ export type DockVisualOptions = {
   showEnterSubmitButton?: boolean;
   activePreset?: DockActivePreset;
   assistantModeEnabled?: boolean;
+  resultSource?: "dictation" | "selection_transform" | "assistant";
 };

@@ -17,11 +17,13 @@ pub const MENU_START: &str = "start_dictation";
 pub const MENU_STOP: &str = "stop_dictation";
 pub const MENU_CANCEL: &str = "cancel_dictation";
 pub const MENU_PASTE_LAST_SAFE: &str = "paste_last_safe";
+pub const MENU_PRESET_TRANSLATE: &str = "preset_translate";
 pub const MENU_PRESET_REWRITE: &str = "preset_rewrite";
 pub const MENU_PRESET_SHORTEN: &str = "preset_shorten";
-pub const MENU_PRESET_BULLETIZE: &str = "preset_bulletize";
+pub const MENU_PRESET_PROFESSIONAL: &str = "preset_professional";
 pub const MENU_CLEAR_PRESET: &str = "clear_preset";
 pub const MENU_SHOW_RESULT_HISTORY: &str = "show_result_history";
+pub const MENU_SHOW_PRESET_PICKER: &str = "show_preset_picker";
 pub const MENU_OPEN_SETTINGS: &str = "open_settings";
 pub const MENU_QUIT: &str = "quit";
 
@@ -31,6 +33,8 @@ pub struct HostCommandPayload {
     pub source: &'static str,
     pub command: &'static str,
     pub preset_id: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chord_key: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_snapshot: Option<crate::desktop_delivery::DesktopDeliveryTarget>,
 }
@@ -46,6 +50,7 @@ pub enum HostMenuAction {
     SelectPreset(&'static str),
     ClearPreset,
     ShowResultHistory,
+    ShowPresetPicker,
     OpenSettings,
     Quit,
     Unknown,
@@ -59,11 +64,13 @@ pub fn resolve_host_menu_action(id: &str) -> HostMenuAction {
         MENU_STOP => HostMenuAction::StopDictation,
         MENU_CANCEL => HostMenuAction::CancelDictation,
         MENU_PASTE_LAST_SAFE => HostMenuAction::PasteLastSafe,
+        MENU_PRESET_TRANSLATE => HostMenuAction::SelectPreset("translate"),
         MENU_PRESET_REWRITE => HostMenuAction::SelectPreset("rewrite"),
         MENU_PRESET_SHORTEN => HostMenuAction::SelectPreset("shorten"),
-        MENU_PRESET_BULLETIZE => HostMenuAction::SelectPreset("bulletize"),
+        MENU_PRESET_PROFESSIONAL => HostMenuAction::SelectPreset("professional"),
         MENU_CLEAR_PRESET => HostMenuAction::ClearPreset,
         MENU_SHOW_RESULT_HISTORY => HostMenuAction::ShowResultHistory,
+        MENU_SHOW_PRESET_PICKER => HostMenuAction::ShowPresetPicker,
         MENU_OPEN_SETTINGS => HostMenuAction::OpenSettings,
         MENU_QUIT => HostMenuAction::Quit,
         _ => HostMenuAction::Unknown,
@@ -79,6 +86,7 @@ pub fn host_command_payload(action: HostMenuAction) -> Option<HostCommandPayload
         HostMenuAction::SelectPreset(preset_id) => ("select_preset", Some(preset_id)),
         HostMenuAction::ClearPreset => ("clear_preset", None),
         HostMenuAction::ShowResultHistory => ("show_result_history", None),
+        HostMenuAction::ShowPresetPicker => ("show_preset_picker", None),
         HostMenuAction::ShowDock
         | HostMenuAction::OpenSettings
         | HostMenuAction::HideDock
@@ -90,6 +98,7 @@ pub fn host_command_payload(action: HostMenuAction) -> Option<HostCommandPayload
         source: "tray_or_context_menu",
         command,
         preset_id,
+        chord_key: None,
         target_snapshot: None,
     })
 }
@@ -162,10 +171,12 @@ fn build_host_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu:
         .separator()
         .text(MENU_PASTE_LAST_SAFE, "Paste last (safe)")
         .text(MENU_SHOW_RESULT_HISTORY, "Result history")
+        .text(MENU_SHOW_PRESET_PICKER, "Action picker (Alt+Q)")
         .separator()
+        .text(MENU_PRESET_TRANSLATE, "Preset: Translate")
         .text(MENU_PRESET_REWRITE, "Preset: Rewrite")
         .text(MENU_PRESET_SHORTEN, "Preset: Shorten")
-        .text(MENU_PRESET_BULLETIZE, "Preset: Bulletize")
+        .text(MENU_PRESET_PROFESSIONAL, "Preset: Professional")
         .text(MENU_CLEAR_PRESET, "Clear preset")
         .separator()
         .text(MENU_OPEN_SETTINGS, "Settings")
@@ -239,8 +250,20 @@ mod tests {
             HostMenuAction::PasteLastSafe
         );
         assert_eq!(
+            resolve_host_menu_action(MENU_PRESET_TRANSLATE),
+            HostMenuAction::SelectPreset("translate")
+        );
+        assert_eq!(
             resolve_host_menu_action(MENU_PRESET_REWRITE),
             HostMenuAction::SelectPreset("rewrite")
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_PRESET_SHORTEN),
+            HostMenuAction::SelectPreset("shorten")
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_PRESET_PROFESSIONAL),
+            HostMenuAction::SelectPreset("professional")
         );
         assert_eq!(
             resolve_host_menu_action(MENU_CLEAR_PRESET),
@@ -249,6 +272,10 @@ mod tests {
         assert_eq!(
             resolve_host_menu_action(MENU_SHOW_RESULT_HISTORY),
             HostMenuAction::ShowResultHistory
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_SHOW_PRESET_PICKER),
+            HostMenuAction::ShowPresetPicker
         );
         assert_eq!(
             resolve_host_menu_action(MENU_OPEN_SETTINGS),
@@ -266,6 +293,7 @@ mod tests {
                 source: "tray_or_context_menu",
                 command: "start",
                 preset_id: None,
+                chord_key: None,
                 target_snapshot: None,
             })
         );
@@ -275,15 +303,27 @@ mod tests {
                 source: "tray_or_context_menu",
                 command: "stop",
                 preset_id: None,
+                chord_key: None,
                 target_snapshot: None,
             })
         );
         assert_eq!(
-            host_command_payload(HostMenuAction::SelectPreset("rewrite")),
+            host_command_payload(HostMenuAction::SelectPreset("translate")),
             Some(HostCommandPayload {
                 source: "tray_or_context_menu",
                 command: "select_preset",
-                preset_id: Some("rewrite"),
+                preset_id: Some("translate"),
+                chord_key: None,
+                target_snapshot: None,
+            })
+        );
+        assert_eq!(
+            host_command_payload(HostMenuAction::ShowPresetPicker),
+            Some(HostCommandPayload {
+                source: "tray_or_context_menu",
+                command: "show_preset_picker",
+                preset_id: None,
+                chord_key: None,
                 target_snapshot: None,
             })
         );

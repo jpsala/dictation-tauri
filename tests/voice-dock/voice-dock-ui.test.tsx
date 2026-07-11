@@ -68,7 +68,7 @@ describe("VoiceDock UI", () => {
     expect(html).toContain('data-testid="voice-dock"');
     expect(html).toContain('data-phase="idle"');
     expect(html).toContain("Ready");
-    expect(html).toContain("Press the dictation key or start from the dock.");
+    expect(html).toContain("Tap toggles · Hold to talk.");
     expectAction(html, "Start");
     expectNoAction(html, "Stop");
     expectNoAction(html, "Cancel");
@@ -87,7 +87,7 @@ describe("VoiceDock UI", () => {
 
     expect(html).toContain('data-phase="recording"');
     expect(html).toContain("Recording");
-    expect(html).toContain("Release or stop when finished.");
+    expect(html).toContain("Release to stop · tap again if latched.");
     expect(html).toContain('class="voice-dock__orb" data-command="stop"');
     expect(html).toContain('aria-label="Stop recording for review"');
     expectAction(html, "Stop &amp; review");
@@ -104,7 +104,7 @@ describe("VoiceDock UI", () => {
       createVoiceDockState(
         session({ state: "listening" }),
         {
-          activePreset: { presetName: "Rewrite", appKey: "global" },
+          activePreset: { presetName: "Corregir texto", appKey: "global" },
           assistantModeEnabled: true,
         },
       ),
@@ -112,7 +112,7 @@ describe("VoiceDock UI", () => {
 
     expect(html).toContain('data-context-menu="available"');
     expect(html).toContain('data-testid="voice-dock-preset-badge"');
-    expect(html).toContain("Rewrite");
+    expect(html).toContain("Corregir texto");
     expect(html).toContain("Right-click to change or disable");
     expect(html).toContain('data-testid="voice-dock-assistant-indicator"');
     expect(html).toContain("Assistant mode available");
@@ -136,8 +136,8 @@ describe("VoiceDock UI", () => {
 
     expect(html).toContain('data-phase="review"');
     expect(html).toContain("Review ready");
-    expect(html).toContain("Transcript ready");
-    expect(html).toContain("Review the transcript locally or copy it manually.");
+    expect(html).toContain("Review only");
+    expect(html).toContain("Nothing was inserted. Review the transcript locally or copy it manually.");
     expectAction(html, "Copy transcript");
     expectAction(html, "Paste last (safe)");
     expectNoAction(html, "Retry");
@@ -195,11 +195,10 @@ describe("VoiceDock UI", () => {
 
     expect(html).toContain('data-phase="uncertain"');
     expect(html).toContain('data-delivery-status="uncertain"');
-    expect(html).toContain("Check target");
-    expect(html).toContain("Check the target app");
-    expect(html).toContain("Delivery was not verified");
+    expect(html).toContain("Delivery uncertain");
+    expect(html).toContain("Insertion was not verified");
     expect(html).toContain("Delivery status:");
-    expect(html).toContain("uncertain");
+    expect(html).toContain("uncertain · check target");
     expectAction(html, "Copy transcript");
     expectAction(html, "Paste last (safe)");
   });
@@ -226,7 +225,7 @@ describe("VoiceDock UI", () => {
     expect(html).toContain('data-testid="voice-dock-delivery-status"');
     expect(html).toContain("Ready");
     expect(html).toContain("Delivery status:");
-    expect(html).toContain("paste_observed");
+    expect(html).toContain("paste_observed · verified");
     expect(html).not.toContain("Copy transcript");
   });
 });

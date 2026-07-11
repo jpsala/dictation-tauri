@@ -1,34 +1,37 @@
+// @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("Windows desktop delivery native paste", () => {
-  it("uses direct Unicode input before any clipboard fallback", () => {
+  it("uses Fixvox-like clipboard paste delivery instead of direct Unicode input", () => {
     const source = readFileSync("src-tauri/src/desktop_delivery.rs", "utf8");
 
     expect(source).not.toContain("VK_ESCAPE");
     expect(source).not.toContain("dismiss_transient_menu_before_paste");
     expect(source).not.toContain("should_dismiss_transient_menu_before_paste");
-    expect(source).toContain("send_unicode_text(&text)?");
-    expect(source).toContain("KEYEVENTF_UNICODE");
-    expect(source).toContain("without using the clipboard");
-    expect(source.indexOf("send_unicode_text(&text)?")).toBeLessThan(
-      source.indexOf("deliver_text_with_clipboard"),
-    );
+    expect(source).not.toContain("KEYEVENTF_UNICODE");
+    expect(source).not.toContain("send_unicode_text");
+    expect(source).not.toContain("DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK");
+    expect(source).toContain("using Fixvox-like clipboard paste delivery");
+    expect(source).toContain("deliver_text_with_clipboard(&text, &target, hwnd, press_enter_after_paste)?");
   });
 
-  it("keeps clipboard paste as an explicit opt-in fallback", () => {
+  it("snapshots and restores text and image clipboard formats around Ctrl+V paste", () => {
     const source = readFileSync("src-tauri/src/desktop_delivery.rs", "utf8");
 
-    expect(source).toContain("DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK");
-    expect(source).toContain("fn allow_clipboard_paste_fallback");
-    expect(source).toContain("fn clipboard_restore_delay");
-    expect(source).toContain("chrome_widgetwin");
-    expect(source).toContain("Duration::from_millis(700)");
-    expect(source.indexOf("write_clipboard_text(text)?")).toBeGreaterThan(
-      source.indexOf("fn deliver_text_with_clipboard"),
+    expect(source).toContain("struct ClipboardSnapshot");
+    expect(source).toContain("CF_DIB_FORMAT");
+    expect(source).toContain("CF_DIBV5_FORMAT");
+    expect(source).toContain("read_clipboard_snapshot()");
+    expect(source).toContain("restore_clipboard_snapshot(previous_clipboard)");
+    expect(source).toContain("send_ctrl_v()?");
+    expect(source.indexOf("let previous_clipboard = read_clipboard_snapshot()"))
+      .toBeLessThan(source.indexOf("write_clipboard_text(text)?"));
+    expect(source.indexOf("write_clipboard_text(text)?"))
+      .toBeLessThan(source.indexOf("send_ctrl_v()?"));
+    expect(source.indexOf("send_ctrl_v()?")).toBeLessThan(
+      source.indexOf("restore_clipboard_snapshot(previous_clipboard)"),
     );
-    expect(source.indexOf("thread::sleep(clipboard_restore_delay(target))"))
-      .toBeLessThan(source.indexOf("write_clipboard_text(&previous)"));
   });
 
   it("skips the bounded Win32 observer on Chromium targets", () => {
@@ -40,6 +43,18 @@ describe("Windows desktop delivery native paste", () => {
     expect(source).toContain("let skip_bounded_observer = should_skip_bounded_observer(&target)");
     expect(source.indexOf("let skip_bounded_observer")).toBeLessThan(
       source.indexOf("let observable_before"),
+    );
+  });
+
+  it("does not let terminal-like foreground windows overwrite the cached app target", () => {
+    const source = readFileSync("src-tauri/src/desktop_delivery.rs", "utf8");
+
+    expect(source).toContain("fn is_terminal_like_target");
+    expect(source).toContain("skipped terminal-like target");
+    expect(source).toContain("windowsterminal.exe");
+    expect(source).toContain("tabby.exe");
+    expect(source.indexOf("if is_terminal_like_target(&target)")).toBeLessThan(
+      source.indexOf("*cached = Some(target)"),
     );
   });
 

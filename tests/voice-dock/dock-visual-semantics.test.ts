@@ -19,6 +19,7 @@ describe("voice dock visual semantics", () => {
     expect(createVoiceDockState({ state: "idle" })).toMatchObject({
       phase: "idle",
       statusText: "Ready",
+      statusDetail: "Tap toggles · Hold to talk.",
       active: false,
       busy: false,
       canStart: true,
@@ -40,6 +41,7 @@ describe("voice dock visual semantics", () => {
     ).toMatchObject({
       phase: "arming",
       statusText: "Starting mic",
+      statusDetail: "Tap toggles · Hold to talk.",
       active: true,
       busy: true,
       canStart: false,
@@ -58,6 +60,7 @@ describe("voice dock visual semantics", () => {
     ).toMatchObject({
       phase: "recording",
       statusText: "Recording",
+      statusDetail: "Release to stop · tap again if latched.",
       active: true,
       busy: false,
       canStop: true,
@@ -86,19 +89,19 @@ describe("voice dock visual semantics", () => {
       createVoiceDockState(
         session({ state: "listening" }),
         {
-          activePreset: { presetName: "Rewrite", appKey: "global", presetId: "rewrite" },
+          activePreset: { presetName: "Corregir texto", appKey: "global", presetId: "corregir-texto" },
           assistantModeEnabled: true,
         },
       ),
     ).toMatchObject({
-      activePreset: { presetName: "Rewrite", appKey: "global", presetId: "rewrite" },
+      activePreset: { presetName: "Corregir texto", appKey: "global", presetId: "corregir-texto" },
       assistantModeEnabled: true,
     });
 
     expect(
       createVoiceDockState(
         session({ state: "transcribing" }),
-        { activePreset: { presetName: "Rewrite" } },
+        { activePreset: { presetName: "Corregir texto" } },
       ).activePreset,
     ).toBeUndefined();
   });
@@ -136,8 +139,9 @@ describe("voice dock visual semantics", () => {
     ).toMatchObject({
       phase: "review",
       statusText: "Review ready",
+      statusDetail: "review_only: nothing inserted; review or copy when ready.",
       deliveryStatus: "available",
-      deliveryStatusLabel: "available",
+      deliveryStatusLabel: "review_only · not inserted",
       canCopy: true,
       canPasteLastSafe: true,
       recovery: {
@@ -148,30 +152,78 @@ describe("voice dock visual semantics", () => {
     });
   });
 
-  it("returns to quiet idle after sent or observed insertion while keeping recovery out of the dock", () => {
-    for (const status of ["paste_sent", "paste_observed"] as const) {
-      expect(
-        createVoiceDockState(
-          session({
-            state: "done",
-            delivery: {
-              status,
-              strategy: "paste_send",
-              output: "local transcript",
-              message: "Inserted into the target app.",
-            },
-          }),
-          { canPasteLastSafe: true },
-        ),
-      ).toMatchObject({
-        phase: "idle",
-        statusText: "Ready",
-        canStart: true,
-        canCopy: false,
-        canPasteLastSafe: false,
-        recovery: undefined,
-      });
-    }
+  it("keeps assistant/Lulu review out of transcript recovery and residual ready chips", () => {
+    expect(
+      createVoiceDockState(
+        session({
+          state: "reviewing",
+          delivery: {
+            status: "available",
+            strategy: "review_only",
+            output: "Preset activo: Corregir texto.",
+            message: "Quick Chat local reply is available.",
+          },
+        }),
+        { resultSource: "assistant", canPasteLastSafe: true },
+      ),
+    ).toMatchObject({
+      phase: "review",
+      statusText: "Ready",
+      statusDetail: "Lulu response was handled outside normal transcript review.",
+      canCopy: false,
+      canPasteLastSafe: false,
+      recovery: undefined,
+    });
+  });
+
+  it("returns to quiet idle after sent or observed insertion while labeling verification honestly", () => {
+    expect(
+      createVoiceDockState(
+        session({
+          state: "done",
+          delivery: {
+            status: "paste_sent",
+            strategy: "paste_send",
+            output: "local transcript",
+            message: "Paste command was sent.",
+          },
+        }),
+        { canPasteLastSafe: true },
+      ),
+    ).toMatchObject({
+      phase: "idle",
+      statusText: "Ready",
+      deliveryStatus: "paste_sent",
+      deliveryStatusLabel: "paste_sent · not verified",
+      canStart: true,
+      canCopy: false,
+      canPasteLastSafe: false,
+      recovery: undefined,
+    });
+
+    expect(
+      createVoiceDockState(
+        session({
+          state: "done",
+          delivery: {
+            status: "paste_observed",
+            strategy: "paste_send",
+            output: "local transcript",
+            message: "Paste insertion was observed by a verified desktop observer.",
+          },
+        }),
+        { canPasteLastSafe: true },
+      ),
+    ).toMatchObject({
+      phase: "idle",
+      statusText: "Ready",
+      deliveryStatus: "paste_observed",
+      deliveryStatusLabel: "paste_observed · verified",
+      canStart: true,
+      canCopy: false,
+      canPasteLastSafe: false,
+      recovery: undefined,
+    });
   });
 
   it("renders failed and uncertain recovery honestly while cancellation settles to idle", () => {
@@ -221,16 +273,44 @@ describe("voice dock visual semantics", () => {
 
     expect(uncertain).toMatchObject({
       phase: "uncertain",
-      statusText: "Check target",
+      statusText: "Delivery uncertain",
+      statusDetail: "Insertion was not verified. Check target, copy, or paste last safely.",
+      deliveryStatusLabel: "uncertain · check target",
       canCopy: true,
       canPasteLastSafe: true,
       recovery: {
         kind: "uncertain",
+        title: "Delivery uncertain",
         primaryAction: "copy",
         secondaryAction: "paste_last_safe",
       },
     });
     expect(JSON.stringify(uncertain)).not.toContain("paste_observed");
+
+    expect(
+      createVoiceDockState(
+        session({
+          state: "done",
+          delivery: {
+            status: "failed",
+            strategy: "paste_send",
+            output: "local transcript",
+            message: "Target delivery failed.",
+          },
+        }),
+        { canPasteLastSafe: true },
+      ),
+    ).toMatchObject({
+      phase: "uncertain",
+      statusText: "Delivery failed",
+      statusDetail: "No verified insertion. Copy the result or retry if needed.",
+      deliveryStatusLabel: "failed · not inserted",
+      recovery: {
+        kind: "uncertain",
+        title: "Delivery failed",
+        message: "No verified insertion. Copy the result or retry if needed.",
+      },
+    });
   });
 
   it("normalizes VU bands for the seven-dot dock affordance", () => {

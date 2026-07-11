@@ -8,7 +8,6 @@ import {
   type MockTranscriptionAdapter,
 } from "./ports";
 import type {
-  FailurePhase,
   PipelineEvent,
   PipelineEventHandler,
   PipelineState,

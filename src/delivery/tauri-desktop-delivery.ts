@@ -1,12 +1,17 @@
 import { redactHostRuntimeText } from "../host-runtime/redaction";
-import { deriveDeliveryEvidence } from "./evidence";
+import { createReviewOnlyEvidence, deriveDeliveryEvidence } from "./evidence";
 import {
   deriveObservedPasteEvidence,
   derivePasteObserverErrorEvidence,
   type DesktopPasteObserver,
   type PasteObservation,
 } from "./observation";
-import type { DeliveryRequest, DesktopDeliveryGateway, DesktopTargetSnapshot } from "./types";
+import type {
+  DeliveryRequest,
+  DeliveryTargetAffinity,
+  DesktopDeliveryGateway,
+  DesktopTargetSnapshot,
+} from "./types";
 
 export type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -15,8 +20,10 @@ export type TauriDesktopDeliveryTarget = {
   windowTitle: string;
   windowClass: string;
   processId: number;
+  processName?: string;
   inputLike: boolean;
   reason: string;
+  cacheReason?: string;
 };
 
 type NativeDeliveryResult = {
@@ -68,25 +75,78 @@ function createTargetSnapshot(target: TauriDesktopDeliveryTarget): DesktopTarget
 
 export async function captureTauriDesktopDeliveryTarget(
   invoke: TauriInvoke,
+  options: { preferForegroundWatcherCacheOverTerminal?: boolean } = {},
 ): Promise<TauriDesktopDeliveryTarget | undefined> {
+  let currentTarget: TauriDesktopDeliveryTarget | undefined;
   try {
-    const target = await invoke<TauriDesktopDeliveryTarget>("capture_desktop_delivery_target");
-    if (target.inputLike) {
-      return target;
-    }
+    currentTarget = await invoke<TauriDesktopDeliveryTarget>("capture_desktop_delivery_target");
   } catch {
     // Fall back to a previously cached editable target below. This preserves tray/menu
     // flows where opening the menu can temporarily steal foreground away from the input.
   }
 
+  let cachedTarget: TauriDesktopDeliveryTarget | undefined;
   try {
-    const cachedTarget = await invoke<TauriDesktopDeliveryTarget | undefined>(
+    cachedTarget = await invoke<TauriDesktopDeliveryTarget | undefined>(
       "get_cached_desktop_delivery_target",
     );
-    return cachedTarget?.inputLike ? cachedTarget : undefined;
   } catch {
-    return undefined;
+    // No cached target available.
   }
+
+  if (
+    options.preferForegroundWatcherCacheOverTerminal === true &&
+    currentTarget?.inputLike &&
+    isTerminalLikeTarget(currentTarget) &&
+    cachedTarget?.inputLike &&
+    !isTerminalLikeTarget(cachedTarget) &&
+    cachedTarget.cacheReason === "foreground_watcher"
+  ) {
+    return cachedTarget;
+  }
+
+  if (currentTarget?.inputLike) {
+    return currentTarget;
+  }
+
+  return cachedTarget?.inputLike ? cachedTarget : undefined;
+}
+
+function isTerminalLikeTarget(target: TauriDesktopDeliveryTarget): boolean {
+  const haystack = `${target.processName ?? ""} ${target.windowClass} ${target.windowTitle}`.toLowerCase();
+  return haystack.includes("tabby.exe") ||
+    haystack.includes("windowsterminal.exe") ||
+    haystack.includes("powershell.exe") ||
+    haystack.includes("pwsh.exe") ||
+    haystack.includes("cmd.exe") ||
+    haystack.includes("cascadia_hosting_window_class") ||
+    haystack.includes("consolewindowclass") ||
+    haystack.includes("windows powershell") ||
+    haystack.includes("powershell") ||
+    haystack.includes("command prompt");
+}
+
+function resolveAssuredDeliveryTarget(input: {
+  savedTarget?: TauriDesktopDeliveryTarget;
+  currentTarget?: TauriDesktopDeliveryTarget;
+  targetAffinity?: DeliveryTargetAffinity;
+}): TauriDesktopDeliveryTarget | undefined {
+  const savedTarget = input.savedTarget?.inputLike ? input.savedTarget : undefined;
+  const currentTarget = input.currentTarget?.inputLike ? input.currentTarget : undefined;
+
+  if (input.targetAffinity === "saved") {
+    return savedTarget ?? currentTarget;
+  }
+
+  if (!currentTarget) {
+    return savedTarget;
+  }
+
+  if (savedTarget && isTerminalLikeTarget(currentTarget) && !isTerminalLikeTarget(savedTarget)) {
+    return savedTarget;
+  }
+
+  return currentTarget;
 }
 
 export function createTauriSavedTargetDeliveryGateway(input: {
@@ -97,11 +157,27 @@ export function createTauriSavedTargetDeliveryGateway(input: {
 }): DesktopDeliveryGateway {
   return {
     async deliver(request: DeliveryRequest) {
-      const target = input.getTarget();
+      if (!request.allowDesktopSideEffects || request.strategy === "review_only") {
+        return createReviewOnlyEvidence(request);
+      }
+
+      const savedTarget = input.getTarget();
+      const savedTargetIsExplicitTerminal = savedTarget?.inputLike === true &&
+        isTerminalLikeTarget(savedTarget);
+      const currentTarget = request.targetAffinity === "saved"
+        ? undefined
+        : await captureTauriDesktopDeliveryTarget(input.invoke, {
+            preferForegroundWatcherCacheOverTerminal: !savedTargetIsExplicitTerminal,
+          });
+      const target = resolveAssuredDeliveryTarget({
+        savedTarget,
+        currentTarget,
+        targetAffinity: request.targetAffinity,
+      });
       if (!target) {
         return deriveDeliveryEvidence(request, {
           status: "failed",
-          reason: "No saved editable target is available for paste delivery.",
+          reason: "No assured editable target is available for paste delivery.",
         });
       }
 

@@ -83,15 +83,15 @@ describe("VoiceDock Fixvox Skin4 parity contract", () => {
       createVoiceDockState(
         session({ state: "listening" }),
         {
-          activePreset: { presetName: "Rewrite", appKey: "global", presetId: "rewrite" },
+          activePreset: { presetName: "Corregir texto", appKey: "global", presetId: "corregir-texto" },
           assistantModeEnabled: true,
         },
       ),
     );
 
     expect(html).toContain('data-testid="voice-dock-preset-badge"');
-    expect(html).toContain("Rewrite");
-    expect(html).toContain("Active preset: Rewrite (global)");
+    expect(html).toContain("Corregir texto");
+    expect(html).toContain("Active preset: Corregir texto (global)");
     expect(html).toContain('data-testid="voice-dock-assistant-indicator"');
     expect(html).toContain("Assistant mode available");
     expectNoDeveloperLeakage(html);

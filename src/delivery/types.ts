@@ -27,12 +27,15 @@ export type DesktopTargetSnapshot = {
   confidence: DesktopTargetConfidence;
 };
 
+export type DeliveryTargetAffinity = "current" | "saved";
+
 export type DeliveryRequest = {
   sessionId: string;
   text: string;
   strategy: DeliveryStrategy;
   allowDesktopSideEffects: boolean;
   targetSnapshot?: DesktopTargetSnapshot;
+  targetAffinity?: DeliveryTargetAffinity;
 };
 
 export type DeliveryEvidence = {

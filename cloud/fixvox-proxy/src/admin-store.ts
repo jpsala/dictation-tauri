@@ -27,6 +27,9 @@ export type AdminRequestEvent = {
   pricingSource: string | null;
   providerRequestId: string | null;
   backendRequestId: string;
+  profileId?: string | null;
+  engineId?: string | null;
+  promptId?: string | null;
   usageKey: string | null;
   usageLimit: number | null;
   usageRemaining: number | null;
@@ -53,6 +56,13 @@ type DailyContextSummary = {
   totalCostUsd: number;
 };
 
+type DailyDimensionSummary = {
+  id: string;
+  requestCount: number;
+  totalCostUsd: number;
+  totalTokens: number;
+};
+
 type DailyUsageSummary = {
   day: string;
   requestCount: number;
@@ -62,6 +72,9 @@ type DailyUsageSummary = {
   totalTokens: number;
   byModel: Record<string, DailyModelSummary>;
   byContext: Record<string, DailyContextSummary>;
+  byEngine: Record<string, DailyDimensionSummary>;
+  byPrompt: Record<string, DailyDimensionSummary>;
+  byProfile: Record<string, DailyDimensionSummary>;
 };
 
 export type DashboardSummary = {
@@ -131,6 +144,9 @@ function createEmptyDailyUsageSummary(day: string): DailyUsageSummary {
     totalTokens: 0,
     byModel: {},
     byContext: {},
+    byEngine: {},
+    byPrompt: {},
+    byProfile: {},
   };
 }
 
@@ -154,8 +170,22 @@ async function writeRecentIndex(store: KvNamespaceLike, items: RecentIndexEntry[
   });
 }
 
+function normalizeDailyUsageSummary(value: DailyUsageSummary, day: string): DailyUsageSummary {
+  const empty = createEmptyDailyUsageSummary(day);
+  return {
+    ...empty,
+    ...value,
+    day: value.day ?? day,
+    byModel: value.byModel ?? {},
+    byContext: value.byContext ?? {},
+    byEngine: value.byEngine ?? {},
+    byPrompt: value.byPrompt ?? {},
+    byProfile: value.byProfile ?? {},
+  };
+}
+
 async function readDailyUsage(store: KvNamespaceLike, day: string): Promise<DailyUsageSummary> {
-  return parseJson<DailyUsageSummary>(await store.get(usageDayKey(day)), createEmptyDailyUsageSummary(day));
+  return normalizeDailyUsageSummary(parseJson<DailyUsageSummary>(await store.get(usageDayKey(day)), createEmptyDailyUsageSummary(day)), day);
 }
 
 async function writeDailyUsage(store: KvNamespaceLike, summary: DailyUsageSummary): Promise<void> {
@@ -172,6 +202,9 @@ function matchesQuery(event: AdminRequestEvent, query: string): boolean {
     || event.context.toLowerCase().includes(normalized)
     || event.status.toLowerCase().includes(normalized)
     || event.deviceId.toLowerCase().includes(normalized)
+    || (event.profileId ?? "").toLowerCase().includes(normalized)
+    || (event.engineId ?? "").toLowerCase().includes(normalized)
+    || (event.promptId ?? "").toLowerCase().includes(normalized)
     || (event.providerRequestId ?? "").toLowerCase().includes(normalized)
     || (event.backendRequestId ?? "").toLowerCase().includes(normalized)
     || (event.errorMessage ?? "").toLowerCase().includes(normalized);
@@ -186,6 +219,16 @@ function materializeModelSummaries(map: Record<string, DailyModelSummary>): Dail
     if (b.totalCostUsd !== a.totalCostUsd) return b.totalCostUsd - a.totalCostUsd;
     return b.requestCount - a.requestCount;
   });
+}
+
+function bumpDimensionSummary(map: Record<string, DailyDimensionSummary>, id: string | null | undefined, billedCostUsd: number, totalTokens: number): void {
+  const normalized = id?.trim();
+  if (!normalized) return;
+  const existing = map[normalized] ?? { id: normalized, requestCount: 0, totalCostUsd: 0, totalTokens: 0 };
+  existing.requestCount += 1;
+  existing.totalCostUsd = roundUsd(existing.totalCostUsd + billedCostUsd);
+  existing.totalTokens += totalTokens;
+  map[normalized] = existing;
 }
 
 export async function persistRequestEvent(store: KvNamespaceLike, event: AdminRequestEvent): Promise<void> {
@@ -234,6 +277,10 @@ export async function persistRequestEvent(store: KvNamespaceLike, event: AdminRe
   existingContext.requestCount += 1;
   existingContext.totalCostUsd = roundUsd(existingContext.totalCostUsd + billedCostUsd);
   daily.byContext[event.context] = existingContext;
+
+  bumpDimensionSummary(daily.byEngine, event.engineId, billedCostUsd, totalTokens);
+  bumpDimensionSummary(daily.byPrompt, event.promptId, billedCostUsd, totalTokens);
+  bumpDimensionSummary(daily.byProfile, event.profileId, billedCostUsd, totalTokens);
 
   await writeDailyUsage(store, daily);
 }

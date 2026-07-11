@@ -12,8 +12,17 @@ use cpal::{
     SampleFormat, Stream, StreamConfig,
 };
 use serde::Serialize;
+use tauri::AppHandle;
+
+use crate::output_mute::{begin_output_mute_for_capture, OutputMuteEvidence, OutputMuteSession};
 
 static ACTIVE_CAPTURE: OnceLock<Mutex<Option<ActiveCapture>>> = OnceLock::new();
+
+const VAD_FRAME_MS: u64 = 30;
+const VAD_MIN_DURATION_MS: u64 = 180;
+const VAD_MIN_VOICED_MS: u64 = 180;
+const VAD_RMS_THRESHOLD: f64 = 0.012;
+const VAD_PEAK_THRESHOLD: f64 = 0.08;
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -47,9 +56,35 @@ pub struct CaptureMetadata {
     size_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     artifact: Option<CapturedAudioArtifact>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    local_speech_decision: Option<AudioSpeechDecision>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_mute: Option<OutputMuteEvidence>,
     device_kind: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     device_label: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioVoiceActivity {
+    duration_ms: u64,
+    frame_count: u64,
+    voiced_frame_count: u64,
+    voiced_ms: u64,
+    rms_ppm: u64,
+    peak_ppm: u64,
+    has_speech: bool,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioSpeechDecision {
+    #[serde(rename = "class")]
+    classification: &'static str,
+    reason: &'static str,
+    voice_activity: AudioVoiceActivity,
+    redacted: bool,
 }
 
 #[derive(Serialize)]
@@ -89,6 +124,7 @@ struct ActiveCapture {
     samples: Arc<Mutex<Vec<i16>>>,
     stop_sender: mpsc::Sender<()>,
     capture_thread: JoinHandle<()>,
+    output_mute: OutputMuteSession,
 }
 
 struct StartedCapture {
@@ -98,7 +134,7 @@ struct StartedCapture {
 }
 
 #[tauri::command]
-pub fn start_native_microphone_capture() -> Result<CaptureMetadata, String> {
+pub fn start_native_microphone_capture(app: AppHandle) -> Result<CaptureMetadata, String> {
     let state = ACTIVE_CAPTURE.get_or_init(|| Mutex::new(None));
     let mut active = state
         .lock()
@@ -111,6 +147,7 @@ pub fn start_native_microphone_capture() -> Result<CaptureMetadata, String> {
         ));
     }
 
+    let output_mute = begin_output_mute_for_capture(&app);
     let samples = Arc::new(Mutex::new(Vec::<i16>::new()));
     let capture_id = format!("capture-native-{}", now_ms());
     let (started_sender, started_receiver) = mpsc::channel::<Result<StartedCapture, String>>();
@@ -134,10 +171,12 @@ pub fn start_native_microphone_capture() -> Result<CaptureMetadata, String> {
         Ok(Ok(started)) => started,
         Ok(Err(message)) => {
             let _ = capture_thread.join();
+            let _ = output_mute.restore();
             return Err(message);
         }
         Err(_) => {
             let _ = capture_thread.join();
+            let _ = output_mute.restore();
             return Err("Native microphone capture thread did not start.".to_string());
         }
     };
@@ -151,6 +190,7 @@ pub fn start_native_microphone_capture() -> Result<CaptureMetadata, String> {
         samples,
         stop_sender,
         capture_thread,
+        output_mute,
     });
 
     Ok(create_metadata(capture_id, "granted", started.device_label))
@@ -196,6 +236,7 @@ pub fn stop_native_microphone_capture() -> CaptureResult {
     let _ = active.stop_sender.send(());
     let _ = active.capture_thread.join();
 
+    let output_mute = active.output_mute.restore();
     let duration_ms = now_ms().saturating_sub(active.started_at_ms);
     let samples = match active.samples.lock() {
         Ok(guard) => guard.clone(),
@@ -204,12 +245,35 @@ pub fn stop_native_microphone_capture() -> CaptureResult {
 
     if samples.is_empty() {
         return failure(
-            create_metadata(active.capture_id, "granted", active.device_label),
+            create_metadata_with_output_mute(
+                active.capture_id,
+                "granted",
+                active.device_label,
+                Some(output_mute),
+            ),
             "recording",
             "empty-audio",
             "Native microphone capture produced no audio data.",
         );
     }
+
+    let local_speech_decision =
+        classify_audio_speech(&samples, active.sample_rate_hz, active.channel_count);
+    eprintln!(
+        "[dictation-tauri][native-capture] stopped capture_id={} duration_ms={} sample_rate={} channels={} speech_class={} reason={} voiced_ms={} frames={} voiced_frames={} rms_ppm={} peak_ppm={} has_speech={}",
+        active.capture_id,
+        duration_ms,
+        active.sample_rate_hz,
+        active.channel_count,
+        local_speech_decision.classification,
+        local_speech_decision.reason,
+        local_speech_decision.voice_activity.voiced_ms,
+        local_speech_decision.voice_activity.frame_count,
+        local_speech_decision.voice_activity.voiced_frame_count,
+        local_speech_decision.voice_activity.rms_ppm,
+        local_speech_decision.voice_activity.peak_ppm,
+        local_speech_decision.voice_activity.has_speech,
+    );
 
     match write_wav_artifact(
         &active.capture_id,
@@ -228,6 +292,8 @@ pub fn stop_native_microphone_capture() -> CaptureResult {
                 mime_type: Some("audio/wav"),
                 size_bytes: Some(artifact.size_bytes),
                 artifact: Some(artifact.clone()),
+                local_speech_decision: Some(local_speech_decision),
+                output_mute: Some(output_mute),
                 device_kind: "audioinput",
                 device_label: active.device_label,
             };
@@ -240,7 +306,12 @@ pub fn stop_native_microphone_capture() -> CaptureResult {
             }
         }
         Err(message) => failure(
-            create_metadata(active.capture_id, "granted", active.device_label),
+            create_metadata_with_output_mute(
+                active.capture_id,
+                "granted",
+                active.device_label,
+                Some(output_mute),
+            ),
             "artifact",
             "artifact-write-failed",
             message,
@@ -272,6 +343,18 @@ pub fn cancel_native_microphone_capture() -> CaptureResult {
     if let Some(active) = active {
         let _ = active.stop_sender.send(());
         let _ = active.capture_thread.join();
+        let output_mute = active.output_mute.restore();
+        return failure(
+            create_metadata_with_output_mute(
+                metadata.capture_id,
+                metadata.permission_status,
+                metadata.device_label,
+                Some(output_mute),
+            ),
+            "cancelled",
+            "cancelled",
+            "Native microphone capture was cancelled.",
+        );
     }
 
     failure(
@@ -364,6 +447,101 @@ fn f32_to_i16(sample: f32) -> i16 {
 
 fn u16_to_i16(sample: u16) -> i16 {
     (sample as i32 - 32768) as i16
+}
+
+fn classify_audio_speech(
+    samples: &[i16],
+    sample_rate_hz: u32,
+    channel_count: u16,
+) -> AudioSpeechDecision {
+    let voice_activity = analyze_samples_voice_activity(samples, sample_rate_hz, channel_count);
+
+    if voice_activity.duration_ms < VAD_MIN_DURATION_MS {
+        return AudioSpeechDecision {
+            classification: "too-short",
+            reason: "audio_too_short_for_speech_detection",
+            voice_activity,
+            redacted: true,
+        };
+    }
+
+    if voice_activity.has_speech {
+        return AudioSpeechDecision {
+            classification: "speech",
+            reason: "local_voice_activity_detected",
+            voice_activity,
+            redacted: true,
+        };
+    }
+
+    AudioSpeechDecision {
+        classification: "no-speech",
+        reason: "local_voice_activity_no_speech",
+        voice_activity,
+        redacted: true,
+    }
+}
+
+fn analyze_samples_voice_activity(
+    samples: &[i16],
+    sample_rate_hz: u32,
+    channel_count: u16,
+) -> AudioVoiceActivity {
+    let sample_rate_hz = sample_rate_hz.max(1) as u64;
+    let channel_count = channel_count.max(1) as u64;
+    let samples_per_frame =
+        ((sample_rate_hz * channel_count * VAD_FRAME_MS) / 1000).max(1) as usize;
+    let duration_ms = ((samples.len() as u64) * 1000) / (sample_rate_hz * channel_count);
+    let mut frame_count = 0_u64;
+    let mut voiced_frame_count = 0_u64;
+    let mut total_squares = 0.0_f64;
+    let mut total_samples = 0_u64;
+    let mut peak = 0.0_f64;
+
+    for frame in samples.chunks(samples_per_frame) {
+        if frame.is_empty() {
+            continue;
+        }
+
+        let mut frame_squares = 0.0_f64;
+        let mut frame_peak = 0.0_f64;
+        for sample in frame {
+            let normalized = *sample as f64 / 32768.0;
+            let absolute = normalized.abs();
+            frame_peak = frame_peak.max(absolute);
+            frame_squares += normalized * normalized;
+        }
+
+        let frame_rms = (frame_squares / frame.len() as f64).sqrt();
+        if frame_rms >= VAD_RMS_THRESHOLD || frame_peak >= VAD_PEAK_THRESHOLD {
+            voiced_frame_count += 1;
+        }
+        frame_count += 1;
+        total_squares += frame_squares;
+        total_samples += frame.len() as u64;
+        peak = peak.max(frame_peak);
+    }
+
+    let voiced_ms = voiced_frame_count.saturating_mul(VAD_FRAME_MS);
+    let rms = if total_samples > 0 {
+        (total_squares / total_samples as f64).sqrt()
+    } else {
+        0.0
+    };
+
+    AudioVoiceActivity {
+        duration_ms,
+        frame_count,
+        voiced_frame_count,
+        voiced_ms,
+        rms_ppm: float_to_ppm(rms),
+        peak_ppm: float_to_ppm(peak),
+        has_speech: voiced_ms >= VAD_MIN_VOICED_MS,
+    }
+}
+
+fn float_to_ppm(value: f64) -> u64 {
+    (value.clamp(0.0, 1.0) * 1_000_000.0).round() as u64
 }
 
 fn write_wav_artifact(
@@ -515,6 +693,15 @@ fn create_metadata(
     permission_status: &'static str,
     device_label: Option<String>,
 ) -> CaptureMetadata {
+    create_metadata_with_output_mute(capture_id, permission_status, device_label, None)
+}
+
+fn create_metadata_with_output_mute(
+    capture_id: String,
+    permission_status: &'static str,
+    device_label: Option<String>,
+    output_mute: Option<OutputMuteEvidence>,
+) -> CaptureMetadata {
     CaptureMetadata {
         capture_id,
         source: "microphone",
@@ -524,6 +711,8 @@ fn create_metadata(
         mime_type: None,
         size_bytes: None,
         artifact: None,
+        local_speech_decision: None,
+        output_mute,
         device_kind: "audioinput",
         device_label,
     }

@@ -64,6 +64,18 @@ describe("host runtime transcriber", () => {
       kind: "report",
     });
     expect(writes[1].content).toContain('"transcriptLength": 15');
+    const report = JSON.parse(writes[1].content) as {
+      runtimeTelemetryStages: Array<{ stage: string; status: string; provider?: string; model?: string }>;
+      runtimeTelemetrySummary: Array<{ stage: string; status: string; redacted: true }>;
+    };
+    expect(report.runtimeTelemetryStages).toMatchObject([
+      { stage: "stt", status: "ok", provider: "groq", model: "whisper-large-v3" },
+      { stage: "postprocess", status: "skipped" },
+    ]);
+    expect(report.runtimeTelemetrySummary).toMatchObject([
+      { stage: "stt", status: "ok", redacted: true },
+      { stage: "postprocess", status: "skipped", redacted: true },
+    ]);
     expect(writes[1].content).not.toContain("host transcript");
     expect(JSON.stringify(response)).not.toContain(configuredEnv.GROQ_API_KEY);
   });
@@ -247,6 +259,11 @@ describe("host runtime transcriber", () => {
     expect(writes[0]).toMatchObject({ kind: "transcript", content: "Hola, JP." });
     expect(writes[1].content).toContain('"postProcess"');
     expect(writes[1].content).toContain('"rawTranscriptLength": 7');
+    expect(JSON.parse(writes[1].content).runtimeTelemetryStages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stage: "postprocess", status: "ok", provider: "groq", model: "openai/gpt-oss-120b" }),
+      ]),
+    );
     expect(writes[1].content).not.toContain("hola jp");
     expect(writes[1].content).not.toContain("Hola, JP.");
   });

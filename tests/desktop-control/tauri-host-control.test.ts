@@ -1,3 +1,4 @@
+// @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
@@ -5,7 +6,6 @@ import {
   tauriDefaultGlobalHotkeyShortcut,
   tauriFallbackDictationKeyShortcut,
   tauriGlobalHotkeyEventName,
-  tauriGlobalHotkeyShortcut,
   tauriPrimaryDictationKeyShortcut,
   tauriHostCommandEventName,
   type TauriHostCommandPayload,
@@ -160,7 +160,7 @@ describe("Tauri host-owned global hotkey boundary", () => {
     const presetPayload: TauriHostCommandPayload = {
       source: "tray_or_context_menu",
       command: "select_preset",
-      presetId: "rewrite",
+      presetId: "corregir-texto",
     };
     const historyPayload: TauriHostCommandPayload = {
       source: "tray_or_context_menu",
@@ -170,10 +170,21 @@ describe("Tauri host-owned global hotkey boundary", () => {
       source: "global_hotkey",
       command: "paste_last_safe",
     };
+    const pickerPayload: TauriHostCommandPayload = {
+      source: "global_hotkey",
+      command: "show_preset_picker",
+    };
+    const pickerChordPayload: TauriHostCommandPayload = {
+      source: "global_hotkey",
+      command: "run_preset_picker_chord",
+      chordKey: "Y",
+    };
 
-    expect(presetPayload.presetId).toBe("rewrite");
+    expect(presetPayload.presetId).toBe("corregir-texto");
     expect(historyPayload.command).toBe("show_result_history");
     expect(pasteLastPayload.command).toBe("paste_last_safe");
+    expect(pickerPayload.command).toBe("show_preset_picker");
+    expect(pickerChordPayload.chordKey).toBe("Y");
   });
 
   it("keeps Rust hotkey registration host-owned with a gated Alt+Space path", () => {
@@ -197,8 +208,19 @@ describe("Tauri host-owned global hotkey boundary", () => {
     expect(source).toContain("Escape");
     expect(source).toContain("Alt+Shift+X");
     expect(source).toContain("paste_last_safe");
+    expect(source).toContain("Alt+Q");
+    expect(source).toContain("show_preset_picker");
+    expect(source).toContain("run_preset_picker_chord");
+    expect(source).toContain("PresetPickerChord");
+    expect(source).toContain("PRESET_CHORD_TIMEOUT");
     expect(source).toContain("set_desktop_control_escape_cancel_enabled");
     expect(source).toContain("set_desktop_control_hotkey_capture_enabled");
+    expect(source).toContain("get_desktop_control_action_hotkey_config");
+    expect(source).toContain("preview_desktop_control_action_hotkey_registration");
+    expect(source).toContain("apply_desktop_control_action_hotkey_registration");
+    expect(source).toContain("action-hotkey-preferences.v1.json");
+    expect(source).toContain("set_preset_picker_shortcut");
+    expect(source).toContain("set_paste_last_shortcut");
     expect(source).toContain("desktop-control://hotkey-capture");
     expect(source).toContain("VK_ESCAPE");
     expect(source).not.toContain("paste_observed");

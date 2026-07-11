@@ -77,13 +77,15 @@ En este mapa, `mvp` cubre el tramo MVP 0-3 definido en `docs/topics/product-dire
 | Target capture | Detecta ventana/proceso/control activo y seleccion. | Necesario para delivery confiable. | Mock en tests y target activo basico primero; seleccion real despues. | `mvp` |
 | Recovery UI | Cuando paste no es confiable, muestra opciones copy/paste-again/type. | Importante para no perder texto. | Empezar con copy fallback y logs. | `early` |
 | Audio capture | Graba microfono real. | Core, pero despues de fixtures. | Rust/cpal, plugin, WebView MediaRecorder, o sidecar. | `mvp` |
+| Audio runtime parity | VAD/no-speech local, auto-stop por silencio, compresion MP3 para audios largos, mute output durante recording, sound cues y telemetry por etapa. | Alto: reduce latencia/costo, mejora ergonomia y acerca el runtime a Fixvox. | Spec propia por small batches; no incluir stop phrase en este corte. | `early/adopt-fixvox` |
 | Audio sintetico/TTS | Genera WAV/MP3 desde frases para pruebas. | Clave para no depender de JP. | Script propio inspirado en Fixvox. | `mvp` |
 | STT benchmark matrix | Corre escenarios STT/postprocess, mide calidad/costo/latencia. | Clave para elegir modelo. | Copia minima conceptual, no port literal. | `mvp` |
 | Muestras humanas | WAVs reales con expected text. | Valiosas para regresion, pero sensibles. | Referenciar localmente, no copiar al repo. | `research` |
 | Model routing | Elige proveedor/modelo por policy/contexto. | Util si no sobredisena el pipeline. | Interfaz propia `ModelGateway`; mock/provider-free, directo BYOK/dev, managed cloud Fixvox post-008. | `mvp` |
 | Proxy/backend-managed | Centraliza claves, costos, quotas y policy. | Alto: Fixvox ya funciona bien con esta frontera. | Adapter Rust/Tauri contra contratos HTTP Fixvox (`X-Device-Id`, preflight, `/v1/audio/transcriptions`). | `mvp` |
 | Control plane/policy | Administra usuarios, quotas, defaults, capabilities. | Importante para managed cloud sin claves locales. | Adoptar contratos mínimos de device/register/preflight; no portar admin UI/control plane completo. | `early` |
-| Wake words | Activacion por palabra tipo Lulu. | Atractivo, pero permiso microfono y ruido. | No activar por defecto. | `parked` |
+| Assistant prefix `Lulu ...` | Dentro de una captura iniciada por hotkey/dock, si el transcript empieza con Lulu/assistant/asistente/ai/zuno, routea lo posterior a asistente/agente en vez de dictado normal. | Alto para JP; recupera el modo asistente de Fixvox sin microfono always-on. | Spec/slice separado, provider-free primero, copiando `parseAssistantVoicePrompt`/wake words de Fixvox. | `next/early` |
+| Wake word real always-on | Escucha permanente de microfono esperando Lulu. | No interesa a JP ahora; aumenta privacidad/ruido/energia. | Explicitamente fuera de alcance; no implementar background always-on listening. | `out-of-scope` |
 | Voice commands / Smart Dictation | Interpreta comandos hablados complejos. | Potente, pero scope grande. | Fixtures primero, runtime despues. | `later` |
 | App memory / smart memory | Memoria por app/global para comandos. | Interesante, no core. | Markdown/local store posterior. | `later` |
 | Onboarding guiado | Primer uso, mic check, dictado, transform. | Importante para producto final. | Despues de flujo base estable. | `later` |

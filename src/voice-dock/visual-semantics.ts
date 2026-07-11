@@ -23,8 +23,9 @@ export function createVoiceDockState(
   const phase = mapDockPhase(input);
   const hasOutput = hasDeliveryOutput(input);
   const inserted = deliveryWasInserted(getDelivery(input));
-  const canPasteLastSafe = Boolean(options.canPasteLastSafe && hasOutput && !inserted);
-  const canCopy = hasOutput && !inserted;
+  const assistantResult = options.resultSource === "assistant";
+  const canPasteLastSafe = Boolean(options.canPasteLastSafe && hasOutput && !inserted && !assistantResult);
+  const canCopy = hasOutput && !inserted && !assistantResult;
   const canRetry = phase === "failed" || phase === "cancelled";
   const canStop = phase === "arming" || phase === "recording";
   const canCancel = canStop;
@@ -33,8 +34,9 @@ export function createVoiceDockState(
   const recovery = createRecoveryState(input, phase, {
     canCopy,
     canPasteLastSafe,
+    assistantResult,
   });
-  const status = getStatus(input, phase);
+  const status = getStatus(input, phase, { assistantResult });
 
   return {
     phase,
@@ -109,30 +111,49 @@ function createRecoveryState(
   actions: {
     canCopy: boolean;
     canPasteLastSafe: boolean;
+    assistantResult?: boolean;
   },
 ): DockRecoveryState | undefined {
+  if (phase === "review" && actions.assistantResult) {
+    return undefined;
+  }
+
   if (phase === "review" && actions.canCopy) {
-    const observed = input.state !== "idle" && input.delivery?.status === "paste_observed";
-    const sent = input.state !== "idle" && input.delivery?.status === "paste_sent";
+    const delivery = input.state === "idle" ? undefined : input.delivery;
+    const observed = delivery?.status === "paste_observed";
+    const sent = delivery?.status === "paste_sent";
+    const reviewOnly = delivery?.strategy === "review_only";
 
     return {
       kind: "copy",
-      title: observed ? "Paste observed" : sent ? "Paste sent" : "Transcript ready",
-      message: observed
-        ? "Verified observer confirmed target insertion; transcript remains available."
+      title: observed
+        ? "Paste verified"
         : sent
-          ? "Paste was sent but target insertion was not observed; transcript remains available."
-          : "Review the transcript locally or copy it manually.",
+          ? "Paste sent, not verified"
+          : reviewOnly
+            ? "Review only"
+            : "Transcript ready",
+      message: observed
+        ? "Observer verified target insertion; transcript remains available."
+        : sent
+          ? "Paste command was sent, but insertion was not observer-verified. If it did not appear, copy or paste last safely."
+          : reviewOnly
+            ? "Nothing was inserted. Review the transcript locally or copy it manually."
+            : "Review the transcript locally or copy it manually.",
       primaryAction: "copy",
       secondaryAction: actions.canPasteLastSafe ? "paste_last_safe" : undefined,
     };
   }
 
   if (phase === "uncertain") {
+    const failedDelivery = input.state !== "idle" && input.delivery?.status === "failed";
+
     return {
       kind: "uncertain",
-      title: "Check the target app",
-      message: "Delivery was not verified. Copy or use safe recovery if needed.",
+      title: failedDelivery ? "Delivery failed" : "Delivery uncertain",
+      message: failedDelivery
+        ? "No verified insertion. Copy the result or retry if needed."
+        : "Insertion was not verified. Check the target, then copy or use safe paste-last if needed.",
       primaryAction: actions.canCopy ? "copy" : undefined,
       secondaryAction: actions.canPasteLastSafe ? "paste_last_safe" : undefined,
     };
@@ -163,22 +184,29 @@ function createRecoveryState(
 function getStatus(
   input: DockInputState,
   phase: VoiceDockPhase,
+  options: { assistantResult?: boolean } = {},
 ): { text: string; detail?: string } {
   switch (phase) {
     case "idle":
-      return { text: "Ready", detail: "Press the dictation key or start from the dock." };
+      return { text: "Ready", detail: "Tap toggles · Hold to talk." };
     case "arming":
-      return { text: "Starting mic", detail: "Preparing capture." };
+      return { text: "Starting mic", detail: "Tap toggles · Hold to talk." };
     case "recording":
-      return { text: "Recording", detail: "Release or stop when finished." };
+      return { text: "Recording", detail: "Release to stop · tap again if latched." };
     case "processing":
       return { text: "Processing", detail: "Transcribing and preparing review." };
     case "review":
       if (input.state !== "idle" && input.delivery?.status === "paste_observed") {
-        return { text: "Paste observed", detail: "paste_observed: verified target insertion." };
+        return { text: "Paste verified", detail: "paste_observed: observer verified target insertion." };
       }
       if (input.state !== "idle" && input.delivery?.status === "paste_sent") {
-        return { text: "Paste sent", detail: "paste_sent: insertion was sent but not observed." };
+        return { text: "Paste sent", detail: "paste_sent: paste command sent; not observer-verified." };
+      }
+      if (options.assistantResult) {
+        return { text: "Ready", detail: "Lulu response was handled outside normal transcript review." };
+      }
+      if (input.state !== "idle" && input.delivery?.strategy === "review_only") {
+        return { text: "Review ready", detail: "review_only: nothing inserted; review or copy when ready." };
       }
       return { text: "Review ready", detail: "Transcript is available for local review." };
     case "failed":
@@ -186,7 +214,10 @@ function getStatus(
     case "cancelled":
       return { text: "Cancelled", detail: "No transcript was produced." };
     case "uncertain":
-      return { text: "Check target", detail: "Delivery was not verified." };
+      if (input.state !== "idle" && input.delivery?.status === "failed") {
+        return { text: "Delivery failed", detail: "No verified insertion. Copy the result or retry if needed." };
+      }
+      return { text: "Delivery uncertain", detail: "Insertion was not verified. Check target, copy, or paste last safely." };
   }
 }
 
@@ -207,7 +238,28 @@ function getDelivery(input: DockInputState): DeliveryEvidence | undefined {
 }
 
 function getDeliveryStatusLabel(delivery: DeliveryEvidence | undefined): string | undefined {
-  return delivery?.status;
+  if (!delivery) {
+    return undefined;
+  }
+
+  if (delivery.status === "available" && delivery.strategy === "review_only") {
+    return "review_only · not inserted";
+  }
+
+  switch (delivery.status) {
+    case "available":
+      return "available · review ready";
+    case "copied":
+      return "copied · clipboard fallback";
+    case "paste_sent":
+      return "paste_sent · not verified";
+    case "paste_observed":
+      return "paste_observed · verified";
+    case "uncertain":
+      return "uncertain · check target";
+    case "failed":
+      return "failed · not inserted";
+  }
 }
 
 function deliveryWasInserted(delivery: DeliveryEvidence | undefined): boolean {

@@ -2,8 +2,11 @@ import {
   assertDefaultDeliveryEvidenceAllowed,
   createReviewOnlyDeliveryGateway,
   type DeliveryEvidence,
+  type DeliveryStrategy,
+  type DeliveryTargetAffinity,
   type DesktopDeliveryGateway,
 } from "../delivery";
+import type { AssistantSurface } from "../pipeline/types";
 import {
   copyManuallyRecovery,
   createFailedDeliveryEvidence,
@@ -22,15 +25,22 @@ import type {
   IdleDesktopDictationState,
 } from "./types";
 import {
-  isActiveDesktopDictationState,
+  createDesktopControlEvent,
   rememberDesktopControlEvent,
   resolveDesktopControlTransition,
 } from "./types";
+
+export type DesktopCaptureLevel = {
+  active: boolean;
+  vuLevel: number;
+  sampleCount?: number;
+};
 
 export type DesktopCaptureGateway = {
   start(input: { sessionId: string; event: DesktopControlEvent }): Promise<unknown>;
   stop(input: { sessionId: string; event: DesktopControlEvent }): Promise<unknown>;
   cancel?(input: { sessionId: string; event: DesktopControlEvent }): Promise<void>;
+  getLevel?(input: { sessionId: string }): Promise<DesktopCaptureLevel>;
 };
 
 export type DesktopRuntimeGateway = {
@@ -41,9 +51,19 @@ export type DesktopRuntimeGateway = {
   }): Promise<DesktopRuntimeResult>;
 };
 
+export type DesktopAssistantAction =
+  | { kind: "activate-preset"; presetId: string; presetName: string }
+  | { kind: "open-settings" }
+  | { kind: "show-history" };
+
 export type DesktopRuntimeResult = {
   transcript: string;
   output?: string;
+  assistantAction?: DesktopAssistantAction;
+  assistantSurface?: AssistantSurface;
+  deliveryStrategy?: Extract<DeliveryStrategy, "review_only" | "paste_send">;
+  deliveryReason?: string;
+  deliveryTargetAffinity?: DeliveryTargetAffinity;
   provider?: string;
   model?: string;
   latencyMs?: number;
@@ -51,13 +71,28 @@ export type DesktopRuntimeResult = {
   summary?: unknown;
 };
 
+export type DesktopAutoStopSilencePolicy = {
+  enabled: boolean;
+  silenceMs: number;
+  pollMs?: number;
+  silenceThreshold?: number;
+};
+
+type DesktopScheduler = {
+  setInterval(callback: () => void, ms: number): unknown;
+  clearInterval(handle: unknown): void;
+};
+
 export type DesktopDictationControllerOptions = {
   capture: DesktopCaptureGateway;
   runtime: DesktopRuntimeGateway;
   delivery?: DesktopDeliveryGateway;
   allowDesktopDeliverySideEffects?: boolean;
+  autoStop?: DesktopAutoStopSilencePolicy;
+  scheduler?: DesktopScheduler;
   createSessionId?: () => string;
   now?: () => string;
+  clockMs?: () => number;
 };
 
 export class DesktopDictationController
@@ -72,16 +107,24 @@ export class DesktopDictationController
   private readonly runtime: DesktopRuntimeGateway;
   private readonly delivery: DesktopDeliveryGateway;
   private readonly allowDesktopDeliverySideEffects: boolean;
+  private readonly autoStop?: DesktopAutoStopSilencePolicy;
+  private readonly scheduler: DesktopScheduler;
   private readonly createSessionId: () => string;
   private readonly now: () => string;
+  private readonly clockMs: () => number;
+  private autoStopInterval: unknown;
+  private autoStopSilentSinceMs: number | undefined;
 
   constructor(options: DesktopDictationControllerOptions) {
     this.capture = options.capture;
     this.runtime = options.runtime;
     this.delivery = options.delivery ?? createReviewOnlyDeliveryGateway();
     this.allowDesktopDeliverySideEffects = options.allowDesktopDeliverySideEffects ?? false;
+    this.autoStop = options.autoStop;
+    this.scheduler = options.scheduler ?? globalScheduler;
     this.createSessionId = options.createSessionId ?? createDefaultSessionId;
     this.now = options.now ?? (() => new Date().toISOString());
+    this.clockMs = options.clockMs ?? Date.now;
   }
 
   getState(): DesktopDictationSession | IdleDesktopDictationState {
@@ -131,9 +174,11 @@ export class DesktopDictationController
         return this.finishCancelled(session, event);
       }
 
-      return this.patchCurrent(session.sessionId, {
+      const listening = this.patchCurrent(session.sessionId, {
         state: "listening",
       });
+      this.startAutoStopMonitor(listening.sessionId);
+      return listening;
     } catch (error) {
       const recovery = mapDesktopFailureToRecovery({
         kind: "capture_setup",
@@ -150,6 +195,7 @@ export class DesktopDictationController
 
   private async stop(event: DesktopControlEvent): Promise<DesktopDictationSession> {
     const session = this.requireCurrentSession();
+    this.stopAutoStopMonitor();
     this.patchCurrent(session.sessionId, { state: "stopping" });
 
     try {
@@ -194,6 +240,7 @@ export class DesktopDictationController
 
   private async cancel(event: DesktopControlEvent): Promise<DesktopDictationSession> {
     const session = this.requireCurrentSession();
+    this.stopAutoStopMonitor();
     this.cancelRequestedSessionIds.add(session.sessionId);
     await this.capture.cancel?.({ sessionId: session.sessionId, event });
     return this.finishCancelled(session, event);
@@ -258,12 +305,15 @@ export class DesktopDictationController
     },
   ): Promise<DesktopDictationSession> {
     const text = input.runtime.output ?? input.runtime.transcript;
+    const allowDesktopSideEffects =
+      this.allowDesktopDeliverySideEffects && input.runtime.deliveryStrategy !== "review_only";
     const request = {
       sessionId: session.sessionId,
       text,
-      strategy: this.allowDesktopDeliverySideEffects ? "paste_send" as const : "review_only" as const,
-      allowDesktopSideEffects: this.allowDesktopDeliverySideEffects,
+      strategy: allowDesktopSideEffects ? "paste_send" as const : "review_only" as const,
+      allowDesktopSideEffects,
       targetSnapshot: event.targetSnapshot,
+      targetAffinity: input.runtime.deliveryTargetAffinity,
     };
     let delivery: DeliveryEvidence;
     let recoveryAction = copyManuallyRecovery();
@@ -293,6 +343,61 @@ export class DesktopDictationController
       state: "reviewing",
       recoveryAction,
     });
+  }
+
+  private startAutoStopMonitor(sessionId: string): void {
+    this.stopAutoStopMonitor();
+    if (!this.autoStop?.enabled || !this.capture.getLevel) {
+      return;
+    }
+
+    const pollMs = Math.max(50, this.autoStop.pollMs ?? 100);
+    this.autoStopInterval = this.scheduler.setInterval(() => {
+      void this.checkAutoStopSilence(sessionId);
+    }, pollMs);
+  }
+
+  private stopAutoStopMonitor(): void {
+    if (this.autoStopInterval !== undefined) {
+      this.scheduler.clearInterval(this.autoStopInterval);
+      this.autoStopInterval = undefined;
+    }
+    this.autoStopSilentSinceMs = undefined;
+  }
+
+  private async checkAutoStopSilence(sessionId: string): Promise<void> {
+    if (this.current.state !== "listening" || this.current.sessionId !== sessionId) {
+      this.stopAutoStopMonitor();
+      return;
+    }
+
+    const level = await this.capture.getLevel?.({ sessionId });
+    if (!level?.active) {
+      this.autoStopSilentSinceMs = undefined;
+      return;
+    }
+
+    const threshold = this.autoStop?.silenceThreshold ?? 0.02;
+    const nowMs = this.clockMs();
+    if (level.vuLevel > threshold) {
+      this.autoStopSilentSinceMs = undefined;
+      return;
+    }
+
+    this.autoStopSilentSinceMs ??= nowMs;
+    if (nowMs - this.autoStopSilentSinceMs < (this.autoStop?.silenceMs ?? 0)) {
+      return;
+    }
+
+    this.stopAutoStopMonitor();
+    await this.handleControl(
+      createDesktopControlEvent({
+        id: `${sessionId}:auto-stop-silence`,
+        source: "unknown",
+        action: "stop",
+        receivedAt: this.now(),
+      }),
+    );
   }
 
   private rejectControl(
@@ -440,7 +545,7 @@ function attachDeliveryEvidenceToRuntime(
       deliveryEvidence: {
         status: delivery.status,
         output: delivery.output,
-        reason: delivery.reason ?? delivery.message,
+        reason: runtime.deliveryReason ?? delivery.reason ?? delivery.message,
       },
     },
   };
@@ -451,6 +556,11 @@ export {
   dismissRecovery,
   recordAgainRecovery,
   retryFromClipRecovery,
+};
+
+const globalScheduler: DesktopScheduler = {
+  setInterval: (callback, ms) => globalThis.setInterval(callback, ms),
+  clearInterval: (handle) => globalThis.clearInterval(handle as ReturnType<typeof setInterval>),
 };
 
 function isTrustedPasteObservationReason(reason: string | undefined): boolean {

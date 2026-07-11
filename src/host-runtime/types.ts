@@ -51,6 +51,8 @@ export type HostAudioPrepEvidence = {
   uploadFileName: "recording.wav" | "recording.mp3" | string;
   compressionMs: number;
   compressionRatio?: string;
+  optimizationStatus?: "skipped" | "applied" | "fallback" | string;
+  optimizationReason?: string;
   audioDurationMs: number;
   voiceActivity: {
     durationMs: number;

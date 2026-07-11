@@ -65,7 +65,7 @@ if (exists("docs/topics")) {
     const meta = frontmatter(content);
     const status = value(meta, "status") || "unknown";
     const id = value(meta, "id") || path;
-    const triggers = listValues(meta, "triggers").join(", ");
+    const triggers = listValues(meta, "triggers").slice(0, 8).join(", ");
     lines.push(`- ${status}: [${id}](../${path.replace(/^docs\//, "")})${triggers ? ` - ${triggers}` : ""}`);
   }
 } else {
@@ -81,9 +81,7 @@ if (exists("docs/tracks")) {
     const content = read(path);
     const meta = frontmatter(content);
     const status = value(meta, "status") || "unknown";
-    const priority = value(meta, "priority") || "unknown";
-    const updated = value(meta, "updated") || "unknown";
-    lines.push(`- ${status}/${priority}: [${title(content)}](../${path.replace(/^docs\//, "")}) - updated ${updated}`);
+    lines.push(`- ${status}: [${title(content)}](../${path.replace(/^docs\//, "")})`);
   }
 } else {
   lines.push("- Missing docs/tracks/");
@@ -108,12 +106,51 @@ if (exists("specs")) {
 lines.push("", "## Skills", "");
 
 if (exists("docs/skills")) {
+  const skillDirs = readdirSync(join(root, "docs", "skills"), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+  const nonCommandSkills = new Set(["aos-impeccable", "impeccable"]);
+  const legacyAliasSkills = new Set([
+    "aos-checkpoint",
+    "aos-cerrar-sesion",
+    "cerrar-sesion",
+    "continuar-sesion",
+    "continuar-sesion-con-gol",
+    "evaluar-skills",
+    "plan-implementar",
+    "realinear-os",
+    "sigamos",
+  ]);
+  const operationalSkills = skillDirs
+    .filter((skill) => skill.startsWith("aos-") && !skill.startsWith("aos-speckit-"))
+    .filter((skill) => !nonCommandSkills.has(skill) && !legacyAliasSkills.has(skill))
+    .filter((skill) => exists(`docs/skills/${skill}/SKILL.md`));
   lines.push("- Canon: [docs/skills/](../skills/)");
-  lines.push("- Operational commands: sigamos, cerrar-sesion, continuar-sesion, continuar-sesion-con-gol, realinear-os, evaluar-skills");
+  if (operationalSkills.length) lines.push(`- Operational commands: ${operationalSkills.join(", ")}`);
   lines.push("- Guidance: [local-codex-skills](../topics/local-codex-skills.md)");
 } else {
   lines.push("- Missing docs/skills/");
 }
+
+lines.push("", "## Pi Resources", "");
+
+const piPrompts = exists(".pi/prompts")
+  ? readdirSync(join(root, ".pi", "prompts"), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => entry.name.replace(/\.md$/, ""))
+    .sort()
+  : [];
+const piExtensions = exists(".pi/extensions")
+  ? readdirSync(join(root, ".pi", "extensions"), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".ts"))
+    .map((entry) => entry.name)
+    .sort()
+  : [];
+if (piPrompts.length) lines.push(`- Prompts: ${piPrompts.join(", ")}`);
+if (piExtensions.length) lines.push(`- Extensions: ${piExtensions.join(", ")}`);
+if (!piPrompts.length && !piExtensions.length) lines.push("- No project Pi resources found.");
+lines.push("- Guidance: [pi-agentic-os](../topics/pi-agentic-os.md)");
 
 lines.push("", "## Aliases", "");
 

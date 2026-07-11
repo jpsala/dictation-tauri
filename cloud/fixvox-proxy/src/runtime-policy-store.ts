@@ -30,6 +30,19 @@ export type VoiceRoutingResolved = {
   };
 };
 
+export type RegisterSelectionPresetDefault = {
+  id: string;
+  label: string;
+  promptId: string;
+  hotkey: string;
+  pickerKey: string;
+  provider: string | null;
+  model: string | null;
+  enabled: boolean;
+  confirm: boolean;
+  promptContent: string | null;
+};
+
 export type RegisterUserSettingsDefaults = {
   appearance: {
     themeId: string;
@@ -64,6 +77,11 @@ export type RegisterUserSettingsDefaults = {
     assistantWakeWords: string;
     assistantModeToggleWords: string;
     commandWakeWords: string;
+  };
+  selectionPresets?: {
+    schemaVersion: 1;
+    source: string;
+    items: RegisterSelectionPresetDefault[];
   };
 };
 
@@ -280,6 +298,16 @@ const RECOMMENDED_ALPHA_RUNTIME_POLICY: JsonRecord = {
       assistantModeToggleWords: "assistant,asistente,ai,zuno,lulu",
       commandWakeWords: "comando,command",
     },
+    selectionPresets: {
+      schemaVersion: 1,
+      source: "fixvox-cloud-admin",
+      items: [
+        { id: "como-yo-es", label: "Como yo (español)", promptId: "preset.como-yo-es", hotkey: "Alt+T, Y", pickerKey: "Y", provider: "openrouter", model: null, enabled: true, confirm: false, promptContent: "Reescribí este texto como lo escribiría JP, un developer argentino. Hacé correcciones muy menores solamente. Preservá la estructura, las palabras y el ritmo. Usá voseo argentino, mezcla natural de español e inglés técnico y devolvé solo el texto final, sin explicaciones." },
+        { id: "corregir-texto", label: "Corregir texto", promptId: "preset.corregir-texto", hotkey: "Alt+T, C", pickerKey: "C", provider: "openrouter", model: null, enabled: true, confirm: false, promptContent: "Corregí la gramática, ortografía y claridad. Mantené el significado y estilo. Devolvé solo el texto corregido, sin explicaciones." },
+        { id: "fix-writing", label: "Fix Writing", promptId: "preset.fix-writing", hotkey: "Ctrl+Alt+F", pickerKey: "F", provider: null, model: null, enabled: true, confirm: false, promptContent: "Fix grammar, spelling, and clarity in the following text. Keep the original tone and language. Return only the corrected text, no explanations." },
+        { id: "like-me-en", label: "Like me (English)", promptId: "preset.like-me-en", hotkey: "Alt+T, L", pickerKey: "L", provider: "openrouter", model: null, enabled: true, confirm: false, promptContent: "Rewrite this text as JP would write it in English. Always return English text. Preserve meaning, structure, wording choices and rhythm as much as possible. Make only minor fixes when clearly wrong. Return only the fixed text, no explanations." },
+      ],
+    },
   },
 };
 
@@ -333,6 +361,28 @@ function readBooleanMap(source: JsonRecord | null): Record<string, boolean> {
   );
 }
 
+function readSelectionPresetDefaults(record: JsonRecord | null): RegisterUserSettingsDefaults["selectionPresets"] | undefined {
+  const selectionPresets = record ? readNestedRecord(record, "selectionPresets") : null;
+  if (!selectionPresets) return undefined;
+  const items = Array.isArray(selectionPresets.items) ? selectionPresets.items : [];
+  return {
+    schemaVersion: 1,
+    source: readString(selectionPresets, "source") ?? "fixvox-cloud-admin",
+    items: items.map((item) => asRecord(item)).filter((item): item is JsonRecord => Boolean(item)).map((item) => ({
+      id: readString(item, "id") ?? "custom",
+      label: readString(item, "label") ?? readString(item, "name") ?? "Preset",
+      promptId: readString(item, "promptId") ?? readString(item, "prompt_id") ?? readString(item, "id") ?? "custom",
+      hotkey: readString(item, "hotkey") ?? "",
+      pickerKey: readString(item, "pickerKey") ?? readString(item, "picker_key") ?? "",
+      provider: readString(item, "provider"),
+      model: readString(item, "model"),
+      enabled: item.enabled === undefined ? true : Boolean(item.enabled),
+      confirm: Boolean(item.confirm),
+      promptContent: readString(item, "promptContent") ?? readString(item, "prompt_content"),
+    })).filter((item) => Boolean(item.id && item.promptId)),
+  };
+}
+
 function readUserSettingsDefaults(policy: JsonRecord): RegisterUserSettingsDefaults | null {
   const record = readNestedRecord(policy, "userSettingsDefaults");
   if (!record) {
@@ -344,6 +394,7 @@ function readUserSettingsDefaults(policy: JsonRecord): RegisterUserSettingsDefau
   const hotkeys = readNestedRecord(record, "hotkeys");
   const transcript = readNestedRecord(record, "transcript");
   const voice = readNestedRecord(record, "voice");
+  const selectionPresets = readSelectionPresetDefaults(record);
   return {
     appearance: {
       themeId: readString(appearance, "themeId") ?? "github-light",
@@ -379,6 +430,7 @@ function readUserSettingsDefaults(policy: JsonRecord): RegisterUserSettingsDefau
       assistantModeToggleWords: readString(voice, "assistantModeToggleWords") ?? "assistant,asistente,ai,zuno,lulu",
       commandWakeWords: readString(voice, "commandWakeWords") ?? "comando,command",
     },
+    ...(selectionPresets ? { selectionPresets } : {}),
   };
 }
 

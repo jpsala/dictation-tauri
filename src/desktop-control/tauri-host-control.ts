@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { TauriDesktopDeliveryTarget } from "../delivery/tauri-desktop-delivery";
+import type { SelectionTransformPresetId } from "../selection-transform";
 import type { DictationKeyEvent } from "./dictation-key";
 
 export const tauriDefaultGlobalHotkeyShortcut = "Alt+Space";
@@ -47,6 +48,31 @@ export type TauriHotkeyRegistrationApplyResult = {
   error?: string;
 };
 
+export type TauriActionHotkeyId = "preset_picker" | "paste_last_safe";
+
+export type TauriActionHotkeyConfig = {
+  schemaVersion: 1;
+  presetPicker: string;
+  pasteLastSafe: string;
+};
+
+export type TauriActionHotkeyRegistrationPreview = {
+  actionId: TauriActionHotkeyId | string;
+  requestedShortcut: string;
+  normalizedShortcut: string;
+  canApply: boolean;
+  reason?: string;
+  effectiveConfig: TauriActionHotkeyConfig;
+};
+
+export type TauriActionHotkeyRegistrationApplyResult = {
+  preview: TauriActionHotkeyRegistrationPreview;
+  effectiveConfig: TauriActionHotkeyConfig;
+  preferencePersisted: boolean;
+  persistenceError?: string;
+  error?: string;
+};
+
 export type TauriHostCommand =
   | "start"
   | "stop"
@@ -55,12 +81,15 @@ export type TauriHostCommand =
   | "select_preset"
   | "clear_preset"
   | "show_result_history"
+  | "show_preset_picker"
+  | "run_preset_picker_chord"
   | "open_settings";
 
 export type TauriHostCommandPayload = {
   source?: "tray_or_context_menu" | "global_hotkey";
   command?: TauriHostCommand;
-  presetId?: "rewrite" | "shorten" | "bulletize";
+  presetId?: SelectionTransformPresetId;
+  chordKey?: string;
   targetSnapshot?: TauriDesktopDeliveryTarget;
 };
 
@@ -132,6 +161,42 @@ export async function applyTauriHotkeyRegistration(
   return invoke<TauriHotkeyRegistrationApplyResult>(
     "apply_desktop_control_hotkey_registration",
     { requestedShortcut },
+  );
+}
+
+export async function getTauriActionHotkeyConfig(): Promise<TauriActionHotkeyConfig | undefined> {
+  if (!isTauri()) {
+    return undefined;
+  }
+
+  return invoke<TauriActionHotkeyConfig>("get_desktop_control_action_hotkey_config");
+}
+
+export async function previewTauriActionHotkeyRegistration(
+  actionId: TauriActionHotkeyId,
+  requestedShortcut: string,
+): Promise<TauriActionHotkeyRegistrationPreview | undefined> {
+  if (!isTauri()) {
+    return undefined;
+  }
+
+  return invoke<TauriActionHotkeyRegistrationPreview>(
+    "preview_desktop_control_action_hotkey_registration",
+    { actionId, requestedShortcut },
+  );
+}
+
+export async function applyTauriActionHotkeyRegistration(
+  actionId: TauriActionHotkeyId,
+  requestedShortcut: string,
+): Promise<TauriActionHotkeyRegistrationApplyResult | undefined> {
+  if (!isTauri()) {
+    return undefined;
+  }
+
+  return invoke<TauriActionHotkeyRegistrationApplyResult>(
+    "apply_desktop_control_action_hotkey_registration",
+    { actionId, requestedShortcut },
   );
 }
 

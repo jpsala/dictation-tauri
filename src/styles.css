@@ -941,6 +941,154 @@ h1 {
   margin-top: 10px;
 }
 
+.dock-preset-picker {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.dock-preset-picker .dock-companion-title-row {
+  padding: 12px 14px 0;
+}
+
+.dock-preset-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  padding: 12px 14px;
+  color: rgb(218 228 226 / 58%);
+}
+
+.dock-preset-picker-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: rgb(244 248 247 / 96%);
+  font: inherit;
+  font-size: 0.84rem;
+}
+
+.dock-preset-picker-search input::placeholder {
+  color: rgb(218 228 226 / 44%);
+}
+
+.dock-preset-picker-which-key {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  padding: 7px 10px;
+  color: rgb(218 228 226 / 64%);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.dock-preset-picker-which-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgb(255 255 255 / 7%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 4%);
+  padding: 3px 7px 3px 4px;
+}
+
+.dock-preset-picker-list {
+  max-height: 190px;
+  overflow-y: auto;
+  padding: 5px 4px;
+}
+
+.dock-preset-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: rgb(218 228 226 / 82%);
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.dock-preset-picker-item:hover,
+.dock-preset-picker-item:focus-visible,
+.dock-preset-picker-item.selected {
+  background: rgb(116 226 164 / 14%);
+  color: rgb(244 248 247 / 96%);
+  outline: none;
+}
+
+.dock-preset-picker-item kbd,
+.dock-preset-picker-footer kbd,
+.dock-preset-picker-which-key kbd {
+  border: 1px solid rgb(116 226 164 / 26%);
+  border-radius: 5px;
+  background: rgb(116 226 164 / 10%);
+  color: rgb(164 246 194 / 92%);
+  padding: 2px 5px;
+  font-family: Consolas, "Cascadia Code", monospace;
+  font-size: 0.66rem;
+  font-weight: 760;
+}
+
+.dock-preset-picker-empty {
+  padding: 18px 12px;
+  color: rgb(218 228 226 / 58%);
+  font-size: 0.78rem;
+}
+
+.dock-preset-picker-footer {
+  display: flex;
+  gap: 10px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  padding: 8px 12px;
+  color: rgb(218 228 226 / 58%);
+  font-size: 0.68rem;
+}
+
+.dock-companion-shortcut-key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  margin-right: 6px;
+  border-radius: 5px;
+  background: rgb(116 226 164 / 16%);
+  color: rgb(164 246 194 / 96%);
+  font-size: 0.68rem;
+  font-weight: 820;
+}
+
+.dock-companion-assistant-note {
+  margin-top: 10px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 9px;
+  background: rgb(255 255 255 / 5%);
+  padding: 8px 9px;
+}
+
+.dock-companion-assistant-note span {
+  display: block;
+  color: rgb(244 248 247 / 92%);
+  font-size: 0.72rem;
+  font-weight: 760;
+}
+
+.dock-companion-assistant-note p {
+  margin-top: 3px;
+  color: rgb(218 228 226 / 68%);
+  font-size: 0.7rem;
+}
+
 .secondary-button,
 .dock-companion-close-button {
   border: 1px solid rgb(255 255 255 / 16%);

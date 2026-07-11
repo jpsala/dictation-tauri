@@ -17,6 +17,7 @@
     "desktop-control:e2e": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/desktop-dictation-e2e.ps1",
     "dock-companion:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dock-companion-smoke.ps1",
     "packaged-clean:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/packaged-clean-smoke.ps1",
+    "tauri:startup:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tauri-startup-smoke.ps1",
     "hotkey-reregistration:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/hotkey-reregistration-smoke.ps1",
     "action-hotkeys:physical-smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/action-hotkeys-physical-smoke.ps1",
     "audio-mute-cues:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/audio-mute-cues-smoke.ps1",

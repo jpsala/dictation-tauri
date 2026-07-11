@@ -7,6 +7,8 @@ import {
 import { createGroqSttGatewayFromEnv } from "../model-gateway/groq-stt";
 import { classifyRuntimeTranscript } from "../model-gateway/runtime-transcription";
 import type { PostProcessResult, TranscriptionResult } from "../model-gateway/types";
+import { createRuntimeTelemetryStage } from "../pipeline/runtime-telemetry";
+import type { RuntimeTelemetryStage, RuntimeTelemetryStageStatus } from "../pipeline/types";
 import {
   hostRuntimeArtifactDirectories,
   validateHostRuntimeAudioPath,
@@ -385,6 +387,8 @@ function createRedactedReport(
   response: HostTranscriptionResponse,
   request: HostTranscriptionRequest,
 ) {
+  const runtimeTelemetryStages = createHostRuntimeTelemetryStages(response);
+
   return {
     ok: response.status === "ok",
     runId: request.runId,
@@ -398,10 +402,85 @@ function createRedactedReport(
     requestId: response.requestId,
     transcriptLength: response.status === "ok" ? response.text.length : undefined,
     postProcess: response.status === "ok" ? response.postProcess : undefined,
+    runtimeTelemetryStages,
+    runtimeTelemetrySummary: runtimeTelemetryStages.map(({ stage, status, reason, durationMs }) => ({
+      stage,
+      status,
+      reason,
+      durationMs,
+      redacted: true as const,
+    })),
     error: response.status === "ok" ? undefined : response.error,
     rawProviderPayloadStored: false,
     redacted: true,
   };
+}
+
+function createHostRuntimeTelemetryStages(
+  response: HostTranscriptionResponse,
+): RuntimeTelemetryStage[] {
+  const stages: RuntimeTelemetryStage[] = [];
+
+  if (response.audioPrep) {
+    stages.push(createRuntimeTelemetryStage({
+      stage: "audio-prep",
+      status: normalizeOptimizationTelemetryStatus(response.audioPrep.optimizationStatus),
+      reason: response.audioPrep.optimizationReason ?? response.audioPrep.noSpeechReason,
+      durationMs: response.audioPrep.compressionMs,
+      audio: {
+        durationMs: response.audioPrep.audioDurationMs,
+        originalBytes: response.audioPrep.originalBytes,
+        uploadBytes: response.audioPrep.uploadBytes,
+        mimeType: response.audioPrep.uploadMimeType,
+        source: response.audioPrep.uploadSource,
+        compressionRatio: response.audioPrep.compressionRatio,
+        voiceActivity: response.audioPrep.voiceActivity,
+      },
+      redacted: true,
+    }));
+  }
+
+  stages.push(createRuntimeTelemetryStage({
+    stage: "stt",
+    status: response.status === "ok" ? "ok" : "failed",
+    reason: response.status === "ok" ? undefined : response.error.code,
+    durationMs: response.latencyMs,
+    provider: response.provider,
+    model: response.model,
+    redacted: true,
+  }));
+
+  if (response.status === "ok") {
+    stages.push(createRuntimeTelemetryStage({
+      stage: "postprocess",
+      status: response.postProcess?.ran
+        ? response.postProcess.fallbackToRaw ? "fallback" : "ok"
+        : "skipped",
+      reason: response.postProcess?.sanitizerReason ?? undefined,
+      provider: response.postProcess?.provider,
+      model: response.postProcess?.model,
+      profileId: response.postProcess?.voiceRoutingProfileId ?? undefined,
+      promptId: response.postProcess?.policyId ?? undefined,
+      redacted: true,
+    }));
+  }
+
+  return stages;
+}
+
+function normalizeOptimizationTelemetryStatus(
+  status: string | undefined,
+): RuntimeTelemetryStageStatus {
+  switch (status) {
+    case "applied":
+      return "ok";
+    case "fallback":
+      return "fallback";
+    case "skipped":
+      return "skipped";
+    default:
+      return "ok";
+  }
 }
 
 function createTranscriptPath(runId: string): string {

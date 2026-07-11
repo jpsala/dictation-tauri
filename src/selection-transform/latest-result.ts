@@ -11,7 +11,7 @@ export function latestResultFromPipelineSummary(
   return createLatestResult({
     runId: summary.runId,
     text: summary.deliveryEvidence?.output ?? summary.output ?? summary.transcript,
-    source: "dictation",
+    source: summary.resultSource ?? "dictation",
     deliveryEvidence: summary.deliveryEvidence,
   });
 }

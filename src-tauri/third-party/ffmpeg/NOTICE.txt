@@ -1,0 +1,11 @@
+FFmpeg 7.1.1 Essentials Build for Windows
+
+Source: https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-essentials_build.zip
+Upstream project: https://ffmpeg.org/
+Windows build provider: https://www.gyan.dev/ffmpeg/builds/
+Archive SHA-256: 04861d3339c5ebe38b56c19a15cf2c0cc97f5de4fa8910e4d47e5e6404e4a2d4
+Bundled ffmpeg.exe SHA-256: b90225987bdd042cca09a1efb5e34e9848f2d1dbf5fbcd388753a44145522997
+License: GPLv3 (see LICENSE.txt)
+Corresponding source/build scripts: https://github.com/GyanD/codexffmpeg/tree/7.1.1
+
+The executable is distributed separately and invoked as a child process.

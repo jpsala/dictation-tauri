@@ -407,7 +407,7 @@ function createCompanionChip(state: VoiceDockState): CompanionChip | undefined {
     case "processing":
       return { label: "Processing", detail: state.statusDetail, tone: "processing" };
     case "review":
-      return { label: "Transcript ready", detail: state.statusDetail, tone: "ready" };
+      return { label: state.statusText, detail: state.statusDetail, tone: "ready" };
     case "uncertain":
       return { label: "Check target", detail: state.statusDetail, tone: "warning" };
     case "failed":

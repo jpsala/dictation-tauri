@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { DesktopDictationController } from "../../src/desktop-control/controller";
-import type { DesktopCaptureGateway, DesktopRuntimeGateway } from "../../src/desktop-control/controller";
+import type {
+  DesktopAutoStopSilencePolicy,
+  DesktopCaptureGateway,
+  DesktopRuntimeGateway,
+} from "../../src/desktop-control/controller";
 import type { DesktopDeliveryGateway } from "../../src/delivery";
 import {
   isActiveDesktopDictationState,
@@ -210,9 +214,9 @@ describe("DesktopDictationController US1 session lifecycle", () => {
   it("preserves verified paste observation from a trusted desktop delivery gateway", async () => {
     const delivery: DesktopDeliveryGateway = {
       deliver: vi.fn(async (request) => ({
-        status: "paste_observed",
+        status: "paste_observed" as const,
         output: request.text,
-        strategy: "paste_send",
+        strategy: "paste_send" as const,
         message: "Paste insertion was observed by a verified desktop observer.",
         reason: "Native observer confirmed insertion.",
       })),
@@ -365,6 +369,124 @@ describe("DesktopDictationController US1 session lifecycle", () => {
     });
   });
 
+  it("auto-stops after configured live silence and proceeds through the normal submit path", async () => {
+    let nowMs = 1_000;
+    const scheduler = createManualScheduler();
+    const levels = [
+      { active: true, vuLevel: 0.005 },
+      { active: true, vuLevel: 0.005 },
+    ];
+    const capture: DesktopCaptureGateway = {
+      start: vi.fn(async () => undefined),
+      stop: vi.fn(async () => ({ captureId: "auto-stop-clip" })),
+      getLevel: vi.fn(async () => levels.shift() ?? { active: true, vuLevel: 0.005 }),
+    };
+    const runtime: DesktopRuntimeGateway = {
+      transcribe: vi.fn(async () => ({ transcript: "auto-stopped transcript" })),
+    };
+    const controller = createController({
+      capture,
+      runtime,
+      autoStop: { enabled: true, silenceMs: 500, pollMs: 100, silenceThreshold: 0.02 },
+      scheduler,
+      clockMs: () => nowMs,
+    });
+
+    await controller.handleControl(createControlEvent({ action: "start" }));
+    expect(scheduler.setInterval).toHaveBeenCalledWith(expect.any(Function), 100);
+
+    scheduler.tick();
+    await flushPromises();
+    expect(capture.stop).not.toHaveBeenCalled();
+    expect(controller.getState()).toMatchObject({ state: "listening" });
+
+    nowMs += 600;
+    scheduler.tick();
+    await flushPromises();
+
+    expect(capture.stop).toHaveBeenCalledWith({
+      sessionId: "desktop-session-001",
+      event: expect.objectContaining({
+        action: "stop",
+        id: "desktop-session-001:auto-stop-silence",
+      }),
+    });
+    expect(runtime.transcribe).toHaveBeenCalledTimes(1);
+    expect(controller.getState()).toMatchObject({
+      state: "reviewing",
+      capture: { captureId: "auto-stop-clip" },
+      runtime: { transcript: "auto-stopped transcript" },
+    });
+    expect(scheduler.clearInterval).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not auto-stop across short pauses when speech resumes", async () => {
+    let nowMs = 2_000;
+    const scheduler = createManualScheduler();
+    const levels = [
+      { active: true, vuLevel: 0.005 },
+      { active: true, vuLevel: 0.5 },
+      { active: true, vuLevel: 0.005 },
+    ];
+    const capture: DesktopCaptureGateway = {
+      start: vi.fn(async () => undefined),
+      stop: vi.fn(async () => ({ captureId: "manual-after-short-pause" })),
+      getLevel: vi.fn(async () => levels.shift() ?? { active: true, vuLevel: 0.5 }),
+    };
+    const controller = createController({
+      capture,
+      autoStop: { enabled: true, silenceMs: 500, pollMs: 100, silenceThreshold: 0.02 },
+      scheduler,
+      clockMs: () => nowMs,
+    });
+
+    await controller.handleControl(createControlEvent({ action: "start" }));
+    scheduler.tick();
+    await flushPromises();
+    nowMs += 300;
+    scheduler.tick();
+    await flushPromises();
+    nowMs += 600;
+    scheduler.tick();
+    await flushPromises();
+
+    expect(capture.stop).not.toHaveBeenCalled();
+    expect(controller.getState()).toMatchObject({ state: "listening" });
+
+    await controller.handleControl(createControlEvent({ action: "stop", id: "manual-stop-after-short-pause" }));
+    expect(capture.stop).toHaveBeenCalledTimes(1);
+    expect(capture.stop).toHaveBeenCalledWith(expect.objectContaining({
+      event: expect.objectContaining({ id: "manual-stop-after-short-pause" }),
+    }));
+  });
+
+  it("keeps recording through silence when auto-stop is disabled", async () => {
+    let nowMs = 3_000;
+    const scheduler = createManualScheduler();
+    const capture: DesktopCaptureGateway = {
+      start: vi.fn(async () => undefined),
+      stop: vi.fn(async () => ({ captureId: "disabled-auto-stop-clip" })),
+      getLevel: vi.fn(async () => ({ active: true, vuLevel: 0.001 })),
+    };
+    const controller = createController({
+      capture,
+      autoStop: { enabled: false, silenceMs: 500, pollMs: 100, silenceThreshold: 0.02 },
+      scheduler,
+      clockMs: () => nowMs,
+    });
+
+    await controller.handleControl(createControlEvent({ action: "start" }));
+    expect(scheduler.setInterval).not.toHaveBeenCalled();
+
+    nowMs += 2_000;
+    scheduler.tick();
+    await flushPromises();
+
+    expect(capture.getLevel).not.toHaveBeenCalled();
+    expect(capture.stop).not.toHaveBeenCalled();
+    expect(controller.getState()).toMatchObject({ state: "listening" });
+  });
+
   it("retries from a captured clip and exposes record-again guidance when no clip exists", async () => {
     const captureArtifact = { captureId: "clip-for-retry" };
     const runtime = vi
@@ -433,6 +555,12 @@ function createController(input: {
   runtime?: DesktopRuntimeGateway;
   delivery?: DesktopDeliveryGateway;
   allowDesktopDeliverySideEffects?: boolean;
+  autoStop?: DesktopAutoStopSilencePolicy;
+  scheduler?: {
+    setInterval(callback: () => void, ms: number): unknown;
+    clearInterval(handle: unknown): void;
+  };
+  clockMs?: () => number;
 } = {}) {
   return new DesktopDictationController({
     capture: input.capture ?? {
@@ -445,9 +573,34 @@ function createController(input: {
     },
     delivery: input.delivery,
     allowDesktopDeliverySideEffects: input.allowDesktopDeliverySideEffects,
+    autoStop: input.autoStop,
+    scheduler: input.scheduler,
     createSessionId: () => "desktop-session-001",
     now: () => "2026-06-22T10:00:05.000Z",
+    clockMs: input.clockMs,
   });
+}
+
+function createManualScheduler() {
+  let intervalCallback: (() => void) | undefined;
+  return {
+    setInterval: vi.fn((callback: () => void) => {
+      intervalCallback = callback;
+      return "manual-interval";
+    }),
+    clearInterval: vi.fn(() => {
+      intervalCallback = undefined;
+    }),
+    tick() {
+      intervalCallback?.();
+    },
+  };
+}
+
+async function flushPromises() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 function createDeferred<T>() {

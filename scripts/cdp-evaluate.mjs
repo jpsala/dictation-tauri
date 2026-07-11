@@ -14,6 +14,7 @@ if (typeof WebSocket === "undefined") {
   process.exit(69);
 }
 
+const timeoutMs = Number.parseInt(process.env.CDP_EVALUATE_TIMEOUT_MS ?? "15000", 10);
 let timer;
 let settled = false;
 const ws = new WebSocket(wsUrl);
@@ -79,4 +80,4 @@ ws.addEventListener("error", (event) => {
 timer = setTimeout(() => {
   console.error("CDP evaluation timed out");
   finish(2);
-}, 15_000);
+}, Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 15_000);

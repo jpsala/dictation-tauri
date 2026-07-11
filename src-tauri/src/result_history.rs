@@ -7,6 +7,8 @@ use tauri::{AppHandle, Manager};
 
 pub const RESULT_HISTORY_FILE: &str = "result-history.v1.jsonl";
 pub const RESULT_HISTORY_LIMIT: usize = 50;
+const UNTRUSTED_PASTE_OBSERVED_HISTORY_ERROR: &str =
+    "paste_observed history entries require a verified native observer append path";
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -43,9 +45,7 @@ pub fn append_result_history_entry(
         return list_result_history_entries(app);
     }
 
-    if entry.delivery_evidence.as_ref().map(|e| e.status.as_str()) == Some("paste_observed") {
-        return Err("paste_observed history entries require a verified observer".to_string());
-    }
+    validate_appendable_delivery_evidence(&entry)?;
 
     let path = history_path(&app).map_err(|error| error.to_string())?;
     let mut entries = read_entries_from_path(&path).map_err(|error| error.to_string())?;
@@ -79,6 +79,19 @@ pub fn clear_result_history(app: AppHandle) -> Result<(), String> {
 fn history_path(app: &AppHandle) -> tauri::Result<PathBuf> {
     let dir = app.path().app_data_dir()?;
     Ok(dir.join(RESULT_HISTORY_FILE))
+}
+
+fn validate_appendable_delivery_evidence(entry: &ResultHistoryEntry) -> Result<(), String> {
+    // TS delivery evidence can only create `paste_observed` through the verified
+    // desktop-observer guardrails, but this generic history append command does
+    // not receive a native proof tying the entry to that observer result. Until
+    // history has a native verified-observer append path, do not persist a
+    // renderer-supplied `paste_observed` claim as durable history evidence.
+    if entry.delivery_evidence.as_ref().map(|e| e.status.as_str()) == Some("paste_observed") {
+        return Err(UNTRUSTED_PASTE_OBSERVED_HISTORY_ERROR.to_string());
+    }
+
+    Ok(())
 }
 
 fn read_entries_from_path(path: &PathBuf) -> std::io::Result<VecDeque<ResultHistoryEntry>> {
@@ -125,6 +138,42 @@ fn write_entries_to_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn history_entry_with_delivery_status(status: &str) -> ResultHistoryEntry {
+        ResultHistoryEntry {
+            schema_version: 1,
+            id: "entry-1".to_string(),
+            run_id: "run-1".to_string(),
+            source: "dictation".to_string(),
+            text: "hello".to_string(),
+            text_length: 5,
+            created_at: "2026-06-24T00:00:00.000Z".to_string(),
+            delivery_evidence: Some(ResultHistoryEvidence {
+                status: status.to_string(),
+                reason: Some("test delivery evidence".to_string()),
+            }),
+            provider: None,
+            model: None,
+        }
+    }
+
+    #[test]
+    fn rejects_untrusted_paste_observed_history_evidence() {
+        let entry = history_entry_with_delivery_status("paste_observed");
+
+        assert_eq!(
+            validate_appendable_delivery_evidence(&entry),
+            Err(UNTRUSTED_PASTE_OBSERVED_HISTORY_ERROR.to_string())
+        );
+    }
+
+    #[test]
+    fn allows_non_observed_delivery_history_evidence() {
+        for status in ["available", "copied", "paste_sent", "uncertain", "failed"] {
+            let entry = history_entry_with_delivery_status(status);
+            assert_eq!(validate_appendable_delivery_evidence(&entry), Ok(()));
+        }
+    }
 
     #[test]
     fn keeps_only_bounded_successful_plaintext_entries() {

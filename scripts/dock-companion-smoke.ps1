@@ -33,6 +33,7 @@ public static class DockCompanionSmokeWin32 {
   public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
   [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 
@@ -145,8 +146,31 @@ function Add-Check([string]$Name, [bool]$Pass, [object]$Data = $null) {
   if (-not $Pass) { throw "Dock companion smoke check failed: $Name" }
 }
 
+function Release-Modifiers() {
+  $KEYEVENTF_KEYUP = 0x0002
+  foreach ($vk in @(0x11, 0x10, 0x12, 0x5B, 0x5C)) {
+    [DockCompanionSmokeWin32]::keybd_event([byte]$vk, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
+  }
+}
+
+function Send-AltQ() {
+  $KEYEVENTF_KEYUP = 0x0002
+  $VK_MENU = 0x12
+  $VK_Q = 0x51
+  Release-Modifiers
+  Start-Sleep -Milliseconds 80
+  [DockCompanionSmokeWin32]::keybd_event($VK_MENU, 0, 0, [UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 80
+  [DockCompanionSmokeWin32]::keybd_event($VK_Q, 0, 0, [UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 120
+  [DockCompanionSmokeWin32]::keybd_event($VK_Q, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 80
+  [DockCompanionSmokeWin32]::keybd_event($VK_MENU, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
+  Release-Modifiers
+}
+
 $report = [ordered]@{
-  check = 'dock-companion-smoke'
+  check = 'altq-picker-smoke'
   runId = $RunId
   startedAt = $startedAt.ToString('o')
   root = $runRoot
@@ -159,7 +183,7 @@ $report = [ordered]@{
     tauriStdout = $tauriOutLog
     tauriStderr = $tauriErrLog
   }
-  notes = 'Redacted smoke: no transcript/audio/selection text is recorded; commands only open companion settings and preset metadata.'
+  notes = 'Redacted smoke: no transcript/audio/selection text is recorded; host command only opens the preset picker and preset metadata.'
 }
 
 try {
@@ -188,39 +212,34 @@ try {
   Add-Check 'tauri dictation dock launched' ($tauriWindow.MainWindowHandle -ne 0) $report.tauri
 
   $mainPage = Wait-ForCdpPage $RemoteDebugPort { param($page) $page.url -eq 'http://127.0.0.1:1420/' } $StartupTimeoutSeconds
-  $companionPage = Wait-ForCdpPage $RemoteDebugPort { param($page) $page.url -like '*surface=companion*' } $StartupTimeoutSeconds
+  $pickerPage = Wait-ForCdpPage $RemoteDebugPort { param($page) $page.url -like '*surface=preset-picker*' } $StartupTimeoutSeconds
   $report.cdp = [ordered]@{
     port = $RemoteDebugPort
     mainUrl = $mainPage.url
-    companionUrl = $companionPage.url
+    pickerUrl = $pickerPage.url
   }
-  Add-Check 'main and companion WebView2 CDP pages are available' ($mainPage.webSocketDebuggerUrl -and $companionPage.webSocketDebuggerUrl) $report.cdp
+  Add-Check 'main and preset picker WebView2 CDP pages are available' ($mainPage.webSocketDebuggerUrl -and $pickerPage.webSocketDebuggerUrl) $report.cdp
 
   [void](Wait-ForCompanionText $mainPage @('Dictation Dock', 'Ready') 25)
 
-  Emit-HostCommand $mainPage 'open_settings'
-  $settingsText = Wait-ForCompanionText $companionPage @('Settings', 'Rewrite', 'Shorten', 'Bulletize', 'Dismiss')
-  $report.settingsTextLength = $settingsText.Length
-  Add-Check 'settings companion renders preset actions' ($settingsText -like '*Settings*' -and $settingsText -like '*Rewrite*' -and $settingsText -like '*Bulletize*') @{ textLength = $settingsText.Length }
+  Emit-HostCommand $mainPage 'show_preset_picker'
+  $pickerText = Wait-ForCompanionText $pickerPage @('Preset picker', 'Como yo', 'Corregir texto', 'Fix Writing', 'Like me', 'Quick Chat')
+  $report.pickerTextLength = $pickerText.Length
+  Add-Check 'host command opens the preset picker with starter presets' ($pickerText -like '*Preset picker*' -and $pickerText -like '*Como yo*' -and $pickerText -like '*Corregir texto*' -and $pickerText -like '*Fix Writing*' -and $pickerText -notlike '*Translate*') @{ textLength = $pickerText.Length }
 
-  Emit-HostCommand $mainPage 'select_preset' 'rewrite'
-  $presetText = Wait-ForCompanionText $companionPage @('Active preset: Rewrite', 'Clear preset')
-  $report.activePresetTextLength = $presetText.Length
-  Add-Check 'preset command updates companion snapshot' ($presetText -like '*Active preset: Rewrite*') @{ textLength = $presetText.Length }
+  Add-Check 'picker exposes which-key multi-chord labels' ($pickerText -like '*Alt+Q then Y*' -and $pickerText -like '*Alt+Q then C*') @{ textLength = $pickerText.Length }
+
+  $debug = Invoke-CdpExpression $pickerPage "JSON.stringify(window.__dictationPresetPickerDebug || null)" | ConvertFrom-Json
+  $report.pickerDebug = $debug
+  Add-Check 'preset picker debug reports open state' ($debug.open -eq $true -and $debug.filteredCount -ge 4) $debug
 
   $windows = [DockCompanionSmokeWin32]::ListWindowsForPid([int]$tauriWindow.Id)
-  $companionWindow = @($windows | Where-Object { $_.title -eq 'Dictation Companion' } | Select-Object -First 1)
+  $pickerWindow = @($windows | Where-Object { $_.title -eq 'Preset Picker' } | Select-Object -First 1)
   $report.windows = @($windows | ForEach-Object { [ordered]@{ hwnd = $_.hwnd; title = $_.title; visible = $_.visible } })
-  Add-Check 'native companion window is visible' ($companionWindow.Count -gt 0 -and [bool]$companionWindow[0].visible) $companionWindow
+  Add-Check 'native preset picker window is visible' ($pickerWindow.Count -gt 0 -and [bool]$pickerWindow[0].visible) $pickerWindow
 
-  Emit-HostCommand $mainPage 'clear_preset'
-  Start-Sleep -Milliseconds 500
-  Emit-HostCommand $mainPage 'open_settings'
-  $clearedText = Wait-ForCompanionText $companionPage @('Select a preset for the next selection-aware action.')
-  Add-Check 'clear preset returns settings to no-active-preset copy' ($clearedText -like '*Select a preset for the next selection-aware action.*') @{ textLength = $clearedText.Length }
-
-  $combinedText = "$settingsText`n$presetText`n$clearedText"
-  Add-Check 'companion smoke report does not include raw transcript copy' ($combinedText -notmatch 'transcript stays|sensitive transcript|raw transcript') @{ rawTextRecorded = $false }
+  $combinedText = "$pickerText"
+  Add-Check 'picker smoke report does not include raw transcript copy' ($combinedText -notmatch 'transcript stays|sensitive transcript|raw transcript') @{ rawTextRecorded = $false }
 
   $report.status = 'passed'
 }

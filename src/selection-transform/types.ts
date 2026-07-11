@@ -18,12 +18,12 @@ export type SelectionCaptureStatus = (typeof selectionCaptureStatuses)[number];
 
 export type HostSelectionCaptureRoute = {
   owner: "tauri_host";
-  primaryStrategy: "windows_ui_automation";
-  mutatesClipboard: false;
-  sendsKeyboardShortcut: false;
+  primaryStrategy: "windows_ui_automation_then_clipboard_roundtrip";
+  mutatesClipboard: true;
+  sendsKeyboardShortcut: true;
   touchesFocus: false;
   persistsSelection: false;
-  allowsClipboardRoundtrip: false;
+  allowsClipboardRoundtrip: true;
 };
 
 export type SelectionCaptureOutcome = {
@@ -102,9 +102,9 @@ export type SelectionRoute =
       selection: SelectionContext;
     };
 
-export type FixtureTransformPresetId = "rewrite" | "shorten" | "bulletize";
+export type FixtureTransformPresetId = "como-yo-es" | "corregir-texto" | "fix-writing" | "like-me-en";
 
-export type LatestResultSource = "dictation" | "selection_transform";
+export type LatestResultSource = "dictation" | "selection_transform" | "assistant";
 
 export type LatestResult = {
   runId: string;

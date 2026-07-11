@@ -1,3 +1,5 @@
+import type { AudioSpeechDecision } from "./audio-analysis";
+
 export const capturePermissionStatuses = [
   "unknown",
   "prompting",
@@ -56,6 +58,7 @@ export type CaptureMetadata = {
   mimeType?: string;
   sizeBytes?: number;
   artifact?: CapturedAudioArtifact;
+  localSpeechDecision?: AudioSpeechDecision;
   deviceKind: "audioinput";
   deviceLabel?: string;
 };
