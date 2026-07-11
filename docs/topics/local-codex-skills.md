@@ -171,26 +171,26 @@ Cuando JP pida revisar que del sistema agentico se puede pasar a skills:
 
 ## Mapa De Skills
 
-| Comando o grupo                                                       | Skill                                                          | Comportamiento                                                                                                 |
+| Comando o grupo                                                       | Skill o fuente                                                 | Comportamiento                                                                                                 |
 | --------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `os help`, `ayuda os`, `comandos os`                                  | `docs/skills/aos-help/`                                        | Muestra comandos OS y cuando usarlos sin ejecutar cambios.                                                     |
-| `perfect os`, `dejar en condiciones`                                  | `docs/skills/aos-perfect-os/`                                  | Optimiza un repo para agentes: contexto, docs, continuidad, comandos y audit.                                  |
-| `init os`                                                             | `docs/skills/aos-init-os/`                                     | Inicializa AOS minimo en un proyecto nuevo o sin capa agentica.                                                |
-| `adopt os`                                                            | `docs/skills/aos-adopt-os/`                                    | Fusiona AOS en un repo existente preservando reglas y memoria local.                                           |
-| `update os`                                                           | `docs/skills/aos-update-os/`                                   | Actualiza una instalacion downstream contra el upstream sin copiar piezas manager-only.                        |
-| `aos-sigamos`                                                         | `docs/skills/aos-sigamos/`                                     | Continua con lo siguiente en la misma sesion, sin lote formal.                                                 |
-| `avancemos`, `ejecutar lote`, siguiente paso                          | `docs/skills/aos-sigamos/`                                     | Continua en esta sesion con el siguiente paso concreto; para loops largos usar tooling explicito.              |
-| `aos-orquestar`, `orquestá`, `usá threads`, `spawn agents`            | `docs/skills/aos-orquestar/`                                   | Propone o ejecuta fan-out controlado con threads/subagentes, con confirmacion si no fue pedido explicitamente. |
-| `aos-fanout`, `aos-threads`, `/aos-fanout`                            | `docs/skills/aos-fanout/`                                      | Alias intensivo: maximiza paralelismo seguro y vuelve a serial si no conviene.                                 |
-| `aos-dynamic-workflows-pilot`, `probar pi-dynamic-workflows`          | `docs/skills/aos-dynamic-workflows-pilot/`                     | Piloto opt-in para comparar `pi-dynamic-workflows` contra `taskflow` sin volverlo default.                     |
-| `aos-fleet-update`, `actualizar repos`, `actualizar nuestras repos`       | `docs/skills/aos-fleet-update/`                              | Genera un `pi_long_task` serial para actualizar repos AOS con allowlist, checks y commits locales opcionales. |
+| `os help`, `ayuda os`, `comandos os`                                  | upstream `aos-help`                                            | Muestra comandos OS y cuando usarlos sin ejecutar cambios.                                                     |
+| `perfect os`, `dejar en condiciones`                                  | upstream `aos-perfect-os`                                      | Optimiza un repo para agentes: contexto, docs, continuidad, comandos y audit.                                  |
+| `init os`                                                             | upstream `aos-init-os`                                         | Inicializa AOS minimo en un proyecto nuevo o sin capa agentica.                                                |
+| `adopt os`                                                            | upstream `aos-adopt-os`                                        | Fusiona AOS en un repo existente preservando reglas y memoria local.                                           |
+| `update os`                                                           | upstream `aos-update-os`                                       | Actualiza una instalacion downstream contra el upstream sin copiar piezas manager-only.                        |
+| `aos-sigamos`                                                         | upstream `aos-sigamos`                                         | Continua con lo siguiente en la misma sesion, sin lote formal.                                                 |
+| `avancemos`, `ejecutar lote`, siguiente paso                          | upstream `aos-sigamos`                                         | Continua en esta sesion con el siguiente paso concreto; para loops largos usar tooling explicito.              |
+| `aos-orquestar`, `orquestá`, `usá threads`, `spawn agents`            | upstream `aos-orquestar`                                       | Propone o ejecuta fan-out controlado con threads/subagentes, con confirmacion si no fue pedido explicitamente. |
+| `aos-fanout`, `aos-threads`, `/aos-fanout`                            | upstream `aos-fanout`                                          | Alias intensivo: maximiza paralelismo seguro y vuelve a serial si no conviene.                                 |
+| `aos-dynamic-workflows-pilot`, `probar pi-dynamic-workflows`          | `docs/skills/aos-dynamic-workflows-pilot/`                     | Piloto local opt-in para comparar `pi-dynamic-workflows` contra `taskflow` sin volverlo default.                |
+| `aos-fleet-update`, `actualizar repos`, `actualizar nuestras repos`   | upstream `aos-fleet-update`                                    | Genera un `pi_long_task` serial para actualizar repos AOS con allowlist, checks y commits locales opcionales. |
 | Pi planning tools, advisor, taskflow, dgoal, pi-lens, pi-code-planner | `docs/topics/pi-extension-stack.md`                            | No es skill nueva: topic/runbook canonico para elegir herramientas de pensamiento/implementación.              |
-| `guardar sesion`, `documentar sesion`                                 | `docs/skills/aos-guardar-sesion/`                              | Persiste valor durable en docs vivos, sin handoff ni thread nuevo.                                             |
-| `aos-checkpoint`, `persistir estado`, `cerrar sesion`                 | `docs/skills/aos-guardar-sesion/`                              | Aliases de guardar sesion; `cerrar` agrega solo sintesis final.                                                |
+| `guardar sesion`, `documentar sesion`                                 | upstream `aos-guardar-sesion`                                  | Persiste valor durable en docs vivos, sin handoff ni thread nuevo.                                             |
+| `aos-checkpoint`, `persistir estado`, `cerrar sesion`                 | upstream `aos-guardar-sesion`                                  | Aliases de guardar sesion; `cerrar` agrega solo sintesis final.                                                |
 | `/aos-continuar [objetivo]`                                           | `.pi/extensions/aos-tools.ts` + `.pi/prompts/aos-continuar.md` | Abre sesion Pi nueva y pasa un prompt de continuidad desde docs vivos; JP debe haber guardado antes.           |
-| `realinear os`                                                        | `docs/skills/aos-realinear-os/`                                | Audita y repara la capa agentica sin tocar producto salvo pedido.                                              |
+| `realinear os`                                                        | upstream `aos-realinear-os`                                    | Audita y repara la capa agentica sin tocar producto salvo pedido.                                              |
 | `evaluar skills`, `pasar a skills`                                    | `docs/skills/evaluar-skills/`                                  | Audita candidatos del sistema agentico para promoverlos a skills hibridas.                                     |
-| `hacer commits`, `push`, `publicar cambios`, `repo commit push`       | `docs/skills/aos-repo-commit-push/`                            | Revisa inclusion, valida, commitea y pushea el batch del repo.                                                 |
+| `hacer commits`, `push`, `publicar cambios`, `repo commit push`       | upstream `aos-repo-commit-push`                                | Revisa inclusion, valida, commitea y pushea el batch del repo.                                                 |
 
 ## Validacion
 
@@ -208,10 +208,7 @@ powershell -ExecutionPolicy Bypass -File scripts/ensure-skills-link.ps1
 1. Validar una skill o todas las necesarias:
 
 ```powershell
-python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/aos-sigamos
-python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/aos-checkpoint
-python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/aos-cerrar-sesion
-python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/aos-realinear-os
+bun run skills:check
 python C:\dev\agent-infra\rules\skills\.system\skill-creator\scripts\quick_validate.py docs/skills/evaluar-skills
 ```
 

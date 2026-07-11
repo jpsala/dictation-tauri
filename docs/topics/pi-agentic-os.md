@@ -26,7 +26,7 @@ primary_refs:
   - docs/reference/pi-agentic-os-command-surface.md
   - docs/OS_PLAYBOOK.md
   - scripts/toggle-skills-link.ps1
-  - docs/skills/aos-guardar-sesion/SKILL.md
+  - upstream skill `aos-guardar-sesion`
 ---
 
 # Pi Agentic OS

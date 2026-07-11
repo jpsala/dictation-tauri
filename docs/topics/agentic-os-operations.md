@@ -76,7 +76,7 @@ No abrir docs largos, specs completas, archivos archivados ni referencias profun
 - Ruta caliente: `AGENTS.md`, indice generado, `WORKING_MEMORY.md`, `TOPICS.md` y tracks activas siguen chicos y no son transcript.
 - Routing: topics relevantes existen, tienen triggers utiles y estan linkeados desde `docs/TOPICS.md`.
 - Continuidad: tracks activas tienen estado, prioridad, fecha, next step y refs que existen; tracks archivadas viven en `docs/tracks/archive/`.
-- Skills: `docs/skills/` es fuente canonica; `.agents/skills` puede estar habilitado como junction o deshabilitado intencionalmente como toggle de discovery.
+- Skills: `docs/skills/` es fuente canonica; `.agents/skills` debe quedar como junction/symlink estable hacia ese canon. `off`/`toggle` son aliases legacy no destructivos, no borran el path.
 - Decisiones: lo durable esta en `docs/DECISIONS.md` o topic estable, no enterrado en una track.
 - Specs: specs activas estan indexadas, no tienen prefijos duplicados y tienen `spec.md`.
 - Drift: docs raiz no contradicen la ruta inicial ni el estado real del repo.

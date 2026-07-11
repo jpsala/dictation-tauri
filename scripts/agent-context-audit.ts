@@ -242,12 +242,12 @@ const docsKnowledge = exists("docs/topics/docs-knowledge-system.md")
   ? read("docs/topics/docs-knowledge-system.md")
   : "";
 
-if ((exists("docs/topics/agentic-os-operations.md") || exists("docs/skills/aos-realinear-os"))
+if ((exists("docs/topics/agentic-os-operations.md") || exists("docs/skills/aos-realinear-os") || globalAosExists("docs/skills/aos-realinear-os"))
   && (!agents.includes("aos-realinear-os") || !agents.includes("docs/topics/agentic-os-operations.md"))) {
   add("warn", "AGENTS.md should keep a short `aos-realinear-os` pointer to docs/topics/agentic-os-operations.md");
 }
 
-if (exists("docs/skills/aos-cerrar-sesion") && !agents.includes("aos-cerrar-sesion")) {
+if ((exists("docs/skills/aos-cerrar-sesion") || globalAosExists("docs/skills/aos-cerrar-sesion")) && !agents.includes("aos-cerrar-sesion")) {
   add("warn", "AGENTS.md should keep short pointer for `aos-cerrar-sesion`");
 }
 

@@ -54,7 +54,7 @@ No correr smokes físicos/audio/prod/deploy/autostart sin confirmación.
 ## Comandos AOS
 
 - `aos-sigamos`: seguir acá sin cierre.
-- `aos-guardar-sesion` / `aos-checkpoint` / `cerrar sesion`: promover valor durable, regenerar índice y auditar si corresponde.
+- `aos-guardar-sesion` / `aos-checkpoint` / `aos-cerrar-sesion`: promover valor durable, regenerar índice y auditar si corresponde.
 - `aos-realinear-os`: abrir `docs/topics/agentic-os-operations.md`; solo capa agentica salvo pedido.
 - `aos-perfect-os`: abrir `docs/topics/os-quality.md`; optimizar contexto, docs, tracks, skills/adapters, índice y audit.
 - Pi: JP guarda primero; `/aos-continuar [objetivo]` abre sesión nueva desde docs vivos (`--preview` revisa antes).

@@ -16,7 +16,7 @@ primary_refs:
   - docs/reference/tool-routing.yaml
   - docs/topics/pi-agentic-os.md
   - docs/topics/pi-extension-stack.md
-  - docs/skills/aos-plan-implementar/SKILL.md
+  - upstream skill `aos-plan-implementar`
   - .pi/extensions/aos-tools.ts
 ---
 

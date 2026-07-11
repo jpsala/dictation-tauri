@@ -22,7 +22,7 @@ triggers:
 primary_refs:
   - C:/Users/jpsal/.pi/agent/settings.json
   - C:/Users/jpsal/.pi/agent/extensions/pi-footer.json
-  - docs/reference/pi-extension-stack-inventory.md
+  - C:/dev/os/docs/reference/pi-extension-stack-inventory.md
   - docs/topics/pi-agentic-os.md
   - docs/topics/agent-tool-routing.md
   - docs/reference/tool-routing.yaml
@@ -32,9 +32,9 @@ primary_refs:
 # Pi Extension Stack
 
 Referencia de entrada para elegir herramientas Pi. El inventario completo de
-paquetes globales vive en `docs/reference/pi-extension-stack-inventory.md`.
-No copiar esa lista a repos destino: es configuracion global de la maquina de
-JP, no dependencia core de AOS.
+paquetes globales vive en `C:/dev/os/docs/reference/pi-extension-stack-inventory.md`.
+No duplicar esa lista en este downstream: es configuracion global de la maquina
+de JP, no dependencia core de Dictation Tauri.
 
 ## Regla Operativa
 
@@ -50,7 +50,7 @@ JP, no dependencia core de AOS.
 | --- | --- | --- |
 | Core diario | `fffind`, `ffgrep`, CodeMapper (`map/search/outline`), `ask_user`, `advisor`, `lens_diagnostics` | Orientacion, decisiones humanas, segundo juicio y feedback tecnico. |
 | Orquestacion | `taskflow`, `pi-council`, `pi-link` | Auditorias/reviews paralelas con ownership claro; no para trabajo serial chico. |
-| Piloto opt-in | `pi-dynamic-workflows` via `docs/skills/aos-dynamic-workflows-pilot/` si se instala | Comparar fan-out pesado/deep research/adversarial review contra `taskflow`; no dejar triggers genericos activos. |
+| Piloto opt-in | `pi-dynamic-workflows` via la skill local `aos-dynamic-workflows-pilot` si se instala | Comparar fan-out pesado/deep research/adversarial review contra `taskflow`; no dejar triggers genericos activos. |
 | Ejecucion larga | `pi-code-planner`, `/until-done`, `pi_long_task`; `pi-dgoal` solo experimental | Elegir **uno** desde `/aos-plan-implementar`; para fleet updates AOS usar `pi_long_task`/`/aos-fleet-update`, no `dgoal`. |
 | Research externo | `web_search`, `fetch_content`, `web_answer`, `web_research`, skill `librarian` | Usar para docs, releases, issues, APIs, internals OSS; no enviar secretos. |
 | Visual/UI | `pi-chrome`, `cua-driver`, `image_generate`, `aos-impeccable` | UI, browser signed-in y assets; pedir aprobacion para cuentas reales/envios/material privado. |
@@ -118,8 +118,8 @@ permiso, y guardar evidencia reproducible.
 ## Footer / Statusline
 
 `pi-footer` es la pieza correcta para ajustar statusline/footer. Config actual:
-`C:/Users/jpsal/.pi/agent/extensions/pi-footer.json`. Detalle completo en
-`docs/reference/pi-extension-stack-inventory.md`.
+`C:/Users/jpsal/.pi/agent/extensions/pi-footer.json`. Detalle global en
+`C:/dev/os/docs/reference/pi-extension-stack-inventory.md`.
 
 ## Sincronizar Otra PC
 
@@ -133,4 +133,4 @@ permiso, y guardar evidencia reproducible.
 
 Solo guardar aca aprendizajes de runtime Pi o patrones agenticos genericos. No
 incluir fixes de producto, canales, credenciales ni datos downstream. El detalle
-historico completo quedo en `docs/reference/pi-extension-stack-inventory.md`.
+global historico vive en `C:/dev/os/docs/reference/pi-extension-stack-inventory.md`.
