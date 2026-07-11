@@ -1,5 +1,6 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { pathToFileURL } from "node:url";
 
 type Finding = {
   level: "error" | "warn";
@@ -8,6 +9,19 @@ type Finding = {
 
 const root = process.cwd();
 const findings: Finding[] = [];
+const aosHome = process.env.AOS_HOME?.trim() ||
+  (process.platform === "win32"
+    ? "C:\\dev\\os"
+    : join(process.env.HOME ?? "", "dev", "os"));
+let globalAosExists = (_path: string) => false;
+try {
+  const aosHomeModule = await import(
+    pathToFileURL(join(aosHome, "scripts", "aos-home.ts")).href
+  );
+  globalAosExists = (path: string) => aosHomeModule.aosPathExists(path, aosHome);
+} catch {
+  // AOS global is optional; local adapters remain the fallback.
+}
 
 const requiredAosPiPrompts = [
   "aos-evaluar-skills.md",
@@ -380,8 +394,8 @@ if (hasPiAdapter) {
   } else {
     const promptNames = new Set(listFileNames(".pi/prompts", ".md"));
     for (const prompt of requiredAosPiPrompts) {
-      if (!promptNames.has(prompt)) {
-        add("error", `.pi/prompts/${prompt} is missing; required /${prompt.replace(/\.md$/, "")} slash prompt will not be visible`);
+      if (!promptNames.has(prompt) && !globalAosExists(join(".pi", "prompts", prompt))) {
+        add("error", `.pi/prompts/${prompt} is missing locally and from AOS_HOME; required /${prompt.replace(/\.md$/, "")} slash prompt will not be visible`);
       }
     }
 
@@ -394,13 +408,18 @@ if (hasPiAdapter) {
     }
   }
 
-  if (!exists(".pi/extensions")) {
-    add("error", "Pi adapter exists but .pi/extensions/ is missing; AOS extension commands like /aos-sync will not load");
+  const globalExtensionsAvailable = requiredAosPiExtensions.every((extension) =>
+    globalAosExists(join(".pi", "extensions", extension)),
+  );
+  if (!exists(".pi/extensions") && !globalExtensionsAvailable) {
+    add("error", "Pi adapter exists but extensions are missing locally and from AOS_HOME; commands like /aos-sync will not load");
   } else {
-    const extensionNames = new Set(listFileNames(".pi/extensions", ".ts"));
+    const extensionNames = new Set(
+      exists(".pi/extensions") ? listFileNames(".pi/extensions", ".ts") : [],
+    );
     for (const extension of requiredAosPiExtensions) {
-      if (!extensionNames.has(extension)) {
-        add("error", `.pi/extensions/${extension} is missing; required AOS Pi extension commands/nudges will not load`);
+      if (!extensionNames.has(extension) && !globalAosExists(join(".pi", "extensions", extension))) {
+        add("error", `.pi/extensions/${extension} is missing locally and from AOS_HOME; required AOS Pi extension commands/nudges will not load`);
       }
     }
 
@@ -410,11 +429,14 @@ if (hasPiAdapter) {
       }
     }
 
-    if (exists(".pi/extensions/aos-tools.ts")) {
-      const aosTools = read(".pi/extensions/aos-tools.ts");
+    const aosToolsPath = exists(".pi/extensions/aos-tools.ts")
+      ? join(root, ".pi", "extensions", "aos-tools.ts")
+      : join(aosHome, ".pi", "extensions", "aos-tools.ts");
+    if (existsSync(aosToolsPath)) {
+      const aosTools = readFileSync(aosToolsPath, "utf8");
       for (const command of requiredAosToolCommands) {
         if (!aosTools.includes(`registerCommand("${command}"`)) {
-          add("error", `.pi/extensions/aos-tools.ts does not register /${command}`);
+          add("error", `${aosToolsPath} does not register /${command}`);
         }
       }
     }
