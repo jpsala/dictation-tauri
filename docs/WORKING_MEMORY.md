@@ -26,7 +26,7 @@ Router operativo corto; detalle durable vive en topics, decisions, specs o track
 - Selection transform pasó smokes redacted; replace sigue side effect real y debe fallar cerrado.
 - Delivery normal re-resuelve target editable post-STT; selection replace usa target guardado. Clipboard fallback restaura snapshot y tiene guardrails.
 - Spec `018-fixvox-audio-runtime-parity` completa: VAD/no-speech local, auto-stop, long-audio optimization/fallback, mute/cues, telemetry redacted, docs y audit/context-index.
-- Installer Windows unsigned `0.1.0` regenerado e instalado localmente en `%LOCALAPPDATA%\Fixvox Tauri` con FFmpeg 7.1.1 Essentials GPLv3 como sidecar. Compresión MP3 validada en build instalada para dictado corto; falta smoke físico en otra PC. No se publicó ni desplegó.
+- Installer Windows unsigned `0.1.0` con FFmpeg 7.1.1 Essentials GPLv3 publicado como prerelease `fixvox-tauri-v0.1.0-20260711195705`; SHA256 `161a97a8d924d4f303fadd0337ca8829b8cfe9a75596f269560e30921eda2e16`. Falta smoke físico en otra PC; no hubo deploy cloud.
 - Lulu/Fixvox assistant: `Lulu ...` es prefijo dentro de captura iniciada, no wake word always-on. Arquitectura segura: `AssistantIntentResult` -> `AssistantSurface` -> `PipelineUiResult`; solo `insertText` pastea. Smart Agent mínimo provider-free existe para presets; falta tool loop completo/estado rico/opciones no-preset.
 
 ## Guardrails
