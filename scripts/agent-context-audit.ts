@@ -46,9 +46,6 @@ const requiredAosPiExtensions = [
 const requiredAosToolCommands = [
   "aos-compact",
   "aos-continuar",
-  "aos-gol",
-  "aos-nueva-sesion",
-  "aos-nueva-sesion-con-gol",
   "aos-skills",
   "aos-status",
   "aos-sync",
