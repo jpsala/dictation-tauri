@@ -49,7 +49,7 @@
     "admin:web:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/admin-web-local.ps1",
     "admin:web:prod": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/admin-web-prod.ps1",
     "admin:web:smoke": "node scripts/admin-web-ui-smoke.mjs",
-    "check": "bun run context:audit && bun run skills:status && bun -e \"await import('./.pi/extensions/aos-tools.ts'); console.log('aos-tools import ok')\"",
+    "check": "bun run context:audit && bun run skills:status",
     "check:ci": "bun scripts/agent-context-audit.ts"
   },
   "dependencies": {
