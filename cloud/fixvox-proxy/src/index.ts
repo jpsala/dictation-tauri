@@ -10,10 +10,25 @@ import {
 } from "./admin-store";
 import {
   activateDevice,
+  assignControlPlaneAdminAccountBudget,
+  assignControlPlaneAdminAccountGroups,
   assignControlPlaneAdminAccountPolicy,
+  assignControlPlaneAdminAccountSegments,
   assignControlPlaneAdminDevicePolicy,
+  assignControlPlaneAdminPolicyBudget,
+  assignControlPlaneAdminPolicyEngines,
+  assignControlPlaneAdminPolicyVariants,
+  createControlPlaneAdminAccountVariant,
+  createControlPlaneAdminEngine,
+  createControlPlaneAdminGroup,
+  createControlPlaneAdminPrompt,
+  deleteControlPlaneAdminAccountVariant,
+  deleteControlPlaneAdminEngine,
+  deleteControlPlaneAdminPrompt,
   buildFeedbackEvent,
   evaluateExecutionPreflight,
+  getControlPlaneAdminVariantConfig,
+  resolveExecutionEngineForDevice,
   listControlPlaneAdminAccounts,
   listControlPlaneAdminDevices,
   listFeedbackEvents,
@@ -168,6 +183,10 @@ type ChatRequestMeta = {
   stream: boolean;
   context: string;
   inputChars: number;
+  provider?: string | null;
+  profileId?: string | null;
+  engineId?: string | null;
+  promptId?: string | null;
 };
 
 type ProxyTelemetry = {
@@ -178,6 +197,9 @@ type ProxyTelemetry = {
   totalTokens: number | null;
   costUsd: number | null;
   pricingSource: string | null;
+  profileId?: string | null;
+  engineId?: string | null;
+  promptId?: string | null;
 };
 
 type ProxyTiming = {
@@ -290,6 +312,7 @@ type TelemetryBatchRequest = {
 };
 
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const GOOGLE_OAUTH_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
@@ -438,12 +461,14 @@ export default {
 
       if (request.method === "GET" && url.pathname === "/admin/control-plane/policy") {
         const runtimePolicy = await getRuntimePolicy(env.USAGE);
+        const variantConfig = await getControlPlaneAdminVariantConfig(env.USAGE);
         return withAdminCors(request, json({
           ok: true,
           source: runtimePolicy.source,
           updatedAt: runtimePolicy.updatedAt,
           policy: runtimePolicy.policy,
           defaultPolicy: buildDefaultRuntimePolicy(),
+          ...variantConfig,
         }));
       }
 
@@ -492,6 +517,217 @@ export default {
           const message = error instanceof Error ? error.message : "Unable to update account policy.";
           const status = message === "account not found" ? 404 : 400;
           return withAdminCors(request, json({ error: { message } }, status));
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/accounts/budget") {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid account budget payload." } }, 400));
+        }
+
+        try {
+          return withAdminCors(request, json(await assignControlPlaneAdminAccountBudget(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to update account budget.";
+          const status = message === "account not found" ? 404 : 400;
+          return withAdminCors(request, json({ error: { message } }, status));
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/accounts/groups") {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid account groups payload." } }, 400));
+        }
+
+        try {
+          return withAdminCors(request, json(await assignControlPlaneAdminAccountGroups(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to update account groups.";
+          const status = message === "account not found" ? 404 : 400;
+          return withAdminCors(request, json({ error: { message } }, status));
+        }
+      }
+
+      if (request.method === "POST" && (url.pathname === "/admin/control-plane/accounts/segments" || url.pathname === "/admin/control-plane/accounts/variants/assign")) {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid account variants payload." } }, 400));
+        }
+
+        try {
+          return withAdminCors(request, json(await assignControlPlaneAdminAccountSegments(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to update account variants.";
+          const status = message === "account not found" ? 404 : 400;
+          return withAdminCors(request, json({ error: { message } }, status));
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/groups") {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid group payload." } }, 400));
+        }
+
+        try {
+          return withAdminCors(request, json(await createControlPlaneAdminGroup(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to create group.";
+          return withAdminCors(request, json({ error: { message } }, 400));
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/accounts/variants") {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid account variant payload." } }, 400));
+        }
+
+        try {
+          return withAdminCors(request, json(await createControlPlaneAdminAccountVariant(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to create account variant.";
+          return withAdminCors(request, json({ error: { message } }, 400));
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/accounts/variants/delete") {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid account variant delete payload." } }, 400));
+        }
+
+        try {
+          return withAdminCors(request, json(await deleteControlPlaneAdminAccountVariant(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to delete account variant.";
+          return withAdminCors(request, json({ error: { message } }, 400));
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/policy/variants") {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid policy variants payload." } }, 400));
+        }
+
+        try {
+          return withAdminCors(request, json(await assignControlPlaneAdminPolicyVariants(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to update policy variants.";
+          return withAdminCors(request, json({ error: { message } }, 400));
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/policy/engines") {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid policy engines payload." } }, 400));
+        }
+
+        try {
+          return withAdminCors(request, json(await assignControlPlaneAdminPolicyEngines(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to update policy engines.";
+          return withAdminCors(request, json({ error: { message } }, 400));
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/policy/budget") {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid policy budget payload." } }, 400));
+        }
+
+        try {
+          return withAdminCors(request, json(await assignControlPlaneAdminPolicyBudget(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to update policy budget.";
+          return withAdminCors(request, json({ error: { message } }, 400));
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/engines") {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid engine payload." } }, 400));
+        }
+
+        try {
+          return withAdminCors(request, json(await createControlPlaneAdminEngine(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to save engine.";
+          return withAdminCors(request, json({ error: { message } }, 400));
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/engines/delete") {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid engine delete payload." } }, 400));
+        }
+
+        try {
+          return withAdminCors(request, json(await deleteControlPlaneAdminEngine(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to delete engine.";
+          return withAdminCors(request, json({ error: { message } }, 400));
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/prompts") {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid prompt payload." } }, 400));
+        }
+
+        try {
+          return withAdminCors(request, json(await createControlPlaneAdminPrompt(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to save prompt.";
+          return withAdminCors(request, json({ error: { message } }, 400));
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/prompts/delete") {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid prompt delete payload." } }, 400));
+        }
+
+        try {
+          return withAdminCors(request, json(await deleteControlPlaneAdminPrompt(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to delete prompt.";
+          return withAdminCors(request, json({ error: { message } }, 400));
         }
       }
 
@@ -808,8 +1044,24 @@ export default {
       }
 
       const requestStartedAt = performance.now();
+      let upstreamRequest = request;
+      let upstreamProvider = "groq";
+      let upstreamEngineId: string | null = null;
+      let upstreamPromptId: string | null = null;
+      try {
+        const bound = await bindChatRequestToProfileEngine(env, request, deviceId);
+        upstreamRequest = bound.request;
+        upstreamProvider = bound.provider;
+        upstreamEngineId = bound.engineId;
+        upstreamPromptId = bound.promptId;
+        const budgetBlock = await assertProfileBudgetAllows(env, deviceId, bound.policyId, bound.accountBudget);
+        if (budgetBlock) return budgetBlock;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "engine_resolution_failed";
+        return json({ error: { message } }, message === "engine_disabled" ? 403 : 400);
+      }
       const parseStartedAt = performance.now();
-      const chatMeta = await readChatRequestMeta(request);
+      const chatMeta = { ...(await readChatRequestMeta(upstreamRequest)), provider: upstreamProvider, profileId: upstreamRequest.headers.get("X-Fixvox-Resolved-Profile"), engineId: upstreamEngineId, promptId: upstreamPromptId };
       const parseMs = roundTimingMs(performance.now() - parseStartedAt);
 
       const usageStartedAt = performance.now();
@@ -826,10 +1078,12 @@ export default {
       }
 
       const upstreamStartedAt = performance.now();
-      const upstream = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+      const upstreamApiKey = providerApiKey(env, upstreamProvider);
+      if (!upstreamApiKey) return json({ error: { message: "engine_provider_not_configured" } }, 400);
+      const upstream = await fetch(`${providerBaseUrl(upstreamProvider)}/chat/completions`, {
         method: "POST",
-        headers: buildChatHeaders(request, env.GROQ_API_KEY),
-        body: request.body,
+        headers: buildChatHeaders(upstreamRequest, upstreamApiKey),
+        body: upstreamRequest.body,
       });
       const upstreamMs = roundTimingMs(performance.now() - upstreamStartedAt);
 
@@ -881,9 +1135,29 @@ export default {
       }
 
       const requestStartedAt = performance.now();
+      let upstreamRequest = request;
+      let upstreamProvider = "groq";
+      let boundAudioModel: string | null = null;
+      let boundAudioEngineId: string | null = null;
+      let boundAudioPromptId: string | null = null;
+      let boundAudioProfileId: string | null = null;
+      try {
+        const bound = await bindAudioRequestToProfileEngine(env, request, deviceId);
+        upstreamRequest = bound.request;
+        upstreamProvider = bound.provider;
+        boundAudioModel = bound.model;
+        boundAudioEngineId = bound.engineId;
+        boundAudioPromptId = bound.promptId;
+        boundAudioProfileId = bound.policyId;
+        const budgetBlock = await assertProfileBudgetAllows(env, deviceId, bound.policyId, bound.accountBudget);
+        if (budgetBlock) return budgetBlock;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "engine_resolution_failed";
+        return json({ error: { message } }, message === "engine_disabled" ? 403 : 400);
+      }
       const parseStartedAt = performance.now();
-      const seconds = await resolveAudioDurationSeconds(request);
-      const audioModel = await readAudioModel(request);
+      const seconds = await resolveAudioDurationSeconds(upstreamRequest);
+      const audioModel = boundAudioModel ?? await readAudioModel(upstreamRequest);
       const parseMs = roundTimingMs(performance.now() - parseStartedAt);
 
       const usageStartedAt = performance.now();
@@ -900,14 +1174,16 @@ export default {
       }
 
       const upstreamStartedAt = performance.now();
-      const upstream = await fetch(`${GROQ_BASE_URL}/audio/transcriptions`, {
+      const upstreamApiKey = providerApiKey(env, upstreamProvider);
+      if (!upstreamApiKey) return json({ error: { message: "engine_provider_not_configured" } }, 400);
+      const upstream = await fetch(`${providerBaseUrl(upstreamProvider)}/audio/transcriptions`, {
         method: "POST",
-        headers: buildAudioHeaders(request, env.GROQ_API_KEY),
-        body: request.body,
+        headers: buildAudioHeaders(upstreamRequest, upstreamApiKey),
+        body: upstreamRequest.body,
       });
       const upstreamMs = roundTimingMs(performance.now() - upstreamStartedAt);
 
-      return proxyAudioTranscriptionResponse(env, ctx, upstream, usage, audioModel, seconds, deviceId, {
+      return proxyAudioTranscriptionResponse(env, ctx, upstream, usage, upstreamProvider, audioModel, boundAudioProfileId, boundAudioEngineId, boundAudioPromptId, seconds, deviceId, {
         parseMs,
         usageMs,
         upstreamMs,
@@ -2167,6 +2443,106 @@ function buildChatHeaders(request: Request, apiKey: string): Headers {
   return headers;
 }
 
+function providerBaseUrl(provider: string | null | undefined): string {
+  return provider === "openrouter" ? OPENROUTER_BASE_URL : GROQ_BASE_URL;
+}
+
+function providerApiKey(env: Env, provider: string | null | undefined): string | null {
+  return provider === "openrouter" ? env.OPENROUTER_API_KEY ?? null : provider === "groq" ? env.GROQ_API_KEY : null;
+}
+
+function readRequestedEngineKind(request: Request): "transcription" | "postprocess" | "selectionTransform" | null {
+  const value = request.headers.get("X-Fixvox-Engine-Kind")?.trim();
+  return value === "transcription" || value === "postprocess" || value === "selectionTransform" ? value : null;
+}
+
+async function resolvePromptContentForEngine(env: Env, promptKey: string | null | undefined): Promise<{ id: string; content: string } | null> {
+  const id = promptKey?.trim();
+  if (!id || id === "none") return null;
+  const config = await getControlPlaneAdminVariantConfig(env.USAGE);
+  const prompt = config.promptOptions.find((option) => option.id === id);
+  if (!prompt || !prompt.content.trim()) return null;
+  return { id: prompt.id, content: prompt.content };
+}
+
+function applySystemPrompt(payload: Record<string, unknown>, prompt: string): void {
+  const messages = Array.isArray(payload.messages) ? [...payload.messages] : [];
+  const system = { role: "system", content: prompt };
+  if (messages[0] && typeof messages[0] === "object" && (messages[0] as Record<string, unknown>).role === "system") {
+    messages[0] = system;
+  } else {
+    messages.unshift(system);
+  }
+  payload.messages = messages;
+}
+
+async function assertProfileBudgetAllows(env: Env, deviceId: string, policyId: string | null, accountBudget?: { dailyUsd: number | null; monthlyUsd: number | null; mode: "block" | "warn" } | null): Promise<Response | null> {
+  if (!policyId && !accountBudget) return null;
+  const config = await getControlPlaneAdminVariantConfig(env.USAGE);
+  const budget = accountBudget ?? (policyId ? config.policyBudgets[policyId] : null);
+  if (!budget || budget.mode !== "block") return null;
+  const events = (await listRequestEvents(env.USAGE, { deviceId, limit: 100 })).items;
+  const now = new Date();
+  const dayPrefix = now.toISOString().slice(0, 10);
+  const monthPrefix = now.toISOString().slice(0, 7);
+  const sum = (prefix: string) => Number(events.filter((event) => event.ts.startsWith(prefix)).reduce((total, event) => total + (event.billedCostUsd ?? event.actualCostUsd ?? 0), 0).toFixed(8));
+  const dailySpent = sum(dayPrefix);
+  const monthlySpent = sum(monthPrefix);
+  const dailyExceeded = budget.dailyUsd !== null && dailySpent >= budget.dailyUsd;
+  const monthlyExceeded = budget.monthlyUsd !== null && monthlySpent >= budget.monthlyUsd;
+  if (!dailyExceeded && !monthlyExceeded) return null;
+  return json({
+    error: {
+      message: "Profile budget exceeded.",
+      type: "budget_exceeded",
+      code: dailyExceeded ? "daily_budget_exceeded" : "monthly_budget_exceeded",
+      policyId,
+      budgetSource: accountBudget ? "account" : "profile",
+      dailySpent,
+      monthlySpent,
+      budget,
+    },
+  }, 402);
+}
+
+async function bindChatRequestToProfileEngine(env: Env, request: Request, deviceId: string): Promise<{ request: Request; provider: string; model: string | null; engineId: string | null; promptId: string | null; policyId: string | null; accountBudget: { dailyUsd: number | null; monthlyUsd: number | null; mode: "block" | "warn" } | null }> {
+  const requestedKind = readRequestedEngineKind(request);
+  if (!requestedKind) return { request, provider: "groq", model: null, engineId: null, promptId: null, policyId: null, accountBudget: null };
+  const resolution = await resolveExecutionEngineForDevice(env.USAGE, { deviceId, usageKind: "aiAction", engineKind: requestedKind });
+  const engine = resolution?.engines.selected;
+  if (!engine || engine.provider === "none" || engine.model === "off") throw new Error("engine_disabled");
+  const apiKey = providerApiKey(env, engine.provider);
+  if (!apiKey) throw new Error("engine_provider_not_configured");
+  const payload = await request.clone().json() as Record<string, unknown>;
+  payload.model = engine.model;
+  const prompt = await resolvePromptContentForEngine(env, engine.promptKey);
+  if (prompt) applySystemPrompt(payload, prompt.content);
+  const headers = new Headers(request.headers);
+  headers.set("Content-Type", "application/json");
+  headers.set("X-Fixvox-Resolved-Engine", engine.id);
+  if (resolution?.profile.policyId) headers.set("X-Fixvox-Resolved-Profile", resolution.profile.policyId);
+  if (prompt) headers.set("X-Fixvox-Resolved-Prompt", prompt.id);
+  return { request: new Request(request.url, { method: request.method, headers, body: JSON.stringify(payload) }), provider: engine.provider, model: engine.model, engineId: engine.id, promptId: prompt?.id ?? null, policyId: resolution?.profile.policyId ?? null, accountBudget: resolution?.profile.accountBudget ?? null };
+}
+
+async function bindAudioRequestToProfileEngine(env: Env, request: Request, deviceId: string): Promise<{ request: Request; provider: string; model: string; engineId: string; promptId: string | null; policyId: string | null; accountBudget: { dailyUsd: number | null; monthlyUsd: number | null; mode: "block" | "warn" } | null }> {
+  const resolution = await resolveExecutionEngineForDevice(env.USAGE, { deviceId, usageKind: "transcription", engineKind: "transcription" });
+  const engine = resolution?.engines.selected;
+  if (!engine || engine.provider === "none" || engine.model === "off") throw new Error("engine_disabled");
+  if (engine.provider !== "groq") throw new Error("engine_provider_not_supported_for_audio");
+  const apiKey = providerApiKey(env, engine.provider);
+  if (!apiKey) throw new Error("engine_provider_not_configured");
+  const form = await request.clone().formData();
+  form.set("model", engine.model);
+  const headers = new Headers(request.headers);
+  headers.delete("Content-Type");
+  headers.set("X-Fixvox-Resolved-Engine", engine.id);
+  const prompt = await resolvePromptContentForEngine(env, engine.promptKey);
+  if (resolution?.profile.policyId) headers.set("X-Fixvox-Resolved-Profile", resolution.profile.policyId);
+  if (prompt) headers.set("X-Fixvox-Resolved-Prompt", prompt.id);
+  return { request: new Request(request.url, { method: request.method, headers, body: form }), provider: engine.provider, model: engine.model, engineId: engine.id, promptId: prompt?.id ?? null, policyId: resolution?.profile.policyId ?? null, accountBudget: resolution?.profile.accountBudget ?? null };
+}
+
 function buildThinBenchmarkChatCompletionResponse(
   upstream: Response,
   timing: ProxyTiming,
@@ -2389,6 +2765,9 @@ function createTelemetryHeaders(
   if (telemetry.totalTokens !== null && telemetry.totalTokens !== undefined) headers.set("X-Fixvox-Total-Tokens", String(telemetry.totalTokens));
   if (telemetry.costUsd !== null && telemetry.costUsd !== undefined) headers.set("X-Fixvox-Cost-Usd", String(telemetry.costUsd));
   if (telemetry.pricingSource) headers.set("X-Fixvox-Pricing-Source", telemetry.pricingSource);
+  if (telemetry.profileId) headers.set("X-Fixvox-Profile-Id", telemetry.profileId);
+  if (telemetry.engineId) headers.set("X-Fixvox-Engine-Id", telemetry.engineId);
+  if (telemetry.promptId) headers.set("X-Fixvox-Prompt-Id", telemetry.promptId);
   applyTimingHeaders(headers, timing);
   return headers;
 }
@@ -2464,6 +2843,9 @@ function buildRequestEvent(input: {
   costUsd: number | null;
   pricingSource: string | null;
   providerRequestId: string | null;
+  profileId?: string | null;
+  engineId?: string | null;
+  promptId?: string | null;
   usage: UsageWindow | null;
   errorMessage?: string | null;
 }): AdminRequestEvent {
@@ -2491,6 +2873,9 @@ function buildRequestEvent(input: {
     pricingSource: input.pricingSource,
     providerRequestId: input.providerRequestId,
     backendRequestId: input.backendRequestId,
+    profileId: input.profileId ?? null,
+    engineId: input.engineId ?? null,
+    promptId: input.promptId ?? null,
     usageKey: input.usage?.key ?? null,
     usageLimit: input.usage?.limit ?? null,
     usageRemaining: input.usage?.remaining ?? null,
@@ -2600,7 +2985,7 @@ async function proxyChatCompletionResponse(
           ctx.waitUntil(persistRequestEvent(env.USAGE, buildRequestEvent({
             backendRequestId,
             deviceId,
-            provider: "groq",
+            provider: meta.provider ?? "groq",
             model: meta.model,
             context: meta.context,
             status: "error",
@@ -2612,9 +2997,12 @@ async function proxyChatCompletionResponse(
             promptTokens,
             completionTokens,
             totalTokens,
-            costUsd: estimateGroqChatCostUsd(meta.model, promptTokens, completionTokens),
-            pricingSource: "groq-proxy-pricing",
+            costUsd: meta.provider === "openrouter" ? null : estimateGroqChatCostUsd(meta.model, promptTokens, completionTokens),
+            pricingSource: meta.provider === "openrouter" ? null : "groq-proxy-pricing",
             providerRequestId: providerRequestId ?? providerRequestIdFromHeaders,
+            profileId: meta.profileId,
+            engineId: meta.engineId,
+            promptId: meta.promptId,
             usage,
             errorMessage: error instanceof Error ? error.message : String(error),
           })));
@@ -2624,7 +3012,7 @@ async function proxyChatCompletionResponse(
             ctx.waitUntil(persistRequestEvent(env.USAGE, buildRequestEvent({
               backendRequestId,
               deviceId,
-              provider: "groq",
+              provider: meta.provider ?? "groq",
               model: meta.model,
               context: meta.context,
               status: upstream.ok ? "success" : "error",
@@ -2636,9 +3024,12 @@ async function proxyChatCompletionResponse(
               promptTokens,
               completionTokens,
               totalTokens,
-              costUsd: estimateGroqChatCostUsd(meta.model, promptTokens, completionTokens),
-              pricingSource: "groq-proxy-pricing",
+              costUsd: meta.provider === "openrouter" ? null : estimateGroqChatCostUsd(meta.model, promptTokens, completionTokens),
+              pricingSource: meta.provider === "openrouter" ? null : "groq-proxy-pricing",
               providerRequestId: providerRequestId ?? providerRequestIdFromHeaders,
+              profileId: meta.profileId,
+              engineId: meta.engineId,
+              promptId: meta.promptId,
               usage,
               errorMessage: upstream.ok ? null : upstream.statusText,
             })));
@@ -2655,6 +3046,9 @@ async function proxyChatCompletionResponse(
   const headers = createTelemetryHeaders(upstream, usage, {
     backendRequestId,
     providerRequestId: providerRequestIdFromHeaders,
+    profileId: meta.profileId,
+    engineId: meta.engineId,
+    promptId: meta.promptId,
   }, timing);
   return new Response(stream, {
     status: upstream.status,
@@ -2757,12 +3151,14 @@ function finalizeNonStreamingChatCompletionResponse(
   totalTokens: number | null,
   outputChars: number,
 ): Response {
-  const costUsd = estimateGroqChatCostUsd(meta.model, promptTokens, completionTokens);
+  const provider = meta.provider ?? "groq";
+  const costUsd = provider === "openrouter" ? null : estimateGroqChatCostUsd(meta.model, promptTokens, completionTokens);
+  const pricingSource = provider === "openrouter" ? null : "groq-proxy-pricing";
   const totalMs = roundTimingMs((timing.initMs ?? 0) + (performance.now() - responseStartedAt));
   ctx.waitUntil(persistRequestEvent(env.USAGE, buildRequestEvent({
     backendRequestId,
     deviceId,
-    provider: "groq",
+    provider,
     model: meta.model,
     context: meta.context,
     status: upstream.ok ? "success" : "error",
@@ -2775,8 +3171,11 @@ function finalizeNonStreamingChatCompletionResponse(
     completionTokens,
     totalTokens,
     costUsd,
-    pricingSource: "groq-proxy-pricing",
+    pricingSource,
     providerRequestId,
+    profileId: meta.profileId,
+    engineId: meta.engineId,
+    promptId: meta.promptId,
     usage,
     errorMessage: upstream.ok ? null : upstream.statusText,
   })));
@@ -2788,7 +3187,10 @@ function finalizeNonStreamingChatCompletionResponse(
     completionTokens,
     totalTokens,
     costUsd,
-    pricingSource: "groq-proxy-pricing",
+    pricingSource,
+    profileId: meta.profileId,
+    engineId: meta.engineId,
+    promptId: meta.promptId,
   }, {
     ...timing,
     totalMs,
@@ -2805,7 +3207,11 @@ async function proxyAudioTranscriptionResponse(
   ctx: ExecutionContext,
   upstream: Response,
   usage: UsageWindow,
+  provider: string,
   model: string | null,
+  profileId: string | null,
+  engineId: string | null,
+  promptId: string | null,
   audioSeconds: number,
   deviceId: string,
   timing: ProxyTiming,
@@ -2814,7 +3220,8 @@ async function proxyAudioTranscriptionResponse(
   const responseStartedAt = performance.now();
   const text = await upstream.text();
   const providerRequestId = upstream.headers.get("x-request-id")?.trim() || null;
-  const costUsd = estimateGroqTranscriptionCostUsd(model, audioSeconds);
+  const costUsd = provider === "groq" ? estimateGroqTranscriptionCostUsd(model, audioSeconds) : null;
+  const pricingSource = provider === "groq" ? "groq-proxy-pricing" : null;
   let outputChars = 0;
   try {
     const payload = JSON.parse(text) as { text?: unknown };
@@ -2827,7 +3234,7 @@ async function proxyAudioTranscriptionResponse(
   ctx.waitUntil(persistRequestEvent(env.USAGE, buildRequestEvent({
     backendRequestId,
     deviceId,
-    provider: "groq",
+    provider,
     model,
     context: "voice-transcription",
     status: upstream.ok ? "success" : "error",
@@ -2840,8 +3247,11 @@ async function proxyAudioTranscriptionResponse(
     completionTokens: null,
     totalTokens: null,
     costUsd,
-    pricingSource: "groq-proxy-pricing",
+    pricingSource,
     providerRequestId,
+    profileId,
+    engineId,
+    promptId,
     usage,
     errorMessage: upstream.ok ? null : upstream.statusText,
   })));
@@ -2850,7 +3260,10 @@ async function proxyAudioTranscriptionResponse(
     backendRequestId,
     providerRequestId,
     costUsd,
-    pricingSource: "groq-proxy-pricing",
+    pricingSource,
+    profileId,
+    engineId,
+    promptId,
   }, {
     ...timing,
     totalMs,
