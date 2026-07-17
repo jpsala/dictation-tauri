@@ -182,7 +182,7 @@ test('Pi subprocess does not inherit any Worker admin credential', async () => {
   try {
     await withServer({
       FIXVOX_ADMIN_MOCK: '0',
-      FIXVOX_ADMIN_WEB_TOKEN: '',
+      FIXVOX_ADMIN_WEB_TOKEN: 'local-token',
       FIXVOX_ADMIN_PASSWORD: 'local-token',
       ADMIN_PUBLISH_API_KEY: 'publish-secret',
       PI_CHAT_BIN: process.execPath,
