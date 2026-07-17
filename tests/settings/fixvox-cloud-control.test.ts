@@ -3,6 +3,7 @@ import {
   deriveFixvoxAuthPolicyView,
   deriveFixvoxCloudHealth,
   formatFixvoxStateLocation,
+  resolveSettingsAccess,
   shouldConfirmFixvoxCloudOperation,
   summarizeFixvoxCloudProblem,
   summarizeFixvoxCloudStatus,
@@ -11,6 +12,46 @@ import {
 } from "../../src/settings/fixvox-cloud-control";
 
 describe("Fixvox cloud settings contract", () => {
+  it("derives Settings visibility and mutation rights from product capabilities", () => {
+    expect(resolveSettingsAccess(undefined)).toEqual({
+      canViewPresets: false,
+      canEditPresets: false,
+      canOpenAdmin: false,
+    });
+    expect(resolveSettingsAccess({
+      backendBaseUrl: "redacted",
+      statePath: "redacted",
+      installIdPresent: true,
+      deviceRegistered: true,
+      lastRegisterOk: true,
+      authPolicy: {
+        accessMode: "signed_in",
+        policyTemplateId: "pro",
+        capabilities: ["selection_transform", "custom_prompts", "managed_llm"],
+        redacted: true,
+      },
+      redacted: true,
+    })).toEqual({
+      canViewPresets: true,
+      canEditPresets: true,
+      canOpenAdmin: false,
+    });
+    expect(resolveSettingsAccess({
+      backendBaseUrl: "redacted",
+      statePath: "redacted",
+      installIdPresent: true,
+      deviceRegistered: true,
+      lastRegisterOk: true,
+      authPolicy: {
+        accessMode: "signed_in",
+        policyTemplateId: "power-admin",
+        capabilities: ["selection_transform", "custom_prompts", "managed_llm", "admin_settings"],
+        redacted: true,
+      },
+      redacted: true,
+    }).canOpenAdmin).toBe(true);
+  });
+
   it("summarizes local device status without exposing raw identifiers", () => {
     const status: FixvoxCloudStatus = {
       backendBaseUrl: "https://auth-fixvox.jpsala.dev",

@@ -13,8 +13,17 @@ const state = {
   dataTab: 'accounts',
   activeView: 'chat',
   selectedPolicyId: 'pro',
-  policyDrafts: {},
+  configurationTab: 'profiles',
+  profileTab: 'overview',
+  profilePreview: null,
+  profilePreviewError: null,
+  profilePreviewLoading: false,
+  rbac: null,
+  audit: null,
+  lastProfileMutation: null,
   adminData: null,
+  accountsData: null,
+  devicesData: null,
   env: null,
   session: null,
   sessionNameDraft: '',
@@ -64,13 +73,14 @@ function currentUiContext() {
   const counts = {
     accounts: Array.isArray(data.accounts) ? data.accounts.length : undefined,
     devices: Array.isArray(data.devices) ? data.devices.length : undefined,
-    policies: Array.isArray(data.policies) ? data.policies.length : Array.isArray(data.policyOptions) ? data.policyOptions.length : undefined,
+    policies: Array.isArray(data.profileOptions) ? data.profileOptions.length : Array.isArray(data.policies) ? data.policies.length : Array.isArray(data.policyOptions) ? data.policyOptions.length : undefined,
     usageRows: Array.isArray(data.rows) ? data.rows.length : undefined,
   }
   return Object.fromEntries(Object.entries({
     activeView: state.activeView,
     dataTab: state.dataTab,
     selectedPolicyId: state.selectedPolicyId,
+    configurationTab: state.configurationTab,
     selectedEntity: state.selectedEntity,
     sessionName: state.session?.sessionName,
     environment: state.env?.environment,
@@ -305,8 +315,16 @@ async function respondUiRequest(id, response) {
 }
 async function loadAdmin(tab = state.dataTab) {
   state.dataTab = tab
-  const endpoints = { accounts: '/api/admin/accounts?limit=50', devices: '/api/admin/devices?limit=50', policies: '/api/admin/policies', usage: '/api/admin/usage' }
-  try { state.adminData = await jsonFetch(endpoints[tab]) } catch (error) { state.adminData = { ok: false, error: error.message } }
+  const endpoints = { accounts: '/api/admin/accounts?limit=50', devices: '/api/admin/devices?limit=50', policies: '/api/admin/policies', usage: '/api/admin/usage', settings: '/api/admin/roles' }
+  try {
+    state.adminData = await jsonFetch(endpoints[tab])
+    if (tab === 'accounts') state.accountsData = state.adminData
+    if (tab === 'devices') state.devicesData = state.adminData
+    if (tab === 'policies' || tab === 'settings') {
+      state.rbac = await jsonFetch('/api/admin/rbac').catch(() => ({ ok: false, role: null }))
+      state.audit = await jsonFetch('/api/admin/audit').catch(() => ({ records: [] }))
+    }
+  } catch (error) { state.adminData = { ok: false, error: error.message } }
   renderAll()
 }
 function confirmProductionMutation(description) {
@@ -399,43 +417,6 @@ function effectiveSettingsPreview(account) {
   const variants = accountVariants(account)
   return [...policyImpact(account.policyId || 'device-level'), ...variants.map((variant) => `${variant}: ${segmentImpact(variant)}`)]
 }
-async function updateAccountVariants(accountHandle, variants) {
-  if (!confirmProductionMutation(`update account ${accountHandle} variants`)) return
-  state.adminData = await jsonFetch('/api/admin/accounts/variants/assign', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ accountHandle, variants, segments: variants }) })
-  renderAll()
-}
-async function createAccountVariant(form) {
-  const body = Object.fromEntries(new FormData(form).entries())
-  const created = await jsonFetch('/api/admin/accounts/variants', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
-  await loadAdmin(state.activeView === 'policies' ? 'policies' : 'accounts')
-  state.status = `Variante guardada: ${created.variant?.label || body.label}`
-}
-async function deleteAccountVariant(id) {
-  if (!confirm(`Borrar variante ${id}? Se va a quitar del catálogo y de las cuentas donde esté asignada.`)) return
-  await jsonFetch('/api/admin/accounts/variants/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) })
-  await loadAdmin(state.activeView === 'policies' ? 'policies' : 'accounts')
-  state.status = `Variante borrada: ${id}`
-}
-async function updatePolicyVariants(policyId, variants) {
-  if (!confirmProductionMutation(`update policy ${policyId} default variants`)) return
-  await jsonFetch('/api/admin/policies/variants', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ policyId, variants }) })
-  await loadAdmin('policies')
-  state.status = `Overrides incluidos actualizados: ${policyId}`
-}
-async function updatePolicyEngine(policyId, key, value) {
-  if (!confirmProductionMutation(`update policy ${policyId} execution engines`)) return
-  const current = { ...(state.adminData?.policyEngines?.[policyId] || {}) }
-  current[key] = value
-  await jsonFetch('/api/admin/policies/engines', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ policyId, engines: current }) })
-  await loadAdmin('policies')
-  state.status = `Motores actualizados: ${policyId}`
-}
-async function savePolicyBudget(form) {
-  const body = Object.fromEntries(new FormData(form).entries())
-  await jsonFetch('/api/admin/policies/budget', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ policyId: body.policyId, budget: { dailyUsd: body.dailyUsd, monthlyUsd: body.monthlyUsd, mode: body.mode } }) })
-  await loadAdmin('policies')
-  state.status = `Budget actualizado: ${body.policyId}`
-}
 async function saveAccountBudget(form) {
   const body = Object.fromEntries(new FormData(form).entries())
   await jsonFetch('/api/admin/accounts/budget', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ accountHandle: body.accountHandle, budget: { dailyUsd: body.dailyUsd, monthlyUsd: body.monthlyUsd, mode: body.mode } }) })
@@ -497,6 +478,137 @@ async function deletePrompt(id) {
   await jsonFetch('/api/admin/prompts/delete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) })
   await loadAdmin('policies')
   state.status = `Prompt borrado: ${id}`
+}
+async function createProfileDraft(profileId) {
+  await jsonFetch('/api/admin/profiles/drafts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId }) })
+  state.profilePreview = null
+  state.profilePreviewError = null
+  state.profileTab = 'overview'
+  await loadAdmin('policies')
+  state.status = `Draft creado: ${profileId}`
+}
+async function saveProfileDraft(form) {
+  const values = Object.fromEntries(new FormData(form).entries())
+  const record = (state.adminData?.profileVersions || []).find((profile) => profile.profileId === values.profileId)
+  if (!record?.draft) throw new Error('Draft no encontrado; recargá Profiles')
+  const tab = form.dataset.profileDraftTab
+  const definition = structuredClone(record.draft)
+  if (tab === 'overview') definition.label = values.label
+  if (tab === 'access') definition.access = { capabilities: [...new FormData(form).getAll('capability')] }
+  if (tab === 'runtime') {
+    const operation = (kind) => ({ engineId: values[`${kind}EngineId`], ...(values[`${kind}PromptId`] ? { promptId: values[`${kind}PromptId`] } : {}) })
+    definition.runtime = { transcription: operation('transcription'), postprocess: operation('postprocess'), selectionTransform: operation('selectionTransform') }
+  }
+  if (tab === 'limits') {
+    const amount = (key) => values[key] === '' ? undefined : Number(values[key])
+    definition.limits = { mode: values.limitMode, ...(amount('dailyUsd') === undefined ? {} : { dailyUsd: amount('dailyUsd') }), ...(amount('monthlyUsd') === undefined ? {} : { monthlyUsd: amount('monthlyUsd') }), ...(values.quotaProfile ? { quotaProfile: values.quotaProfile } : {}) }
+  }
+  if (tab === 'controls') {
+    definition.userControls = Object.fromEntries([...form.querySelectorAll('[data-profile-control]')].map((input) => [input.dataset.profileControl, input.value]))
+    definition.defaults = Object.fromEntries([...form.querySelectorAll('[data-profile-default]')].flatMap((input) => {
+      if (input.value === '') return []
+      const type = input.dataset.defaultType
+      const value = type === 'boolean' ? input.value === 'true' : type === 'number' ? Number(input.value) : input.value
+      return [[input.dataset.profileDefault, value]]
+    }))
+  }
+  await jsonFetch('/api/admin/profiles/drafts', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId: values.profileId, definition }) })
+  state.profilePreview = null
+  await loadAdmin('policies')
+  state.status = `Draft guardado: ${values.profileId}`
+}
+async function discardProfileDraft(profileId, draftVersion) {
+  const expected = `DISCARD ${profileId} v${draftVersion}`
+  const confirmation = prompt(`Descartar el draft no cambia la versión publicada.\nEscribí ${expected} para confirmar.`)
+  if (confirmation === null) return
+  if (confirmation !== expected) throw new Error(`Confirmación exacta requerida: ${expected}`)
+  if (!confirmProductionMutation(`discard profile draft ${profileId} v${draftVersion}`)) return
+  await jsonFetch('/api/admin/profiles/drafts', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId, expectedDraftVersion: draftVersion, confirmation }) })
+  state.profilePreview = null
+  state.profilePreviewError = null
+  state.profileTab = 'overview'
+  await loadAdmin('policies')
+  state.status = `Draft descartado: ${profileId} v${draftVersion}`
+}
+async function cloneProfileDraft(form) {
+  const values = Object.fromEntries(new FormData(form).entries())
+  const draftProfileId = String(values.draftProfileId || '').trim()
+  if (!draftProfileId) throw new Error('Indicá un ID para el profile clonado')
+  await jsonFetch('/api/admin/profiles/drafts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId: values.profileId, draftProfileId, label: values.label }) })
+  state.selectedPolicyId = draftProfileId
+  state.profileTab = 'overview'
+  state.profilePreview = null
+  await loadAdmin('policies')
+  state.status = `Draft clonado: ${draftProfileId}`
+}
+async function loadProfilePreview(profileId, form = null) {
+  state.profilePreviewLoading = true
+  state.profilePreview = null
+  state.profilePreviewError = null
+  renderMessages(); wireDynamicEvents()
+  const values = form ? Object.fromEntries(new FormData(form).entries()) : {}
+  const query = new URLSearchParams({ profileId })
+  if (values.accountHandle) query.set('accountHandle', values.accountHandle)
+  if (values.deviceId) query.set('deviceId', values.deviceId)
+  const previewEndpoint = '/api/admin/profiles/preview'
+  try { state.profilePreview = await jsonFetch(`${previewEndpoint}?${query}`) }
+  catch (error) { state.profilePreviewError = error.message; throw error }
+  finally { state.profilePreviewLoading = false; renderMessages(); wireDynamicEvents() }
+}
+async function refreshEffectiveProfilesAfterProfileMutation() {
+  state.accountsData = await jsonFetch('/api/admin/accounts?limit=50')
+  return state.accountsData
+}
+function auditForProfileMutation(action, profileId) {
+  return [...(state.audit?.records || [])].reverse().find((record) => record.action === action && record.profileId === profileId && record.result === 'success') || null
+}
+async function publishProfile(profileId, form) {
+  const preview = state.profilePreview
+  if (!preview || preview.profileId !== profileId) throw new Error('Primero cargá el preview del draft.')
+  const confirmation = String(form.querySelector('[name="confirmation"]')?.value || '').trim()
+  const expected = `PUBLISH ${profileId} v${preview.draftVersion}`
+  if (confirmation !== expected) throw new Error(`Confirmación exacta requerida: ${expected}`)
+  if (!confirmProductionMutation(`publish profile ${profileId} v${preview.draftVersion}`)) return
+  const result = await jsonFetch('/api/admin/profiles/publish', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId, expectedActiveVersion: preview.activeVersion, expectedDraftVersion: preview.draftVersion, confirmation }) })
+  state.profilePreview = null
+  state.lastProfileMutation = { action: 'publish', profileId, resultingVersion: result.published?.version ?? null, result: 'success', accountsRefreshed: false }
+  await loadAdmin('policies')
+  await refreshEffectiveProfilesAfterProfileMutation()
+  state.lastProfileMutation = { ...state.lastProfileMutation, accountsRefreshed: true, audit: auditForProfileMutation('publish', profileId) }
+  state.status = `Profile publicado: ${profileId}`
+  renderAll()
+}
+async function rollbackProfile(profileId, form) {
+  const preview = state.profilePreview?.profileId === profileId ? state.profilePreview : null
+  const record = (state.adminData?.profileVersions || []).find((profile) => profile.profileId === profileId)
+  const activeVersion = preview?.activeVersion ?? record?.published?.version ?? null
+  const version = Number(form.querySelector('[name="version"]')?.value)
+  if (!activeVersion) throw new Error('No hay una versión activa para rollback.')
+  if (!Number.isInteger(version) || version < 1) throw new Error('Elegí una versión histórica.')
+  const confirmation = String(form.querySelector('[name="confirmation"]')?.value || '').trim()
+  const expected = `ROLLBACK ${profileId} to v${version}`
+  if (confirmation !== expected) throw new Error(`Confirmación exacta requerida: ${expected}`)
+  if (!confirmProductionMutation(`rollback profile ${profileId} to v${version}`)) return
+  const result = await jsonFetch('/api/admin/profiles/rollback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId, version, expectedActiveVersion: activeVersion, confirmation }) })
+  state.profilePreview = null
+  state.lastProfileMutation = { action: 'rollback', profileId, version, resultingVersion: result.published?.version ?? null, result: 'success', accountsRefreshed: false }
+  await loadAdmin('policies')
+  await refreshEffectiveProfilesAfterProfileMutation()
+  state.lastProfileMutation = { ...state.lastProfileMutation, accountsRefreshed: true, audit: auditForProfileMutation('rollback', profileId) }
+  state.status = `Profile rollback: ${profileId} → v${version}`
+  renderAll()
+}
+async function saveRoleBinding(form) {
+  const body = Object.fromEntries(new FormData(form).entries())
+  await jsonFetch('/api/admin/roles', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ subjectEmail: body.subjectEmail, role: body.role }) })
+  await loadAdmin('settings')
+  state.status = `Rol actualizado: ${body.subjectEmail}`
+}
+async function removeRoleBinding(form) {
+  const body = Object.fromEntries(new FormData(form).entries())
+  await jsonFetch('/api/admin/roles/remove', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ subjectEmail: body.subjectEmail }) })
+  await loadAdmin('settings')
+  state.status = `Binding removido: ${body.subjectEmail}`
 }
 function previewAccountPolicy(accountHandle, policyId) {
   state.pendingAccountPolicy = { accountHandle, policyId }
@@ -579,9 +691,9 @@ function newIcon() {
 function renderSidebar() {
   const sidebar = $('#sidebar'); if (!sidebar) return
   const nav = [
-    ['Dashboard', 'dashboard'], ['Chat', 'chat'], ['Accounts', 'accounts'], ['Devices', 'devices'], ['Profiles', 'policies'], ['Usage', 'usage'], ['Mi cuenta', 'account'],
+    ['Overview', 'dashboard'], ['Chat', 'chat'], ['Users', 'accounts'], ['System', 'devices'], ['Configuration', 'policies'], ['Usage', 'usage'], ['Settings', 'settings'],
   ]
-  setHtml(sidebar, `<div class="drawer-brand"><div><strong>Fixvox</strong><span>Operación y usuarios</span></div></div><div class="drawer-list">${nav.map(([label, key]) => `<button class="drawer-item ${key === state.activeView ? 'selected' : ''}" data-nav="${key}" title="${label}"><span class="drawer-icon">${navIcon(key)}</span><span class="drawer-text">${label}</span></button>`).join('')}</div><div class="drawer-user"><div>${esc(state.env?.user?.name || state.env?.user?.email || 'Admin')}</div><small>${esc(state.env?.user?.email || state.env?.environment || '')}</small><a href="/logout">Salir</a></div>`)
+  setHtml(sidebar, `<div class="drawer-brand"><div><strong>Fixvox</strong><span>Operación y usuarios</span></div></div><div class="drawer-list">${nav.map(([label, key]) => `<button class="drawer-item ${key === state.activeView ? 'selected' : ''}" data-nav="${key}" title="${label}"><span class="drawer-icon">${navIcon(key)}</span><span class="drawer-text">${label}</span></button>`).join('')}</div><div class="drawer-user"><div>${esc(state.env?.user?.name || state.env?.user?.emailRedacted || 'Admin')}</div><small>${esc(state.env?.user?.emailRedacted || state.env?.environment || '')}</small><a href="/logout">Salir</a></div>`)
 }
 function navIcon(key) {
   const icons = {
@@ -592,6 +704,7 @@ function navIcon(key) {
     policies: '<path d="M12 3.5 19 6v5.2c0 4.1-2.6 7.1-7 9.3-4.4-2.2-7-5.2-7-9.3V6l7-2.5Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="m9 12 2 2 4-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
     usage: '<path d="M5 19V9m7 10V5m7 14v-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
     account: '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+    settings: '<path d="M12 3.5 14 5l2.5-.2.8 2.4 2.2 1.2-.8 2.4.8 2.4-2.2 1.2-.8 2.4-2.5-.2-2 1.5-2-1.5-2.5.2-.8-2.4-2.2-1.2.8-2.4-.8-2.4 2.2-1.2.8-2.4L10 5l2-1.5Z" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.5" fill="none" stroke="currentColor" stroke-width="1.7"/>',
   }
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[key] || icons.dashboard}</svg>`
 }
@@ -607,10 +720,12 @@ function renderHeader() {
       : state.activeView === 'devices'
         ? 'Instalaciones, estado y policy efectiva.'
         : state.activeView === 'policies'
-          ? 'Perfiles base, capabilities y overrides reutilizables.'
+          ? 'Perfiles, runtime y comportamiento administrados por separado.'
           : state.activeView === 'usage'
             ? 'Consumo, quota y señales de costo.'
-            : 'Control room operativo de Fixvox.'
+            : state.activeView === 'settings'
+              ? 'OAuth reciente, roles y acceso operativo.'
+              : 'Control room operativo de Fixvox.'
   setHtml(header, `<div><div class="title-line"><span class="title-icon" aria-hidden="true">${state.activeView === 'chat' ? chatIcon() : navIcon(state.activeView)}</span><div><h1>${esc(title)}</h1><p>${esc(description)}</p></div></div></div><div class="chips"><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `Pi ${esc(health.piVersion || '')}` : 'Pi no listo'}</span><span class="chip ${state.running ? 'primary' : ''}">${esc(statusLabel(state.status))}</span><span class="chip ${state.env?.production ? 'prod' : 'local'}">${esc(envName)}</span></div>`)
   const cwd = $('#cwd-label')
   if (cwd) setHtml(cwd, state.activeView === 'chat' && health?.ok ? `cwd: <code>${esc(shortPath(health.cwd))}</code> · ${esc(health.process || '')}` : '')
@@ -626,7 +741,7 @@ function renderMessages() {
   const subtitle = $('#main-subtitle')
   const composer = $('#composer')
   const grid = document.querySelector('.pi-grid')
-  if (grid) grid.classList.toggle('admin-wide', state.activeView === 'accounts')
+  if (grid) grid.classList.toggle('admin-wide', ['accounts', 'policies', 'settings'].includes(state.activeView))
   if (state.activeView !== 'chat') {
     const shouldKeepScroll = state.lastAdminViewRendered === state.activeView
     const previousScrollTop = shouldKeepScroll ? box.scrollTop : 0
@@ -667,7 +782,7 @@ function renderMessages() {
   }
 }
 function viewTitle(view) {
-  return { chat: 'Chat', dashboard: 'Dashboard', accounts: 'Accounts', devices: 'Devices', policies: 'Profiles', usage: 'Usage', account: 'Mi cuenta' }[view] || 'Fixvox Admin'
+  return { chat: 'Chat', dashboard: 'Overview', accounts: 'Users', devices: 'System', policies: 'Configuration', usage: 'Usage', settings: 'Settings', account: 'Mi cuenta' }[view] || 'Fixvox Admin'
 }
 function messageBubble(message) {
   const role = message.role === 'user' ? (state.env?.user?.name || 'Vos') : message.role === 'system' ? 'Sistema' : 'agente'
@@ -721,18 +836,16 @@ function toolCard(tool) {
 }
 
 function currentAdminData(view = state.activeView) {
-  return view === state.dataTab ? state.adminData : null
+  if (view === state.dataTab) return state.adminData
+  if (view === 'accounts') return state.accountsData
+  if (view === 'devices') return state.devicesData
+  return null
 }
 function policyRowsFromData(data) {
   if (!data) return []
   if (Array.isArray(data.policies)) return data.policies.map((policy) => ({ ...policy, policyId: policy.id || policy.policyId, policyLabel: policy.label || policy.policyLabel || policy.id }))
   if (Array.isArray(data.policyOptions)) return data.policyOptions.map((policy) => typeof policy === 'string' ? { policyId: policy, policyLabel: policy, capabilities: [] } : { ...policy, policyId: policy.policyId || policy.id, policyLabel: policy.policyLabel || policy.label || policy.policyId || policy.id, capabilities: policy.capabilities || [] })
   return []
-}
-function policyUsage(policyId) {
-  const accounts = state.dataTab === 'accounts' && Array.isArray(state.adminData?.accounts) ? state.adminData.accounts : []
-  const devices = state.dataTab === 'devices' && Array.isArray(state.adminData?.devices) ? state.adminData.devices : []
-  return { accounts: accounts.filter((item) => item.policyId === policyId).length, devices: devices.filter((item) => item.policyId === policyId).length }
 }
 function renderAdminWorkbench(view) {
   if (view === 'dashboard') return renderDashboardWorkbench()
@@ -742,20 +855,23 @@ function renderAdminWorkbench(view) {
   if (data.ok === false) return `<div class="alert warning"><strong>No se pudo cargar ${esc(viewTitle(view))}</strong><br>${esc(data.error || 'Error desconocido')}</div>`
   if (view === 'accounts') return renderAccountsWorkbench(data)
   if (view === 'devices') return renderDevicesWorkbench(data)
-  if (view === 'policies') return renderPoliciesWorkbench(data)
+  if (view === 'policies') return renderConfigurationWorkbench(data)
   if (view === 'usage') return renderUsageWorkbench(data)
+  if (view === 'settings') return renderSettingsWorkbench()
   return `<pre class="data-pre">${esc(pretty(data))}</pre>`
 }
 function renderDashboardWorkbench() {
   return `<div class="admin-workbench"><div class="workbench-head"><div><span class="eyebrow">Dashboard</span><h2>Control room Fixvox</h2><p>Resumen operativo local-first. Usá Chat para pedir trabajo de Pi o abrí una entidad desde el sidebar.</p></div><button class="button" data-chat-context="Dame un resumen operativo de Fixvox Admin: Pi, accounts, devices, policies y próximos riesgos." data-chat-label="Resumen operativo">Preguntar a Pi</button></div><div class="usage-grid big"><article class="metric"><span>Pi</span><strong>${state.health?.ok ? 'Ready' : 'No listo'}</strong></article><article class="metric"><span>Env</span><strong>${esc(state.env?.environment || 'unknown')}</strong></article><article class="metric"><span>Session</span><strong>${esc(state.session?.messageCount ?? '-')}</strong></article><article class="metric"><span>Tools</span><strong>${state.tools.size}</strong></article></div><div class="entity-grid compact"><article class="entity-card"><strong>Accounts</strong><div class="entity-meta"><span>Usuarios y policies</span></div><button class="button tiny" data-open-view="accounts">Abrir accounts</button></article><article class="entity-card"><strong>Devices</strong><div class="entity-meta"><span>Instalaciones vinculadas</span></div><button class="button tiny" data-open-view="devices">Abrir devices</button></article><article class="entity-card"><strong>Policies</strong><div class="entity-meta"><span>Capabilities y límites</span></div><button class="button tiny" data-open-view="policies">Abrir policies</button></article></div></div>`
 }
 function renderAccountWorkbench() {
-  return `<div class="admin-workbench"><div class="workbench-head"><div><span class="eyebrow">Mi cuenta</span><h2>${esc(state.env?.user?.name || 'Admin')}</h2><p>Sesión web admin autenticada server-side. Los secrets y API keys no se exponen al browser.</p></div><a class="button" href="/logout">Salir</a></div><div class="entity-grid compact"><article class="entity-card"><strong>${esc(state.env?.user?.email || 'usuario redacted')}</strong><div class="entity-meta"><span>${esc(state.env?.user?.provider || 'admin')}</span><span>${esc(state.env?.environment || 'env')}</span></div></article><article class="entity-card"><strong>Seguridad</strong><div class="entity-meta"><span>Mutaciones production requieren confirmación PROD.</span></div></article></div></div>`
+  return `<div class="admin-workbench"><div class="workbench-head"><div><span class="eyebrow">Mi cuenta</span><h2>${esc(state.env?.user?.name || 'Admin')}</h2><p>Sesión web admin autenticada server-side. Los secrets y API keys no se exponen al browser.</p></div><a class="button" href="/logout">Salir</a></div><div class="entity-grid compact"><article class="entity-card"><strong>${esc(state.env?.user?.emailRedacted || 'usuario redacted')}</strong><div class="entity-meta"><span>${esc(state.env?.user?.provider || 'admin')}</span><span>${esc(state.env?.environment || 'env')}</span></div></article><article class="entity-card"><strong>Seguridad</strong><div class="entity-meta"><span>Mutaciones production requieren confirmación PROD.</span></div></article></div></div>`
 }
-function accountDisplayName(account) { return account.userEmail || account.userRedacted || account.emailRedacted || account.accountHandle || 'usuario redacted' }
+function accountDisplayName(account) { return account.displayName || account.userRedacted || account.emailRedacted || account.accountHandle || 'usuario redacted' }
 function accountSecondaryLabel(account) {
-  const provider = account.provider ? `${account.provider} · ` : ''
-  return `${provider}${account.accountHandle || account.accountIdRedacted || 'account redacted'}`
+  return [account.userEmailRedacted, account.provider, account.accountHandle || account.accountIdRedacted || 'account redacted'].filter(Boolean).join(' · ')
+}
+function currentAccountBadge(account) {
+  return account.isCurrentAccount ? '<span class="chip ok">Tu cuenta</span>' : ''
 }
 function getSelectedAccount(accounts) {
   return accounts.find((account) => state.selectedEntity?.kind === 'account' && state.selectedEntity?.id === account.accountHandle) || accounts[0] || null
@@ -772,7 +888,10 @@ function renderAccountsWorkbench(data) {
   const policyOptions = Array.isArray(data.policyOptions) ? data.policyOptions : []
   const proCount = accounts.filter((account) => (effectivePolicyId(account) || '').includes('pro')).length
   const totalDevices = accounts.reduce((sum, account) => sum + Number(account.deviceCount || 0), 0)
-  return `<div class="admin-workbench accounts-workbench"><div class="workbench-head compact"><div><span class="eyebrow">Accounts</span><h2>Cuentas</h2><p>${accounts.length} cuentas · ${proCount} Pro · ${totalDevices} devices vinculados · ${policyOptions.length} profiles disponibles</p></div><button class="button" data-chat-context="Analizá las cuentas visibles y recomendá próximas acciones seguras." data-chat-label="Analizar cuentas">Analizar con Pi</button></div><div class="accounts-toolbar"><input type="search" placeholder="Buscar usuario" disabled><select disabled><option>Todos los profiles</option></select><select disabled><option>Toda actividad</option></select></div><div class="accounts-workbench-grid"><section class="accounts-table-card"><table class="accounts-table"><thead><tr><th>Usuario</th><th>Profile</th><th>Devices</th><th>Última actividad</th><th></th></tr></thead><tbody>${accounts.map((account) => { const selectedRow = selected?.accountHandle === account.accountHandle; return `<tr class="${selectedRow ? 'selected' : ''}" data-select-entity data-entity-kind="account" data-entity-id="${esc(account.accountHandle)}" data-entity-label="${esc(accountDisplayName(account))}"><td><strong>${esc(accountDisplayName(account))}</strong><small>${esc(accountSecondaryLabel(account))}</small></td><td>${renderEffectivePolicyBadge(account)}</td><td>${esc(account.deviceCount ?? 0)}</td><td>${esc(formatDateTime(account.lastSeenAt))}</td><td><button class="button tiny" data-chat-context="Explicame la cuenta ${esc(accountDisplayName(account))} (${esc(account.accountHandle)}) y qué profile conviene asignarle." data-chat-label="Analizar ${esc(accountDisplayName(account))}">Pi</button></td></tr>` }).join('') || '<tr><td colspan="5">Sin cuentas para mostrar.</td></tr>'}</tbody></table></section>${selected ? renderAccountDetail(selected, policyOptions) : '<section class="account-detail"><p class="muted">Seleccioná una cuenta para ver detalle.</p></section>'}</div></div>`
+  const unlinkedCurrentAccount = data.currentAccount && !data.currentAccount.linked
+    ? `<div class="alert warning"><strong>Tu sesión Admin todavía no está vinculada a una cuenta de producto.</strong><br>${esc(data.currentAccount.displayName || 'Cuenta Google')} · ${esc(data.currentAccount.userEmailRedacted || 'email redacted')}</div>`
+    : ''
+  return `<div class="admin-workbench accounts-workbench"><div class="workbench-head compact"><div><span class="eyebrow">Accounts</span><h2>Cuentas</h2><p>${accounts.length} cuentas · ${proCount} Pro · ${totalDevices} devices vinculados · ${policyOptions.length} profiles disponibles</p></div><button class="button" data-chat-context="Analizá las cuentas visibles y recomendá próximas acciones seguras." data-chat-label="Analizar cuentas">Analizar con Pi</button></div>${unlinkedCurrentAccount}<div class="accounts-toolbar"><input type="search" placeholder="Buscar usuario" disabled><select disabled><option>Todos los profiles</option></select><select disabled><option>Toda actividad</option></select></div><div class="accounts-workbench-grid"><section class="accounts-table-card"><table class="accounts-table"><thead><tr><th>Usuario</th><th>Profile</th><th>Devices</th><th>Última actividad</th><th></th></tr></thead><tbody>${accounts.map((account) => { const selectedRow = selected?.accountHandle === account.accountHandle; return `<tr class="${selectedRow ? 'selected' : ''}" data-select-entity data-entity-kind="account" data-entity-id="${esc(account.accountHandle)}" data-entity-label="${esc(accountDisplayName(account))}"><td><strong>${esc(accountDisplayName(account))} ${currentAccountBadge(account)}</strong><small>${esc(accountSecondaryLabel(account))}</small></td><td>${renderEffectivePolicyBadge(account)}</td><td>${esc(account.deviceCount ?? 0)}</td><td>${esc(formatDateTime(account.lastSeenAt))}</td><td><button class="button tiny" data-chat-context="Explicame la cuenta ${esc(accountDisplayName(account))} (${esc(account.accountHandle)}) y qué profile conviene asignarle." data-chat-label="Analizar ${esc(accountDisplayName(account))}">Pi</button></td></tr>` }).join('') || '<tr><td colspan="5">Sin cuentas para mostrar.</td></tr>'}</tbody></table></section>${selected ? renderAccountDetail(selected, policyOptions) : '<section class="account-detail"><p class="muted">Seleccioná una cuenta para ver detalle.</p></section>'}</div></div>`
 }
 function renderAccountPolicyPreview(account, policyOptions) {
   const pending = state.pendingAccountPolicy
@@ -792,16 +911,6 @@ function renderAccountBudget(account) {
   const budget = account.accountBudget || { dailyUsd: '', monthlyUsd: '', mode: 'block' }
   return `<form class="policy-budget account-budget" data-save-account-budget><input type="hidden" name="accountHandle" value="${esc(account.accountHandle)}"><strong>Budget override del usuario</strong><p>Si se configura, reemplaza el budget del profile solo para esta cuenta.</p><label><span>Diario USD</span><input name="dailyUsd" type="number" min="0" step="0.01" value="${esc(budget.dailyUsd ?? '')}" placeholder="hereda profile"></label><label><span>Mensual USD</span><input name="monthlyUsd" type="number" min="0" step="0.01" value="${esc(budget.monthlyUsd ?? '')}" placeholder="hereda profile"></label><label><span>Modo</span><select name="mode"><option value="block" ${budget.mode !== 'warn' ? 'selected' : ''}>block</option><option value="warn" ${budget.mode === 'warn' ? 'selected' : ''}>warn</option></select></label><button class="button small primary" type="submit">Guardar budget usuario</button></form>`
 }
-function renderAccountExperiments(account) {
-  const active = accountVariants(account)
-  const available = accountVariantOptions().map((option) => option.id)
-  const inactive = available.filter((segment) => !active.includes(segment))
-  const activeList = active.length
-    ? active.map((segment) => `<article class="segment-row active"><div><strong>${esc(segmentLabel(segment))}</strong><small>${esc(segmentImpact(segment))}</small><small class="variant-effects-inline">${esc(variantEffects(segment).slice(0, 2).join(' · '))}</small></div><button class="segment-remove" data-update-account-segments="${esc(account.accountHandle)}" data-segments="${esc(active.filter((item) => item !== segment).join(','))}" title="Quitar ${esc(segment)}">Quitar</button></article>`).join('')
-    : '<p class="muted">Sin variantes activas. Agregá uno abajo para probar una variante sin crear otra policy.</p>'
-  const inactiveList = inactive.map((segment) => `<button class="segment-option" data-update-account-segments="${esc(account.accountHandle)}" data-segments="${esc([...active, segment].join(','))}" title="Agregar ${esc(segment)}"><strong>+ ${esc(segmentLabel(segment))}</strong><span>${esc(segmentImpact(segment))}</span></button>`).join('')
-  return `<section class="variants-panel"><div class="panel-head"><div><span class="eyebrow">Overrides del usuario</span><p>Cambios granulares extra encima del profile base.</p></div><span class="panel-count">${active.length} activos</span></div><div class="segment-list active-list">${activeList}</div>${inactive.length ? `<details class="segment-picker"><summary>Agregar override</summary><div class="segment-options">${inactiveList}</div></details>` : ''}</section>`
-}
 function renderEffectiveSettings(account) {
   const policyId = effectivePolicyId(account) || 'device-level'
   const policyItems = policyImpact(policyId)
@@ -817,7 +926,7 @@ function renderEffectiveSettings(account) {
 }
 function renderAccountDetail(account, policyOptions) {
   const devices = Array.isArray(account.devices) ? account.devices : []
-  return `<section class="account-detail"><div class="entity-card-head"><div><span class="eyebrow">Cuenta seleccionada</span><h3>${esc(accountDisplayName(account))}</h3><small>${esc(accountSecondaryLabel(account))}</small></div>${renderEffectivePolicyBadge(account)}</div><div class="account-summary-line"><span>${esc(account.deviceCount ?? devices.length ?? 0)} devices</span><span>Última actividad ${esc(formatDateTime(account.lastSeenAt))}</span></div><div class="policy-control" role="group" aria-label="Policy actual">${policyOptions.map((policy) => { const id = typeof policy === 'string' ? policy : policy.policyId || policy.id || ''; const label = typeof policy === 'string' ? policy : policy.policyLabel || policy.label || id; const active = id === account.policyId; return `<button class="policy-option ${active ? 'active' : ''}" data-preview-account-policy="${esc(account.accountHandle)}" data-policy="${esc(id)}" ${active ? 'disabled' : ''}>${esc(label)}</button>` }).join('') || '<span class="muted">Sin opciones de policy.</span>'}</div>${renderAccountPolicyPreview(account, policyOptions)}${renderAccountBudget(account)}${renderAccountGroups(account)}${renderAccountExperiments(account)}${renderEffectiveSettings(account)}<div class="linked-devices"><strong>Devices vinculados</strong>${devices.length ? `<div class="linked-device-list">${devices.map((device) => `<article class="linked-device"><div><strong>${esc(device.deviceIdRedacted || 'device redacted')}</strong><small>${esc(formatDateTime(device.lastSeenAt))}</small></div><span class="chip ${device.status === 'active' ? 'ok' : ''}">${esc(device.status || 'unknown')}</span><span class="policy-badge">${esc(device.policyLabel || device.policyId || 'none')}</span><button class="button tiny" disabled>Revocar</button></article>`).join('')}</div>` : '<p class="muted">Este endpoint todavia no devolvio devices vinculados para esta cuenta.</p>'}</div></section>`
+  return `<section class="account-detail"><div class="entity-card-head"><div><span class="eyebrow">Cuenta seleccionada</span><h3>${esc(accountDisplayName(account))} ${currentAccountBadge(account)}</h3><small>${esc(accountSecondaryLabel(account))}</small></div>${renderEffectivePolicyBadge(account)}</div><div class="account-summary-line"><span>${esc(account.deviceCount ?? devices.length ?? 0)} devices</span><span>Última actividad ${esc(formatDateTime(account.lastSeenAt))}</span></div><div class="policy-control" role="group" aria-label="Policy actual">${policyOptions.map((policy) => { const id = typeof policy === 'string' ? policy : policy.policyId || policy.id || ''; const label = typeof policy === 'string' ? policy : policy.policyLabel || policy.label || id; const active = id === account.policyId; return `<button class="policy-option ${active ? 'active' : ''}" data-preview-account-policy="${esc(account.accountHandle)}" data-policy="${esc(id)}" ${active ? 'disabled' : ''}>${esc(label)}</button>` }).join('') || '<span class="muted">Sin opciones de policy.</span>'}</div>${renderAccountPolicyPreview(account, policyOptions)}${renderAccountBudget(account)}${renderAccountGroups(account)}${renderEffectiveSettings(account)}<div class="linked-devices"><strong>Devices vinculados</strong>${devices.length ? `<div class="linked-device-list">${devices.map((device) => `<article class="linked-device"><div><strong>${esc(device.deviceIdRedacted || 'device redacted')}</strong><small>${esc(formatDateTime(device.lastSeenAt))}</small></div><span class="chip ${device.status === 'active' ? 'ok' : ''}">${esc(device.status || 'unknown')}</span><span class="policy-badge">${esc(device.policyLabel || device.policyId || 'none')}</span><button class="button tiny" disabled>Revocar</button></article>`).join('')}</div>` : '<p class="muted">Este endpoint todavia no devolvio devices vinculados para esta cuenta.</p>'}</div></section>`
 }
 function renderDevicesWorkbench(data) {
   const devices = Array.isArray(data.devices) ? data.devices : []
@@ -829,25 +938,6 @@ function renderDevicesWorkbench(data) {
 }
 function renderDeviceDetail(device, policyOptions) {
   return `<section class="account-detail device-detail"><div class="entity-card-head"><div><span class="eyebrow">Device seleccionado</span><h3>${esc(device.deviceId)}</h3><small>${esc(device.installId || 'install redacted')}</small></div><span class="chip ${device.status === 'active' ? 'ok' : ''}">${esc(device.status || 'unknown')}</span></div><div class="account-detail-grid"><article class="metric"><span>Policy</span><strong>${esc(device.policyId || 'none')}</strong></article><article class="metric"><span>Label</span><strong>${esc(device.policyLabel || '-')}</strong></article><article class="metric"><span>Last seen</span><strong>${esc(device.lastSeenAt || '-')}</strong></article></div><div class="account-policy-options"><strong>Policy options</strong><div class="button-row">${policyOptions.map((policy) => { const id = typeof policy === 'string' ? policy : policy.policyId || policy.id || ''; const label = typeof policy === 'string' ? policy : policy.policyLabel || policy.label || id; return `<button class="button tiny" data-assign-device="${esc(device.deviceId)}" data-policy="${esc(id)}">${esc(label)}</button>` }).join('') || '<span class="muted">Sin opciones de policy.</span>'}</div></div><div class="entity-actions"><button class="button" data-chat-context="Diagnosticá el device ${esc(device.deviceId)} con policy ${esc(device.policyId || 'none')} y estado ${esc(device.status || 'unknown')}." data-chat-label="Diagnosticar device">Diagnosticar con Pi</button></div></section>`
-}
-function renderPolicyEngines(policyId, data) {
-  const selected = data.policyEngines?.[policyId] || { transcription: 'stt-groq-balanced', postprocess: 'postprocess-openrouter-cheap', selectionTransform: 'transform-openrouter-cheap' }
-  const engineOptions = Array.isArray(data.engineOptions) ? data.engineOptions : []
-  const rows = [
-    ['transcription', 'Transcripción', 'Qué motor paga la transcripción managed.'],
-    ['postprocess', 'Post-proceso', 'Corrección, formato y cleanup después de dictar.'],
-    ['selectionTransform', 'Transformación selección', 'Traducción o transformación de texto seleccionado.'],
-  ]
-  return `<div class="policy-engines"><strong>Motores de ejecución</strong><p>El usuario no elige modelos. Vos asignás el motor concreto que usa este profile.</p>${rows.map(([key, label, help]) => { const options = engineOptions.filter((engine) => engine.kind === key); return `<label class="engine-row"><span><strong>${esc(label)}</strong><small>${esc(help)}</small></span><select data-policy-engine="${esc(key)}" data-policy-id="${esc(policyId)}">${options.map((engine) => `<option value="${esc(engine.id)}" ${engine.id === (selected[key] || '') ? 'selected' : ''}>${esc(engine.label)} · ${esc(engine.tier)}</option>`).join('')}</select></label>` }).join('')}</div>`
-}
-function renderPolicyBudget(policyId, data) {
-  const budget = data.policyBudgets?.[policyId] || { dailyUsd: '', monthlyUsd: '', mode: 'block' }
-  return `<form class="policy-budget" data-save-policy-budget><input type="hidden" name="policyId" value="${esc(policyId)}"><strong>Budget del profile</strong><p>Control de costo cloud por profile. En modo block, runtime rechaza requests cuando el device ya superó el límite diario/mensual registrado.</p><label><span>Diario USD</span><input name="dailyUsd" type="number" min="0" step="0.01" value="${esc(budget.dailyUsd ?? '')}" placeholder="sin límite"></label><label><span>Mensual USD</span><input name="monthlyUsd" type="number" min="0" step="0.01" value="${esc(budget.monthlyUsd ?? '')}" placeholder="sin límite"></label><label><span>Modo</span><select name="mode"><option value="block" ${budget.mode !== 'warn' ? 'selected' : ''}>block</option><option value="warn" ${budget.mode === 'warn' ? 'selected' : ''}>warn</option></select></label><button class="button small primary" type="submit">Guardar budget</button></form>`
-}
-function renderPolicyDefaultVariants(policyId, data) {
-  const variants = Array.isArray(data.variantOptions) ? data.variantOptions : accountVariantOptions()
-  const active = Array.isArray(data.policyVariants?.[policyId]) ? data.policyVariants[policyId] : []
-  return `<div class="policy-default-variants"><strong>Overrides incluidos en este profile</strong><p>Son cambios granulares que vienen con el profile base. Después cada usuario puede sumar o quitar overrides propios.</p><div class="policy-variant-options">${variants.map((variant) => { const checked = active.includes(variant.id); const next = checked ? active.filter((id) => id !== variant.id) : [...active, variant.id]; return `<button class="segment-option ${checked ? 'selected' : ''}" data-update-policy-variants="${esc(policyId)}" data-variants="${esc(next.join(','))}"><strong>${checked ? '✓ ' : '+ '}${esc(variant.label || variant.id)}</strong><span>${esc((variant.effects || []).slice(0, 2).join(' · ') || variant.description || '')}</span></button>` }).join('') || '<span class="muted">Sin overrides para asignar.</span>'}</div></div>`
 }
 function pricingForEngine(data, engine) {
   const rows = Array.isArray(data.pricing) ? data.pricing : []
@@ -885,19 +975,168 @@ function renderEngineCatalog(data) {
   const kindOptions = [['transcription', 'Transcripción'], ['postprocess', 'Post-proceso'], ['selectionTransform', 'Transformación selección']]
   return `<section class="engines-catalog"><div class="panel-head"><div><span class="eyebrow">Engine catalog</span><h3>Motores editables</h3><p>Definen proveedor/modelo/costo para cada ruta. Luego los profiles eligen uno por funcionalidad.</p></div><div class="panel-actions"><button class="button small" data-refresh-pricing>Actualizar precios</button><span class="panel-count">${engines.length} total</span></div></div><div class="engine-catalog-grid">${engines.map((engine) => `<article class="engine-card"><div><strong>${esc(engine.label || engine.id)}</strong><small>${esc(kindLabels[engine.kind] || engine.kind)} · ${esc(engine.tier)} · ${esc(engine.source || 'custom')}</small></div><p>${esc(engine.provider)} / ${esc(engine.model)}</p><small>${esc(engine.notes || '')}</small><div class="engine-pricing">${formatPricingRow(pricingForEngine(data, engine))}</div><small><strong>Prompt:</strong> ${esc(engine.promptKey || 'custom')} · ${esc(engine.promptSummary || '')}</small><div class="variant-actions"><details><summary>Editar</summary><form data-save-engine><input type="hidden" name="id" value="${esc(engine.id)}"><input name="label" value="${esc(engine.label || engine.id)}" required><select name="kind">${kindOptions.map(([value, label]) => `<option value="${esc(value)}" ${value === engine.kind ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select><select name="tier">${tierOptions.map((tier) => `<option value="${esc(tier)}" ${tier === engine.tier ? 'selected' : ''}>${esc(tier)}</option>`).join('')}</select><input name="provider" value="${esc(engine.provider || '')}" placeholder="provider"><input name="model" value="${esc(engine.model || '')}" placeholder="model"><input name="notes" value="${esc(engine.notes || '')}" placeholder="notas/costo"><input name="promptKey" value="${esc(engine.promptKey || '')}" placeholder="prompt key"><input name="promptSummary" value="${esc(engine.promptSummary || '')}" placeholder="prompt resumen"><button class="button small primary" type="submit">Guardar</button></form></details><button class="button small danger" data-delete-engine="${esc(engine.id)}">Borrar</button></div></article>`).join('') || '<p class="muted">No hay motores. Creá uno abajo.</p>'}</div><details class="variant-create"><summary>Crear motor</summary><form data-save-engine><input name="label" placeholder="Nombre, ej. Sonnet premium" required><select name="kind"><option value="transcription">Transcripción</option><option value="postprocess">Post-proceso</option><option value="selectionTransform">Transformación selección</option></select><select name="tier"><option value="cheap">cheap</option><option value="balanced">balanced</option><option value="premium">premium</option><option value="custom">custom</option><option value="off">off</option></select><input name="provider" placeholder="provider, ej. openrouter/groq" required><input name="model" placeholder="modelo" required><input name="notes" placeholder="notas/costo estimado"><input name="promptKey" placeholder="prompt key, ej. postProcessBase"><input name="promptSummary" placeholder="resumen del prompt"><input name="id" placeholder="id opcional"><button class="button small primary" type="submit">Crear motor</button></form></details></section>`
 }
-function renderVariantCatalog(data) {
-  const variants = Array.isArray(data.variantOptions) ? data.variantOptions : accountVariantOptions()
-  const presetOptions = [['custom','Custom / definir después'], ['voiceQuality','Mejor voz'], ['lowCost','Menor costo'], ['debug','Debug tools'], ['newUi','Nueva UI'], ['manualTesting','Testing manual'], ['trial','Trial limitado']]
-  return `<section class="variants-catalog"><div class="panel-head"><div><span class="eyebrow">Saved overrides</span><h3>Overrides reutilizables</h3><p>Paquetes de cambios granulares que podés aplicar a profiles o usuarios. Todas se pueden editar o borrar; si querés arrancar de cero, borrá las que no uses.</p></div><span class="panel-count">${variants.length} total</span></div><div class="variant-catalog-grid">${variants.map((variant) => `<article class="variant-card"><div><strong>${esc(variant.label || variant.id)}</strong><small>${esc(variant.id)} · ${esc(variant.source || 'custom')}</small></div><p>${esc(variant.description || 'override personalizado')}</p>${Array.isArray(variant.effects) && variant.effects.length ? `<ul>${variant.effects.map((effect) => `<li>${esc(effect)}</li>`).join('')}</ul>` : ''}<div class="variant-actions"><details><summary>Editar</summary><form data-create-account-variant><input type="hidden" name="id" value="${esc(variant.id)}"><input name="label" value="${esc(variant.label || variant.id)}" required><input name="description" value="${esc(variant.description || '')}" required><label class="field-label">Plantilla de efectos<select name="preset">${presetOptions.map(([value, label]) => `<option value="${esc(value)}" ${value === (variant.preset || 'custom') ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label><button class="button small primary" type="submit">Guardar</button></form></details><button class="button small danger" data-delete-account-variant="${esc(variant.id)}">Borrar</button></div></article>`).join('') || '<p class="muted">No hay overrides. Creá uno abajo para empezar de cero.</p>'}</div><details class="variant-create"><summary>Crear override reutilizable</summary><form data-create-account-variant><input name="label" placeholder="Nombre, ej. Ultra fast" required><input name="description" placeholder="Qué cambia este override" required><label class="field-label">Plantilla de efectos<select name="preset"><option value="custom">Custom / definir después</option><option value="voiceQuality">Mejor voz</option><option value="lowCost">Menor costo</option><option value="debug">Debug tools</option><option value="newUi">Nueva UI</option><option value="manualTesting">Testing manual</option><option value="trial">Trial limitado</option></select></label><input name="id" placeholder="id opcional, ej. ultra-fast"><button class="button small primary" type="submit">Crear override</button></form></details></section>`
+function profileSourceLabel(source) {
+  return { 'built-in': 'Incluido', assignment: 'Configurado', 'quota-group': 'Por cuota' }[source] || 'Configurado'
 }
-function renderPoliciesWorkbench(data) {
-  const policies = policyRowsFromData(data)
-  const selected = policies.find((policy) => (policy.policyId || policy.id) === state.selectedPolicyId) || policies[0]
-  if (selected && !state.selectedPolicyId) state.selectedPolicyId = selected.policyId || selected.id
-  const selectedId = selected?.policyId || selected?.id || 'policy'
-  const draft = state.policyDrafts[selectedId] || { capabilities: [...(selected?.capabilities || [])], label: selected?.policyLabel || selected?.label || selectedId }
-  const usage = policyUsage(selectedId)
-  return `<div class="admin-workbench policies-workbench"><div class="workbench-head"><div><span class="eyebrow">Profiles</span><h2>Profiles y overrides</h2><p>Un profile es el perfil base que asignás a un usuario. Los overrides son cambios granulares reutilizables encima del profile.</p></div><button class="button" data-chat-context="Compará los profiles y overrides disponibles y recomendame una estructura para usuarios registrados." data-chat-label="Comparar profiles">Comparar con Pi</button></div><div class="policy-layout"><div class="policy-column">${policies.map((policy) => { const id = policy.policyId || policy.id; return `<button class="policy-row ${id === selectedId ? 'active' : ''}" data-policy-select="${esc(id)}"><strong>${esc(policy.policyLabel || policy.label || id)}</strong><small>${esc(id)} · ${(policy.capabilities || []).length} capabilities</small></button>` }).join('') || '<p class="muted">Sin profiles.</p>'}</div>${selected ? `<section class="policy-detail"><div class="entity-card-head"><div><span class="eyebrow">Profile seleccionado</span><h3>${esc(draft.label || selectedId)}</h3><small>${esc(selectedId)}</small></div><span class="policy-badge">${usage.accounts} accounts · ${usage.devices} devices</span></div><div class="cap-editor"><strong>Funcionalidades base</strong>${['dictation','managed_stt','advanced_settings','debug_tools','managed_postprocess'].map((cap) => `<label><input type="checkbox" data-policy-id="${esc(selectedId)}" data-toggle-cap="${esc(cap)}" ${draft.capabilities.includes(cap) ? 'checked' : ''}> ${esc(cap)}</label>`).join('')}</div>${renderPolicyEngines(selectedId, data)}${renderPolicyBudget(selectedId, data)}${renderPolicyDefaultVariants(selectedId, data)}<div class="policy-diff"><strong>Preview técnico</strong><pre>${esc(policyDiff(selected, draft))}</pre></div><div class="entity-actions"><button class="button primary" data-save-policy="${esc(selectedId)}">Guardar draft local</button><button class="button" data-chat-context="Explicame el profile ${esc(selectedId)} y el impacto de sus capabilities: ${esc(draft.capabilities.join(', '))}" data-chat-label="Explicar profile ${esc(selectedId)}">Explicar con Pi</button></div></section>` : ''}</div>${renderEngineCatalog(data)}${renderSelectionPresetDefaults(data)}${renderPromptCatalog(data)}${renderVariantCatalog(data)}</div>`
+function profileCapabilityGroups(profile) {
+  const available = new Set(profile?.capabilities || [])
+  return [
+    ['Dictado', ['dictation', 'managed_stt', 'postprocess']],
+    ['Selección', ['selection_transform', 'translate']],
+    ['Assistant', ['assistant_actions', 'managed_llm']],
+    ['Administración', ['custom_prompts', 'advanced_settings', 'debug_tools', 'admin_settings']],
+  ].map(([label, capabilities]) => [label, capabilities.filter((capability) => available.has(capability))])
+}
+function renderProfileAssignments(profile) {
+  const labels = {
+    uiProfile: 'Interfaz', capabilityProfile: 'Acceso', quotaProfile: 'Cuota', llmProfile: 'LLM', settingsDefaultsProfile: 'Defaults',
+  }
+  const rows = Object.entries(profile?.profiles || {}).filter(([, value]) => value)
+  return `<section class="profile-summary-card"><h4>Resumen</h4><p>Composición interna del perfil. Los IDs técnicos quedan visibles como referencia.</p><dl>${rows.map(([key, value]) => `<div><dt>${esc(labels[key] || key)}</dt><dd>${esc(value)}</dd></div>`).join('') || '<div><dt>Composición</dt><dd>Default</dd></div>'}</dl></section>`
+}
+function renderProfileAccess(profile) {
+  return `<section class="profile-summary-card"><h4>Acceso</h4><p>Funciones habilitadas para los usuarios de este perfil.</p><div class="profile-capability-groups">${profileCapabilityGroups(profile).map(([label, capabilities]) => `<div><strong>${esc(label)}</strong><div class="cap-list">${capabilities.map((capability) => `<span>${esc(capability)}</span>`).join('') || '<span class="muted">Sin acceso</span>'}</div></div>`).join('')}</div></section>`
+}
+function renderProfileRuntime(definition, data) {
+  const rows = [['transcription', 'Transcripción'], ['postprocess', 'Post-proceso'], ['selectionTransform', 'Transformación selección']]
+  const engines = new Map((data.engineOptions || []).map((engine) => [engine.id, engine.label || engine.id]))
+  return `<section class="profile-summary-card"><h4>Runtime</h4><p>Motores y prompts referenciados por ID; sus catálogos siguen separados.</p><dl>${rows.map(([key, label]) => { const operation = definition?.runtime?.[key] || {}; return `<div><dt>${esc(label)}</dt><dd>${esc(engines.get(operation.engineId) || operation.engineId || 'Heredado')}<small>${operation.promptId ? ` · ${esc(operation.promptId)}` : ''}</small></dd></div>` }).join('')}</dl></section>`
+}
+function renderProfileLimits(definition) {
+  const limits = definition?.limits || {}
+  return `<section class="profile-summary-card"><h4>Límites</h4><p>Budget y cuota base de la versión publicada o del draft visible.</p><dl><div><dt>Diario</dt><dd>${limits.dailyUsd == null ? 'Heredado' : formatUsd(limits.dailyUsd)}</dd></div><div><dt>Mensual</dt><dd>${limits.monthlyUsd == null ? 'Heredado' : formatUsd(limits.monthlyUsd)}</dd></div><div><dt>Modo</dt><dd>${esc(limits.mode || 'Heredado')}</dd></div><div><dt>Cuota</dt><dd>${esc(limits.quotaProfile || 'Heredada')}</dd></div></dl></section>`
+}
+const PROFILE_EDITOR_TABS = [['overview', 'Resumen'], ['access', 'Acceso'], ['runtime', 'Runtime'], ['limits', 'Límites'], ['controls', 'Controles']]
+const PROFILE_CAPABILITY_GROUPS = [['Dictado', ['dictation', 'managed_stt', 'postprocess']], ['Selección', ['selection_transform', 'translate']], ['Assistant', ['assistant_actions', 'managed_llm']], ['Administración', ['custom_prompts', 'advanced_settings', 'debug_tools', 'admin_settings']]]
+const PROFILE_USER_SETTINGS = ['appearance.themeId', 'appearance.dockSkin', 'general.onboardingDone', 'general.showDockOnStartup', 'general.startWithWindows', 'general.preferredSurface', 'general.uiLanguage', 'hotkeys.pasteLast', 'hotkeys.quickChat', 'hotkeys.resultHistory', 'hotkeys.picker', 'hotkeys.pushToTalk', 'hotkeys.stopAndSubmit', 'hotkeys.toggleAssistantMode', 'hotkeys.togglePressEnterAfterPaste', 'hotkeys.voiceRecord', 'transcript.language', 'voice.muteOutputDuringRecording', 'voice.pressEnterAfterPaste', 'voice.showQuickChatReasoning', 'voice.showPresetReasoning', 'voice.assistantWakeWords', 'voice.assistantModeToggleWords', 'voice.commandWakeWords']
+function profileSettingLabel(setting) { return setting.replace('.', ' · ') }
+function renderProfileEditorTabs() {
+  return `<nav class="profile-editor-tabs" aria-label="Secciones del profile">${PROFILE_EDITOR_TABS.map(([id, label]) => `<button class="profile-editor-tab ${state.profileTab === id ? 'active' : ''}" data-profile-tab="${id}" ${state.profileTab === id ? 'aria-current="page"' : ''}>${label}</button>`).join('')}</nav>`
+}
+function renderProfileAccessEditor(draft) {
+  const enabled = new Set(draft.access?.capabilities || [])
+  return `<div class="profile-access-editor">${PROFILE_CAPABILITY_GROUPS.map(([group, capabilities]) => `<fieldset><legend>${esc(group)}</legend>${capabilities.map((capability) => `<label class="profile-check"><input type="checkbox" name="capability" value="${esc(capability)}" ${enabled.has(capability) ? 'checked' : ''}><span>${esc(capability)}</span></label>`).join('')}</fieldset>`).join('')}</div>`
+}
+function renderProfileRuntimeEditor(draft, data) {
+  const operationRows = [['transcription', 'Transcripción'], ['postprocess', 'Post-proceso'], ['selectionTransform', 'Transformación selección']]
+  const engineOptions = Array.isArray(data.engineOptions) ? data.engineOptions : []
+  const promptOptions = Array.isArray(data.promptOptions) ? data.promptOptions : []
+  return `<div class="profile-runtime-editor">${operationRows.map(([kind, label]) => { const operation = draft.runtime?.[kind] || {}; const engines = engineOptions.filter((engine) => engine.kind === kind); const prompts = promptOptions.filter((prompt) => prompt.id === 'none' || prompt.kind === kind || (kind === 'postprocess' && prompt.kind === 'assistant')); return `<fieldset><legend>${esc(label)}</legend><label><span>Engine</span><select name="${esc(kind)}EngineId">${engines.map((engine) => `<option value="${esc(engine.id)}" ${engine.id === operation.engineId ? 'selected' : ''}>${esc(engine.label || engine.id)}</option>`).join('')}</select></label><label><span>Prompt</span><select name="${esc(kind)}PromptId">${prompts.map((prompt) => `<option value="${esc(prompt.id)}" ${prompt.id === operation.promptId ? 'selected' : ''}>${esc(prompt.label || prompt.id)}</option>`).join('')}</select></label></fieldset>` }).join('')}</div>`
+}
+function renderProfileLimitsEditor(draft, data) {
+  const quotas = [...new Set((data.profileOptions || []).map((profile) => profile.profiles?.quotaProfile).filter(Boolean))]
+  const limits = draft.limits || {}
+  return `<div class="profile-limits-editor"><label><span>Budget diario (USD)</span><input name="dailyUsd" type="number" min="0" step="0.01" value="${esc(limits.dailyUsd ?? '')}" placeholder="Heredado"></label><label><span>Budget mensual (USD)</span><input name="monthlyUsd" type="number" min="0" step="0.01" value="${esc(limits.monthlyUsd ?? '')}" placeholder="Heredado"></label><label><span>Modo</span><select name="limitMode"><option value="block" ${limits.mode === 'block' ? 'selected' : ''}>Bloquear</option><option value="warn" ${limits.mode === 'warn' ? 'selected' : ''}>Advertir</option></select></label><label><span>Perfil de cuota</span><select name="quotaProfile"><option value="">Heredado</option>${quotas.map((quota) => `<option value="${esc(quota)}" ${quota === limits.quotaProfile ? 'selected' : ''}>${esc(quota)}</option>`).join('')}</select></label></div>`
+}
+function renderProfileControlsEditor(draft) {
+  return `<div class="profile-controls-editor">${PROFILE_USER_SETTINGS.map((setting) => { const value = draft.defaults?.[setting]; const type = typeof value === 'boolean' ? 'boolean' : typeof value === 'number' ? 'number' : 'string'; const defaultInput = type === 'boolean' ? `<select data-profile-default="${esc(setting)}" data-default-type="boolean"><option value="">Sin default</option><option value="true" ${value === true ? 'selected' : ''}>true</option><option value="false" ${value === false ? 'selected' : ''}>false</option></select>` : `<input data-profile-default="${esc(setting)}" data-default-type="${type}" type="${type === 'number' ? 'number' : 'text'}" value="${esc(value ?? '')}" placeholder="Sin default">`; return `<fieldset class="profile-control-row"><legend>${esc(profileSettingLabel(setting))}</legend><label><span>Visibilidad</span><select data-profile-control="${esc(setting)}" name="control:${esc(setting)}"><option value="hidden" ${draft.userControls?.[setting] === 'hidden' ? 'selected' : ''}>Oculto</option><option value="visible-locked" ${draft.userControls?.[setting] === 'visible-locked' ? 'selected' : ''}>Visible, bloqueado</option><option value="editable" ${draft.userControls?.[setting] === 'editable' ? 'selected' : ''}>Editable</option></select></label><label><span>Default</span>${defaultInput}</label></fieldset>` }).join('')}</div>`
+}
+function renderProfileDraftEditor(record, data) {
+  const draft = record?.draft
+  if (!draft) return ''
+  const tab = state.profileTab
+  const content = tab === 'overview' ? `<label><span>Nombre</span><input name="label" value="${esc(draft.label)}" required></label>` : tab === 'access' ? renderProfileAccessEditor(draft) : tab === 'runtime' ? renderProfileRuntimeEditor(draft, data) : tab === 'limits' ? renderProfileLimitsEditor(draft, data) : renderProfileControlsEditor(draft)
+  const titles = { overview: 'Resumen del draft', access: 'Acceso del profile', runtime: 'Runtime del profile', limits: 'Límites del profile', controls: 'Controles y defaults' }
+  return `<form class="profile-draft-editor" data-save-profile-draft data-profile-draft-tab="${esc(tab)}"><input type="hidden" name="profileId" value="${esc(record.profileId)}"><div class="panel-head"><div><span class="eyebrow">Draft durable v${esc(draft.version)}</span><h4>${esc(titles[tab])}</h4><p>Guardar persiste en Worker pero no cambia la versión publicada.</p></div><button class="button small primary" type="submit">Guardar draft</button></div>${content}</form>`
+}
+function renderProfileCloneForm(record, definition) {
+  return `<details class="profile-clone"><summary>Clonar como draft</summary><form data-clone-profile><input type="hidden" name="profileId" value="${esc(record.profileId)}"><label><span>ID nuevo</span><input name="draftProfileId" value="${esc(`${record.profileId}-copy`)}" required></label><label><span>Nombre</span><input name="label" value="${esc(`Copia de ${definition.label}`)}" required></label><button class="button small" type="submit">Crear clon</button></form></details>`
+}
+function previewValue(value) {
+  if (value === undefined || value === null) return '—'
+  return typeof value === 'object' ? pretty(value) : String(value)
+}
+function previewRoutingLabel(routing) {
+  return Object.entries(routing || {}).map(([operation, route]) => `${operation}: ${route?.engineId || 'unknown'}${route?.promptId ? ` · ${route.promptId}` : ''}`).join(' · ')
+}
+function canEditProfiles() { return ['editor', 'publisher', 'owner'].includes(state.rbac?.role) }
+function canPublishProfiles() { return ['publisher', 'owner'].includes(state.rbac?.role) }
+function renderProfileMutationControls(record, profileId, preview) {
+  if (!canPublishProfiles()) return '<p class="muted">Publicación y rollback requieren rol publisher u owner.</p>'
+  if (!preview) return '<p class="muted">Cargá el preview para habilitar una mutación segura.</p>'
+  const history = Array.isArray(record.history) ? record.history : []
+  const rollbackOptions = history.filter((version) => version.version !== preview.activeVersion)
+  return `<section class="profile-mutation-panel"><div class="panel-head"><div><span class="eyebrow">Safe publish</span><h4>Confirmación server-side</h4><p>El servidor vuelve a comprobar OAuth reciente, RBAC y versiones esperadas.</p></div><span class="chip primary">${esc(state.rbac.role)}</span></div><form data-publish-profile="${esc(profileId)}" class="profile-confirm-form"><label><span>Escribí ${esc(`PUBLISH ${profileId} v${preview.draftVersion}`)}</span><input name="confirmation" autocomplete="off" placeholder="PUBLISH ${esc(profileId)} v${preview.draftVersion}" required></label><button class="button small primary" type="submit">Publish v${esc(preview.draftVersion)}</button></form>${rollbackOptions.length ? `<form data-rollback-profile="${esc(profileId)}" class="profile-confirm-form"><label><span>Rollback target</span><select name="version">${rollbackOptions.map((version) => `<option value="${esc(version.version)}">v${esc(version.version)} · ${esc(version.label || profileId)}</option>`).join('')}</select></label><label><span>Escribí la confirmación</span><input name="confirmation" autocomplete="off" placeholder="ROLLBACK ${esc(profileId)} to v…" required></label><button class="button small" type="submit">Rollback</button></form>` : ''}</section>`
+}
+function renderPublishedRollbackControls(record, profileId) {
+  if (!record?.published || !canPublishProfiles()) return ''
+  const activeVersion = record.published.version
+  const options = (record.history || []).filter((version) => version.version !== activeVersion)
+  if (!options.length) return ''
+  return `<section class="profile-mutation-panel"><div class="panel-head"><div><span class="eyebrow">Safe rollback</span><h4>Historia inmutable</h4><p>Rollback crea una nueva versión; nunca reescribe la historia.</p></div><span class="chip primary">${esc(state.rbac.role)}</span></div><form data-rollback-profile="${esc(profileId)}" class="profile-confirm-form"><label><span>Rollback target</span><select name="version">${options.map((version) => `<option value="${esc(version.version)}">v${esc(version.version)} · ${esc(version.label || profileId)}</option>`).join('')}</select></label><label><span>Escribí la confirmación</span><input name="confirmation" autocomplete="off" placeholder="ROLLBACK ${esc(profileId)} to v…" required></label><button class="button small" type="submit">Rollback</button></form></section>`
+}
+function renderProfileMutationOutcome(profileId) {
+  const mutation = state.lastProfileMutation
+  if (!mutation || mutation.profileId !== profileId) return ''
+  const audit = mutation.audit
+  const action = mutation.action === 'rollback' ? `Rollback a v${mutation.version}` : 'Publish'
+  return `<section class="profile-mutation-outcome" data-profile-outcome><strong>${esc(action)} completado</strong><span>Versión resultante: v${esc(mutation.resultingVersion ?? '—')} · resultado: ${esc(mutation.result)}</span><small>${mutation.accountsRefreshed ? 'Accounts/effective profiles refrescados.' : 'Refrescando Accounts/effective profiles…'} ${audit ? 'Audit registrado.' : 'Audit pendiente de lectura.'}</small></section>`
+}
+function renderProfilePreview(record, profileId) {
+  if (state.profilePreviewLoading) return '<section class="profile-preview"><strong>Cargando preview…</strong><p class="muted">No se escriben versiones ni se llaman providers.</p></section>'
+  if (state.profilePreviewError) return `<section class="profile-preview alert warning"><strong>No se pudo cargar el preview</strong><p>${esc(state.profilePreviewError)}</p></section>`
+  const preview = state.profilePreview?.profileId === profileId ? state.profilePreview : null
+  if (!preview) return `<section class="profile-preview profile-preview-empty"><div><span class="eyebrow">Preview</span><h4>Sin mutación todavía</h4><p>Compará el draft contra la versión activa antes de publicar.</p></div><form data-profile-preview="${esc(profileId)}" class="profile-preview-targets"><label><span>Account handle opcional</span><input name="accountHandle" placeholder="acc_…"></label><label><span>Device ID opcional</span><input name="deviceId" placeholder="dev_…"></label><button class="button small" type="submit">Preview draft</button></form></section>`
+  const impact = preview.impact || {}
+  const target = preview.selectedTarget || {}
+  const diff = Array.isArray(preview.diff) ? preview.diff : []
+  return `<section class="profile-preview"><div class="panel-head"><div><span class="eyebrow">Preview listo</span><h4>v${esc(preview.activeVersion ?? '—')} → draft v${esc(preview.draftVersion)}</h4><p>Diff tipado, impacto de assignments y routing del target seleccionado.</p></div><span class="chip ok">read-only</span></div><div class="preview-impact-grid"><article><strong>${esc(impact.accounts ?? 0)}</strong><span>accounts</span></article><article><strong>${esc(impact.devices ?? 0)}</strong><span>devices</span></article><article><strong>${esc(impact.groups ?? 0)}</strong><span>groups</span></article><article><strong>${esc(preview.pricing?.availability || 'unknown')}</strong><span>pricing</span></article></div><div class="profile-preview-target"><strong>Target seleccionado</strong><span>${esc(target.accountHandle || 'sin account')} · ${esc(target.deviceId || 'sin device')} · ${esc(target.policySource || 'sin resolución')}</span>${target.routing ? `<small>Routing draft: ${esc(previewRoutingLabel(target.routing))}</small>` : ''}</div>${preview.warnings?.length ? `<div class="alert warning"><strong>Warnings de dependencia</strong><ul>${preview.warnings.map((warning) => `<li>${esc(warning)}</li>`).join('')}</ul></div>` : ''}<div class="profile-diff"><div class="panel-head"><div><span class="eyebrow">Typed diff</span><h4>${diff.length} cambios</h4></div></div>${diff.length ? `<table><thead><tr><th>Sección</th><th>Path</th><th>Antes</th><th>Después</th></tr></thead><tbody>${diff.map((item) => `<tr><td>${esc(item.section)}</td><td><code>${esc(item.path)}</code></td><td><pre>${esc(previewValue(item.before))}</pre></td><td><pre>${esc(previewValue(item.after))}</pre></td></tr>`).join('')}</tbody></table>` : '<p class="muted">El draft no cambia la versión activa.</p>'}</div><form data-profile-preview="${esc(profileId)}" class="profile-preview-targets compact"><label><span>Account handle</span><input name="accountHandle" value="${esc(target.accountHandle || '')}" placeholder="sin target"></label><label><span>Device ID</span><input name="deviceId" value="${esc(target.deviceId || '')}" placeholder="sin target"></label><button class="button small" type="submit">Actualizar target</button></form>${renderProfileMutationControls(record, profileId, preview)}</section>`
+}
+function renderSettingsWorkbench() {
+  const data = state.adminData || {}
+  const bindings = Array.isArray(data.bindings) ? data.bindings : []
+  const role = state.rbac?.role || 'sin rol'
+  const owner = role === 'owner'
+  const auditRecords = Array.isArray(state.audit?.records) ? state.audit.records.slice(-8).reverse() : []
+  return `<div class="admin-workbench settings-workbench"><div class="workbench-head"><div><span class="eyebrow">Settings / Access</span><h2>Role bindings</h2><p>Google OAuth identifica al operador; RBAC server-side decide la autoridad. Las respuestas solo muestran emails redacted.</p></div><span class="chip ${owner ? 'ok' : 'warn'}">${esc(role)}</span></div><section class="settings-role-panel"><div class="panel-head"><div><h3>Bindings actuales</h3><p>${bindings.length} identidades · el último owner no puede eliminarse ni degradarse.</p></div></div><div class="role-binding-list">${bindings.map((binding) => `<article class="role-binding-row"><strong>${esc(binding.emailRedacted)}</strong><span class="chip ${binding.role === 'owner' ? 'primary' : ''}">${esc(binding.role)}</span></article>`).join('') || '<p class="muted">No hay bindings visibles.</p>'}</div></section><section class="settings-role-panel audit-panel"><div class="panel-head"><div><h3>Audit reciente</h3><p>Publish y rollback quedan registrados con actor redacted y versiones.</p></div></div>${auditRecords.length ? `<div class="audit-list">${auditRecords.map((record) => `<article class="audit-row"><strong>${esc(record.action)} · ${esc(record.profileId)}</strong><span>v${esc(record.sourceVersion ?? '—')} → v${esc(record.targetVersion ?? '—')}</span><small>${esc(record.result)} · ${esc(formatDateTime(record.timestamp))}</small></article>`).join('')}</div>` : '<p class="muted">Sin mutaciones auditadas.</p>'}</section>${owner ? `<section class="settings-role-panel"><div class="panel-head"><div><h3>Administrar acceso</h3><p>Escribí el email Google verificado del operador. El Worker persiste solo el principal hasheado.</p></div></div><form data-save-role class="role-form"><label><span>Email Google</span><input name="subjectEmail" type="email" autocomplete="off" required placeholder="operator@example.com"></label><label><span>Rol</span><select name="role"><option value="viewer">viewer</option><option value="editor">editor</option><option value="publisher">publisher</option><option value="owner">owner</option></select></label><button class="button small primary" type="submit">Guardar rol</button></form><form data-remove-role class="role-form"><label><span>Remover binding</span><input name="subjectEmail" type="email" autocomplete="off" required placeholder="operator@example.com"></label><button class="button small danger" type="submit">Remover</button></form></section>` : '<section class="alert warning"><strong>Solo owner gestiona roles.</strong><p>Podés consultar bindings redacted, pero no mutarlos.</p></section>'}</div>`
+}
+function renderProfileControlsSummary(definition) {
+  const defaults = definition?.defaults || {}
+  const controls = definition?.userControls || {}
+  const configured = PROFILE_USER_SETTINGS.filter((setting) => Object.hasOwn(defaults, setting) || Object.hasOwn(controls, setting))
+  return `<section class="profile-summary-card profile-controls-summary"><h4>Controles</h4><p>Visibilidad y valor inicial que reciben los usuarios de este profile.</p><dl>${configured.map((setting) => `<div><dt>${esc(profileSettingLabel(setting))}</dt><dd>${esc(controls[setting] || 'Heredado')}<small> · default: ${esc(previewValue(defaults[setting]))}</small></dd></div>`).join('') || '<div><dt>Controles</dt><dd>Sin overrides; se heredan los defaults</dd></div>'}</dl></section>`
+}
+function renderPublishedProfileSection(tab, selected, definition, data) {
+  if (tab === 'access') return renderProfileAccess(selected)
+  if (tab === 'runtime') return renderProfileRuntime(definition, data)
+  if (tab === 'limits') return renderProfileLimits(definition)
+  if (tab === 'controls') return renderProfileControlsSummary(definition)
+  return `${renderProfileAssignments(selected)}${renderProfileAccess(selected)}${renderProfileRuntime(definition, data)}${renderProfileLimits(definition)}`
+}
+function renderProfileModeNotice(record) {
+  if (record.draft) return `<section class="profile-mode-notice profile-mode-notice--draft"><div><strong>Editando draft v${esc(record.draft.version)}</strong><span>Guardar una sección persiste el borrador, pero no cambia lo que usan los usuarios hasta publicar.</span></div>${canEditProfiles() ? `<button class="button small danger" type="button" data-discard-profile-draft="${esc(record.profileId)}" data-draft-version="${esc(record.draft.version)}">Descartar draft</button>` : ''}</section>`
+  const message = canEditProfiles()
+    ? 'Las pestañas muestran la configuración activa en modo lectura. Elegí Editar profile para crear un draft seguro sin afectar usuarios.'
+    : 'Las pestañas muestran la configuración activa en modo lectura. Tu rol no permite crear drafts.'
+  return `<section class="profile-mode-notice"><strong>Versión publicada, solo lectura</strong><span>${esc(message)}</span></section>`
+}
+function renderProfilesPane(data) {
+  const profileOptions = Array.isArray(data.profileOptions) ? data.profileOptions : policyRowsFromData(data)
+  const profileVersions = Array.isArray(data.profileVersions) ? data.profileVersions : []
+  const profiles = profileVersions.length ? profileVersions : profileOptions.map((profile) => ({ profileId: profile.policyId || profile.id, label: profile.policyLabel || profile.label, published: null, draft: null, history: [] }))
+  const record = profiles.find((profile) => profile.profileId === state.selectedPolicyId) || profiles[0]
+  if (record && !profiles.some((profile) => profile.profileId === state.selectedPolicyId)) state.selectedPolicyId = record.profileId
+  const selectedId = record?.profileId
+  const legacy = profileOptions.find((profile) => (profile.policyId || profile.id) === selectedId) || {}
+  const definition = record?.draft || record?.published
+  const selected = definition ? { ...legacy, policyId: selectedId, policyLabel: definition.label, capabilities: definition.access?.capabilities || [] } : legacy
+  const publishedSection = record?.draft ? '' : renderPublishedProfileSection(state.profileTab, selected, definition, data)
+  const editAction = !record?.draft && canEditProfiles() ? `<button class="button primary" data-create-profile-draft="${esc(selectedId)}">Editar profile</button>` : ''
+  return `<div class="configuration-pane profiles-pane"><div class="policy-layout"><div class="policy-column">${profiles.map((profile) => { const definition = profile.draft || profile.published; const status = profile.draft ? 'Draft' : 'Published'; return `<button class="policy-row ${profile.profileId === selectedId ? 'active' : ''}" data-policy-select="${esc(profile.profileId)}"><strong>${esc(definition?.label || profile.label || profile.profileId)}</strong><small>${esc(profile.profileId)} · ${esc(status)} v${esc(definition?.version || '-')} · ${(definition?.access?.capabilities || []).length} funciones</small></button>` }).join('') || '<div class="empty-state"><strong>No hay perfiles disponibles</strong><span>Reintentá la carga o revisá el contrato del Control Plane.</span></div>'}</div>${record && definition ? `<section class="policy-detail profile-detail"><div class="entity-card-head"><div><span class="eyebrow">${record.draft ? 'Draft editable' : 'Versión publicada'}</span><h3>${esc(definition.label || selectedId)}</h3><small>${esc(selectedId)} · v${esc(definition.version)} · ${esc(definition.status)}</small></div><div class="button-row"><button class="button" data-chat-context="Explicame el perfil ${esc(selectedId)}, sus funciones, runtime y límites." data-chat-label="Explicar perfil ${esc(selectedId)}">Preguntar a Pi</button>${editAction}</div></div>${renderProfileEditorTabs()}${renderProfileModeNotice(record)}${renderProfileMutationOutcome(selectedId)}${record.draft ? renderProfileDraftEditor(record, data) : `<div class="profile-summary-grid ${state.profileTab === 'overview' ? '' : 'profile-summary-grid--single'}">${publishedSection}</div>`}${record.draft ? renderProfilePreview(record, selectedId) : ''}${!record.draft && state.profileTab === 'overview' ? `${renderProfileCloneForm(record, definition)}${renderPublishedRollbackControls(record, selectedId)}` : ''}</section>` : ''}</div></div>`
+}
+function renderEnginesPane(data) { return `<div class="configuration-pane">${renderEngineCatalog(data)}</div>` }
+function renderPromptsPane(data) { return `<div class="configuration-pane">${renderPromptCatalog(data)}</div>` }
+function renderPresetsPane(data) { return `<div class="configuration-pane">${renderSelectionPresetDefaults(data)}</div>` }
+function renderConfigurationWorkbench(data) {
+  const tabs = [['profiles', 'Profiles'], ['engines', 'Engines'], ['prompts', 'Prompts'], ['presets', 'Presets']]
+  const panes = {
+    profiles: renderProfilesPane,
+    engines: renderEnginesPane,
+    prompts: renderPromptsPane,
+    presets: renderPresetsPane,
+  }
+  const pane = panes[state.configurationTab] || renderProfilesPane
+  return `<div class="admin-workbench configuration-workbench"><div class="workbench-head"><div><span class="eyebrow">Configuration</span><h2>Configuración</h2><p>Cada recurso tiene su propio inventario. Profiles compone acceso, runtime y límites sin mezclar los catálogos.</p></div></div><nav class="configuration-tabs" aria-label="Configuration">${tabs.map(([id, label]) => `<button class="configuration-tab ${state.configurationTab === id ? 'active' : ''}" data-configuration-tab="${id}" ${state.configurationTab === id ? 'aria-current="page"' : ''}>${label}</button>`).join('')}</nav>${pane(data)}</div>`
 }
 function usageDimensionRows(map) {
   return Object.values(map || {}).sort((a, b) => (Number(b.totalCostUsd || 0) - Number(a.totalCostUsd || 0)) || (Number(b.requestCount || 0) - Number(a.requestCount || 0))).slice(0, 8)
@@ -910,34 +1149,24 @@ function renderUsageWorkbench(data) {
   const today = data.today || summary.today || {}
   const last7d = data.last7d || summary.last7d || {}
   const rows = Array.isArray(data.rows) ? data.rows : []
+  const coverage = data.coverage || {}
   const byEngine = usageDimensionRows(today.byEngine)
   const byPrompt = usageDimensionRows(today.byPrompt)
   const byProfile = usageDimensionRows(today.byProfile)
-  return `<div class="admin-workbench usage-workbench"><div class="workbench-head"><div><span class="eyebrow">Usage</span><h2>Uso, costos y budgets</h2><p>Desglose operativo por profile, motor y prompt para entender costo/calidad.</p></div><button class="button" data-chat-context="Analizá usage por engine, prompt y profile; detectá riesgos de budget." data-chat-label="Analizar usage">Analizar con Pi</button></div><div class="usage-grid big"><article class="metric"><span>Requests 7d</span><strong>${esc(last7d.requestCount ?? summary.managedRequests24h ?? '-')}</strong></article><article class="metric"><span>Cost 7d</span><strong>${esc(formatUsd(last7d.totalCostUsd ?? summary.estimatedCostUsd24h ?? 0))}</strong></article><article class="metric"><span>Requests hoy</span><strong>${esc(today.requestCount ?? summary.managedRequests24h ?? '-')}</strong></article><article class="metric"><span>Cost hoy</span><strong>${esc(formatUsd(today.totalCostUsd ?? summary.estimatedCostUsd24h ?? 0))}</strong></article></div><div class="usage-breakdown-grid">${renderUsageBreakdown('Por engine', byEngine)}${renderUsageBreakdown('Por prompt', byPrompt)}${renderUsageBreakdown('Por profile', byProfile)}</div><div class="entity-grid compact">${rows.map((row) => { const id = row.accountHandle || '-'; const selected = state.selectedEntity?.kind === 'usage' && state.selectedEntity?.id === id; return `<article class="entity-card ${selected ? 'selected' : ''}" data-select-entity data-entity-kind="usage" data-entity-id="${esc(id)}" data-entity-label="${esc(id)}"><strong>${esc(id)}</strong><div class="entity-meta"><span>${esc(row.managedRequests24h ?? '-')} requests</span><span>${esc(row.quotaStatus || '-')}</span></div></article>` }).join('') || '<p class="muted">Sin rows de usage.</p>'}</div></div>`
+  const coverageText = `${coverage.recentEvents ?? 0}/${coverage.recentEventCap ?? 100} eventos recientes${coverage.eventsPartial ? ' · cobertura parcial' : ''} · prewarm ${coverage.prewarmRetentionDays ?? 7}d`
+  const deviceCards = rows.map((row) => {
+    const id = `${row.accountHandle || 'sin cuenta'}:${row.deviceHandle || 'device'}`
+    const selected = state.selectedEntity?.kind === 'usage' && state.selectedEntity?.id === id
+    const quota = row.quota || {}
+    const quotaStates = [quota.managedUsage?.state, quota.transcription?.state, quota.aiActions?.state].filter(Boolean)
+    const quotaStatus = quotaStates.includes('blocked') ? 'blocked' : quotaStates.includes('paused') ? 'paused' : quotaStates.includes('almost_used') ? 'almost used' : 'ok'
+    const prewarm = row.prewarm?.available
+      ? `${row.prewarm.successes ?? 0}/${row.prewarm.attempts ?? 0} prewarm · ${row.prewarm.failures ?? 0} fallos`
+      : 'prewarm no disponible'
+    return `<article class="entity-card ${selected ? 'selected' : ''}" data-select-entity data-entity-kind="usage" data-entity-id="${esc(id)}" data-entity-label="${esc(id)}"><strong>${esc(row.accountHandle || 'Sin cuenta')}</strong><small>${esc(row.deviceHandle || 'device redacted')}</small><div class="entity-meta"><span>${esc(row.sttSeconds ?? 0)}s STT</span><span>${esc(row.llmActions ?? 0)} acciones LLM</span><span>${esc(row.failures ?? 0)} fallos</span><span>quota ${esc(quotaStatus)}</span><span>${esc(prewarm)}</span></div></article>`
+  }).join('')
+  return `<div class="admin-workbench usage-workbench"><div class="workbench-head"><div><span class="eyebrow">Usage</span><h2>Uso, costos y budgets</h2><p>Desglose operativo redacted por cuenta/device, profile, motor y prompt.</p><small>${esc(coverageText)}</small></div><button class="button" data-chat-context="Analizá usage por engine, prompt y profile; detectá riesgos de budget." data-chat-label="Analizar usage">Analizar con Pi</button></div><div class="usage-grid big"><article class="metric"><span>Requests 7d</span><strong>${esc(last7d.requestCount ?? summary.managedRequests24h ?? '-')}</strong></article><article class="metric"><span>Cost 7d</span><strong>${esc(formatUsd(last7d.totalCostUsd ?? summary.estimatedCostUsd24h ?? 0))}</strong></article><article class="metric"><span>Requests hoy</span><strong>${esc(today.requestCount ?? summary.managedRequests24h ?? '-')}</strong></article><article class="metric"><span>Cost hoy</span><strong>${esc(formatUsd(today.totalCostUsd ?? summary.estimatedCostUsd24h ?? 0))}</strong></article></div><div class="usage-breakdown-grid">${renderUsageBreakdown('Por engine', byEngine)}${renderUsageBreakdown('Por prompt', byPrompt)}${renderUsageBreakdown('Por profile', byProfile)}</div><div class="entity-grid compact">${deviceCards || '<p class="muted">Sin devices conocidos en la ventana actual.</p>'}</div></div>`
 }
-function policyDiff(original, draft) {
-  const before = { label: original.policyLabel || original.label || original.policyId || original.id, capabilities: original.capabilities || [] }
-  const after = { label: draft.label, capabilities: draft.capabilities || [] }
-  return JSON.stringify({ before, after }, null, 2)
-}
-function togglePolicyCapability(policyId, capability) {
-  const data = currentAdminData('policies') || state.adminData
-  const original = policyRowsFromData(data).find((policy) => (policy.policyId || policy.id) === policyId) || { policyId, capabilities: [] }
-  const draft = state.policyDrafts[policyId] || { capabilities: [...(original.capabilities || [])], label: original.policyLabel || original.label || policyId }
-  const set = new Set(draft.capabilities || [])
-  if (set.has(capability)) set.delete(capability); else set.add(capability)
-  state.policyDrafts[policyId] = { ...draft, capabilities: [...set] }
-  renderMessages(); wireDynamicEvents()
-}
-async function savePolicyDraft(policyId) {
-  const draft = state.policyDrafts[policyId]
-  if (!draft) return
-  if (state.env?.production && !confirmProductionMutation(`guardar policy ${policyId}`)) return
-  addMessage('system', `Draft local de policy ${policyId} guardado en memoria. Falta endpoint Worker para persistir templates.`)
-  state.activeView = 'chat'
-  renderAll()
-}
-
 function renderAdminData() {
   const box = $('#admin-data'); if (!box) return
   const data = state.adminData
@@ -963,15 +1192,24 @@ function wireDynamicEvents() {
   document.querySelectorAll('[data-nav]').forEach((button) => button.onclick = () => {
     const key = button.dataset.nav
     if (key === 'chat') { state.activeView = 'chat'; renderAll(); return }
-    if (['accounts','devices','policies','usage'].includes(key)) { state.activeView = key; clearCrossViewEntitySelection(key); loadAdmin(key).catch(alertError); renderAll(); return }
+    if (['accounts','devices','policies','usage','settings'].includes(key)) { state.activeView = key; clearCrossViewEntitySelection(key); loadAdmin(key).catch(alertError); renderAll(); return }
     state.activeView = key
     renderAll()
   })
   document.querySelectorAll('[data-tab]').forEach((button) => button.onclick = () => { state.dataTab = button.dataset.tab; loadAdmin(button.dataset.tab).catch(alertError) })
   document.querySelectorAll('[data-open-view]').forEach((button) => button.onclick = () => { state.activeView = button.dataset.openView; loadAdmin(button.dataset.openView).catch(alertError); renderAll() })
-  document.querySelectorAll('[data-policy-select]').forEach((button) => button.onclick = () => { state.selectedPolicyId = button.dataset.policySelect; renderMessages(); wireDynamicEvents() })
-  document.querySelectorAll('[data-toggle-cap]').forEach((button) => button.onclick = () => togglePolicyCapability(button.dataset.policyId, button.dataset.toggleCap))
-  document.querySelectorAll('[data-save-policy]').forEach((button) => button.onclick = () => savePolicyDraft(button.dataset.savePolicy).catch(alertError))
+  document.querySelectorAll('[data-configuration-tab]').forEach((button) => button.onclick = () => { state.configurationTab = button.dataset.configurationTab; renderMessages(); wireDynamicEvents() })
+  document.querySelectorAll('[data-policy-select]').forEach((button) => button.onclick = () => { state.selectedPolicyId = button.dataset.policySelect; state.profileTab = 'overview'; state.profilePreview = null; state.profilePreviewError = null; renderMessages(); wireDynamicEvents() })
+  document.querySelectorAll('[data-profile-tab]').forEach((button) => button.onclick = () => { state.profileTab = button.dataset.profileTab; renderMessages(); wireDynamicEvents() })
+  document.querySelectorAll('[data-create-profile-draft]').forEach((button) => button.onclick = () => createProfileDraft(button.dataset.createProfileDraft).catch(alertError))
+  document.querySelectorAll('[data-save-profile-draft]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); saveProfileDraft(form).catch(alertError) })
+  document.querySelectorAll('[data-discard-profile-draft]').forEach((button) => button.onclick = () => discardProfileDraft(button.dataset.discardProfileDraft, Number(button.dataset.draftVersion)).catch(alertError))
+  document.querySelectorAll('[data-clone-profile]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); cloneProfileDraft(form).catch(alertError) })
+  document.querySelectorAll('[data-profile-preview]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); loadProfilePreview(form.dataset.profilePreview, form).catch(alertError) })
+  document.querySelectorAll('[data-publish-profile]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); publishProfile(form.dataset.publishProfile, form).catch(alertError) })
+  document.querySelectorAll('[data-rollback-profile]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); rollbackProfile(form.dataset.rollbackProfile, form).catch(alertError) })
+  document.querySelectorAll('[data-save-role]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); saveRoleBinding(form).catch(alertError) })
+  document.querySelectorAll('[data-remove-role]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); removeRoleBinding(form).catch(alertError) })
   document.querySelectorAll('[data-select-entity]').forEach((card) => card.onclick = (event) => {
     if (event.target.closest('button')) return
     state.selectedEntity = { kind: card.dataset.entityKind, id: card.dataset.entityId, label: card.dataset.entityLabel || card.dataset.entityId }
@@ -981,9 +1219,6 @@ function wireDynamicEvents() {
   document.querySelectorAll('[data-preview-account-policy]').forEach((button) => button.onclick = () => previewAccountPolicy(button.dataset.previewAccountPolicy, button.dataset.policy))
   document.querySelectorAll('[data-apply-account-policy]').forEach((button) => button.onclick = () => applyAccountPolicy(button.dataset.applyAccountPolicy, button.dataset.policy).catch(alertError))
   document.querySelectorAll('[data-cancel-account-policy]').forEach((button) => button.onclick = () => { state.pendingAccountPolicy = null; renderMessages(); wireDynamicEvents() })
-  document.querySelectorAll('[data-update-account-segments]').forEach((button) => button.onclick = () => updateAccountVariants(button.dataset.updateAccountSegments, String(button.dataset.segments || '').split(',').map((item) => item.trim()).filter(Boolean)).catch(alertError))
-  document.querySelectorAll('[data-create-account-variant]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); createAccountVariant(form).catch(alertError) })
-  document.querySelectorAll('[data-save-policy-budget]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); savePolicyBudget(form).catch(alertError) })
   document.querySelectorAll('[data-save-account-budget]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); saveAccountBudget(form).catch(alertError) })
   document.querySelectorAll('[data-create-group]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); createGroup(form).catch(alertError) })
   document.querySelectorAll('[data-update-account-groups]').forEach((button) => button.onclick = () => updateAccountGroups(button.dataset.updateAccountGroups, (button.dataset.groups || '').split(',').filter(Boolean)).catch(alertError))
@@ -993,9 +1228,6 @@ function wireDynamicEvents() {
   document.querySelectorAll('[data-refresh-pricing]').forEach((button) => button.onclick = () => refreshPricing().catch(alertError))
   document.querySelectorAll('[data-delete-engine]').forEach((button) => button.onclick = () => deleteEngine(button.dataset.deleteEngine).catch(alertError))
   document.querySelectorAll('[data-delete-prompt]').forEach((button) => button.onclick = () => deletePrompt(button.dataset.deletePrompt).catch(alertError))
-  document.querySelectorAll('[data-delete-account-variant]').forEach((button) => button.onclick = () => deleteAccountVariant(button.dataset.deleteAccountVariant).catch(alertError))
-  document.querySelectorAll('[data-update-policy-variants]').forEach((button) => button.onclick = () => updatePolicyVariants(button.dataset.updatePolicyVariants, String(button.dataset.variants || '').split(',').map((item) => item.trim()).filter(Boolean)).catch(alertError))
-  document.querySelectorAll('[data-policy-engine]').forEach((select) => select.onchange = () => updatePolicyEngine(select.dataset.policyId, select.dataset.policyEngine, select.value).catch(alertError))
   document.querySelectorAll('[data-assign-account]').forEach((button) => button.onclick = () => assignAccountPolicy(button.dataset.assignAccount, button.dataset.policy).catch(alertError))
   document.querySelectorAll('[data-assign-device]').forEach((button) => button.onclick = () => assignDevicePolicy(button.dataset.assignDevice, button.dataset.policy).catch(alertError))
   const refreshButtons = ['refresh-session','refresh-session-empty']

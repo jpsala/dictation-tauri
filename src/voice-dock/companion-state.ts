@@ -14,7 +14,7 @@ export type DockCompanionPresetId = SelectionTransformPresetId;
 export type DockCompanionCommandPayload =
   | {
       source: "dock_companion";
-      command: "copy" | "paste_last_safe" | "retry" | "close_companion";
+      command: "copy" | "paste_last_safe" | "retry" | "close_companion" | "clear_result_history";
     }
   | {
       source: "dock_companion";
@@ -84,6 +84,7 @@ export type DockCompanionSnapshot = {
   settings: {
     open: boolean;
     activePreset?: DockActivePreset;
+    presetPickerMode?: "selection" | "dictation";
   };
   assistant: {
     open: boolean;
@@ -100,6 +101,7 @@ export function createDockCompanionSnapshot(input: {
   resultHistoryEntries: readonly DockCompanionHistoryEntry[];
   settingsPanelOpen: boolean;
   activePreset?: DockActivePreset;
+  presetPickerMode?: "selection" | "dictation";
   assistant?: {
     open: boolean;
     runId?: string;
@@ -146,6 +148,7 @@ export function createDockCompanionSnapshot(input: {
     settings: {
       open: input.settingsPanelOpen,
       activePreset: input.activePreset,
+      presetPickerMode: input.presetPickerMode,
     },
     assistant: {
       open: input.assistant?.open ?? false,

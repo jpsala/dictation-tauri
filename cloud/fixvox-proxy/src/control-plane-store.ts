@@ -1,3 +1,11 @@
+import { BUILTIN_ENGINES as CORE_BUILTIN_ENGINES, BUILTIN_PROMPTS as CORE_BUILTIN_PROMPTS, BUILTIN_VARIANTS as CORE_BUILTIN_VARIANTS } from "../../fixvox-core/src/control-plane/catalog";
+import { materializeBuiltinProfileVersions, type MaterializedProfileInput } from "../../fixvox-core/src/control-plane/profile-materialization";
+import {
+  DeviceBindingConflictError,
+  resolveDeviceBinding as resolveCoreDeviceBinding,
+} from "../../fixvox-core/src/control-plane/device-binding";
+import { resolveEffectiveRuntimeProfile as resolveCoreEffectiveRuntimeProfile } from "../../fixvox-core/src/control-plane/policy-resolution";
+import { deriveQuotaState, quotaWouldExceed } from "../../fixvox-core/src/execution/quota";
 import type { KvNamespaceLike } from "./admin-store";
 import {
   buildFeatureFlagsFromRuntimePolicy,
@@ -9,6 +17,7 @@ import {
   type RegisterUserSettingsDefaults,
 } from "./runtime-policy-store";
 import { getRecipePolicy } from "./recipe-policy-store";
+import { getPricingRecord } from "./pricing-store";
 
 export type DeviceRegisterPayload = {
   installId?: string | null;
@@ -19,6 +28,8 @@ export type DeviceRegisterPayload = {
   hostname?: string | null;
   ts?: string | null;
 };
+
+export { DeviceBindingConflictError };
 
 export type DeviceActivatePayload = {
   installId?: string | null;
@@ -184,6 +195,7 @@ export type DeviceLimits = {
 export type ControlPlaneAdminDeviceRow = {
   deviceId: string;
   installId: string;
+  accountHandle: string | null;
   policyId: string | null;
   policyLabel: string | null;
   cohorts: string[];
@@ -203,6 +215,11 @@ export type ControlPlaneAdminPolicyOption = {
   policyId: string;
   policyLabel: string;
   source: "built-in" | "assignment" | "quota-group";
+};
+
+export type ControlPlaneAdminProfileOption = ControlPlaneAdminPolicyOption & {
+  capabilities: string[];
+  profiles: ControlPlaneAdminDeviceRow["profiles"];
 };
 
 export type ControlPlaneAdminDeviceList = {
@@ -240,7 +257,7 @@ export type ControlPlaneAdminAccountRow = {
   accountHandle: string;
   accountIdRedacted: string;
   userRedacted: string;
-  userEmail: string | null;
+  userEmailRedacted: string | null;
   provider: string | null;
   variants: string[];
   segments: string[];
@@ -452,17 +469,214 @@ export type ControlPlaneAdminSelectionPresetDefaultPayload = {
   syncPrompts?: boolean | null;
 };
 
-export type ControlPlaneAdminPolicyEnginesPayload = {
-  policyId?: string | null;
-  engines?: ControlPlaneAdminPolicyEngineSelection | null;
+export const FIXVOX_PROFILE_CAPABILITIES = [
+  "translate",
+  "dictation",
+  "postprocess",
+  "selection_transform",
+  "assistant_actions",
+  "custom_prompts",
+  "advanced_settings",
+  "debug_tools",
+  "managed_stt",
+  "managed_llm",
+  "admin_settings",
+] as const;
+
+export const FIXVOX_PROFILE_USER_SETTINGS = [
+  "appearance.themeId",
+  "appearance.dockSkin",
+  "general.onboardingDone",
+  "general.showDockOnStartup",
+  "general.startWithWindows",
+  "general.preferredSurface",
+  "general.uiLanguage",
+  "hotkeys.pasteLast",
+  "hotkeys.quickChat",
+  "hotkeys.resultHistory",
+  "hotkeys.picker",
+  "hotkeys.pushToTalk",
+  "hotkeys.stopAndSubmit",
+  "hotkeys.toggleAssistantMode",
+  "hotkeys.togglePressEnterAfterPaste",
+  "hotkeys.voiceRecord",
+  "transcript.language",
+  "voice.muteOutputDuringRecording",
+  "voice.pressEnterAfterPaste",
+  "voice.showQuickChatReasoning",
+  "voice.showPresetReasoning",
+  "voice.assistantWakeWords",
+  "voice.assistantModeToggleWords",
+  "voice.commandWakeWords",
+] as const;
+
+export type FixvoxProfileCapability = (typeof FIXVOX_PROFILE_CAPABILITIES)[number];
+export type FixvoxProfileUserSetting = (typeof FIXVOX_PROFILE_USER_SETTINGS)[number];
+export type ProfileUserControl = "hidden" | "visible-locked" | "editable";
+export type ProfileDefaultValue = string | number | boolean;
+
+export type ProfileRuntimeOperation = {
+  engineId: string;
+  promptId?: string;
 };
 
-export type ControlPlaneAdminPolicyBudgetPayload = {
-  policyId?: string | null;
-  budget?: Partial<ControlPlaneAdminPolicyBudget> | null;
+export type ProfileDefinition = {
+  schemaVersion: 1;
+  profileId: string;
+  label: string;
+  version: number;
+  status: "draft" | "published" | "archived";
+  basedOnVersion?: number;
+  access: { capabilities: FixvoxProfileCapability[] };
+  runtime: {
+    transcription: ProfileRuntimeOperation;
+    postprocess: ProfileRuntimeOperation;
+    selectionTransform: ProfileRuntimeOperation;
+  };
+  limits: {
+    dailyUsd?: number;
+    monthlyUsd?: number;
+    mode: "block" | "warn";
+    quotaProfile?: string;
+  };
+  userControls: Record<FixvoxProfileUserSetting, ProfileUserControl>;
+  defaults: Partial<Record<FixvoxProfileUserSetting, ProfileDefaultValue>>;
+};
+
+export type ControlPlaneAdminProfileRecord = {
+  profileId: string;
+  label: string;
+  published: ProfileDefinition | null;
+  draft: ProfileDefinition | null;
+  history: ProfileDefinition[];
+};
+
+export type ControlPlaneAdminProfileList = {
+  ok: true;
+  schemaVersion: 1;
+  updatedAt: string;
+  profiles: ControlPlaneAdminProfileRecord[];
+};
+
+export type ControlPlaneAdminProfileDraftPayload = {
+  profileId?: string | null;
+  draftProfileId?: string | null;
+  label?: string | null;
+  definition?: unknown;
+};
+
+export type ControlPlaneAdminProfileDiscardPayload = {
+  profileId?: string | null;
+  expectedDraftVersion?: number | null;
+  confirmation?: string | null;
+};
+
+export type ControlPlaneAdminProfileDiscardResult = {
+  ok: true;
+  profileId: string;
+  discardedDraftVersion: number;
+  publishedVersion: number | null;
+};
+
+export type ControlPlaneAdminProfileAuditInput = {
+  actorKey?: string | null;
+};
+
+export type ControlPlaneAdminAuditRecord = {
+  actor: string;
+  action: "publish" | "rollback";
+  profileId: string;
+  sourceVersion: number | null;
+  targetVersion: number;
+  resultingVersion: number;
+  requestedVersion: number | null;
+  timestamp: string;
+  result: "success";
+};
+
+export type ControlPlaneAdminAuditList = {
+  schemaVersion: 1;
+  records: ControlPlaneAdminAuditRecord[];
+  projection?: { authorityRevision: number };
+};
+
+export type ControlPlaneAdminProfilePublishPayload = ControlPlaneAdminProfileAuditInput & {
+  profileId?: string | null;
+  expectedActiveVersion?: number | null;
+  expectedDraftVersion?: number | null;
+  confirmation?: string | null;
+};
+
+export type ControlPlaneAdminProfileRollbackPayload = ControlPlaneAdminProfileAuditInput & {
+  profileId?: string | null;
+  version?: number | null;
+  expectedActiveVersion?: number | null;
+  confirmation?: string | null;
+};
+
+export class ControlPlaneAdminProfileStaleError extends Error {
+  readonly code = "profile_version_stale";
+
+  constructor() {
+    super("The profile version no longer matches this confirmation.");
+    this.name = "ControlPlaneAdminProfileStaleError";
+  }
+}
+
+export class ControlPlaneProfileProjectionUnavailableError extends Error {
+  readonly code = "profile_projection_unavailable";
+
+  constructor() {
+    super("Profile projection is not confirmed.");
+    this.name = "ControlPlaneProfileProjectionUnavailableError";
+  }
+}
+
+export type ControlPlaneAdminProfilePreviewPayload = {
+  profileId?: string | null;
+  accountHandle?: string | null;
+  deviceId?: string | null;
+};
+
+export type ControlPlaneAdminProfilePreviewDiff = {
+  section: "overview" | "access" | "runtime" | "limits" | "userControls" | "defaults";
+  path: string;
+  before: unknown;
+  after: unknown;
+};
+
+export type ControlPlaneAdminProfilePreview = {
+  profileId: string;
+  draftVersion: number;
+  activeVersion: number | null;
+  diff: ControlPlaneAdminProfilePreviewDiff[];
+  warnings: string[];
+  impact: { accounts: number; devices: number; groups: number };
+  selectedTarget: {
+    accountHandle: string | null;
+    deviceId: string | null;
+    profileId: string;
+    policySource: EffectiveRuntimeProfile["policySource"] | null;
+    routing: ProfileDefinition["runtime"] | null;
+  };
+  pricing: {
+    availability: "available" | "partial" | "unavailable";
+    cachedAt: string | null;
+    targets: Array<{
+      operation: ControlPlaneAdminEngineKind;
+      engineId: string;
+      provider: string;
+      model: string;
+      status: "live" | "manual" | "stale" | "needs-review" | "missing" | "not-applicable";
+      checkedAt: string | null;
+      inputPrice: string | null;
+      outputPrice: string | null;
+    }>;
+  };
 };
 
 export type ControlPlaneAdminVariantConfig = {
+  profileOptions: ControlPlaneAdminProfileOption[];
   variantOptions: ControlPlaneAdminAccountVariantOption[];
   availableSegments: string[];
   engineOptions: ControlPlaneAdminEngineOption[];
@@ -470,6 +684,7 @@ export type ControlPlaneAdminVariantConfig = {
   policyVariants: Record<string, string[]>;
   policyEngines: Record<string, ControlPlaneAdminPolicyEngineSelection>;
   policyBudgets: Record<string, ControlPlaneAdminPolicyBudget>;
+  profileVersions: ControlPlaneAdminProfileRecord[];
 };
 
 export type ControlPlaneAdminAccountVariantResponse = {
@@ -517,6 +732,13 @@ const DEVICE_WRITE_MIN_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const DEVICE_RECENT_LIMIT = 500;
 const DEVICE_RECENT_INDEX_KEY = "control:devices:recent";
 const ACCOUNT_POLICY_TTL_SECONDS = DEVICE_TTL_SECONDS;
+export const CONTROL_PLANE_PROFILE_VERSION_STORE_KEY = "control:profiles:v1";
+const PROFILE_VERSION_STORE_KEY = CONTROL_PLANE_PROFILE_VERSION_STORE_KEY;
+const CONTROL_PLANE_ROLE_STORE_KEY = "control:admin-roles:v1";
+export const CONTROL_PLANE_ADMIN_AUDIT_STORE_KEY = "control:admin-audit:v1";
+const CONTROL_PLANE_AUDIT_STORE_KEY = CONTROL_PLANE_ADMIN_AUDIT_STORE_KEY;
+export const CONTROL_PLANE_PROFILE_PROJECTION_COMMIT_KEY = "control:profiles:projection-commit:v1";
+const CONTROL_PLANE_AUDIT_LIMIT = 500;
 const FEEDBACK_TTL_SECONDS = 60 * 60 * 24 * 180;
 const FEEDBACK_RECENT_LIMIT = 500;
 const FEEDBACK_RECENT_INDEX_KEY = "control:feedback:recent";
@@ -597,6 +819,61 @@ type AccountGroupsAssignment = {
   updatedAt: string;
 };
 
+type ProfileVersionStore = {
+  schemaVersion: 1;
+  updatedAt: string;
+  profiles: Record<string, {
+    activeVersion: number | null;
+    draft: ProfileDefinition | null;
+    history: ProfileDefinition[];
+  }>;
+  projection?: { authorityRevision: number };
+};
+
+type EffectiveProfileSeedInput = Pick<
+  ProfileDefinition,
+  "profileId" | "label" | "access" | "runtime" | "limits" | "userControls" | "defaults"
+>;
+
+export type ControlPlaneAdminRole = "viewer" | "editor" | "publisher" | "owner";
+
+export type ControlPlaneAdminRoleBinding = {
+  emailRedacted: string;
+  role: ControlPlaneAdminRole;
+};
+
+export type ControlPlaneAdminRoleBindingList = {
+  bindings: ControlPlaneAdminRoleBinding[];
+};
+
+export type ControlPlaneAdminRoleBindingOptions = {
+  bootstrapOwnerEmail: string;
+};
+
+export type SetControlPlaneAdminRoleBindingInput = ControlPlaneAdminRoleBindingOptions & {
+  actorEmail: string;
+  subjectEmail: string;
+  role: ControlPlaneAdminRole;
+};
+
+export type RemoveControlPlaneAdminRoleBindingInput = ControlPlaneAdminRoleBindingOptions & {
+  actorEmail: string;
+  subjectEmail: string;
+};
+
+export class ControlPlaneAdminRoleBindingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ControlPlaneAdminRoleBindingError";
+  }
+}
+
+type ControlPlaneAdminRoleBindingStore = {
+  schemaVersion: 1;
+  updatedAt: string;
+  bindings: Record<string, ControlPlaneAdminRoleBinding & { principalKey: string }>;
+};
+
 type AccountVariantsStore = {
   variants: ControlPlaneAdminAccountVariantOption[];
   deletedBuiltIns: string[];
@@ -630,43 +907,18 @@ const BUILT_IN_GROUPS: ControlPlaneAdminGroupOption[] = [
   { id: "paid", label: "Paid", description: "Usuarios pagos o habilitados comercialmente.", policyId: "pro", policyLabel: "Pro", source: "built-in" },
 ];
 
-const BUILT_IN_ACCOUNT_VARIANTS: ControlPlaneAdminAccountVariantOption[] = [
-  { id: "owner", label: "Owner", description: "acceso owner y cambios rápidos", preset: "access", effects: VARIANT_PRESET_EFFECTS.access, source: "built-in" },
-  { id: "friend", label: "Amigo", description: "usuario cercano para pruebas manuales", preset: "manualTesting", effects: VARIANT_PRESET_EFFECTS.manualTesting, source: "built-in" },
-  { id: "tester", label: "Tester", description: "recibe variantes en prueba", preset: "manualTesting", effects: VARIANT_PRESET_EFFECTS.manualTesting, source: "built-in" },
-  { id: "trial", label: "Trial", description: "usuario en prueba controlada", preset: "trial", effects: VARIANT_PRESET_EFFECTS.trial, source: "built-in" },
-  { id: "debug-tools", label: "Debug tools", description: "muestra herramientas/debug avanzado", preset: "debug", effects: VARIANT_PRESET_EFFECTS.debug, source: "built-in" },
-  { id: "best-voice", label: "Best voice", description: "prioriza calidad de voz y post-proceso", preset: "voiceQuality", effects: VARIANT_PRESET_EFFECTS.voiceQuality, source: "built-in" },
-  { id: "cheap-model", label: "Cheap model", description: "prioriza costo bajo", preset: "lowCost", effects: VARIANT_PRESET_EFFECTS.lowCost, source: "built-in" },
-  { id: "new-ui", label: "New UI", description: "habilita variantes nuevas de UI", preset: "newUi", effects: VARIANT_PRESET_EFFECTS.newUi, source: "built-in" },
-  { id: "private-alpha", label: "Private alpha", description: "features alpha privadas", preset: "privateAlpha", effects: VARIANT_PRESET_EFFECTS.privateAlpha, source: "built-in" },
-];
+const BUILT_IN_ACCOUNT_VARIANTS: ControlPlaneAdminAccountVariantOption[] = CORE_BUILTIN_VARIANTS.map((variant) => ({
+  id: variant.id, label: variant.label, description: variant.description, preset: variant.preset, effects: [...variant.effects], source: variant.source,
+}));
 
-const BUILT_IN_PROMPTS: ControlPlaneAdminPromptOption[] = [
-  { id: "none", label: "Sin prompt", kind: "assistant", version: "v1", summary: "No aplica prompt de sistema.", content: "", source: "built-in" },
-  { id: "transcriptBase", label: "Transcript base", kind: "transcription", version: "v1", summary: "Español rioplatense técnico; conserva comandos, URLs, modelos, archivos y puntuación hablada literal.", content: "Transcribe el audio con precisión. Mantén español rioplatense cuando corresponda, conserva términos técnicos, nombres de modelos, URLs, comandos, paths y puntuación hablada cuando sea claramente intencional.", source: "built-in" },
-  { id: "postProcessBase", label: "Post-process base", kind: "postprocess", version: "v1", summary: "Limpia dictado español/bilingüe con cambios mínimos; reconstruye tokens técnicos y listas cuando está claro.", content: "Limpia el dictado manteniendo el significado. Corrige errores evidentes de STT, reconstruye términos técnicos, puntuación y listas cuando sea claro. No agregues explicaciones ni cambies intención.", source: "built-in" },
-  { id: "selectionTransformBase", label: "Selection transform base", kind: "selectionTransform", version: "v1", summary: "Reescribe el texto seleccionado según la instrucción del usuario preservando intención y formato.", content: "Aplica la instrucción del usuario al texto seleccionado. Devuelve solo el texto final transformado. Preserva formato, intención y tono salvo que la instrucción pida lo contrario.", source: "built-in" },
-  { id: "translateBase", label: "Translate base", kind: "selectionTransform", version: "v1", summary: "Traduce de forma fiel y natural, preservando significado, tono e intención.", content: "Traduce el texto de forma fiel y natural. Conserva significado, tono, formato y términos técnicos. Devuelve solo la traducción.", source: "built-in" },
-  { id: "preset.como-yo-es", label: "Preset · Como yo (español)", kind: "selectionTransform", version: "v1", summary: "Starter Fixvox para reescribir como JP en español/voseo, preservando estructura y ritmo.", content: "Reescribí este texto como lo escribiría JP, un developer argentino. Hacé correcciones muy menores solamente. Preservá la estructura, las palabras y el ritmo. Usá voseo argentino, mezcla natural de español e inglés técnico y devolvé solo el texto final, sin explicaciones.", source: "built-in" },
-  { id: "preset.corregir-texto", label: "Preset · Corregir texto", kind: "selectionTransform", version: "v1", summary: "Starter Fixvox para corregir gramática, ortografía y claridad sin cambiar estilo.", content: "Corregí la gramática, ortografía y claridad. Mantené el significado y estilo. Devolvé solo el texto corregido, sin explicaciones.", source: "built-in" },
-  { id: "preset.fix-writing", label: "Preset · Fix Writing", kind: "selectionTransform", version: "v1", summary: "Starter Fixvox para corregir writing en inglés preservando tono e idioma.", content: "Fix grammar, spelling, and clarity in the following text. Keep the original tone and language. Return only the corrected text, no explanations.", source: "built-in" },
-  { id: "preset.like-me-en", label: "Preset · Like me (English)", kind: "selectionTransform", version: "v1", summary: "Starter Fixvox para reescribir/traducir al inglés estilo JP, no nativo, directo y conversacional.", content: "Rewrite this text as JP would write it in English. Always return English text. Preserve meaning, structure, wording choices and rhythm as much as possible. Make only minor fixes when clearly wrong. Return only the fixed text, no explanations.", source: "built-in" },
-  { id: "assistant.quickChat", label: "Assistant quick chat", kind: "assistant", version: "v1", summary: "Respuesta rápida de bajo costo para assistant/default targets.", content: "Respondé de forma breve, útil y directa.", source: "built-in" },
-];
+const BUILT_IN_PROMPTS: ControlPlaneAdminPromptOption[] = CORE_BUILTIN_PROMPTS.map((prompt) => ({
+  id: prompt.id, label: prompt.label, kind: prompt.kind, version: prompt.version, summary: prompt.summary, content: prompt.body, source: prompt.source,
+}));
 
-const BUILT_IN_POLICY_ENGINES: ControlPlaneAdminEngineOption[] = [
-  { id: "stt-off", label: "STT off", kind: "transcription", tier: "off", provider: "none", model: "off", notes: "No usa transcripción managed.", promptKey: "none", promptSummary: "Sin prompt.", source: "built-in" },
-  { id: "stt-groq-whisper-turbo", label: "Groq Whisper Turbo", kind: "transcription", tier: "balanced", provider: "groq", model: "whisper-large-v3-turbo", notes: "Default histórico de Fixvox: mejor balance calidad/precio/velocidad para dictado managed.", promptKey: "transcriptBase", promptSummary: "Español rioplatense técnico; conserva comandos, URLs, modelos, archivos y puntuación hablada literal.", source: "built-in" },
-  { id: "postprocess-off", label: "Postprocess off", kind: "postprocess", tier: "off", provider: "none", model: "off", notes: "Sin post-proceso managed.", promptKey: "none", promptSummary: "Sin prompt.", source: "built-in" },
-  { id: "postprocess-groq-gpt-oss-120b", label: "Groq GPT-OSS 120B post", kind: "postprocess", tier: "balanced", provider: "groq", model: "openai/gpt-oss-120b", notes: "Default histórico de post-proceso: buena calidad/precio/velocidad para cleanup bilingüe.", promptKey: "postProcessBase", promptSummary: "Limpia dictado español/bilingüe con cambios mínimos; reconstruye tokens técnicos y listas cuando está claro.", source: "built-in" },
-  { id: "transform-off", label: "Transform off", kind: "selectionTransform", tier: "off", provider: "none", model: "off", notes: "Sin transformación de selección managed.", promptKey: "none", promptSummary: "Sin prompt.", source: "built-in" },
-  { id: "transform-groq-llama-70b", label: "Groq Llama 70B transform", kind: "selectionTransform", tier: "balanced", provider: "groq", model: "llama-3.3-70b-versatile", notes: "Default histórico para traducción/transformación de selección.", promptKey: "selectionTransformBase", promptSummary: "Reescribe el texto seleccionado según la instrucción del usuario preservando intención y formato.", source: "built-in" },
-  { id: "translate-groq-llama-70b", label: "Groq Llama 70B translate", kind: "selectionTransform", tier: "balanced", provider: "groq", model: "llama-3.3-70b-versatile", notes: "Ruta histórica de traducción natural/fiel.", promptKey: "translateBase", promptSummary: "Traduce de forma fiel y natural, preservando significado, tono e intención.", source: "built-in" },
-  { id: "assistant-groq-8b-instant", label: "Groq 8B assistant", kind: "postprocess", tier: "cheap", provider: "groq", model: "llama-3.1-8b-instant", notes: "Ruta histórica barata/rápida para assistant/default targets; disponible para profiles económicos.", promptKey: "assistant.quickChat", promptSummary: "Prompt base vacío en política actual; útil para respuestas rápidas de bajo costo.", source: "built-in" },
-  { id: "postprocess-openrouter-premium", label: "OpenRouter post premium", kind: "postprocess", tier: "premium", provider: "openrouter", model: "anthropic/claude-sonnet-4", notes: "Opción premium editable para cuentas habilitadas; no era el default histórico.", promptKey: "postProcessBase", promptSummary: "Mismo prompt de cleanup; modelo premium para mayor calidad cuando justifique costo.", source: "built-in" },
-  { id: "transform-openrouter-premium", label: "OpenRouter transform premium", kind: "selectionTransform", tier: "premium", provider: "openrouter", model: "anthropic/claude-sonnet-4", notes: "Opción premium editable para transformación/traducción avanzada; no era el default histórico.", promptKey: "selectionTransformBase", promptSummary: "Mismo prompt de transformación; modelo premium para casos habilitados.", source: "built-in" },
-];
+const BUILT_IN_POLICY_ENGINES: ControlPlaneAdminEngineOption[] = CORE_BUILTIN_ENGINES.map((engine) => ({
+  id: engine.id, label: engine.label, kind: engine.kind, tier: engine.tier, provider: engine.provider, model: engine.model,
+  notes: engine.notes, promptKey: engine.promptKey, promptSummary: engine.promptSummary, source: engine.source,
+}));
 
 const BUILT_IN_POLICY_ASSIGNMENTS: Record<string, PolicyProfileAssignment> = {
   "alpha-basic": {
@@ -684,6 +936,15 @@ const BUILT_IN_POLICY_ASSIGNMENTS: Record<string, PolicyProfileAssignment> = {
   pro: {
     uiProfile: "alpha-full",
     capabilityProfile: "full",
+    quotaProfile: "pro-unlimited",
+    llmProfile: "pro-best-voice",
+    voiceRoutingProfile: "pro-post-process",
+    promptProfile: "pro-prompts",
+    settingsDefaultsProfile: "alpha-lulu",
+  },
+  "power-admin": {
+    uiProfile: "alpha-full",
+    capabilityProfile: "power",
     quotaProfile: "pro-unlimited",
     llmProfile: "pro-best-voice",
     voiceRoutingProfile: "pro-post-process",
@@ -728,6 +989,17 @@ const BUILT_IN_POLICY_PROFILES: Record<string, Record<string, Record<string, unk
         "presets.edit": true,
         "presets.run": true,
         "results.history": true,
+      },
+    },
+    power: {
+      features: {
+        "assistant.mode": true,
+        "assistant.quickChat": true,
+        "presets.edit": true,
+        "presets.run": true,
+        "results.history": true,
+        "admin.settings": true,
+        debugTools: true,
       },
     },
   },
@@ -924,9 +1196,37 @@ function productCapabilitiesForPolicyTemplate(policyId: string | null): string[]
         "managed_stt",
         "managed_llm",
       ];
-    case "alpha-full":
+    case "alpha-basic":
     case "dictation-basic":
       return ["dictation", "postprocess", "managed_stt", "managed_llm"];
+    case "alpha-full":
+      return [
+        "translate",
+        "dictation",
+        "postprocess",
+        "selection_transform",
+        "assistant_actions",
+        "custom_prompts",
+        "advanced_settings",
+        "managed_stt",
+        "managed_llm",
+      ];
+    case "power-admin":
+    case "power":
+    case "admin":
+      return [
+        "translate",
+        "dictation",
+        "postprocess",
+        "selection_transform",
+        "assistant_actions",
+        "custom_prompts",
+        "advanced_settings",
+        "debug_tools",
+        "managed_stt",
+        "managed_llm",
+        "admin_settings",
+      ];
     case "translate-only":
       return ["translate", "managed_llm"];
     default:
@@ -934,7 +1234,7 @@ function productCapabilitiesForPolicyTemplate(policyId: string | null): string[]
   }
 }
 
-function buildDeviceRegisterAuthPolicy(record: DeviceRecord, providers: string[]): DeviceRegisterResponse["auth"] {
+function buildDeviceRegisterAuthPolicy(record: DeviceRecord, providers: string[], capabilities?: FixvoxProfileCapability[]): DeviceRegisterResponse["auth"] {
   if (record.accountId) {
     return {
       required: false,
@@ -946,7 +1246,7 @@ function buildDeviceRegisterAuthPolicy(record: DeviceRecord, providers: string[]
       groupLabel: record.policyLabel ?? "Basic",
       policyTemplateId: record.policyId ?? "basic-anonymous",
       policyTemplateLabel: record.policyLabel ?? "Basic",
-      capabilities: productCapabilitiesForPolicyTemplate(record.policyId),
+      capabilities: capabilities ?? productCapabilitiesForPolicyTemplate(record.policyId),
       redacted: true,
     };
   }
@@ -973,6 +1273,118 @@ async function buildAccountHandle(accountId: string): Promise<string> {
   return `acc_${hex.slice(0, 16)}`;
 }
 
+function normalizeAdminEmail(value: string): string {
+  const email = value.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new ControlPlaneAdminRoleBindingError("invalid admin email");
+  return email;
+}
+
+function redactAdminEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  return `${local[0] ?? "u"}…@${domain}`;
+}
+
+async function adminPrincipalKey(email: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`admin-role:${email}`));
+  const hex = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `arp_${hex}`;
+}
+
+async function readControlPlaneAdminRoleBindingStore(
+  store: KvNamespaceLike,
+  { bootstrapOwnerEmail }: ControlPlaneAdminRoleBindingOptions,
+): Promise<ControlPlaneAdminRoleBindingStore> {
+  const raw = await store.get(CONTROL_PLANE_ROLE_STORE_KEY);
+  if (raw) {
+    const parsed = JSON.parse(raw) as ControlPlaneAdminRoleBindingStore;
+    if (parsed?.schemaVersion !== 1 || !parsed.bindings || typeof parsed.bindings !== "object") {
+      throw new ControlPlaneAdminRoleBindingError("invalid control-plane role store");
+    }
+    return parsed;
+  }
+  const email = normalizeAdminEmail(bootstrapOwnerEmail);
+  const principalKey = await adminPrincipalKey(email);
+  const seeded: ControlPlaneAdminRoleBindingStore = {
+    schemaVersion: 1,
+    updatedAt: new Date().toISOString(),
+    bindings: { [principalKey]: { principalKey, emailRedacted: redactAdminEmail(email), role: "owner" } },
+  };
+  await store.put(CONTROL_PLANE_ROLE_STORE_KEY, JSON.stringify(seeded));
+  return seeded;
+}
+
+function roleBindingList(value: ControlPlaneAdminRoleBindingStore): ControlPlaneAdminRoleBindingList {
+  return {
+    bindings: Object.values(value.bindings)
+      .map(({ emailRedacted, role }) => ({ emailRedacted, role }))
+      .sort((left, right) => left.emailRedacted.localeCompare(right.emailRedacted)),
+  };
+}
+
+async function writeControlPlaneAdminRoleBindingStore(store: KvNamespaceLike, value: ControlPlaneAdminRoleBindingStore): Promise<void> {
+  value.updatedAt = new Date().toISOString();
+  await store.put(CONTROL_PLANE_ROLE_STORE_KEY, JSON.stringify(value));
+}
+
+export async function listControlPlaneAdminRoleBindings(
+  store: KvNamespaceLike,
+  options: ControlPlaneAdminRoleBindingOptions,
+): Promise<ControlPlaneAdminRoleBindingList> {
+  return roleBindingList(await readControlPlaneAdminRoleBindingStore(store, options));
+}
+
+export async function getControlPlaneAdminRoleForPrincipalKey(
+  store: KvNamespaceLike,
+  options: ControlPlaneAdminRoleBindingOptions & { principalKey: string },
+): Promise<ControlPlaneAdminRole | null> {
+  const value = await readControlPlaneAdminRoleBindingStore(store, options);
+  return value.bindings[options.principalKey]?.role ?? null;
+}
+
+async function requireControlPlaneOwner(
+  value: ControlPlaneAdminRoleBindingStore,
+  actorEmail: string,
+): Promise<void> {
+  const actorKey = await adminPrincipalKey(normalizeAdminEmail(actorEmail));
+  if (value.bindings[actorKey]?.role !== "owner") throw new ControlPlaneAdminRoleBindingError("owner role required");
+}
+
+function ownerCount(value: ControlPlaneAdminRoleBindingStore): number {
+  return Object.values(value.bindings).filter((binding) => binding.role === "owner").length;
+}
+
+export async function setControlPlaneAdminRoleBinding(
+  store: KvNamespaceLike,
+  input: SetControlPlaneAdminRoleBindingInput,
+): Promise<ControlPlaneAdminRoleBindingList> {
+  const value = await readControlPlaneAdminRoleBindingStore(store, input);
+  await requireControlPlaneOwner(value, input.actorEmail);
+  const subjectEmail = normalizeAdminEmail(input.subjectEmail);
+  const principalKey = await adminPrincipalKey(subjectEmail);
+  const current = value.bindings[principalKey];
+  if (current?.role === "owner" && input.role !== "owner" && ownerCount(value) === 1) {
+    throw new ControlPlaneAdminRoleBindingError("cannot demote the final owner");
+  }
+  value.bindings[principalKey] = { principalKey, emailRedacted: redactAdminEmail(subjectEmail), role: input.role };
+  await writeControlPlaneAdminRoleBindingStore(store, value);
+  return roleBindingList(value);
+}
+
+export async function removeControlPlaneAdminRoleBinding(
+  store: KvNamespaceLike,
+  input: RemoveControlPlaneAdminRoleBindingInput,
+): Promise<ControlPlaneAdminRoleBindingList> {
+  const value = await readControlPlaneAdminRoleBindingStore(store, input);
+  await requireControlPlaneOwner(value, input.actorEmail);
+  const principalKey = await adminPrincipalKey(normalizeAdminEmail(input.subjectEmail));
+  if (value.bindings[principalKey]?.role === "owner" && ownerCount(value) === 1) {
+    throw new ControlPlaneAdminRoleBindingError("cannot remove the final owner");
+  }
+  delete value.bindings[principalKey];
+  await writeControlPlaneAdminRoleBindingStore(store, value);
+  return roleBindingList(value);
+}
+
 function buildAccountPolicyKey(accountHandle: string): string {
   return `control:account:${accountHandle}:policy`;
 }
@@ -993,7 +1405,7 @@ function buildAccountVariantsKey(): string {
   return "control:account:variants";
 }
 
-function redactLongIdentifier(value: string | null | undefined): string {
+export function redactLongIdentifier(value: string | null | undefined): string {
   const candidate = value?.trim() ?? "";
   if (!candidate || candidate.length <= 10) return "redacted";
   return `${candidate.slice(0, 6)}…${candidate.slice(-4)}`;
@@ -1003,7 +1415,7 @@ function redactAccountId(_accountId: string): string {
   return "account redacted";
 }
 
-function redactAccountUser(accountId: string): { userRedacted: string; userEmail: string | null; provider: string | null } {
+function redactAccountUser(accountId: string): { userRedacted: string; userEmailRedacted: string | null; provider: string | null } {
   const [providerRaw = "", ...rest] = accountId.split(":");
   const provider = providerRaw.trim().toLowerCase() || null;
   const value = rest.join(":").trim();
@@ -1011,10 +1423,10 @@ function redactAccountUser(accountId: string): { userRedacted: string; userEmail
     const email = value.toLowerCase();
     const [local, domain] = email.split("@");
     const initial = local?.[0] ?? "u";
-    return { provider, userEmail: email, userRedacted: `${initial}…@${domain}` };
+    return { provider, userEmailRedacted: `${initial}…@${domain}`, userRedacted: `${initial}…@${domain}` };
   }
-  if (provider === "google") return { provider, userEmail: null, userRedacted: "google user redacted" };
-  return { provider, userEmail: null, userRedacted: "user redacted" };
+  if (provider === "google") return { provider, userEmailRedacted: null, userRedacted: "google user redacted" };
+  return { provider, userEmailRedacted: null, userRedacted: "user redacted" };
 }
 
 function buildFeedbackKey(id: string): string {
@@ -1184,18 +1596,6 @@ function buildActionUsageWindow(events: UsageEvent[], nowMs: number, windowMs: n
   };
 }
 
-function deriveQuotaState(windows: Record<ManagedUsageWindowName, ManagedUsageWindow>): Pick<ManagedQuotaLimits, "state" | "blockedWindow"> {
-  const blockedWindow = windows.rolling5h.remaining <= 0 ? "rolling5h" : windows.weekly.remaining <= 0 ? "weekly" : null;
-  const lowestRemainingRatio = Math.min(
-    windows.rolling5h.limit > 0 ? windows.rolling5h.remaining / windows.rolling5h.limit : 0,
-    windows.weekly.limit > 0 ? windows.weekly.remaining / windows.weekly.limit : 0,
-  );
-  return {
-    blockedWindow,
-    state: blockedWindow ? (windows.rolling5h.limit === 0 || windows.weekly.limit === 0 ? "paused" : "blocked") : lowestRemainingRatio <= 0.15 ? "almost_used" : "ok",
-  };
-}
-
 function buildManagedUsageLimits(record: DeviceRecord, policy: ManagedUsagePolicy, events: UsageEvent[], nowMs: number): ManagedUsageLimits {
   const windows = {
     rolling5h: buildActionUsageWindow(events, nowMs, ROLLING_5H_MS, effectiveLimit(policy.group.rolling5hLimit, policy)),
@@ -1291,12 +1691,6 @@ function resolveUsageEstimate(payload: ExecutionPreflightPayload, kind: UsageEve
     return Math.ceil(rawEstimate);
   }
   return kind === "transcription" ? 60 : policy.estimatePerRequest;
-}
-
-function quotaWouldExceed(limits: ManagedUsageLimits | ManagedQuotaLimits, estimate: number): ManagedUsageWindowName | null {
-  if (limits.windows.rolling5h.used + estimate > limits.windows.rolling5h.limit) return "rolling5h";
-  if (limits.windows.weekly.used + estimate > limits.windows.weekly.limit) return "weekly";
-  return null;
 }
 
 function markBlocked<T extends ManagedUsageLimits | ManagedQuotaLimits>(limits: T, blockedWindow: ManagedUsageWindowName): T {
@@ -1396,21 +1790,47 @@ function buildAdminPolicyOptions(basePolicy: Record<string, unknown>): ControlPl
   return [...options.values()].sort((left, right) => left.policyId.localeCompare(right.policyId));
 }
 
+function buildAdminProfileOptions(basePolicy: Record<string, unknown>): ControlPlaneAdminProfileOption[] {
+  return buildAdminPolicyOptions(basePolicy).map((option) => ({
+    ...option,
+    capabilities: productCapabilitiesForPolicyTemplate(option.policyId),
+    profiles: buildAdminProfileAssignment(basePolicy, option.policyId),
+  }));
+}
+
+async function readControlPlaneAdminPolicyOptions(
+  store: KvNamespaceLike,
+  basePolicy: Record<string, unknown>,
+): Promise<ControlPlaneAdminPolicyOption[]> {
+  const options = new Map(buildAdminPolicyOptions(basePolicy).map((option) => [option.policyId, option]));
+  const versionStore = await readProfileVersionStore(store);
+  for (const profileId of Object.keys(versionStore.profiles)) {
+    const published = activeProfileRecord(versionStore, profileId);
+    if (!published) continue;
+    options.set(profileId, { policyId: profileId, policyLabel: published.label, source: options.get(profileId)?.source ?? "assignment" });
+  }
+  return [...options.values()].sort((left, right) => left.policyId.localeCompare(right.policyId));
+}
+
 async function buildControlPlaneAdminDeviceRow(
   store: KvNamespaceLike,
   policy: Record<string, unknown>,
   record: DeviceRecord,
 ): Promise<ControlPlaneAdminDeviceRow> {
+  const policyOptions = await readControlPlaneAdminPolicyOptions(store, policy);
   return {
     deviceId: record.deviceId,
     installId: record.installId,
+    accountHandle: record.accountId ? await buildAccountHandle(record.accountId) : null,
     policyId: record.policyId,
-    policyLabel: record.policyLabel,
+    policyLabel: record.policyId
+      ? resolvePolicyOptionLabel(policyOptions, record.policyId, record.policyLabel)
+      : record.policyLabel,
     cohorts: record.cohorts,
     status: record.status,
     lastSeenAt: record.lastSeenAt,
     profiles: buildAdminProfileAssignment(policy, record.policyId),
-    limits: await buildDeviceLimits(store, policy, record),
+    limits: await buildDeviceLimits(store, await resolvePublishedRuntimePolicy(store, policy, record.policyId), record),
   };
 }
 
@@ -1731,6 +2151,659 @@ function sanitizePolicyBudgetsMap(value: Record<string, unknown>): Record<string
   return Object.fromEntries(Object.entries(value).map(([policyId, budget]) => [policyId, sanitizePolicyBudget(budget, policyId)]));
 }
 
+function flattenProfileDefaults(value: Record<string, unknown>): ProfileDefinition["defaults"] {
+  const defaults: ProfileDefinition["defaults"] = {};
+  for (const setting of FIXVOX_PROFILE_USER_SETTINGS) {
+    const [group, key] = setting.split(".");
+    const groupValue = readNestedRecord(value, group);
+    const settingValue = groupValue?.[key];
+    if (typeof settingValue === "string" || typeof settingValue === "number" || typeof settingValue === "boolean") {
+      defaults[setting] = settingValue;
+    }
+  }
+  return defaults;
+}
+
+function activeProfileRecord(store: ProfileVersionStore, profileId: string): ProfileDefinition | null {
+  const entry = store.profiles[profileId];
+  if (!entry || entry.activeVersion === null) return null;
+  return entry.history.find((version) => version.version === entry.activeVersion) ?? null;
+}
+
+function applyPublishedProfileDefinition(basePolicy: Record<string, unknown>, definition: ProfileDefinition | null): Record<string, unknown> {
+  if (!definition) return basePolicy;
+  const defaults: Record<string, Record<string, ProfileDefaultValue>> = {};
+  for (const [setting, value] of Object.entries(definition.defaults)) {
+    const [group, key] = setting.split(".");
+    defaults[group] ??= {};
+    defaults[group][key] = value;
+  }
+  const capabilities = new Set(definition.access.capabilities);
+  const patch: Record<string, unknown> = {
+    features: {
+      "assistant.mode": capabilities.has("assistant_actions"),
+      "assistant.quickChat": capabilities.has("assistant_actions"),
+      "presets.edit": capabilities.has("custom_prompts"),
+      "presets.run": capabilities.has("selection_transform"),
+    },
+    ui: {
+      showAdvancedSettings: capabilities.has("advanced_settings"),
+      showDebugTools: capabilities.has("debug_tools"),
+    },
+    userSettingsDefaults: defaults,
+  };
+  if (definition.limits.quotaProfile) {
+    patch.policyAssignments = { [definition.profileId]: { quotaProfile: definition.limits.quotaProfile } };
+  }
+  const next = cloneJsonRecord(basePolicy);
+  mergeJsonRecord(next, patch);
+  return next;
+}
+
+async function resolvePublishedRuntimePolicy(
+  store: KvNamespaceLike,
+  basePolicy: Record<string, unknown>,
+  profileId: string | null,
+): Promise<Record<string, unknown>> {
+  const composed = applyPolicyProfiles(basePolicy, profileId);
+  if (!profileId) return composed;
+  const versionStore = await readProfileVersionStore(store);
+  return applyPublishedProfileDefinition(composed, activeProfileRecord(versionStore, profileId));
+}
+
+function profileRecord(store: ProfileVersionStore, profileId: string): ControlPlaneAdminProfileRecord | null {
+  const entry = store.profiles[profileId];
+  if (!entry) return null;
+  const published = activeProfileRecord(store, profileId);
+  return {
+    profileId,
+    label: entry.draft?.label ?? published?.label ?? profileId,
+    published: published ? cloneJsonRecord(published) : null,
+    draft: entry.draft ? cloneJsonRecord(entry.draft) : null,
+    history: entry.history.map((version) => cloneJsonRecord(version)),
+  };
+}
+
+async function resolveEffectiveProfileSeedInputs(store: KvNamespaceLike): Promise<EffectiveProfileSeedInput[]> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const basePolicy = runtimePolicy.policy as Record<string, unknown>;
+  const storedConfig = await readAccountVariantsStore(store);
+  const engines = await readPolicyEngineOptions(store);
+  const prompts = await readPromptOptions(store);
+
+  return buildAdminPolicyOptions(basePolicy).map((option) => {
+    const selection = sanitizePolicyEngineSelection(storedConfig.policyEngines[option.policyId], engines, option.policyId);
+    const assignment = buildAdminProfileAssignment(basePolicy, option.policyId);
+    const effectivePolicy = applyPolicyProfiles(basePolicy, option.policyId);
+    const settingsDefaults = readNestedRecord(effectivePolicy, "userSettingsDefaults") ?? {};
+    const operation = (kind: ControlPlaneAdminEngineKind): ProfileRuntimeOperation => {
+      const engineId = selection[kind] ?? defaultEngineId(kind);
+      const engine = engines.find((candidate) => candidate.kind === kind && candidate.id === engineId);
+      const promptId = engine?.promptKey && prompts.some((prompt) => prompt.id === engine.promptKey) ? engine.promptKey : undefined;
+      return { engineId, ...(promptId ? { promptId } : {}) };
+    };
+    const budget = sanitizePolicyBudget(storedConfig.policyBudgets[option.policyId], option.policyId);
+    return {
+      profileId: option.policyId,
+      label: option.policyLabel,
+      access: { capabilities: productCapabilitiesForPolicyTemplate(option.policyId) as FixvoxProfileCapability[] },
+      runtime: {
+        transcription: operation("transcription"),
+        postprocess: operation("postprocess"),
+        selectionTransform: operation("selectionTransform"),
+      },
+      limits: {
+        ...(budget.dailyUsd === null ? {} : { dailyUsd: budget.dailyUsd }),
+        ...(budget.monthlyUsd === null ? {} : { monthlyUsd: budget.monthlyUsd }),
+        mode: budget.mode,
+        ...(assignment.quotaProfile ? { quotaProfile: assignment.quotaProfile } : {}),
+      },
+      userControls: Object.fromEntries(FIXVOX_PROFILE_USER_SETTINGS.map((setting) => [setting, "editable"])) as ProfileDefinition["userControls"],
+      defaults: flattenProfileDefaults(settingsDefaults),
+    };
+  });
+}
+
+function toMaterializedProfileInput(input: EffectiveProfileSeedInput): MaterializedProfileInput {
+  return {
+    profileId: input.profileId,
+    label: input.label,
+    capabilities: [...input.access.capabilities],
+    version: 1,
+    status: "published",
+    runtime: {
+      transcription: input.runtime.transcription.promptId === undefined ? { engineId: input.runtime.transcription.engineId } : { engineId: input.runtime.transcription.engineId, promptId: input.runtime.transcription.promptId },
+      postprocess: input.runtime.postprocess.promptId === undefined ? { engineId: input.runtime.postprocess.engineId } : { engineId: input.runtime.postprocess.engineId, promptId: input.runtime.postprocess.promptId },
+      selectionTransform: input.runtime.selectionTransform.promptId === undefined ? { engineId: input.runtime.selectionTransform.engineId } : { engineId: input.runtime.selectionTransform.engineId, promptId: input.runtime.selectionTransform.promptId },
+    },
+    limits: { ...input.limits },
+    userControls: { ...input.userControls },
+    defaults: { ...input.defaults },
+  };
+}
+
+function toWorkerProfileDefinition(input: ReturnType<typeof materializeBuiltinProfileVersions>[number]): ProfileDefinition {
+  return {
+    schemaVersion: input.schemaVersion, profileId: input.profileId, label: input.label, version: input.version, status: input.status,
+    access: { capabilities: [...input.access.capabilities] },
+    runtime: {
+      transcription: input.runtime.transcription.promptId === undefined ? { engineId: input.runtime.transcription.engineId } : { engineId: input.runtime.transcription.engineId, promptId: input.runtime.transcription.promptId },
+      postprocess: input.runtime.postprocess.promptId === undefined ? { engineId: input.runtime.postprocess.engineId } : { engineId: input.runtime.postprocess.engineId, promptId: input.runtime.postprocess.promptId },
+      selectionTransform: input.runtime.selectionTransform.promptId === undefined ? { engineId: input.runtime.selectionTransform.engineId } : { engineId: input.runtime.selectionTransform.engineId, promptId: input.runtime.selectionTransform.promptId },
+    },
+    limits: { ...input.limits }, userControls: { ...input.userControls } as ProfileDefinition["userControls"], defaults: { ...input.defaults } as ProfileDefinition["defaults"],
+  };
+}
+
+async function seedProfileVersionStore(store: KvNamespaceLike): Promise<ProfileVersionStore> {
+  const profiles: ProfileVersionStore["profiles"] = {};
+
+  for (const materialized of materializeBuiltinProfileVersions((await resolveEffectiveProfileSeedInputs(store)).map(toMaterializedProfileInput))) {
+    const definition = toWorkerProfileDefinition(materialized);
+    profiles[definition.profileId] = { activeVersion: 1, draft: null, history: [definition] };
+  }
+
+  // Reads must stay write-free. The profile mutation Durable Object persists this seed
+  // as part of the first serialized draft/publish/rollback mutation.
+  return { schemaVersion: 1, updatedAt: new Date().toISOString(), profiles };
+}
+
+async function readProjectionRevision(store: KvNamespaceLike, key: string): Promise<number | null> {
+  const raw = await store.get(key);
+  if (raw === null) return null;
+  const parsed = parseJson<unknown>(raw, null);
+  if (!isPlainRecord(parsed) || !Object.hasOwn(parsed, "projection") || !isPlainRecord(parsed.projection)) {
+    throw new ControlPlaneProfileProjectionUnavailableError();
+  }
+  const revision = parsed.projection.authorityRevision;
+  if (!Number.isSafeInteger(revision) || (revision as number) < 0) {
+    throw new ControlPlaneProfileProjectionUnavailableError();
+  }
+  return revision as number;
+}
+
+async function assertProjectionRevisionCommitted(
+  store: KvNamespaceLike,
+  projection: { authorityRevision: number } | undefined,
+  peerKey?: string,
+): Promise<void> {
+  if (!projection) return;
+  if (!Number.isSafeInteger(projection.authorityRevision) || projection.authorityRevision < 0) {
+    throw new ControlPlaneProfileProjectionUnavailableError();
+  }
+  const marker = parseJson<{ schemaVersion?: unknown; authorityRevision?: unknown } | null>(
+    await store.get(CONTROL_PLANE_PROFILE_PROJECTION_COMMIT_KEY),
+    null,
+  );
+  if (marker?.schemaVersion !== 1 || marker.authorityRevision !== projection.authorityRevision) {
+    throw new ControlPlaneProfileProjectionUnavailableError();
+  }
+  if (peerKey !== undefined && await readProjectionRevision(store, peerKey) !== projection.authorityRevision) {
+    throw new ControlPlaneProfileProjectionUnavailableError();
+  }
+}
+
+async function assertLegacyProjection(store: KvNamespaceLike): Promise<void> {
+  // A missing/unrevisioned value is only valid before the projection marker
+  // exists. Once a marker exists, accepting a missing or legacy-shaped value
+  // would turn a partial projection into a synthetic seed and hide history.
+  if (await store.get(CONTROL_PLANE_PROFILE_PROJECTION_COMMIT_KEY) !== null) {
+    throw new ControlPlaneProfileProjectionUnavailableError();
+  }
+}
+
+async function readProfileVersionStore(store: KvNamespaceLike): Promise<ProfileVersionStore> {
+  const raw = await store.get(PROFILE_VERSION_STORE_KEY);
+  if (raw === null) {
+    await assertLegacyProjection(store);
+    return seedProfileVersionStore(store);
+  }
+  const parsed = parseJson<unknown>(raw, null);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || (parsed as { schemaVersion?: unknown }).schemaVersion !== 1
+    || !(parsed as { profiles?: unknown }).profiles
+    || typeof (parsed as { profiles?: unknown }).profiles !== "object"
+    || Array.isArray((parsed as { profiles?: unknown }).profiles)) {
+    throw new ControlPlaneProfileProjectionUnavailableError();
+  }
+  const versionStore = parsed as ProfileVersionStore;
+  if (Object.hasOwn(versionStore, "projection")) {
+    if (!versionStore.projection) throw new ControlPlaneProfileProjectionUnavailableError();
+    await assertProjectionRevisionCommitted(store, versionStore.projection, CONTROL_PLANE_ADMIN_AUDIT_STORE_KEY);
+  } else {
+    await assertLegacyProjection(store);
+  }
+  return versionStore;
+}
+
+async function writeProfileVersionStore(store: KvNamespaceLike, value: ProfileVersionStore): Promise<void> {
+  // The Worker routes every profile snapshot mutation through the dedicated Durable Object.
+  // This primitive intentionally remains a single-value KV write so readers see old or new JSON, never a partial snapshot.
+  value.updatedAt = new Date().toISOString();
+  await store.put(PROFILE_VERSION_STORE_KEY, JSON.stringify(value));
+}
+
+async function assertProfileResourceIsUnused(store: KvNamespaceLike, kind: "engine" | "prompt", id: string): Promise<void> {
+  const versionStore = await readProfileVersionStore(store);
+  const references = (definition: ProfileDefinition): boolean => Object.values(definition.runtime).some((operation) => (
+    kind === "engine" ? operation.engineId === id : operation.promptId === id
+  ));
+  for (const [profileId, entry] of Object.entries(versionStore.profiles)) {
+    if (entry.draft && references(entry.draft)) throw new Error(`${kind} referenced by profile draft: ${profileId}`);
+    const version = entry.history.find(references);
+    if (version) throw new Error(`${kind} referenced by profile version: ${profileId}@v${version.version}`);
+  }
+}
+
+async function normalizeProfileDefinition(
+  store: KvNamespaceLike,
+  value: unknown,
+  identity: Pick<ProfileDefinition, "profileId" | "version" | "status"> & { basedOnVersion?: number },
+): Promise<ProfileDefinition> {
+  const record = sanitizeRecord(value);
+  if (!record) throw new Error("profile definition is required");
+  const label = sanitizeString(record.label);
+  if (!label) throw new Error("profile label is required");
+
+  const access = sanitizeRecord(record.access);
+  const rawCapabilities = Array.isArray(access?.capabilities) ? access.capabilities : [];
+  const allowedCapabilities = new Set<string>(FIXVOX_PROFILE_CAPABILITIES);
+  const capabilities = [...new Set(rawCapabilities.map(sanitizeString).filter((capability): capability is string => Boolean(capability)))] as FixvoxProfileCapability[];
+  const unknownCapability = capabilities.find((capability) => !allowedCapabilities.has(capability));
+  if (unknownCapability) throw new Error(`unknown capability: ${unknownCapability}`);
+  if (capabilities.includes("managed_stt") && !capabilities.includes("dictation")) throw new Error("managed_stt requires dictation");
+  if (["postprocess", "selection_transform", "translate", "assistant_actions"].some((capability) => capabilities.includes(capability as FixvoxProfileCapability)) && !capabilities.includes("managed_llm")) {
+    throw new Error("managed runtime capabilities require managed_llm");
+  }
+
+  const engineOptions = await readPolicyEngineOptions(store);
+  const promptOptions = await readPromptOptions(store);
+  const runtime = sanitizeRecord(record.runtime);
+  const normalizeOperation = (kind: ControlPlaneAdminEngineKind): ProfileRuntimeOperation => {
+    const operation = sanitizeRecord(runtime?.[kind]);
+    const engineId = sanitizeEngineId(operation?.engineId);
+    const engine = engineId ? engineOptions.find((candidate) => candidate.kind === kind && candidate.id === engineId) : null;
+    if (!engineId || !engine) throw new Error(`unknown ${kind} engine`);
+    const promptId = sanitizeString(operation?.promptId) ?? sanitizeString(engine.promptKey);
+    if (!promptId || !promptOptions.some((prompt) => prompt.id === promptId && (prompt.id === "none" || prompt.kind === kind || (kind === "postprocess" && prompt.kind === "assistant")))) {
+      throw new Error(`unknown ${kind} prompt`);
+    }
+    return { engineId, promptId };
+  };
+
+  const limits = sanitizeRecord(record.limits);
+  const dailyUsd = limits?.dailyUsd === undefined ? undefined : sanitizeBudgetAmount(limits.dailyUsd);
+  const monthlyUsd = limits?.monthlyUsd === undefined ? undefined : sanitizeBudgetAmount(limits.monthlyUsd);
+  if (limits?.dailyUsd !== undefined && dailyUsd === null) throw new Error("invalid dailyUsd");
+  if (limits?.monthlyUsd !== undefined && monthlyUsd === null) throw new Error("invalid monthlyUsd");
+  if (limits?.mode !== "block" && limits?.mode !== "warn") throw new Error("invalid budget mode");
+  const quotaProfile = sanitizeString(limits.quotaProfile);
+
+  const allowedSettings = new Set<string>(FIXVOX_PROFILE_USER_SETTINGS);
+  const rawControls = sanitizeRecord(record.userControls) ?? {};
+  const userControls = {} as ProfileDefinition["userControls"];
+  for (const setting of FIXVOX_PROFILE_USER_SETTINGS) {
+    if (!Object.hasOwn(rawControls, setting)) throw new Error(`missing user control: ${setting}`);
+  }
+  for (const [setting, mode] of Object.entries(rawControls)) {
+    if (!allowedSettings.has(setting)) throw new Error(`unknown user control: ${setting}`);
+    if (mode !== "hidden" && mode !== "visible-locked" && mode !== "editable") throw new Error(`invalid user control: ${setting}`);
+    userControls[setting as FixvoxProfileUserSetting] = mode;
+  }
+  const rawDefaults = sanitizeRecord(record.defaults) ?? {};
+  const defaults: ProfileDefinition["defaults"] = {};
+  for (const [setting, defaultValue] of Object.entries(rawDefaults)) {
+    if (!allowedSettings.has(setting)) throw new Error(`unknown default: ${setting}`);
+    if (typeof defaultValue !== "string" && typeof defaultValue !== "number" && typeof defaultValue !== "boolean") throw new Error(`invalid default: ${setting}`);
+    defaults[setting as FixvoxProfileUserSetting] = defaultValue;
+  }
+
+  return {
+    schemaVersion: 1,
+    profileId: identity.profileId,
+    label,
+    version: identity.version,
+    status: identity.status,
+    ...(identity.basedOnVersion === undefined ? {} : { basedOnVersion: identity.basedOnVersion }),
+    access: { capabilities },
+    runtime: {
+      transcription: normalizeOperation("transcription"),
+      postprocess: normalizeOperation("postprocess"),
+      selectionTransform: normalizeOperation("selectionTransform"),
+    },
+    limits: {
+      ...(dailyUsd === undefined || dailyUsd === null ? {} : { dailyUsd }),
+      ...(monthlyUsd === undefined || monthlyUsd === null ? {} : { monthlyUsd }),
+      mode: limits.mode,
+      ...(quotaProfile ? { quotaProfile } : {}),
+    },
+    userControls,
+    defaults,
+  };
+}
+
+function previewProfileDefinitionDiff(
+  before: ProfileDefinition | null,
+  after: ProfileDefinition,
+): ControlPlaneAdminProfilePreviewDiff[] {
+  const diffs: ControlPlaneAdminProfilePreviewDiff[] = [];
+  const sections: ControlPlaneAdminProfilePreviewDiff["section"][] = ["overview", "access", "runtime", "limits", "userControls", "defaults"];
+  const compare = (section: ControlPlaneAdminProfilePreviewDiff["section"], path: string, left: unknown, right: unknown): void => {
+    if (JSON.stringify(left) === JSON.stringify(right)) return;
+    if (isPlainRecord(left) && isPlainRecord(right)) {
+      for (const key of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()) {
+        compare(section, `${path}.${key}`, left[key], right[key]);
+      }
+      return;
+    }
+    diffs.push({ section, path, before: left, after: right });
+  };
+  const left = before as unknown as Record<string, unknown> | null;
+  const right = after as unknown as Record<string, unknown>;
+  compare("overview", "label", left?.label, right.label);
+  compare("access", "access", left?.access, right.access);
+  compare("runtime", "runtime", left?.runtime, right.runtime);
+  compare("limits", "limits", left?.limits, right.limits);
+  compare("userControls", "userControls", left?.userControls, right.userControls);
+  compare("defaults", "defaults", left?.defaults, right.defaults);
+  return diffs;
+}
+
+function previewDependencyWarnings(definition: ProfileDefinition): string[] {
+  const capabilities = new Set(definition.access.capabilities);
+  const warnings: string[] = [];
+  if (capabilities.has("managed_stt") && !capabilities.has("dictation")) warnings.push("managed_stt requires dictation");
+  if (["postprocess", "selection_transform", "translate", "assistant_actions"].some((capability) => capabilities.has(capability as FixvoxProfileCapability)) && !capabilities.has("managed_llm")) {
+    warnings.push("managed runtime capabilities require managed_llm");
+  }
+  return warnings;
+}
+
+async function previewProfilePricing(
+  store: KvNamespaceLike,
+  definition: ProfileDefinition,
+): Promise<ControlPlaneAdminProfilePreview["pricing"]> {
+  const engines = await readPolicyEngineOptions(store);
+  const operations: Array<[ControlPlaneAdminEngineKind, ProfileRuntimeOperation]> = [
+    ["transcription", definition.runtime.transcription],
+    ["postprocess", definition.runtime.postprocess],
+    ["selectionTransform", definition.runtime.selectionTransform],
+  ];
+  const rows = await Promise.all(operations.map(async ([operation, runtime]) => {
+    const engine = engines.find((candidate) => candidate.id === runtime.engineId && candidate.kind === operation);
+    const provider = engine?.provider ?? "";
+    const model = engine?.model ?? "";
+    const billable = Boolean(provider && provider !== "none" && model && model !== "off");
+    const cached = billable ? await getPricingRecord(store, provider, model) : null;
+    return {
+      operation,
+      engineId: runtime.engineId,
+      provider,
+      model,
+      status: billable ? cached?.status ?? "missing" : "not-applicable",
+      checkedAt: cached?.checkedAt ?? null,
+      inputPrice: cached?.inputPrice ?? null,
+      outputPrice: cached?.outputPrice ?? null,
+    };
+  }));
+  const billable = rows.filter((row) => row.status !== "not-applicable");
+  const cached = billable.filter((row) => row.status !== "missing");
+  const availability = billable.length > 0 && cached.length === billable.length
+    ? "available"
+    : cached.length > 0
+      ? "partial"
+      : "unavailable";
+  const checkedAt = cached.map((row) => row.checkedAt).filter((value): value is string => Boolean(value)).sort().at(-1) ?? null;
+  return { availability, cachedAt: checkedAt, targets: rows };
+}
+
+export async function previewControlPlaneAdminProfile(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminProfilePreviewPayload,
+): Promise<ControlPlaneAdminProfilePreview> {
+  const profileId = sanitizeVariantId(payload.profileId);
+  if (!profileId) throw new Error("profileId is required");
+  const versionStore = await readProfileVersionStore(store);
+  const entry = versionStore.profiles[profileId];
+  if (!entry?.draft) throw new Error("profile draft not found");
+
+  const requestedDeviceId = sanitizeString(payload.deviceId);
+  const requestedAccountHandle = sanitizeString(payload.accountHandle);
+  const records = await readRecentDeviceRecords(store);
+  const runtimePolicy = await getRuntimePolicy(store);
+  const resolved = await Promise.all(records.map(async (record) => ({
+    record,
+    profile: await resolveEffectiveRuntimeProfile(store, runtimePolicy.policy as Record<string, unknown>, record),
+  })));
+  const affected = resolved.filter(({ profile }) => profile.policyId === profileId);
+  const affectedAccounts = new Set(affected.map(({ record }) => record.accountId).filter((accountId): accountId is string => Boolean(accountId)));
+  const target = requestedDeviceId
+    ? resolved.find(({ record }) => record.deviceId === requestedDeviceId) ?? null
+    : requestedAccountHandle
+      ? resolved.find(({ profile }) => profile.accountHandle === requestedAccountHandle) ?? null
+      : null;
+  if ((requestedDeviceId || requestedAccountHandle) && !target) throw new Error("preview target not found");
+
+  return {
+    profileId,
+    draftVersion: entry.draft.version,
+    activeVersion: entry.activeVersion,
+    diff: previewProfileDefinitionDiff(activeProfileRecord(versionStore, profileId), entry.draft),
+    warnings: previewDependencyWarnings(entry.draft),
+    impact: {
+      accounts: affectedAccounts.size,
+      devices: affected.length,
+      groups: (await readGroupOptions(store)).filter((group) => group.policyId === profileId).length,
+    },
+    selectedTarget: {
+      accountHandle: target?.profile.accountHandle ?? null,
+      deviceId: target?.record.deviceId ?? null,
+      profileId,
+      policySource: target?.profile.policySource ?? null,
+      routing: target ? { ...entry.draft.runtime } : null,
+    },
+    pricing: await previewProfilePricing(store, entry.draft),
+  };
+}
+
+export async function listControlPlaneAdminProfiles(store: KvNamespaceLike): Promise<ControlPlaneAdminProfileList> {
+  const versionStore = await readProfileVersionStore(store);
+  return {
+    ok: true,
+    schemaVersion: 1,
+    updatedAt: versionStore.updatedAt,
+    profiles: Object.keys(versionStore.profiles).sort().map((profileId) => profileRecord(versionStore, profileId)).filter((profile): profile is ControlPlaneAdminProfileRecord => Boolean(profile)),
+  };
+}
+
+export async function createControlPlaneAdminProfileDraft(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminProfileDraftPayload,
+): Promise<ControlPlaneAdminProfileRecord> {
+  const sourceProfileId = sanitizeVariantId(payload.profileId);
+  const draftProfileId = sanitizeVariantId(payload.draftProfileId) ?? sourceProfileId;
+  if (!sourceProfileId || !draftProfileId) throw new Error("profileId is required");
+  const versionStore = await readProfileVersionStore(store);
+  const source = activeProfileRecord(versionStore, sourceProfileId);
+  if (!source) throw new Error("profile not found");
+  const existing = versionStore.profiles[draftProfileId];
+  if (existing?.draft) return profileRecord(versionStore, draftProfileId) as ControlPlaneAdminProfileRecord;
+  if (draftProfileId !== sourceProfileId && existing) throw new Error("profile already exists");
+
+  const nextVersion = existing?.history.length ? Math.max(...existing.history.map((version) => version.version)) + 1 : 1;
+  const draft: ProfileDefinition = {
+    ...cloneJsonRecord(source),
+    profileId: draftProfileId,
+    label: sanitizeString(payload.label) ?? source.label,
+    version: nextVersion,
+    status: "draft",
+    basedOnVersion: source.version,
+  };
+  versionStore.profiles[draftProfileId] = { activeVersion: existing?.activeVersion ?? null, draft, history: existing?.history ?? [] };
+  await writeProfileVersionStore(store, versionStore);
+  return profileRecord(versionStore, draftProfileId) as ControlPlaneAdminProfileRecord;
+}
+
+export async function saveControlPlaneAdminProfileDraft(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminProfileDraftPayload,
+): Promise<ControlPlaneAdminProfileRecord> {
+  const profileId = sanitizeVariantId(payload.profileId);
+  if (!profileId) throw new Error("profileId is required");
+  const versionStore = await readProfileVersionStore(store);
+  const entry = versionStore.profiles[profileId];
+  if (!entry?.draft) throw new Error("profile draft not found");
+  entry.draft = await normalizeProfileDefinition(store, payload.definition, {
+    profileId,
+    version: entry.draft.version,
+    status: "draft",
+    ...(entry.draft.basedOnVersion === undefined ? {} : { basedOnVersion: entry.draft.basedOnVersion }),
+  });
+  await writeProfileVersionStore(store, versionStore);
+  return profileRecord(versionStore, profileId) as ControlPlaneAdminProfileRecord;
+}
+
+export async function discardControlPlaneAdminProfileDraft(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminProfileDiscardPayload,
+): Promise<ControlPlaneAdminProfileDiscardResult> {
+  const profileId = sanitizeVariantId(payload.profileId);
+  if (!profileId) throw new Error("profileId is required");
+  const versionStore = await readProfileVersionStore(store);
+  const entry = versionStore.profiles[profileId];
+  if (!entry?.draft) throw new Error("profile draft not found");
+  const draftVersion = entry.draft.version;
+  if (payload.expectedDraftVersion !== draftVersion) throw new ControlPlaneAdminProfileStaleError();
+  if (payload.confirmation !== `DISCARD ${profileId} v${draftVersion}`) throw new Error("invalid discard confirmation");
+  const publishedVersion = entry.activeVersion;
+  entry.draft = null;
+  if (publishedVersion === null && entry.history.length === 0) delete versionStore.profiles[profileId];
+  await writeProfileVersionStore(store, versionStore);
+  return { ok: true, profileId, discardedDraftVersion: draftVersion, publishedVersion };
+}
+
+function matchesExpectedProfileVersion(value: unknown, actual: number | null): boolean {
+  return actual === null ? value === null : value === actual;
+}
+
+function normalizeAuditActor(value: unknown): string {
+  const candidate = sanitizeString(value);
+  return candidate && /^arp_[a-f0-9]{64}$/.test(candidate) ? candidate : "worker-publish-credential";
+}
+
+async function appendControlPlaneAdminAudit(store: KvNamespaceLike, record: ControlPlaneAdminAuditRecord): Promise<void> {
+  const existing = parseJson<ControlPlaneAdminAuditList | null>(await store.get(CONTROL_PLANE_AUDIT_STORE_KEY), null);
+  const records = Array.isArray(existing?.records) ? existing.records : [];
+  const next: ControlPlaneAdminAuditList = {
+    schemaVersion: 1,
+    records: [...records, record].slice(-CONTROL_PLANE_AUDIT_LIMIT),
+  };
+  await store.put(CONTROL_PLANE_AUDIT_STORE_KEY, JSON.stringify(next));
+}
+
+export async function listControlPlaneAdminAudit(store: KvNamespaceLike): Promise<ControlPlaneAdminAuditList> {
+  const raw = await store.get(CONTROL_PLANE_AUDIT_STORE_KEY);
+  if (raw === null) {
+    await assertLegacyProjection(store);
+    return { schemaVersion: 1, records: [] };
+  }
+  const existing = parseJson<ControlPlaneAdminAuditList | null>(raw, null);
+  if (!existing || existing.schemaVersion !== 1 || !Array.isArray(existing.records)) {
+    throw new ControlPlaneProfileProjectionUnavailableError();
+  }
+  if (Object.hasOwn(existing, "projection")) {
+    if (!existing.projection) throw new ControlPlaneProfileProjectionUnavailableError();
+    await assertProjectionRevisionCommitted(store, existing.projection, PROFILE_VERSION_STORE_KEY);
+  } else {
+    await assertLegacyProjection(store);
+  }
+  return {
+    schemaVersion: 1,
+    records: existing.records.map((record) => cloneJsonRecord(record)),
+  };
+}
+
+export async function publishControlPlaneAdminProfile(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminProfilePublishPayload,
+): Promise<ControlPlaneAdminProfileRecord> {
+  const profileId = sanitizeVariantId(payload.profileId);
+  if (!profileId) throw new Error("profileId is required");
+  const versionStore = await readProfileVersionStore(store);
+  const entry = versionStore.profiles[profileId];
+  if (!entry) throw new Error("profile not found");
+  const sourceVersion = entry.activeVersion;
+  const currentDraftVersion = entry.draft?.version ?? null;
+  if (!matchesExpectedProfileVersion(payload.expectedActiveVersion, sourceVersion) || !matchesExpectedProfileVersion(payload.expectedDraftVersion, currentDraftVersion)) {
+    throw new ControlPlaneAdminProfileStaleError();
+  }
+  if (!entry.draft) throw new Error("profile draft not found");
+  if (payload.confirmation !== `PUBLISH ${profileId} v${entry.draft.version}`) throw new Error("invalid publish confirmation");
+  const nextVersion = entry.history.length ? Math.max(...entry.history.map((version) => version.version)) + 1 : 1;
+  const published = await normalizeProfileDefinition(store, entry.draft, {
+    profileId,
+    version: nextVersion,
+    status: "published",
+    ...(entry.draft.basedOnVersion === undefined ? {} : { basedOnVersion: entry.draft.basedOnVersion }),
+  });
+  entry.history = [...entry.history, published];
+  entry.activeVersion = nextVersion;
+  entry.draft = null;
+  await writeProfileVersionStore(store, versionStore);
+  await appendControlPlaneAdminAudit(store, {
+    actor: normalizeAuditActor(payload.actorKey),
+    action: "publish",
+    profileId,
+    sourceVersion,
+    targetVersion: nextVersion,
+    resultingVersion: nextVersion,
+    requestedVersion: null,
+    timestamp: new Date().toISOString(),
+    result: "success",
+  });
+  return profileRecord(versionStore, profileId) as ControlPlaneAdminProfileRecord;
+}
+
+export async function rollbackControlPlaneAdminProfile(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminProfileRollbackPayload,
+): Promise<ControlPlaneAdminProfileRecord> {
+  const profileId = sanitizeVariantId(payload.profileId);
+  const version = Number(payload.version);
+  if (!profileId || !Number.isInteger(version) || version < 1) throw new Error("profileId and version are required");
+  const versionStore = await readProfileVersionStore(store);
+  const entry = versionStore.profiles[profileId];
+  if (!entry) throw new Error("profile not found");
+  const sourceVersion = entry.activeVersion;
+  if (!matchesExpectedProfileVersion(payload.expectedActiveVersion, sourceVersion)) throw new ControlPlaneAdminProfileStaleError();
+  const target = entry.history.find((candidate) => candidate.version === version);
+  if (!target) throw new Error("profile version not found");
+  if (payload.confirmation !== `ROLLBACK ${profileId} to v${version}`) throw new Error("invalid rollback confirmation");
+  const nextVersion = Math.max(...entry.history.map((candidate) => candidate.version)) + 1;
+  const published = await normalizeProfileDefinition(store, target, {
+    profileId,
+    version: nextVersion,
+    status: "published",
+    basedOnVersion: version,
+  });
+  entry.history = [...entry.history, published];
+  entry.activeVersion = nextVersion;
+  entry.draft = null;
+  await writeProfileVersionStore(store, versionStore);
+  await appendControlPlaneAdminAudit(store, {
+    actor: normalizeAuditActor(payload.actorKey),
+    action: "rollback",
+    profileId,
+    sourceVersion,
+    targetVersion: version,
+    resultingVersion: nextVersion,
+    requestedVersion: version,
+    timestamp: new Date().toISOString(),
+    result: "success",
+  });
+  return profileRecord(versionStore, profileId) as ControlPlaneAdminProfileRecord;
+}
+
 function resolvePreflightEngineKind(payload: ExecutionPreflightPayload, usageKind: UsageEvent["kind"]): ControlPlaneAdminEngineKind {
   const explicit = sanitizeEngineKind(payload.engineKind);
   if (explicit) return explicit;
@@ -1756,24 +2829,68 @@ function resolvePolicyEnginesForPreflight(
   return { selectedKind, selected: byKind[selectedKind], byKind };
 }
 
+function resolvePublishedProfileEngines(
+  profileId: string | null,
+  config: ControlPlaneAdminVariantConfig,
+  selectedKind: ControlPlaneAdminEngineKind,
+): ExecutionEngineResolution["engines"] {
+  const resolved = resolvePolicyEnginesForPreflight(profileId, config.policyEngines[profileId ?? ""], config.engineOptions, selectedKind);
+  const definition = config.profileVersions.find((profile) => profile.profileId === profileId)?.published;
+  if (!definition) return resolved;
+  const byKind = Object.fromEntries(((["transcription", "postprocess", "selectionTransform"] as const)).map((kind) => {
+    const engine = resolved.byKind[kind];
+    const promptId = definition.runtime[kind].promptId;
+    const prompt = promptId ? config.promptOptions.find((candidate) => candidate.id === promptId) : null;
+    return [kind, engine && promptId ? { ...engine, promptKey: promptId, promptSummary: prompt?.summary ?? engine.promptSummary } : engine];
+  })) as ExecutionEngineResolution["engines"]["byKind"];
+  return { selectedKind, selected: byKind[selectedKind], byKind };
+}
+
 export async function getControlPlaneAdminVariantConfig(store: KvNamespaceLike): Promise<ControlPlaneAdminVariantConfig> {
+  const runtimePolicy = await getRuntimePolicy(store);
+  const basePolicy = runtimePolicy.policy as Record<string, unknown>;
   const variantOptions = await readAccountVariantOptions(store);
   const engineOptions = await readPolicyEngineOptions(store);
   const promptOptions = await readPromptOptions(store);
   const stored = await readAccountVariantsStore(store);
+  const profileVersions = (await listControlPlaneAdminProfiles(store)).profiles;
+  const legacyOptions = new Map(buildAdminProfileOptions(basePolicy).map((profile) => [profile.policyId, profile]));
+  const publishedProfiles = profileVersions.map((record) => record.published).filter((profile): profile is ProfileDefinition => Boolean(profile));
+  const policyEngines = sanitizePolicyEnginesMap(stored.policyEngines, engineOptions);
+  const policyBudgets = sanitizePolicyBudgetsMap(stored.policyBudgets);
+  for (const profile of publishedProfiles) {
+    policyEngines[profile.profileId] = {
+      transcription: profile.runtime.transcription.engineId,
+      postprocess: profile.runtime.postprocess.engineId,
+      selectionTransform: profile.runtime.selectionTransform.engineId,
+    };
+    policyBudgets[profile.profileId] = {
+      dailyUsd: profile.limits.dailyUsd ?? null,
+      monthlyUsd: profile.limits.monthlyUsd ?? null,
+      mode: profile.limits.mode,
+    };
+  }
   return {
+    profileOptions: publishedProfiles.map((profile) => ({
+      policyId: profile.profileId,
+      policyLabel: profile.label,
+      source: legacyOptions.get(profile.profileId)?.source ?? "assignment",
+      capabilities: profile.access.capabilities,
+      profiles: buildAdminProfileAssignment(basePolicy, profile.profileId),
+    })),
     variantOptions,
     availableSegments: variantIds(variantOptions),
     engineOptions,
     promptOptions,
     policyVariants: sanitizePolicyVariantsMap(stored.policyVariants, variantOptions),
-    policyEngines: sanitizePolicyEnginesMap(stored.policyEngines, engineOptions),
-    policyBudgets: sanitizePolicyBudgetsMap(stored.policyBudgets),
+    policyEngines,
+    policyBudgets,
+    profileVersions,
   };
 }
 
 function resolvePolicyOptionLabel(options: ControlPlaneAdminPolicyOption[], policyId: string, fallback?: string | null): string {
-  return sanitizeString(fallback) ?? options.find((option) => option.policyId === policyId)?.policyLabel ?? formatPolicyLabel(policyId);
+  return options.find((option) => option.policyId === policyId)?.policyLabel ?? sanitizeString(fallback) ?? formatPolicyLabel(policyId);
 }
 
 type EffectiveRuntimeProfile = ExecutionEngineResolution["profile"];
@@ -1789,59 +2906,19 @@ async function resolveEffectiveRuntimeProfile(
   const groupOptions = record.accountId ? await readGroupOptions(store) : [];
   const groupsAssignment = record.accountId ? await readAccountGroupsAssignment(store, record.accountId) : null;
   const activeGroups = sanitizeAccountGroups(groupsAssignment?.groups ?? [], groupOptions);
-  const policyOptions = buildAdminPolicyOptions(runtimePolicy);
-  const groupMatch = activeGroups
-    .map((groupId) => groupOptions.find((option) => option.id === groupId && option.policyId))
-    .find((option): option is ControlPlaneAdminGroupOption & { policyId: string } => Boolean(option?.policyId && policyOptions.some((policy) => policy.policyId === option.policyId)));
+  const policyOptions = await readControlPlaneAdminPolicyOptions(store, runtimePolicy);
 
-  if (accountAssignment) {
-    return {
-      policyId: accountAssignment.policyId,
-      policyLabel: accountAssignment.policyLabel,
-      policySource: "account",
-      accountHandle,
-      accountBudget,
-      groups: activeGroups,
-      matchedGroup: null,
-    };
-  }
-
-  const deviceOverride = record.policyId && record.policyId !== DEFAULT_POLICY_ID && policyOptions.some((option) => option.policyId === record.policyId)
-    ? { policyId: record.policyId, policyLabel: record.policyLabel ?? resolvePolicyOptionLabel(policyOptions, record.policyId) }
-    : null;
-  if (deviceOverride) {
-    return {
-      policyId: deviceOverride.policyId,
-      policyLabel: deviceOverride.policyLabel,
-      policySource: "device",
-      accountHandle,
-      accountBudget,
-      groups: activeGroups,
-      matchedGroup: null,
-    };
-  }
-
-  if (groupMatch) {
-    return {
-      policyId: groupMatch.policyId,
-      policyLabel: groupMatch.policyLabel ?? resolvePolicyOptionLabel(policyOptions, groupMatch.policyId),
-      policySource: "group",
-      accountHandle,
-      accountBudget,
-      groups: activeGroups,
-      matchedGroup: groupMatch.id,
-    };
-  }
-
-  return {
-    policyId: record.policyId,
-    policyLabel: record.policyLabel,
-    policySource: "base",
+  return resolveCoreEffectiveRuntimeProfile({
+    basePolicyId: record.policyId,
+    basePolicyLabel: record.policyLabel,
+    defaultPolicyId: DEFAULT_POLICY_ID,
     accountHandle,
     accountBudget,
-    groups: activeGroups,
-    matchedGroup: null,
-  };
+    accountAssignment,
+    activeGroups,
+    groupOptions,
+    policyOptions,
+  });
 }
 
 async function buildControlPlaneAdminAccountRow(
@@ -1860,11 +2937,14 @@ async function buildControlPlaneAdminAccountRow(
   const accountHandle = await buildAccountHandle(accountId);
   const sorted = [...records].sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt));
   const runtimePolicy = await getRuntimePolicy(store);
+  const policyOptions = await readControlPlaneAdminPolicyOptions(store, runtimePolicy.policy as Record<string, unknown>);
   const effectiveProfile = sorted[0]
     ? await resolveEffectiveRuntimeProfile(store, runtimePolicy.policy as Record<string, unknown>, sorted[0])
     : {
       policyId: assignment?.policyId ?? null,
-      policyLabel: assignment?.policyLabel ?? null,
+      policyLabel: assignment?.policyId
+        ? resolvePolicyOptionLabel(policyOptions, assignment.policyId, assignment.policyLabel)
+        : null,
       policySource: assignment ? "account" as const : "base" as const,
       accountHandle,
       accountBudget: budgetAssignment?.budget ?? null,
@@ -1876,13 +2956,15 @@ async function buildControlPlaneAdminAccountRow(
     accountHandle,
     accountIdRedacted: redactAccountId(accountId),
     userRedacted: accountUser.userRedacted,
-    userEmail: accountUser.userEmail,
+    userEmailRedacted: accountUser.userEmailRedacted,
     provider: accountUser.provider,
     variants: activeVariants,
     segments: activeVariants,
     groups: activeGroups,
     policyId: assignment?.policyId ?? null,
-    policyLabel: assignment?.policyLabel ?? null,
+    policyLabel: assignment?.policyId
+      ? resolvePolicyOptionLabel(policyOptions, assignment.policyId, assignment.policyLabel)
+      : null,
     effectivePolicyId: effectiveProfile.policyId,
     effectivePolicyLabel: effectiveProfile.policyLabel,
     effectivePolicySource: effectiveProfile.policySource,
@@ -1892,7 +2974,9 @@ async function buildControlPlaneAdminAccountRow(
     devices: sorted.slice(0, 20).map((record) => ({
       deviceIdRedacted: redactLongIdentifier(record.deviceId),
       policyId: record.policyId,
-      policyLabel: record.policyLabel,
+      policyLabel: record.policyId
+        ? resolvePolicyOptionLabel(policyOptions, record.policyId, record.policyLabel)
+        : record.policyLabel,
       status: record.status,
       lastSeenAt: record.lastSeenAt,
     })),
@@ -1923,6 +3007,28 @@ async function writeRecentFeedbackIndex(store: KvNamespaceLike, items: RecentInd
   });
 }
 
+async function resolveDeviceBinding(
+  store: KvNamespaceLike,
+  installId: string,
+  suppliedDeviceId: unknown,
+): Promise<{
+  mappedDeviceId: string | null;
+  deviceId: string;
+  recordKey: string;
+  previous: DeviceRecord | null;
+}> {
+  return resolveCoreDeviceBinding({
+    storage: store,
+    ids: { randomUuid: () => crypto.randomUUID() },
+    installId,
+    suppliedDeviceId: sanitizeString(suppliedDeviceId),
+    installKey: buildInstallKey,
+    deviceKey: buildDeviceKey,
+    parseMappedDeviceId: (raw) => parseJson<string | null>(raw, null),
+    parseRecord: (raw) => normalizeDeviceRecord(parseJson<DeviceRecord | null>(raw, null)),
+  });
+}
+
 export async function registerDevice(
   store: KvNamespaceLike,
   payload: DeviceRegisterPayload,
@@ -1933,11 +3039,11 @@ export async function registerDevice(
     throw new Error("installId is required");
   }
 
-  const existingDeviceId = sanitizeString(payload.deviceId);
-  const mappedDeviceId = parseJson<string | null>(await store.get(buildInstallKey(installId)), null);
-  const deviceId = existingDeviceId ?? mappedDeviceId ?? `dev_${crypto.randomUUID()}`;
-  const recordKey = buildDeviceKey(deviceId);
-  const previous = normalizeDeviceRecord(parseJson<DeviceRecord | null>(await store.get(recordKey), null));
+  const { mappedDeviceId, deviceId, recordKey, previous } = await resolveDeviceBinding(
+    store,
+    installId,
+    payload.deviceId,
+  );
   const ts = nowIso(payload.ts);
   const accountId = sanitizeString(options.accountId) ?? previous?.accountId ?? null;
   const accountAssignment = accountId ? await readAccountPolicyAssignment(store, accountId) : null;
@@ -1984,9 +3090,15 @@ export async function registerDevice(
   const profile = await resolveEffectiveRuntimeProfile(store, runtimePolicy.policy as Record<string, unknown>, nextRecord);
   const effectiveRecord: DeviceRecord = { ...nextRecord, policyId: profile.policyId, policyLabel: profile.policyLabel };
   const isActivePolicy = nextRecord.activated && nextRecord.status === "active" && Boolean(profile.policyId);
-  const effectivePolicy = applyPolicyProfiles(runtimePolicy.policy as Record<string, unknown>, isActivePolicy ? profile.policyId : null);
+  const versionStore = await readProfileVersionStore(store);
+  const publishedDefinition = isActivePolicy && profile.policyId ? activeProfileRecord(versionStore, profile.policyId) : null;
+  const effectivePolicy = applyPublishedProfileDefinition(
+    applyPolicyProfiles(runtimePolicy.policy as Record<string, unknown>, isActivePolicy ? profile.policyId : null),
+    publishedDefinition,
+  );
   const defaults = buildRegisterDefaultsFromRuntimePolicy(effectivePolicy as never, effectiveRecord.cohorts);
   defaults.recipePolicy = recipePolicy.policy;
+  (defaults as unknown as Record<string, unknown>).profileUserControls = publishedDefinition?.userControls ?? {};
   const limits = await buildDeviceLimits(store, effectivePolicy as Record<string, unknown>, effectiveRecord);
 
   return {
@@ -1997,7 +3109,7 @@ export async function registerDevice(
     policyLabel: isActivePolicy ? profile.policyLabel : null,
     accountId: null,
     minVersion: null,
-    auth: buildDeviceRegisterAuthPolicy(effectiveRecord, options.authProviders ?? []),
+    auth: buildDeviceRegisterAuthPolicy(effectiveRecord, options.authProviders ?? [], publishedDefinition?.access.capabilities),
     features: buildFeatureFlagsFromRuntimePolicy(effectivePolicy as never),
     defaults,
     cohorts: nextRecord.cohorts,
@@ -2033,11 +3145,11 @@ export async function activateDevice(
     throw new Error("installId is required");
   }
 
-  const existingDeviceId = sanitizeString(payload.deviceId);
-  const mappedDeviceId = parseJson<string | null>(await store.get(buildInstallKey(installId)), null);
-  const deviceId = existingDeviceId ?? mappedDeviceId ?? `dev_${crypto.randomUUID()}`;
-  const recordKey = buildDeviceKey(deviceId);
-  const previous = normalizeDeviceRecord(parseJson<DeviceRecord | null>(await store.get(recordKey), null));
+  const { deviceId, recordKey, previous } = await resolveDeviceBinding(
+    store,
+    installId,
+    payload.deviceId,
+  );
   const ts = nowIso(payload.ts);
   const nextRecord: DeviceRecord = {
     deviceId,
@@ -2101,7 +3213,7 @@ export async function listControlPlaneAdminDevices(
     ok: true,
     source: runtimePolicy.source,
     updatedAt: runtimePolicy.updatedAt,
-    policyOptions: buildAdminPolicyOptions(policy),
+    policyOptions: await readControlPlaneAdminPolicyOptions(store, policy),
     devices,
     nextCursor: recent.length > offset + window.length ? String(offset + window.length) : null,
   };
@@ -2131,7 +3243,7 @@ export async function listControlPlaneAdminAccounts(
     ok: true,
     source: runtimePolicy.source,
     updatedAt: runtimePolicy.updatedAt,
-    policyOptions: buildAdminPolicyOptions(policy),
+    policyOptions: await readControlPlaneAdminPolicyOptions(store, policy),
     availableSegments: variantConfig.availableSegments,
     variantOptions: variantConfig.variantOptions,
     groupOptions: await readGroupOptions(store),
@@ -2170,7 +3282,7 @@ export async function assignControlPlaneAdminAccountPolicy(
 ): Promise<ControlPlaneAdminAccountPolicyResponse> {
   const runtimePolicy = await getRuntimePolicy(store);
   const policy = runtimePolicy.policy as Record<string, unknown>;
-  const policyOptions = buildAdminPolicyOptions(policy);
+  const policyOptions = await readControlPlaneAdminPolicyOptions(store, policy);
   const variantOptions = await readAccountVariantOptions(store);
   const policyId = sanitizeString(payload.policyId);
   if (!policyId) {
@@ -2224,7 +3336,7 @@ export async function assignControlPlaneAdminAccountBudget(
 ): Promise<ControlPlaneAdminAccountBudgetResponse> {
   const runtimePolicy = await getRuntimePolicy(store);
   const policy = runtimePolicy.policy as Record<string, unknown>;
-  const policyOptions = buildAdminPolicyOptions(policy);
+  const policyOptions = await readControlPlaneAdminPolicyOptions(store, policy);
   const variantOptions = await readAccountVariantOptions(store);
   const { accountId, accountHandle, records } = await resolveAdminAccountId(store, payload);
   const budget = sanitizePolicyBudget(payload.budget, null);
@@ -2253,7 +3365,7 @@ export async function createControlPlaneAdminGroup(
   if (!label) throw new Error("label is required");
   const id = sanitizeVariantId(payload.id) ?? sanitizeVariantId(label);
   if (!id) throw new Error("invalid group id");
-  const policyOptions = buildAdminPolicyOptions(runtimePolicy.policy as Record<string, unknown>);
+  const policyOptions = await readControlPlaneAdminPolicyOptions(store, runtimePolicy.policy as Record<string, unknown>);
   const policyId = sanitizeString(payload.policyId) ?? null;
   if (policyId && !policyOptions.some((option) => option.policyId === policyId)) throw new Error("unknown policyId");
   const policyLabel = policyId ? resolvePolicyOptionLabel(policyOptions, policyId, payload.policyLabel) : null;
@@ -2280,7 +3392,7 @@ export async function assignControlPlaneAdminAccountGroups(
 ): Promise<ControlPlaneAdminAccountGroupsResponse> {
   const runtimePolicy = await getRuntimePolicy(store);
   const policy = runtimePolicy.policy as Record<string, unknown>;
-  const policyOptions = buildAdminPolicyOptions(policy);
+  const policyOptions = await readControlPlaneAdminPolicyOptions(store, policy);
   const groupOptions = await readGroupOptions(store);
   const { accountId, accountHandle, records } = await resolveAdminAccountId(store, payload);
   const groups = sanitizeAccountGroups(payload.groups, groupOptions);
@@ -2305,7 +3417,7 @@ export async function assignControlPlaneAdminAccountSegments(
 ): Promise<ControlPlaneAdminAccountSegmentsResponse> {
   const runtimePolicy = await getRuntimePolicy(store);
   const policy = runtimePolicy.policy as Record<string, unknown>;
-  const policyOptions = buildAdminPolicyOptions(policy);
+  const policyOptions = await readControlPlaneAdminPolicyOptions(store, policy);
   const variantOptions = await readAccountVariantOptions(store);
   const { accountId, accountHandle } = await resolveAdminAccountId(store, payload);
   const segments = sanitizeAccountSegments(payload.variants ?? payload.segments, variantOptions);
@@ -2363,7 +3475,7 @@ export async function assignControlPlaneAdminPolicyVariants(
 ): Promise<ControlPlaneAdminVariantConfig & { ok: true; source: "default" | "stored"; updatedAt: string }> {
   const runtimePolicy = await getRuntimePolicy(store);
   const policy = runtimePolicy.policy as Record<string, unknown>;
-  const policyOptions = buildAdminPolicyOptions(policy);
+  const policyOptions = await readControlPlaneAdminPolicyOptions(store, policy);
   const policyId = sanitizeString(payload.policyId);
   if (!policyId) throw new Error("policyId is required");
   if (!policyOptions.some((option) => option.policyId === policyId)) throw new Error("unknown policyId");
@@ -2374,39 +3486,6 @@ export async function assignControlPlaneAdminPolicyVariants(
   if (variants.length) nextPolicyVariants[policyId] = variants;
   else delete nextPolicyVariants[policyId];
   await writeAccountVariantsStore(store, { ...stored, policyVariants: nextPolicyVariants });
-  const config = await getControlPlaneAdminVariantConfig(store);
-  return { ok: true, source: runtimePolicy.source, updatedAt: runtimePolicy.updatedAt, ...config };
-}
-
-export async function assignControlPlaneAdminPolicyEngines(
-  store: KvNamespaceLike,
-  payload: ControlPlaneAdminPolicyEnginesPayload,
-): Promise<ControlPlaneAdminVariantConfig & { ok: true; source: "default" | "stored"; updatedAt: string }> {
-  const runtimePolicy = await getRuntimePolicy(store);
-  const policy = runtimePolicy.policy as Record<string, unknown>;
-  const policyOptions = buildAdminPolicyOptions(policy);
-  const policyId = sanitizeString(payload.policyId);
-  if (!policyId) throw new Error("policyId is required");
-  if (!policyOptions.some((option) => option.policyId === policyId)) throw new Error("unknown policyId");
-  const stored = await readAccountVariantsStore(store);
-  const engineOptions = await readPolicyEngineOptions(store);
-  await writeAccountVariantsStore(store, { ...stored, policyEngines: { ...stored.policyEngines, [policyId]: sanitizePolicyEngineSelection(payload.engines, engineOptions) } });
-  const config = await getControlPlaneAdminVariantConfig(store);
-  return { ok: true, source: runtimePolicy.source, updatedAt: runtimePolicy.updatedAt, ...config };
-}
-
-export async function assignControlPlaneAdminPolicyBudget(
-  store: KvNamespaceLike,
-  payload: ControlPlaneAdminPolicyBudgetPayload,
-): Promise<ControlPlaneAdminVariantConfig & { ok: true; source: "default" | "stored"; updatedAt: string }> {
-  const runtimePolicy = await getRuntimePolicy(store);
-  const policy = runtimePolicy.policy as Record<string, unknown>;
-  const policyOptions = buildAdminPolicyOptions(policy);
-  const policyId = sanitizeString(payload.policyId);
-  if (!policyId) throw new Error("policyId is required");
-  if (!policyOptions.some((option) => option.policyId === policyId)) throw new Error("unknown policyId");
-  const stored = await readAccountVariantsStore(store);
-  await writeAccountVariantsStore(store, { ...stored, policyBudgets: { ...stored.policyBudgets, [policyId]: sanitizePolicyBudget(payload.budget, policyId) } });
   const config = await getControlPlaneAdminVariantConfig(store);
   return { ok: true, source: runtimePolicy.source, updatedAt: runtimePolicy.updatedAt, ...config };
 }
@@ -2449,6 +3528,7 @@ export async function deleteControlPlaneAdminEngine(
   const runtimePolicy = await getRuntimePolicy(store);
   const id = sanitizeEngineId(payload.id);
   if (!id) throw new Error("engine id is required");
+  await assertProfileResourceIsUnused(store, "engine", id);
   const stored = await readAccountVariantsStore(store);
   const isBuiltIn = BUILT_IN_POLICY_ENGINES.some((option) => option.id === id);
   const fallbackByKind = Object.fromEntries(BUILT_IN_POLICY_ENGINES.filter((engine) => engine.id === id).map((engine) => [engine.kind, defaultEngineId(engine.kind)]));
@@ -2536,6 +3616,7 @@ export async function deleteControlPlaneAdminPrompt(
   const runtimePolicy = await getRuntimePolicy(store);
   const id = sanitizeString(payload.id)?.trim();
   if (!id) throw new Error("prompt id is required");
+  await assertProfileResourceIsUnused(store, "prompt", id);
   const stored = await readAccountVariantsStore(store);
   const isBuiltIn = BUILT_IN_PROMPTS.some((option) => option.id === id);
   await writeAccountVariantsStore(store, {
@@ -2590,7 +3671,7 @@ export async function assignControlPlaneAdminDevicePolicy(
 
   const runtimePolicy = await getRuntimePolicy(store);
   const policy = runtimePolicy.policy as Record<string, unknown>;
-  const policyOptions = buildAdminPolicyOptions(policy);
+  const policyOptions = await readControlPlaneAdminPolicyOptions(store, policy);
   const policyOption = policyOptions.find((option) => option.policyId === policyId);
   if (!policyOption) {
     throw new Error("unknown policyId");
@@ -2643,7 +3724,7 @@ export async function resolveExecutionEngineForDevice(
   const runtimePolicy = await getRuntimePolicy(store);
   const profile = await resolveEffectiveRuntimeProfile(store, runtimePolicy.policy as Record<string, unknown>, record);
   const variantConfig = await getControlPlaneAdminVariantConfig(store);
-  const engines = resolvePolicyEnginesForPreflight(profile.policyId, variantConfig.policyEngines[profile.policyId ?? ""], variantConfig.engineOptions, selectedKind);
+  const engines = resolvePublishedProfileEngines(profile.policyId, variantConfig, selectedKind);
   return {
     profile,
     engines,
@@ -2698,12 +3779,12 @@ export async function evaluateExecutionPreflight(
   const kind = parseUsageKind(payload.usageKind);
   const profile = await resolveEffectiveRuntimeProfile(store, runtimePolicy.policy as Record<string, unknown>, normalizedRecord);
   const effectiveRecord: DeviceRecord = { ...normalizedRecord, policyId: profile.policyId, policyLabel: profile.policyLabel };
-  const effectivePolicy = applyPolicyProfiles(runtimePolicy.policy as Record<string, unknown>, profile.policyId);
-  const limits = await buildDeviceLimits(store, effectivePolicy as Record<string, unknown>, effectiveRecord);
+  const effectivePolicy = await resolvePublishedRuntimePolicy(store, runtimePolicy.policy as Record<string, unknown>, profile.policyId);
+  const limits = await buildDeviceLimits(store, effectivePolicy, effectiveRecord);
   const policy = resolveManagedUsagePolicy(effectivePolicy as Record<string, unknown>, effectiveRecord);
   const selectedKind = resolvePreflightEngineKind(payload, kind);
   const variantConfig = await getControlPlaneAdminVariantConfig(store);
-  const engines = resolvePolicyEnginesForPreflight(profile.policyId, variantConfig.policyEngines[profile.policyId ?? ""], variantConfig.engineOptions, selectedKind);
+  const engines = resolvePublishedProfileEngines(profile.policyId, variantConfig, selectedKind);
   const estimate = resolveUsageEstimate(payload, kind, policy);
   const actionEstimate = kind === "managed" ? estimate : 1;
   const quota = kind === "transcription" ? limits.transcription : kind === "aiAction" ? limits.aiActions : limits.managedUsage;
@@ -2722,10 +3803,12 @@ export async function evaluateExecutionPreflight(
     };
   }
 
-  const now = new Date();
-  const events = await readUsageEvents(store, deviceId, now.getTime());
-  events.push({ id: crypto.randomUUID(), ts: now.toISOString(), units: estimate, actionUnits: actionEstimate, kind });
-  await writeUsageEvents(store, deviceId, events);
+  if (policy.quotaProfileId !== "pro-unlimited") {
+    const now = new Date();
+    const events = await readUsageEvents(store, deviceId, now.getTime());
+    events.push({ id: crypto.randomUUID(), ts: now.toISOString(), units: estimate, actionUnits: actionEstimate, kind });
+    await writeUsageEvents(store, deviceId, events);
+  }
   const updatedLimits = await buildDeviceLimits(store, effectivePolicy as Record<string, unknown>, effectiveRecord);
 
   return {

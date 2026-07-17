@@ -20,6 +20,7 @@ describe("Fixvox auth policy groups", () => {
       "debug_tools",
       "managed_stt",
       "managed_llm",
+      "admin_settings",
     ]);
   });
 
@@ -39,7 +40,9 @@ describe("Fixvox auth policy groups", () => {
 
     expect(pro.capabilities.has("assistant_actions")).toBe(true);
     expect(pro.capabilities.has("debug_tools")).toBe(false);
+    expect(pro.capabilities.has("admin_settings")).toBe(false);
 
+    expect(power.capabilities.has("admin_settings")).toBe(true);
     expect(power.capabilities.size).toBe(fixvoxProductCapabilities.length);
   });
 

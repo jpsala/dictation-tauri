@@ -112,8 +112,9 @@ describe("VoiceDock UI", () => {
 
     expect(html).toContain('data-context-menu="available"');
     expect(html).toContain('data-testid="voice-dock-preset-badge"');
+    expect(html).toContain('data-command="clear_preset"');
     expect(html).toContain("Corregir texto");
-    expect(html).toContain("Right-click to change or disable");
+    expect(html).toContain("Disable active preset: Corregir texto");
     expect(html).toContain('data-testid="voice-dock-assistant-indicator"');
     expect(html).toContain("Assistant mode available");
   });

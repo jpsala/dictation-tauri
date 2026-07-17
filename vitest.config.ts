@@ -16,6 +16,7 @@ export default defineConfig({
       "tests/selection-transform/**/*.test.ts",
       "tests/settings/**/*.test.ts",
       "tests/settings/**/*.test.tsx",
+      "tests/cloud-contract/**/*.test.ts",
     ],
     passWithNoTests: false,
   },

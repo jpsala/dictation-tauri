@@ -1,0 +1,16 @@
+# Template only. Run with the same protected environment as fixvox-api.service.
+[Unit]
+Description=Fixvox API safe maintenance jobs
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=fixvox
+Group=fixvox
+WorkingDirectory=/opt/fixvox-api
+EnvironmentFile=/etc/fixvox-api/fixvox-api.env
+ExecStart=/usr/local/bin/bun run src/run-maintenance.ts
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true

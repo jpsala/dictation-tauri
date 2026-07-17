@@ -9,6 +9,7 @@ export const fixvoxProductCapabilities = [
   "debug_tools",
   "managed_stt",
   "managed_llm",
+  "admin_settings",
 ] as const;
 
 export type FixvoxProductCapability = (typeof fixvoxProductCapabilities)[number];

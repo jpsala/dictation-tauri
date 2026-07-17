@@ -24,6 +24,7 @@ import {
   pollFixvoxCloudLogin,
   refreshFixvoxPolicy,
   registerFixvoxDevice,
+  resolveSettingsAccess,
   shouldConfirmFixvoxCloudOperation,
   startFixvoxCloudLogin,
   summarizeFixvoxCloudProblem,
@@ -70,6 +71,7 @@ const sections = [
   { id: "dock", label: "Dock", state: "Workspace", icon: "◌" },
   { id: "delivery", label: "Delivery", state: "Behavior", icon: "↵" },
   { id: "presets", label: "Presets", state: "Actions", icon: "▣" },
+  { id: "admin", label: "Admin", state: "Control Room", icon: "◇" },
   { id: "about", label: "About", state: "Version", icon: "i" },
 ] as const;
 
@@ -98,7 +100,7 @@ type EditorNotice = {
   message: string;
 };
 
-type BusyAction = "preview" | "apply" | FixvoxCloudOperation | "status" | "login" | "loginStatus" | "startup" | "preset" | "preferences";
+type BusyAction = "preview" | "apply" | FixvoxCloudOperation | "status" | "login" | "loginStatus" | "startup" | "preset" | "preferences" | "admin";
 
 type CaptureState = "idle" | "recording";
 type ShortcutCaptureTarget = "dictation" | TauriActionHotkeyId;
@@ -142,6 +144,10 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     tone: "idle",
     message: "Local cloud status loads from host-owned app data.",
   });
+  const [adminNotice, setAdminNotice] = useState<EditorNotice>({
+    tone: "idle",
+    message: "OAuth and admin credentials remain server-side in the existing Control Room.",
+  });
   const [startupConfig, setStartupConfig] = useState<StartupLaunchConfig | undefined>();
   const [userPreferences, setUserPreferencesState] = useState<UserPreferences>(defaultUserPreferences);
   const [inviteCode, setInviteCode] = useState("");
@@ -165,7 +171,18 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
   });
   const [cloudPresetDefaults, setCloudPresetDefaults] = useState<CloudSelectionPresetDefault[]>([]);
   const captureArmedRef = useRef(false);
-  const selectedSectionMeta = sections.find((section) => section.id === selectedSection) ?? sections[1];
+  const settingsAccess = cloudStatus
+    ? resolveSettingsAccess(cloudStatus)
+    : tauriRuntime
+      ? resolveSettingsAccess(undefined)
+      : { canViewPresets: true, canEditPresets: true, canOpenAdmin: false };
+  const visibleSections = sections.filter((section) => (
+    (section.id !== "presets" || settingsAccess.canViewPresets)
+    && (section.id !== "admin" || settingsAccess.canOpenAdmin)
+  ));
+  const requestedSectionAllowed = visibleSections.some((section) => section.id === selectedSection);
+  const effectiveSection = requestedSectionAllowed ? selectedSection : "general";
+  const selectedSectionMeta = sections.find((section) => section.id === effectiveSection) ?? sections[0];
   const settingsHeading = sectionHeading(selectedSectionMeta.id);
   const settingsSummary = sectionSummary(selectedSectionMeta.id);
   const selectedPreset = presetItems.find((preset) => preset.id === selectedPresetId) ?? presetItems[0];
@@ -208,24 +225,32 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
   }, [tauriRuntime]);
 
   useEffect(() => {
-    if (!tauriRuntime || selectedSection !== "cloud") {
+    if (!tauriRuntime || cloudStatus) {
+      return;
+    }
+
+    void getFixvoxCloudStatus().then(setCloudStatus).catch(() => undefined);
+  }, [cloudStatus, tauriRuntime]);
+
+  useEffect(() => {
+    if (!tauriRuntime || effectiveSection !== "cloud") {
       return;
     }
 
     void loadCloudStatus();
-  }, [tauriRuntime, selectedSection]);
+  }, [effectiveSection, tauriRuntime]);
 
   useEffect(() => {
-    if (!tauriRuntime || selectedSection !== "general") {
+    if (!tauriRuntime || effectiveSection !== "general") {
       return;
     }
 
     void loadStartupLaunch();
     void loadUserPreferences();
-  }, [tauriRuntime, selectedSection]);
+  }, [effectiveSection, tauriRuntime]);
 
   useEffect(() => {
-    if (!tauriRuntime || selectedSection !== "presets") {
+    if (!tauriRuntime || effectiveSection !== "presets" || !settingsAccess.canViewPresets) {
       return;
     }
 
@@ -240,10 +265,10 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     void getFixvoxCloudStatus()
       .then((status) => setCloudPresetDefaults(extractCloudSelectionPresetDefaults(status)))
       .catch(() => setCloudPresetDefaults([]));
-  }, [tauriRuntime, selectedSection]);
+  }, [effectiveSection, settingsAccess.canViewPresets, tauriRuntime]);
 
   useEffect(() => {
-    if (!tauriRuntime || selectedSection !== "cloud" || authSessionStatus?.status !== "pending") {
+    if (!tauriRuntime || effectiveSection !== "cloud" || authSessionStatus?.status !== "pending") {
       return;
     }
 
@@ -263,7 +288,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       window.removeEventListener("focus", poll);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [tauriRuntime, selectedSection, authSessionStatus?.status]);
+  }, [effectiveSection, tauriRuntime, authSessionStatus?.status]);
 
   useEffect(() => {
     if (!tauriRuntime) {
@@ -341,7 +366,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
         id: "preset-picker",
         label: "Preset picker",
         value: actionHotkeys.presetPicker,
-        hint: "Runs replacement presets or preset voice capture one-shot. Host-owned action shortcut.",
+        hint: "Transforms the current selection or sets a persistent dictation preset. Host-owned action shortcut.",
         mode: "host",
       },
       {
@@ -648,7 +673,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     }
   }
 
-  async function toggleUserPreference(key: keyof Pick<UserPreferences, "showDockOnStartup" | "reviewBeforeDelivery" | "pressEnterAfterPaste" | "autoStopOnSilenceEnabled" | "muteOutputDuringRecording" | "dictationSoundCuesEnabled">) {
+  async function toggleUserPreference(key: keyof Pick<UserPreferences, "showDockOnStartup" | "reviewBeforeDelivery" | "pressEnterAfterPaste" | "followFocusUntilDelivery" | "autoStopOnSilenceEnabled" | "muteOutputDuringRecording" | "dictationSoundCuesEnabled">) {
     setBusyAction("preferences");
     try {
       const nextPreferences = {
@@ -952,6 +977,23 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     }
   }
 
+  async function openAdminControlRoom() {
+    if (!tauriRuntime || !settingsAccess.canOpenAdmin) {
+      setAdminNotice({ tone: "warning", message: "The current Fixvox policy does not allow Admin settings." });
+      return;
+    }
+
+    setBusyAction("admin");
+    try {
+      await invoke("show_admin_control_room");
+      setAdminNotice({ tone: "success", message: "Control Room opened in a dedicated Fixvox window." });
+    } catch (error) {
+      setAdminNotice({ tone: "danger", message: formatHotkeyEditReason(error) });
+    } finally {
+      setBusyAction(undefined);
+    }
+  }
+
   async function runCloudOperation(operation: FixvoxCloudOperation) {
     const code = inviteCode.trim();
     if (operation === "activate" && !code) {
@@ -1010,8 +1052,8 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
         <div className="settings-policy-line">Current policy: <strong>local</strong></div>
 
         <nav className="settings-nav-list">
-          {sections.map((section) => {
-            const isActive = section.id === selectedSection;
+          {visibleSections.map((section) => {
+            const isActive = section.id === effectiveSection;
             return (
               <button
                 key={section.id}
@@ -1031,17 +1073,17 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
         </nav>
       </aside>
 
-      <section className="settings-content" aria-labelledby={`settings-${selectedSection}-title`}>
+      <section className="settings-content" aria-labelledby={`settings-${effectiveSection}-title`}>
         <header className="settings-header">
           <div className="settings-title-block">
             <p className="settings-path">Settings / {selectedSectionMeta.label}</p>
-            <h1 id={`settings-${selectedSection}-title`}>{settingsHeading}</h1>
+            <h1 id={`settings-${effectiveSection}-title`}>{settingsHeading}</h1>
             <p>{settingsSummary}</p>
           </div>
           <span className="settings-status-badge">{selectedSectionMeta.state}</span>
         </header>
 
-        {selectedSection === "general" ? (
+        {effectiveSection === "general" ? (
         <section className="settings-panel settings-essentials-panel" aria-labelledby="settings-general-title">
           <div className="settings-panel-header">
             <div>
@@ -1151,6 +1193,23 @@ onClick={() => void toggleUserPreference("pressEnterAfterPaste")}
 <span>{userPreferences.pressEnterAfterPaste ? "On" : "Off"}</span>
 </button>
 </div>
+<div className="settings-hotkey-row settings-toggle-row" data-health={userPreferences.followFocusUntilDelivery ? "success" : undefined}>
+<div className="settings-hotkey-copy">
+<strong>Follow focus until paste</strong>
+<span>Off pastes into the window active when dictation stops. On keeps following focus until the result is ready.</span>
+</div>
+<button
+ type="button"
+ className="settings-toggle"
+ role="switch"
+ aria-checked={userPreferences.followFocusUntilDelivery}
+ aria-label="Follow focus until paste"
+ disabled={!tauriRuntime || busyAction === "preferences"}
+ onClick={() => void toggleUserPreference("followFocusUntilDelivery")}
+>
+<span>{userPreferences.followFocusUntilDelivery ? "On" : "Off"}</span>
+</button>
+</div>
 <div className="settings-hotkey-row settings-toggle-row" data-health={userPreferences.muteOutputDuringRecording ? "success" : undefined}>
 <div className="settings-hotkey-copy">
 <strong>Mute output while recording</strong>
@@ -1217,7 +1276,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
               <div className="settings-hotkey-row">
                 <div className="settings-hotkey-copy">
                   <strong>Picker</strong>
-                  <span>{actionHotkeys.presetPicker} opens the preset picker and uses one-shot presets.</span>
+                  <span>{actionHotkeys.presetPicker} transforms the current selection or sets a persistent dictation preset.</span>
                 </div>
                 <div className="settings-hotkey-value"><kbd>{actionHotkeys.presetPicker}</kbd><small>host</small></div>
               </div>
@@ -1241,7 +1300,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
             </div>
           )}
         </section>
-        ) : selectedSection === "hotkeys" ? (
+        ) : effectiveSection === "hotkeys" ? (
         <section className="settings-panel" aria-labelledby="settings-current-bindings-title">
           <div className="settings-panel-header">
             <div>
@@ -1343,7 +1402,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
             ))}
           </div>
         </section>
-        ) : selectedSection === "presets" ? (
+        ) : effectiveSection === "presets" ? (
         <section className="settings-panel settings-presets-panel" aria-labelledby="settings-presets-title">
           <div className="settings-panel-header">
             <div>
@@ -1363,7 +1422,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
               <button
                 type="button"
                 className="settings-editor-button settings-editor-button-secondary"
-                disabled={Boolean(busyAction)}
+                disabled={Boolean(busyAction) || !settingsAccess.canEditPresets}
                 onClick={addCustomPreset}
               >
                 Add preset
@@ -1403,9 +1462,9 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                   </div>
                   <p>{selectedPreset?.id ?? "No preset selected"} · picker key {selectedPreset?.pickerKey ?? "—"}</p>
                 </div>
-                <div className="settings-hotkey-editor-state" aria-label="Preset metadata">
-                  <span>{selectedPreset?.provider ?? "local"}</span>
-                  <span>{selectedPreset?.model ?? "managed default"}</span>
+                <div className="settings-hotkey-editor-state" aria-label="Preset routing">
+                  <span>Managed engine</span>
+                  <span>Configured in Control Room</span>
                 </div>
               </div>
 
@@ -1414,6 +1473,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                   <span>Name</span>
                   <input
                     value={presetNameDraft}
+                    disabled={!settingsAccess.canEditPresets}
                     onChange={(event) => setPresetNameDraft(event.target.value)}
                     aria-label="Preset name"
                   />
@@ -1423,6 +1483,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                   <input
                     value={presetPickerKeyDraft}
                     maxLength={1}
+                    disabled={!settingsAccess.canEditPresets}
                     onChange={(event) => setPresetPickerKeyDraft(event.target.value.toUpperCase().slice(0, 1))}
                     aria-label="Preset picker key"
                   />
@@ -1432,6 +1493,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                   className="settings-toggle settings-preset-enabled-toggle"
                   role="switch"
                   aria-checked={presetEnabledDraft}
+                  disabled={!settingsAccess.canEditPresets}
                   onClick={() => setPresetEnabledDraft(!presetEnabledDraft)}
                 >
                   <span>{presetEnabledDraft ? "Enabled" : "Disabled"}</span>
@@ -1443,27 +1505,10 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                   <span>Hotkey</span>
                   <input
                     value={presetHotkeyDraft}
+                    disabled={!settingsAccess.canEditPresets}
                     onChange={(event) => setPresetHotkeyDraft(event.target.value)}
                     aria-label="Preset hotkey"
                     placeholder="Alt+T, N"
-                  />
-                </label>
-                <label className="settings-preset-field">
-                  <span>Provider</span>
-                  <input
-                    value={presetProviderDraft}
-                    onChange={(event) => setPresetProviderDraft(event.target.value)}
-                    aria-label="Preset provider"
-                    placeholder="managed default"
-                  />
-                </label>
-                <label className="settings-preset-field">
-                  <span>Model</span>
-                  <input
-                    value={presetModelDraft}
-                    onChange={(event) => setPresetModelDraft(event.target.value)}
-                    aria-label="Preset model"
-                    placeholder="managed default"
                   />
                 </label>
               </div>
@@ -1474,6 +1519,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                   className="settings-toggle settings-preset-enabled-toggle"
                   role="switch"
                   aria-checked={presetConfirmDraft}
+                  disabled={!settingsAccess.canEditPresets}
                   onClick={() => setPresetConfirmDraft(!presetConfirmDraft)}
                 >
                   <span>{presetConfirmDraft ? "Confirm" : "No confirm"}</span>
@@ -1483,6 +1529,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
               <textarea
                 className="settings-preset-textarea"
                 value={presetDraft}
+                disabled={!settingsAccess.canEditPresets}
                 onChange={(event) => setPresetDraft(event.target.value)}
                 spellCheck={false}
                 aria-label="Preset prompt body"
@@ -1492,7 +1539,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                 <button
                   type="button"
                   className="settings-editor-button settings-editor-button-secondary"
-                  disabled={Boolean(busyAction) || !selectedPreset}
+                  disabled={Boolean(busyAction) || !selectedPreset || !settingsAccess.canEditPresets}
                   onClick={duplicateSelectedPreset}
                 >
                   Duplicate
@@ -1500,7 +1547,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                 <button
                   type="button"
                   className="settings-editor-button settings-editor-button-secondary"
-                  disabled={Boolean(busyAction) || selectedPreset?.canDelete || !selectedPreset?.isCustomized}
+                  disabled={Boolean(busyAction) || selectedPreset?.canDelete || !selectedPreset?.isCustomized || !settingsAccess.canEditPresets}
                   onClick={resetPresetDraft}
                   title={selectedPreset?.canDelete ? "Custom presets do not have a bundled starter to reset." : undefined}
                 >
@@ -1509,7 +1556,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                 <button
                   type="button"
                   className="settings-editor-button settings-editor-button-secondary"
-                  disabled={Boolean(busyAction) || !selectedPreset?.canDelete}
+                  disabled={Boolean(busyAction) || !selectedPreset?.canDelete || !settingsAccess.canEditPresets}
                   onClick={deleteSelectedPreset}
                   title={selectedPreset?.canDelete ? "Delete this local custom preset." : "Starter presets are locked. Add a custom preset to delete it later."}
                 >
@@ -1518,7 +1565,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                 <button
                   type="button"
                   className="settings-editor-button settings-editor-button-primary"
-                  disabled={Boolean(busyAction) || !selectedPreset || !presetDraftChanged}
+                  disabled={Boolean(busyAction) || !selectedPreset || !presetDraftChanged || !settingsAccess.canEditPresets}
                   onClick={savePresetDraft}
                 >
                   {busyAction === "preset" ? "Saving" : "Save prompt"}
@@ -1535,7 +1582,40 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
             </section>
           </div>
         </section>
-        ) : selectedSection === "cloud" ? (
+        ) : effectiveSection === "admin" ? (
+        <section className="settings-panel settings-cloud-panel" aria-labelledby="settings-admin-title">
+          <div className="settings-panel-header">
+            <div>
+              <h2 id="settings-admin-title">Control Room</h2>
+              <p>Manage accounts, profiles, engines, prompts, budgets and groups through the existing authenticated admin surface.</p>
+            </div>
+            <span className="settings-panel-count">Power admin</span>
+          </div>
+
+          <div className="settings-hotkey-list" aria-label="Control Room access">
+            <div className="settings-hotkey-row">
+              <div className="settings-hotkey-copy">
+                <strong>Server-authoritative administration</strong>
+                <span>Settings opens the current Control Room without copying its CRUD or exposing admin credentials to this renderer.</span>
+              </div>
+              <button
+                type="button"
+                className="settings-editor-button settings-editor-button-primary"
+                disabled={!tauriRuntime || busyAction === "admin"}
+                onClick={() => void openAdminControlRoom()}
+              >
+                {busyAction === "admin" ? "Opening" : "Open Control Room"}
+              </button>
+            </div>
+          </div>
+
+          <div className="settings-hotkey-editor-feedback" data-tone={adminNotice.tone}>
+            <span>OAuth server-side</span>
+            <span>No admin secret in app</span>
+            <strong>{adminNotice.message}</strong>
+          </div>
+        </section>
+        ) : effectiveSection === "cloud" ? (
         <section className="settings-panel settings-cloud-panel" aria-labelledby="settings-cloud-title">
           <div className="settings-panel-header">
             <div>
@@ -1707,10 +1787,10 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
           </section>
         </section>
         ) : (
-        <section className="settings-panel settings-planned-panel" aria-labelledby={`settings-${selectedSection}-planned-title`}>
+        <section className="settings-panel settings-planned-panel" aria-labelledby={`settings-${effectiveSection}-planned-title`}>
           <div className="settings-panel-header">
             <div>
-              <h2 id={`settings-${selectedSection}-planned-title`}>{selectedSectionMeta.label}</h2>
+              <h2 id={`settings-${effectiveSection}-planned-title`}>{selectedSectionMeta.label}</h2>
               <p>This section is available for navigation, but its controls are intentionally not implemented yet.</p>
             </div>
             <span className="settings-panel-count">Planned</span>
@@ -1739,6 +1819,8 @@ function sectionHeading(sectionId: SettingsSectionId): string {
       return "Delivery";
     case "presets":
       return "Presets";
+    case "admin":
+      return "Control Room";
     case "about":
       return "About";
   }
@@ -1758,6 +1840,8 @@ function sectionSummary(sectionId: SettingsSectionId): string {
       return "Insertion, copy fallback and observer settings are planned, not editable from Settings yet.";
     case "presets":
       return "Assistant and transform presets stay in the companion flow until this surface is designed.";
+    case "admin":
+      return "Authenticated administration for accounts, profiles, engines, prompts, budgets and groups.";
     case "about":
       return "Build, diagnostics and support metadata are planned for a later compact panel.";
   }

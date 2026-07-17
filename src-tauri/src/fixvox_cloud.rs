@@ -392,12 +392,28 @@ pub(crate) struct ManagedSttRequestPreview {
     pub(crate) multipart_fields: Vec<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ManagedChatEngineKind {
+    Postprocess,
+    SelectionTransform,
+}
+
+impl ManagedChatEngineKind {
+    pub(crate) fn as_header_value(self) -> &'static str {
+        match self {
+            Self::Postprocess => "postprocess",
+            Self::SelectionTransform => "selectionTransform",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ManagedChatInput {
     pub(crate) transcript: String,
     pub(crate) system_prompt: String,
     pub(crate) model: String,
     pub(crate) max_tokens: Option<u64>,
+    pub(crate) engine_kind: Option<ManagedChatEngineKind>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1002,8 +1018,10 @@ fn product_capabilities_for_policy_template(policy_id: &str) -> Vec<String> {
     match policy_id.trim().to_ascii_lowercase().as_str() {
         "basic-anonymous" => vec![],
         "translate-only" => vec!["translate", "managed_llm"],
-        "dictation-basic" => vec!["dictation", "postprocess", "managed_stt", "managed_llm"],
-        "pro" => vec![
+        "dictation-basic" | "alpha-basic" => {
+            vec!["dictation", "postprocess", "managed_stt", "managed_llm"]
+        }
+        "pro" | "alpha-full" => vec![
             "translate",
             "dictation",
             "postprocess",
@@ -1025,6 +1043,7 @@ fn product_capabilities_for_policy_template(policy_id: &str) -> Vec<String> {
             "debug_tools",
             "managed_stt",
             "managed_llm",
+            "admin_settings",
         ],
         _ => vec![],
     }
@@ -1626,6 +1645,18 @@ pub(crate) fn start_fixvox_cloud_login_with_env(
         &state_nonce,
         open_external_browser,
     ))
+}
+
+pub(crate) fn policy_allows_admin_settings() -> bool {
+    get_fixvox_cloud_status_with_env(&read_env_value)
+        .ok()
+        .and_then(|status| status.auth_policy)
+        .is_some_and(|policy| {
+            policy
+                .capabilities
+                .iter()
+                .any(|capability| capability == "admin_settings")
+        })
 }
 
 #[tauri::command]
@@ -2276,12 +2307,20 @@ pub(crate) fn build_managed_chat_completion_request_preview(
         body["max_tokens"] = serde_json::json!(max_tokens);
     }
 
+    let mut headers = vec![
+        ("Content-Type".to_string(), "application/json".to_string()),
+        ("X-Device-Id".to_string(), device_id),
+    ];
+    if let Some(engine_kind) = input.engine_kind {
+        headers.push((
+            "X-Fixvox-Engine-Kind".to_string(),
+            engine_kind.as_header_value().to_string(),
+        ));
+    }
+
     Ok(ManagedChatRequestPreview {
         endpoint: join_url(&config.backend_base_url, "/v1/chat/completions"),
-        headers: vec![
-            ("Content-Type".to_string(), "application/json".to_string()),
-            ("X-Device-Id".to_string(), device_id),
-        ],
+        headers,
         has_authorization_header: false,
         body,
     })
@@ -2525,7 +2564,7 @@ fn generate_login_session_id() -> String {
     )
 }
 
-fn open_external_browser_url(url: &str) -> Result<(), FixvoxCloudError> {
+pub(crate) fn open_external_browser_url(url: &str) -> Result<(), FixvoxCloudError> {
     #[cfg(target_os = "windows")]
     let mut command = {
         let mut command = Command::new("rundll32.exe");
@@ -2626,6 +2665,19 @@ mod tests {
         assert!(policy.capabilities.can_use_managed_transcription);
         assert!(policy.capabilities.can_see_advanced_settings);
         assert!(policy.capabilities.can_use_debug_tools);
+    }
+
+    #[test]
+    fn policy_template_aliases_and_admin_settings_capability_stay_aligned() {
+        let alpha_basic = product_capabilities_for_policy_template("alpha-basic");
+        let alpha_full = product_capabilities_for_policy_template("alpha-full");
+        let power_admin = product_capabilities_for_policy_template("power-admin");
+
+        assert!(alpha_basic.contains(&"dictation".to_string()));
+        assert!(!alpha_basic.contains(&"selection_transform".to_string()));
+        assert!(alpha_full.contains(&"selection_transform".to_string()));
+        assert!(!alpha_full.contains(&"admin_settings".to_string()));
+        assert!(power_admin.contains(&"admin_settings".to_string()));
     }
 
     #[test]

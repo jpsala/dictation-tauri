@@ -340,7 +340,54 @@ describe("Tauri desktop delivery target capture", () => {
     expect(deliveredTargets).toEqual(["terminal-hwnd"]);
   });
 
-  it("re-resolves the current editable target before normal paste delivery", async () => {
+  it("uses the target captured when dictation stops by default", async () => {
+    const deliveredTargets: string[] = [];
+    const gateway = createTauriSavedTargetDeliveryGateway({
+      invoke: asTauriInvoke((command, args) => {
+        if (command === "deliver_text_to_desktop_target") {
+          const target = args?.target as { frameHwnd: string };
+          deliveredTargets.push(target.frameHwnd);
+          return {
+            status: "paste_sent",
+            reason: "native paste sent",
+            target: args?.target,
+          };
+        }
+        throw new Error(`stop-target delivery should not recapture via ${command}`);
+      }),
+      getTarget: () => ({
+        frameHwnd: "initial-editor-hwnd",
+        windowTitle: "Initial editor",
+        windowClass: "Chrome_WidgetWin_1",
+        processId: 100,
+        processName: "chrome.exe",
+        inputLike: true,
+        reason: "target saved before dictation",
+      }),
+      getStopTarget: () => ({
+        frameHwnd: "stop-editor-hwnd",
+        windowTitle: "Editor focused when dictation stopped",
+        windowClass: "Chrome_WidgetWin_1",
+        processId: 200,
+        processName: "chrome.exe",
+        inputLike: true,
+        reason: "target captured when dictation stopped",
+      }),
+      getFollowFocusUntilDelivery: () => false,
+    });
+
+    const evidence = await gateway.deliver({
+      sessionId: "session-stop-target",
+      text: "dictated text",
+      strategy: "paste_send",
+      allowDesktopSideEffects: true,
+    });
+
+    expect(evidence.status).toBe("paste_sent");
+    expect(deliveredTargets).toEqual(["stop-editor-hwnd"]);
+  });
+
+  it("re-resolves the current editable target when follow-focus is enabled", async () => {
     const deliveredTargets: string[] = [];
     const gateway = createTauriSavedTargetDeliveryGateway({
       invoke: asTauriInvoke((command, args) => {
@@ -378,6 +425,7 @@ describe("Tauri desktop delivery target capture", () => {
         inputLike: true,
         reason: "target saved before dictation",
       }),
+      getFollowFocusUntilDelivery: () => true,
     });
 
     const evidence = await gateway.deliver({

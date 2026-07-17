@@ -57,7 +57,7 @@ export function createVoiceDockState(
     vuLevel: phase === "idle" ? 0 : clampLevel(options.vuLevel ?? 0),
     vuBands: phase === "idle" ? emptyVuBands() : sanitizeVuBands(options.vuBands),
     recovery,
-    activePreset: phase === "processing" ? undefined : options.activePreset,
+    activePreset: options.activePreset,
     assistantModeEnabled: options.assistantModeEnabled === true,
   };
 }

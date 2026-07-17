@@ -1,3 +1,5 @@
+import { scheduleBackgroundJobs } from "../../fixvox-core/src/jobs/schedule";
+import type { BackgroundJobSchedulerPort } from "../../fixvox-core/src/ports";
 import { refreshPricing } from "./pricing-refresh";
 import type { KvNamespaceLike } from "./admin-store";
 import { getPricingSnapshot } from "./pricing-store";
@@ -8,10 +10,6 @@ export type ScheduledTaskEnv = {
   OPENROUTER_API_KEY?: string;
   DISCORD_SUPPORT_SCAN_ENABLED?: string;
   USAGE?: KvNamespaceLike;
-};
-
-type WaitUntilLike = {
-  waitUntil(promise: Promise<unknown>): void;
 };
 
 type ScheduledTaskDeps = {
@@ -88,11 +86,10 @@ export async function shouldRefreshPricing(
 
 export function runScheduledTasks(
   env: ScheduledTaskEnv,
-  ctx: WaitUntilLike,
+  scheduler: BackgroundJobSchedulerPort,
   deps: ScheduledTaskDeps,
 ): void {
-  ctx.waitUntil(deps.refreshPricingTask());
-  if (isDiscordSupportScanEnabled(env)) {
-    ctx.waitUntil(deps.discordScanTask());
-  }
+  const jobs = [deps.refreshPricingTask];
+  if (isDiscordSupportScanEnabled(env)) jobs.push(deps.discordScanTask);
+  scheduleBackgroundJobs(scheduler, jobs);
 }

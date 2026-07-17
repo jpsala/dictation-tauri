@@ -1,25 +1,32 @@
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::BTreeMap,
     error::Error,
     fs, io,
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Mutex,
+        Mutex, Once,
     },
+    thread,
+    time::Duration,
 };
 
-use tauri::{AppHandle, Manager, PhysicalPosition, Runtime, WebviewWindow};
+use tauri::{AppHandle, Manager, Runtime, WebviewWindow};
 
 pub const DOCK_WINDOW_LABEL: &str = "main";
 pub const DOCK_WIDTH: i32 = 164;
 pub const DOCK_HEIGHT: i32 = 64;
 pub const DOCK_WINDOW_MARGIN: i32 = 16;
 pub const DOCK_BOTTOM_MARGIN: i32 = 16;
-pub const DOCK_POSITION_FILE: &str = "dock-position.v1.json";
+pub const LEGACY_DOCK_POSITION_FILE: &str = "dock-position.v1.json";
+pub const DOCK_POSITION_FILE: &str = "dock-positions.v2.json";
+const DOCK_MONITOR_POLL_INTERVAL: Duration = Duration::from_millis(180);
 
 static DOCK_VISIBLE: AtomicBool = AtomicBool::new(true);
 static LAST_DOCK_STATE: Mutex<DockShellState> = Mutex::new(DockShellState::Idle);
+static LAST_IDLE_MONITOR_KEY: Mutex<Option<String>> = Mutex::new(None);
+static DOCK_MONITOR_WATCHER: Once = Once::new();
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DockWorkArea {
@@ -83,6 +90,13 @@ pub struct StoredDockPosition {
     y: i32,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredDockPositions {
+    schema_version: u8,
+    positions: BTreeMap<String, DockPosition>,
+}
+
 #[tauri::command]
 pub fn update_dock_shell_state(
     app: AppHandle,
@@ -134,9 +148,10 @@ pub fn configure_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<d
         )
     })?;
     let layout = dock_shell_layout(DockShellState::Idle);
-    let scale_factor = dock_scale_factor(&window);
+    let monitor = resolve_cursor_monitor(app, &window)?;
+    let scale_factor = monitor.scale_factor();
     let native_layout = scale_dock_shell_layout(layout, scale_factor);
-    let position = resolve_dock_position(app, &window, native_layout)?;
+    let position = resolve_dock_position_for_monitor(app, &monitor, native_layout)?;
 
     window.set_skip_taskbar(true)?;
     window.set_always_on_top(true)?;
@@ -156,6 +171,9 @@ pub fn configure_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<d
         platform::hide_dock_window(&window)?;
         eprintln!("[dictation-tauri][dock] configured hidden by user preference");
     }
+
+    remember_idle_monitor_key(Some(monitor_key(&monitor_work_area(&monitor))));
+    start_dock_monitor_watcher(app);
 
     Ok(())
 }
@@ -228,21 +246,17 @@ fn apply_dock_shell_state<R: Runtime>(
     })
 }
 
-fn resolve_dock_position<R: Runtime>(
+fn resolve_dock_position_for_monitor<R: Runtime>(
     app: &AppHandle<R>,
-    window: &WebviewWindow<R>,
+    monitor: &tauri::Monitor,
     layout: DockShellLayout,
 ) -> Result<DockPosition, Box<dyn Error>> {
-    let drag_area = resolve_work_area(app, window)?;
-    let default_area = resolve_default_work_area(app, window)?;
-    let saved = read_saved_dock_position(app).ok().flatten();
-
-    Ok(resolve_saved_or_default_position_with_default_area(
-        saved,
-        default_area,
-        drag_area,
-        layout,
-    ))
+    let work_area = monitor_work_area(monitor);
+    let key = monitor_key(&work_area);
+    let saved = read_saved_dock_position(app, &key, work_area)
+        .ok()
+        .flatten();
+    Ok(resolve_saved_or_default_position(saved, work_area, layout))
 }
 
 fn resolve_state_position<R: Runtime>(
@@ -272,31 +286,24 @@ fn resolve_work_area<R: Runtime>(
     app: &AppHandle<R>,
     window: &WebviewWindow<R>,
 ) -> Result<DockWorkArea, Box<dyn Error>> {
-    let monitor = resolve_monitor(app, window)?;
-    let position = monitor.position();
-    let size = monitor.size();
-
-    Ok(DockWorkArea {
-        x: position.x,
-        y: position.y,
-        width: size.width as i32,
-        height: size.height as i32,
-    })
+    Ok(monitor_work_area(&resolve_monitor(app, window)?))
 }
 
-fn resolve_default_work_area<R: Runtime>(
-    app: &AppHandle<R>,
-    window: &WebviewWindow<R>,
-) -> Result<DockWorkArea, Box<dyn Error>> {
-    let monitor = resolve_monitor(app, window)?;
+fn monitor_work_area(monitor: &tauri::Monitor) -> DockWorkArea {
     let work_area = monitor.work_area();
-
-    Ok(DockWorkArea {
+    DockWorkArea {
         x: work_area.position.x,
         y: work_area.position.y,
         width: work_area.size.width as i32,
         height: work_area.size.height as i32,
-    })
+    }
+}
+
+fn monitor_key(work_area: &DockWorkArea) -> String {
+    format!(
+        "{},{},{},{}",
+        work_area.x, work_area.y, work_area.width, work_area.height
+    )
 }
 
 fn resolve_monitor<R: Runtime>(
@@ -313,6 +320,50 @@ fn resolve_monitor<R: Runtime>(
             )
             .into()
         })
+}
+
+fn resolve_cursor_monitor<R: Runtime>(
+    app: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+) -> Result<tauri::Monitor, Box<dyn Error>> {
+    if let Some(cursor) = platform::cursor_position() {
+        if let Some(monitor) = app.monitor_from_point(cursor.x as f64, cursor.y as f64)? {
+            return Ok(monitor);
+        }
+    }
+    resolve_monitor(app, window)
+}
+
+fn resolve_monitor_for_position<R: Runtime>(
+    app: &AppHandle<R>,
+    window: &WebviewWindow<R>,
+    position: DockPosition,
+    layout: DockShellLayout,
+) -> Result<tauri::Monitor, Box<dyn Error>> {
+    let probe = dock_monitor_probe_point(position, layout);
+    app.monitor_from_point(probe.x as f64, probe.y as f64)?
+        .map(Ok)
+        .unwrap_or_else(|| resolve_monitor(app, window))
+}
+
+fn dock_monitor_probe_point(position: DockPosition, layout: DockShellLayout) -> DockPosition {
+    DockPosition {
+        x: position.x.saturating_add(layout.width / 2),
+        y: position.y.saturating_add(layout.height / 2),
+    }
+}
+
+fn should_follow_cursor_monitor(
+    visible: bool,
+    state: DockShellState,
+    primary_mouse_button_down: bool,
+    current_key: Option<&str>,
+    cursor_key: &str,
+) -> bool {
+    visible
+        && state == DockShellState::Idle
+        && !primary_mouse_button_down
+        && current_key != Some(cursor_key)
 }
 
 fn current_dock_position<R: Runtime>(app: &AppHandle<R>) -> Result<DockPosition, Box<dyn Error>> {
@@ -339,24 +390,39 @@ fn move_dock_position<R: Runtime>(
             "Dictation Dock window is not available",
         )
     })?;
-    let work_area = resolve_work_area(app, &window)?;
-    let layout = scale_dock_shell_layout(
-        dock_shell_layout(last_dock_state()),
-        dock_scale_factor(&window),
-    );
+    let logical_layout = dock_shell_layout(last_dock_state());
+    let current_layout = scale_dock_shell_layout(logical_layout, dock_scale_factor(&window));
+    let monitor = resolve_monitor_for_position(app, &window, position, current_layout)?;
+    let layout = scale_dock_shell_layout(logical_layout, monitor.scale_factor());
+    let work_area = monitor_work_area(&monitor);
     let clamped_position = clamp_dock_position(position, work_area, layout);
-    window.set_position(PhysicalPosition::new(
-        clamped_position.x,
-        clamped_position.y,
-    ))?;
+    platform::show_dock_window_no_activate(&window, clamped_position, layout)?;
+    remember_idle_monitor_key(Some(monitor_key(&work_area)));
     Ok(clamped_position)
 }
 
 fn save_current_dock_position<R: Runtime>(
     app: &AppHandle<R>,
 ) -> Result<DockPosition, Box<dyn Error>> {
+    let window = app.get_webview_window(DOCK_WINDOW_LABEL).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "Dictation Dock window is not available",
+        )
+    })?;
     let dock_position = current_dock_position(app)?;
-    write_saved_dock_position(app, dock_position)?;
+    let monitor = resolve_monitor_for_position(
+        app,
+        &window,
+        dock_position,
+        scale_dock_shell_layout(
+            dock_shell_layout(last_dock_state()),
+            dock_scale_factor(&window),
+        ),
+    )?;
+    let key = monitor_key(&monitor_work_area(&monitor));
+    write_saved_dock_position(app, &key, dock_position)?;
+    remember_idle_monitor_key(Some(key));
     Ok(dock_position)
 }
 
@@ -373,30 +439,126 @@ fn last_dock_state() -> DockShellState {
         .unwrap_or(DockShellState::Idle)
 }
 
+fn remember_idle_monitor_key(key: Option<String>) {
+    if let Ok(mut stored_key) = LAST_IDLE_MONITOR_KEY.lock() {
+        *stored_key = key;
+    }
+}
+
+fn last_idle_monitor_key() -> Option<String> {
+    LAST_IDLE_MONITOR_KEY
+        .lock()
+        .ok()
+        .and_then(|stored_key| stored_key.clone())
+}
+
+fn start_dock_monitor_watcher<R: Runtime>(app: &AppHandle<R>) {
+    let app = app.clone();
+    DOCK_MONITOR_WATCHER.call_once(move || {
+        thread::spawn(move || loop {
+            thread::sleep(DOCK_MONITOR_POLL_INTERVAL);
+            if let Err(error) = follow_cursor_monitor_if_needed(&app) {
+                eprintln!("[dictation-tauri][dock] cursor monitor follow failed: {error}");
+            }
+        });
+    });
+}
+
+fn follow_cursor_monitor_if_needed<R: Runtime>(app: &AppHandle<R>) -> Result<bool, Box<dyn Error>> {
+    let visible = DOCK_VISIBLE.load(Ordering::SeqCst);
+    let state = last_dock_state();
+    let mouse_down = platform::primary_mouse_button_down();
+    if !visible || state != DockShellState::Idle || mouse_down {
+        return Ok(false);
+    }
+
+    let window = app.get_webview_window(DOCK_WINDOW_LABEL).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            "Dictation Dock window is not available",
+        )
+    })?;
+    let monitor = resolve_cursor_monitor(app, &window)?;
+    let work_area = monitor_work_area(&monitor);
+    let key = monitor_key(&work_area);
+    let current_key = last_idle_monitor_key();
+    if !should_follow_cursor_monitor(visible, state, mouse_down, current_key.as_deref(), &key) {
+        return Ok(false);
+    }
+
+    let layout = scale_dock_shell_layout(
+        dock_shell_layout(DockShellState::Idle),
+        monitor.scale_factor(),
+    );
+    let position = resolve_dock_position_for_monitor(app, &monitor, layout)?;
+    platform::show_dock_window_no_activate(&window, position, layout)?;
+    remember_idle_monitor_key(Some(key));
+    eprintln!(
+        "[dictation-tauri][dock] repositioned for cursor monitor position=({}, {}) size={}x{} scale={:.2}",
+        position.x,
+        position.y,
+        layout.width,
+        layout.height,
+        monitor.scale_factor()
+    );
+    Ok(true)
+}
+
 fn dock_position_path<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<PathBuf> {
     Ok(app.path().app_data_dir()?.join(DOCK_POSITION_FILE))
 }
 
-fn read_saved_dock_position<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Option<DockPosition>> {
+fn legacy_dock_position_path<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<PathBuf> {
+    Ok(app.path().app_data_dir()?.join(LEGACY_DOCK_POSITION_FILE))
+}
+
+fn read_saved_dock_position<R: Runtime>(
+    app: &AppHandle<R>,
+    key: &str,
+    work_area: DockWorkArea,
+) -> Result<Option<DockPosition>, Box<dyn Error>> {
     let path = dock_position_path(app)?;
-    if !path.exists() {
-        return Ok(None);
+    if path.exists() {
+        let content = fs::read_to_string(path)?;
+        let stored = serde_json::from_str::<StoredDockPositions>(&content)?;
+        if stored.schema_version == 2 {
+            if let Some(position) = stored.positions.get(key).copied() {
+                return Ok(Some(position));
+            }
+        }
     }
 
-    let content = fs::read_to_string(path)?;
-    let stored = serde_json::from_str::<StoredDockPosition>(&content)?;
-    if stored.schema_version != 1 {
+    let legacy_path = legacy_dock_position_path(app)?;
+    if !legacy_path.exists() {
         return Ok(None);
     }
+    let content = fs::read_to_string(legacy_path)?;
+    let legacy = serde_json::from_str::<StoredDockPosition>(&content)?;
+    Ok(select_legacy_position_for_monitor(legacy, work_area))
+}
 
-    Ok(Some(DockPosition {
-        x: stored.x,
-        y: stored.y,
-    }))
+fn select_legacy_position_for_monitor(
+    legacy: StoredDockPosition,
+    work_area: DockWorkArea,
+) -> Option<DockPosition> {
+    let position = DockPosition {
+        x: legacy.x,
+        y: legacy.y,
+    };
+    (legacy.schema_version == 1 && position_is_in_work_area(position, work_area))
+        .then_some(position)
+}
+
+fn position_is_in_work_area(position: DockPosition, work_area: DockWorkArea) -> bool {
+    position.x >= work_area.x
+        && position.y >= work_area.y
+        && position.x < work_area.x.saturating_add(work_area.width)
+        && position.y < work_area.y.saturating_add(work_area.height)
 }
 
 fn write_saved_dock_position<R: Runtime>(
     app: &AppHandle<R>,
+    key: &str,
     position: DockPosition,
 ) -> Result<(), Box<dyn Error>> {
     let path = dock_position_path(app)?;
@@ -404,14 +566,14 @@ fn write_saved_dock_position<R: Runtime>(
         fs::create_dir_all(parent)?;
     }
 
-    fs::write(
-        path,
-        serde_json::to_string_pretty(&StoredDockPosition {
-            schema_version: 1,
-            x: position.x,
-            y: position.y,
-        })?,
-    )?;
+    let mut stored = if path.exists() {
+        serde_json::from_str::<StoredDockPositions>(&fs::read_to_string(&path)?).unwrap_or_default()
+    } else {
+        StoredDockPositions::default()
+    };
+    stored.schema_version = 2;
+    stored.positions.insert(key.to_string(), position);
+    fs::write(path, serde_json::to_string_pretty(&stored)?)?;
     Ok(())
 }
 
@@ -443,7 +605,6 @@ fn expanded_layout(width: i32, height: i32) -> DockShellLayout {
     }
 }
 
-#[cfg(test)]
 pub fn resolve_saved_or_default_position(
     saved: Option<DockPosition>,
     work_area: DockWorkArea,
@@ -604,13 +765,29 @@ mod platform {
     use std::{error::Error, io};
     use tauri::{Runtime, WebviewWindow};
     use windows_sys::Win32::{
+        Foundation::POINT,
         Graphics::Gdi::SetWindowRgn,
-        UI::WindowsAndMessaging::{
-            GetWindowLongPtrW, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-            GWL_EXSTYLE, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_SHOWWINDOW, SW_HIDE,
-            WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        UI::{
+            Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON},
+            WindowsAndMessaging::{
+                GetCursorPos, GetWindowLongPtrW, IsWindowVisible, SetWindowLongPtrW, SetWindowPos,
+                ShowWindow, GWL_EXSTYLE, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+                SWP_SHOWWINDOW, SW_HIDE, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+            },
         },
     };
+
+    pub fn cursor_position() -> Option<DockPosition> {
+        let mut point = POINT { x: 0, y: 0 };
+        (unsafe { GetCursorPos(&mut point) } != 0).then_some(DockPosition {
+            x: point.x,
+            y: point.y,
+        })
+    }
+
+    pub fn primary_mouse_button_down() -> bool {
+        (unsafe { GetAsyncKeyState(VK_LBUTTON as i32) }) < 0
+    }
 
     pub fn show_dock_window_no_activate<R: Runtime>(
         window: &WebviewWindow<R>,
@@ -720,6 +897,14 @@ mod platform {
     use super::{DockPosition, DockShellLayout};
     use std::error::Error;
     use tauri::{Runtime, WebviewWindow};
+
+    pub fn cursor_position() -> Option<DockPosition> {
+        None
+    }
+
+    pub fn primary_mouse_button_down() -> bool {
+        false
+    }
 
     pub fn show_dock_window_no_activate<R: Runtime>(
         window: &WebviewWindow<R>,
@@ -956,5 +1141,101 @@ mod tests {
             ),
             DockPosition { x: 830, y: 974 }
         );
+    }
+
+    #[test]
+    fn proposed_dock_center_can_cross_into_an_offset_monitor() {
+        assert_eq!(
+            dock_monitor_probe_point(
+                DockPosition { x: 1900, y: 900 },
+                dock_shell_layout(DockShellState::Idle),
+            ),
+            DockPosition { x: 1982, y: 932 }
+        );
+    }
+
+    #[test]
+    fn cursor_monitor_follow_is_idle_visible_and_does_not_fight_drag() {
+        assert!(should_follow_cursor_monitor(
+            true,
+            DockShellState::Idle,
+            false,
+            Some("monitor-a"),
+            "monitor-b",
+        ));
+        assert!(!should_follow_cursor_monitor(
+            true,
+            DockShellState::Recording,
+            false,
+            Some("monitor-a"),
+            "monitor-b",
+        ));
+        assert!(!should_follow_cursor_monitor(
+            true,
+            DockShellState::Idle,
+            true,
+            Some("monitor-a"),
+            "monitor-b",
+        ));
+        assert!(!should_follow_cursor_monitor(
+            false,
+            DockShellState::Idle,
+            false,
+            Some("monitor-a"),
+            "monitor-b",
+        ));
+    }
+
+    #[test]
+    fn legacy_position_only_migrates_to_its_original_monitor() {
+        let legacy = StoredDockPosition {
+            schema_version: 1,
+            x: 400,
+            y: 500,
+        };
+        assert_eq!(
+            select_legacy_position_for_monitor(
+                legacy,
+                DockWorkArea {
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1040,
+                },
+            ),
+            Some(DockPosition { x: 400, y: 500 })
+        );
+        assert_eq!(
+            select_legacy_position_for_monitor(
+                legacy,
+                DockWorkArea {
+                    x: 1920,
+                    y: 0,
+                    width: 1920,
+                    height: 1040,
+                },
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn stored_positions_keep_independent_coordinates_per_monitor() {
+        let mut positions = BTreeMap::new();
+        positions.insert("0,0,1920,1040".to_string(), DockPosition { x: 800, y: 900 });
+        positions.insert(
+            "1920,0,1920,1040".to_string(),
+            DockPosition { x: 2700, y: 900 },
+        );
+        let encoded = serde_json::to_string(&StoredDockPositions {
+            schema_version: 2,
+            positions,
+        })
+        .expect("positions should serialize");
+        let decoded = serde_json::from_str::<StoredDockPositions>(&encoded)
+            .expect("positions should deserialize");
+
+        assert_eq!(decoded.positions["0,0,1920,1040"].x, 800);
+        assert_eq!(decoded.positions["1920,0,1920,1040"].x, 2700);
     }
 }

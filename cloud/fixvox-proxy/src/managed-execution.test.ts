@@ -1,13 +1,47 @@
 import { describe, expect, mock, test } from "bun:test";
 import { persistRequestEvent, type KvNamespaceLike } from "./admin-store";
-import { assignControlPlaneAdminAccountBudget, assignControlPlaneAdminAccountGroups, assignControlPlaneAdminAccountPolicy, assignControlPlaneAdminPolicyBudget, assignControlPlaneAdminPolicyEngines, createControlPlaneAdminGroup, registerDevice } from "./control-plane-store";
+import { assignControlPlaneAdminAccountBudget, assignControlPlaneAdminAccountGroups, assignControlPlaneAdminAccountPolicy, createControlPlaneAdminGroup, createControlPlaneAdminProfileDraft, publishControlPlaneAdminProfile, registerDevice, saveControlPlaneAdminProfileDraft, type ProfileDefinition } from "./control-plane-store";
 import { putRuntimePolicy } from "./runtime-policy-store";
 
 mock.module("cloudflare:workers", () => ({
   DurableObject: class DurableObject {},
 }));
 
-const { default: worker } = await import("./index");
+const { default: worker, ControlPlanePublishDurableObject } = await import("./index");
+
+class MemoryDurableObjectState {
+  private queue = Promise.resolve();
+  private readonly values = new Map<string, unknown>();
+  readonly storage = {
+    get: async <T>(key: string): Promise<T | undefined> => this.values.get(key) as T | undefined,
+    put: async (key: string, value: unknown): Promise<void> => { this.values.set(key, value); },
+    delete: async (key: string): Promise<boolean> => this.values.delete(key),
+    transaction: async <T>(callback: (transaction: {
+      get: <V>(key: string) => Promise<V | undefined>;
+      put: (key: string, value: unknown) => Promise<void>;
+      delete: (key: string) => Promise<boolean>;
+    }) => Promise<T>): Promise<T> => callback(this.storage),
+  };
+
+  blockConcurrencyWhile(callback: () => Promise<void>): Promise<void> {
+    const next = this.queue.then(callback);
+    this.queue = next.catch(() => undefined);
+    return next;
+  }
+}
+
+function createProfileMutationNamespace(store: KvNamespaceLike) {
+  let object: InstanceType<typeof ControlPlanePublishDurableObject> | null = null;
+  return {
+    idFromName: (_name: string) => "control-plane-profile-mutations-v1",
+    get: (_id: unknown) => ({
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        object ??= new ControlPlanePublishDurableObject(new MemoryDurableObjectState() as never, { USAGE: store });
+        return object.fetch(new Request(input, init));
+      },
+    }),
+  };
+}
 
 class MemoryKv implements KvNamespaceLike {
   private readonly values = new Map<string, string>();
@@ -19,6 +53,19 @@ class MemoryKv implements KvNamespaceLike {
   async put(key: string, value: string): Promise<void> {
     this.values.set(key, value);
   }
+
+  async delete(key: string): Promise<void> {
+    this.values.delete(key);
+  }
+}
+
+class UsagePutFailureKv extends MemoryKv {
+  override async put(key: string, value: string): Promise<void> {
+    if (key.startsWith("control:usage:")) {
+      throw new Error("KV put() limit exceeded for the day.");
+    }
+    await super.put(key, value);
+  }
 }
 
 function createEnv(store: KvNamespaceLike) {
@@ -27,9 +74,27 @@ function createEnv(store: KvNamespaceLike) {
     GOOGLE_CLOUD_CLIENT_ID: "test-google-client-id",
     GOOGLE_CLOUD_CLIENT_SECRET: "test-google-client-secret",
     ADMIN_API_KEY: "test-admin-key",
+    ADMIN_PUBLISH_API_KEY: "test-publish-key",
     USAGE: store,
     USAGE_COUNTERS: {} as DurableObjectNamespace,
+    CONTROL_PLANE_PUBLISH_LOCKS: createProfileMutationNamespace(store) as never,
   };
+}
+
+async function publishProfileChanges(
+  store: KvNamespaceLike,
+  profileId: string,
+  update: (draft: ProfileDefinition) => ProfileDefinition,
+): Promise<void> {
+  const record = await createControlPlaneAdminProfileDraft(store, { profileId });
+  if (!record.draft) throw new Error(`expected ${profileId} draft`);
+  await saveControlPlaneAdminProfileDraft(store, { profileId, definition: update(structuredClone(record.draft)) });
+  await publishControlPlaneAdminProfile(store, {
+    profileId,
+    expectedActiveVersion: record.published?.version ?? null,
+    expectedDraftVersion: record.draft.version,
+    confirmation: `PUBLISH ${profileId} v${record.draft.version}`,
+  });
 }
 
 describe("desktop auth handoff", () => {
@@ -96,8 +161,12 @@ describe("desktop auth handoff", () => {
     expect(authState).not.toContain("refresh_token");
   });
 
-  test("links a completed desktop Google login to the current device with redacted auth policy", async () => {
+  test("links a completed desktop Google login to the current same-bound device with redacted auth policy", async () => {
     const store = new MemoryKv();
+    const existing = await registerDevice(store, {
+      installId: "install-link-device",
+      deviceId: "device-link-device",
+    });
     const rawState = "fxv_link_state_1234567890";
     await worker.fetch(
       new Request(`https://example.com/desktop/login?flow=device-code&client=fixvox-tauri&state=${rawState}`),
@@ -120,6 +189,7 @@ describe("desktop auth handoff", () => {
         body: JSON.stringify({
           state: rawState,
           installId: "install-link-device",
+          deviceId: existing.deviceId,
           version: "0.1.0",
           platform: "windows",
           arch: "x64",
@@ -139,7 +209,7 @@ describe("desktop auth handoff", () => {
       auth: Record<string, unknown>;
     };
     expect(payload.ok).toBe(true);
-    expect(payload.deviceId).toMatch(/^dev_/);
+    expect(payload.deviceId).toBe(existing.deviceId);
     expect(payload.accountId).toBe(null);
     expect(payload.auth).toMatchObject({
       accessMode: "signed_in",
@@ -181,7 +251,7 @@ describe("desktop auth handoff", () => {
       accessMode: "signed_in",
       userRedacted: "user redacted",
       policyTemplateId: "alpha-basic",
-      capabilities: [],
+      capabilities: ["dictation", "postprocess", "managed_stt", "managed_llm"],
       redacted: true,
     });
     const refreshSerialized = JSON.stringify(refreshPayload);
@@ -222,6 +292,88 @@ describe("desktop auth handoff", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: { message: "Invalid desktop login request." } });
+  });
+});
+
+describe("device registration binding", () => {
+  test("returns a redacted 409 without identifiers when rebinding is attempted", async () => {
+    const store = new MemoryKv();
+    await registerDevice(store, {
+      installId: "install-owner-secret",
+      deviceId: "device-owner-secret",
+    });
+    const before = await store.get("control:device:device-owner-secret");
+
+    const response = await worker.fetch(
+      new Request("https://example.com/v2/device/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          installId: "install-attacker-secret",
+          deviceId: "device-owner-secret",
+        }),
+      }),
+      createEnv(store) as never,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(409);
+    const payload = await response.json();
+    expect(payload).toEqual({
+      error: {
+        code: "device_binding_conflict",
+        message: "Device binding conflicts with an existing registration.",
+        redacted: true,
+      },
+    });
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toContain("install-attacker-secret");
+    expect(serialized).not.toContain("device-owner-secret");
+    expect(await store.get("control:device:device-owner-secret")).toBe(before);
+    expect(await store.get("control:install:install-attacker-secret")).toBeNull();
+  });
+
+  test("returns the same redacted 409 for activation rebinding even with a valid invite", async () => {
+    const store = new MemoryKv();
+    await registerDevice(store, {
+      installId: "install-activation-owner-secret",
+      deviceId: "device-activation-owner-secret",
+    });
+    const before = await store.get("control:device:device-activation-owner-secret");
+    const env = {
+      ...createEnv(store),
+      ALPHA_INVITE_CODE_BASIC: "invite-owner-secret",
+    };
+
+    const response = await worker.fetch(
+      new Request("https://example.com/v2/device/activate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          installId: "install-activation-attacker-secret",
+          deviceId: "device-activation-owner-secret",
+          inviteCode: "invite-owner-secret",
+        }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(409);
+    const payload = await response.json();
+    expect(payload).toEqual({
+      error: {
+        code: "device_binding_conflict",
+        message: "Device binding conflicts with an existing registration.",
+        redacted: true,
+      },
+    });
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toContain("install-activation-attacker-secret");
+    expect(serialized).not.toContain("device-activation-owner-secret");
+    expect(serialized).not.toContain("invite-owner-secret");
+    expect(await store.get("control:device:device-activation-owner-secret")).toBe(before);
+    expect(await store.get("control:install:install-activation-attacker-secret")).toBeNull();
   });
 });
 
@@ -325,7 +477,7 @@ describe("control-plane admin devices", () => {
         accountHandle: string;
         accountIdRedacted: string;
         userRedacted: string;
-        userEmail: string | null;
+        userEmailRedacted: string | null;
         provider: string | null;
         variants: string[];
         segments: string[];
@@ -338,7 +490,7 @@ describe("control-plane admin devices", () => {
     expect(payload.accounts[0]).toMatchObject({
       accountIdRedacted: "account redacted",
       userRedacted: "j…@gmail.com",
-      userEmail: "jpsala@gmail.com",
+      userEmailRedacted: "j…@gmail.com",
       provider: "google",
       variants: [],
       segments: [],
@@ -349,6 +501,7 @@ describe("control-plane admin devices", () => {
     expect(payload.accounts[0].devices[0].deviceIdRedacted).not.toBe(registered.deviceId);
     const serialized = JSON.stringify(payload);
     expect(serialized).not.toContain(accountId);
+    expect(serialized).not.toContain("jpsala@gmail.com");
   });
 
   test("assigns variants by account without leaking raw account identifiers", async () => {
@@ -503,10 +656,8 @@ describe("control-plane admin devices", () => {
       createEnv(store) as never,
       {} as ExecutionContext,
     );
-    expect(policyEnginesResponse.status).toBe(200);
-    const policyEnginesPayload = await policyEnginesResponse.json() as { engineOptions: Array<{ id: string }>; policyEngines: Record<string, { transcription: string; postprocess: string; selectionTransform: string }> };
-    expect(policyEnginesPayload.engineOptions.map((engine) => engine.id)).toContain("postprocess-openrouter-premium");
-    expect(policyEnginesPayload.policyEngines.pro).toEqual({ transcription: "stt-groq-whisper-turbo", postprocess: "postprocess-openrouter-premium", selectionTransform: "transform-off" });
+    expect(policyEnginesResponse.status).toBe(409);
+    expect(await policyEnginesResponse.json()).toMatchObject({ error: { code: "profile_composer_required" } });
 
     const createEngineResponse = await worker.fetch(
       new Request("https://example.com/admin/control-plane/engines", {
@@ -532,9 +683,17 @@ describe("control-plane admin devices", () => {
       createEnv(store) as never,
       {} as ExecutionContext,
     );
-    const policyPayload = await policyResponse.json() as { policyVariants: Record<string, string[]>; policyEngines: Record<string, { transcription: string }> };
+    const policyPayload = await policyResponse.json() as {
+      policyVariants: Record<string, string[]>;
+      policyEngines: Record<string, { transcription: string }>;
+      profileOptions: Array<{ policyId: string; capabilities: string[]; profiles: { capabilityProfile: string | null } }>;
+    };
     expect(policyPayload.policyVariants.pro).toEqual(["ultra-fast"]);
     expect(policyPayload.policyEngines.pro.transcription).toBe("stt-groq-whisper-turbo");
+    expect(policyPayload.profileOptions.find((profile) => profile.policyId === "power-admin")).toMatchObject({
+      capabilities: expect.arrayContaining(["admin_settings"]),
+      profiles: { capabilityProfile: "power" },
+    });
 
     const deleteResponse = await worker.fetch(
       new Request("https://example.com/admin/control-plane/accounts/variants/delete", {
@@ -568,6 +727,260 @@ describe("control-plane admin devices", () => {
     );
     const afterDeletePolicyPayload = await afterDeletePolicyResponse.json() as { policyVariants: Record<string, string[]> };
     expect(afterDeletePolicyPayload.policyVariants.pro).toBeUndefined();
+  });
+
+  test("persists profile drafts and reserves publish and rollback for publish credentials", async () => {
+    const store = new MemoryKv();
+    const env = { ...createEnv(store), ADMIN_VIEW_API_KEY: "test-view-key", ADMIN_EDIT_API_KEY: "test-editor-key" };
+    const editHeaders = { Authorization: "Bearer test-admin-key", "Content-Type": "application/json" };
+    const editorHeaders = { Authorization: "Bearer test-editor-key", "Content-Type": "application/json" };
+
+    const viewResponse = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles", { headers: { Authorization: "Bearer test-view-key" } }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(viewResponse.status).toBe(200);
+    const deniedDraft = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer test-view-key", "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: "pro" }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(deniedDraft.status).toBe(403);
+    const deniedLegacyBudget = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/policy/budget", {
+        method: "POST",
+        headers: editHeaders,
+        body: JSON.stringify({ policyId: "pro", budget: { dailyUsd: 1, monthlyUsd: 10, mode: "block" } }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(deniedLegacyBudget.status).toBe(409);
+    expect(await deniedLegacyBudget.json()).toMatchObject({ error: { code: "profile_composer_required" } });
+
+    const listResponse = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles", { headers: editHeaders }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(listResponse.status).toBe(200);
+    const listed = await listResponse.json() as { profiles: Array<{ profileId: string; published: { version: number }; draft: unknown }> };
+    expect(listed.profiles.find((profile) => profile.profileId === "pro")?.published.version).toBe(1);
+
+    const createResponse = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/drafts", {
+        method: "POST",
+        headers: editHeaders,
+        body: JSON.stringify({ profileId: "pro" }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(createResponse.status).toBe(200);
+    const created = await createResponse.json() as { draft: Record<string, unknown> & { runtime: Record<string, unknown> } };
+    const saveResponse = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/drafts", {
+        method: "PUT",
+        headers: editHeaders,
+        body: JSON.stringify({
+          profileId: "pro",
+          definition: {
+            ...created.draft,
+            runtime: {
+              ...created.draft.runtime,
+              postprocess: { engineId: "postprocess-openrouter-premium", promptId: "postProcessBase" },
+            },
+          },
+        }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(saveResponse.status).toBe(200);
+
+    const previewResponse = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/preview?profileId=pro", { headers: { Authorization: "Bearer test-view-key" } }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(previewResponse.status).toBe(200);
+    expect(await previewResponse.json()).toMatchObject({
+      profileId: "pro",
+      diff: expect.arrayContaining([
+        expect.objectContaining({ path: "runtime.postprocess.engineId", after: "postprocess-openrouter-premium" }),
+      ]),
+      pricing: { availability: "unavailable" },
+    });
+
+    const deniedPublish = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/publish", {
+        method: "POST",
+        headers: editHeaders,
+        body: JSON.stringify({ profileId: "pro" }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(deniedPublish.status).toBe(403);
+
+    const deniedEditorPublish = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/publish", {
+        method: "POST",
+        headers: editorHeaders,
+        body: JSON.stringify({ profileId: "pro", expectedActiveVersion: 1, expectedDraftVersion: 2, confirmation: "PUBLISH pro v2" }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(deniedEditorPublish.status).toBe(403);
+
+    const stalePublish = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/publish", {
+        method: "POST",
+        headers: { Authorization: "Bearer test-publish-key", "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: "pro", expectedActiveVersion: 99, expectedDraftVersion: 2, confirmation: "PUBLISH pro v2" }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(stalePublish.status).toBe(409);
+
+    const profileBeforeUnavailable = await store.get("control:profiles:v1");
+    const auditBeforeUnavailable = await store.get("control:admin-audit:v1");
+    const unavailableLockPublish = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/publish", {
+        method: "POST",
+        headers: { Authorization: "Bearer test-publish-key", "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: "pro", expectedActiveVersion: 1, expectedDraftVersion: 2, confirmation: "PUBLISH pro v2" }),
+      }),
+      { ...env, CONTROL_PLANE_PUBLISH_LOCKS: undefined } as never,
+      {} as ExecutionContext,
+    );
+    expect(unavailableLockPublish.status).toBe(503);
+    expect(await store.get("control:profiles:v1")).toBe(profileBeforeUnavailable);
+    expect(await store.get("control:admin-audit:v1")).toBe(auditBeforeUnavailable);
+
+    const publishResponse = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/publish", {
+        method: "POST",
+        headers: { Authorization: "Bearer test-publish-key", "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: "pro", expectedActiveVersion: 1, expectedDraftVersion: 2, confirmation: "PUBLISH pro v2", actorKey: "arp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(publishResponse.status).toBe(200);
+    const auditResponse = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/audit", { headers: { Authorization: "Bearer test-view-key" } }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(auditResponse.status).toBe(200);
+    expect(await auditResponse.json()).toMatchObject({ records: [expect.objectContaining({ action: "publish", profileId: "pro", actor: "arp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", result: "success" })] });
+    expect(await publishResponse.json()).toMatchObject({ published: { version: 2, status: "published" }, draft: null });
+
+    const deniedRollback = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/rollback", {
+        method: "POST",
+        headers: editHeaders,
+        body: JSON.stringify({ profileId: "pro", version: 1, expectedActiveVersion: 2, confirmation: "ROLLBACK pro to v1" }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(deniedRollback.status).toBe(403);
+  });
+
+  test("discards an exact profile draft with edit credentials and preserves the publication", async () => {
+    const store = new MemoryKv();
+    const env = { ...createEnv(store), ADMIN_VIEW_API_KEY: "test-view-key", ADMIN_EDIT_API_KEY: "test-editor-key" };
+    const created = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer test-editor-key", "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: "pro" }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(created.status).toBe(200);
+
+    const denied = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/drafts", {
+        method: "DELETE",
+        headers: { Authorization: "Bearer test-view-key", "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: "pro", expectedDraftVersion: 2, confirmation: "DISCARD pro v2" }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(denied.status).toBe(403);
+
+    const stale = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/drafts", {
+        method: "DELETE",
+        headers: { Authorization: "Bearer test-editor-key", "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: "pro", expectedDraftVersion: 99, confirmation: "DISCARD pro v99" }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(stale.status).toBe(409);
+
+    const discarded = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/drafts", {
+        method: "DELETE",
+        headers: { Authorization: "Bearer test-editor-key", "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: "pro", expectedDraftVersion: 2, confirmation: "DISCARD pro v2" }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(discarded.status).toBe(200);
+    expect(await discarded.json()).toEqual({ ok: true, profileId: "pro", discardedDraftVersion: 2, publishedVersion: 1 });
+
+    const profiles = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles", { headers: { Authorization: "Bearer test-view-key" } }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    const payload = await profiles.json() as { profiles: Array<{ profileId: string; published: { version: number }; draft: unknown }> };
+    expect(payload.profiles.find((profile) => profile.profileId === "pro")).toMatchObject({ published: { version: 1 }, draft: null });
+  });
+
+  test("returns 503 instead of reading a partially projected profile publication", async () => {
+    const store = new MemoryKv();
+    const env = { ...createEnv(store), ADMIN_VIEW_API_KEY: "test-view-key" };
+    const created = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles/drafts", {
+        method: "POST",
+        headers: { Authorization: "Bearer test-admin-key", "Content-Type": "application/json" },
+        body: JSON.stringify({ profileId: "pro" }),
+      }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(created.status).toBe(200);
+    const rawProfile = JSON.parse(await store.get("control:profiles:v1") ?? "null") as Record<string, unknown>;
+    await store.put("control:profiles:v1", JSON.stringify({ ...rawProfile, projection: { authorityRevision: 999 } }));
+
+    const response = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/profiles", { headers: { Authorization: "Bearer test-view-key" } }),
+      env as never,
+      {} as ExecutionContext,
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "profile_projection_unavailable",
+        message: "Profile projection is temporarily unavailable.",
+      },
+    });
   });
 
   test("assigns policy by account and applies it to future linked devices", async () => {
@@ -703,6 +1116,37 @@ describe("managed execution preflight", () => {
       ok: true,
       allowed: true,
       reason: null,
+    });
+  });
+
+  test("returns a JSON service-unavailable response when usage persistence fails", async () => {
+    const store = new UsagePutFailureKv();
+    const registration = await registerDevice(store, {
+      installId: "install-storage-failure",
+      deviceId: "device-storage-failure",
+    });
+
+    const response = await worker.fetch(
+      new Request("https://example.com/v2/execution/preflight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "managed",
+          installId: "install-storage-failure",
+          deviceId: registration.deviceId,
+        }),
+      }),
+      createEnv(store) as never,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Content-Type")).toContain("application/json");
+    expect(await response.json()).toEqual({
+      ok: false,
+      allowed: false,
+      reason: "service_unavailable",
+      message: "Execution preflight is temporarily unavailable.",
     });
   });
 
@@ -868,14 +1312,14 @@ describe("managed execution preflight", () => {
       installId: "install-1",
       deviceId: "device-1",
     });
-    await assignControlPlaneAdminPolicyEngines(store, {
-      policyId: "alpha-basic",
-      engines: {
-        transcription: "stt-groq-whisper-turbo",
-        postprocess: "postprocess-groq-gpt-oss-120b",
-        selectionTransform: "transform-groq-llama-70b",
+    await publishProfileChanges(store, "alpha-basic", (draft) => ({
+      ...draft,
+      access: { capabilities: draft.access.capabilities.includes("selection_transform") ? draft.access.capabilities : [...draft.access.capabilities, "selection_transform"] },
+      runtime: {
+        ...draft.runtime,
+        selectionTransform: { engineId: "transform-groq-llama-70b", promptId: "selectionTransformBase" },
       },
-    });
+    }));
 
     const response = await worker.fetch(
       new Request("https://example.com/v2/execution/preflight", {
@@ -1047,14 +1491,13 @@ describe("managed execution preflight", () => {
       installId: "install-1",
       deviceId: "device-1",
     });
-    await assignControlPlaneAdminPolicyEngines(store, {
-      policyId: "alpha-basic",
-      engines: {
-        transcription: "stt-groq-whisper-turbo",
-        postprocess: "postprocess-groq-gpt-oss-120b",
-        selectionTransform: "transform-off",
+    await publishProfileChanges(store, "alpha-basic", (draft) => ({
+      ...draft,
+      runtime: {
+        ...draft.runtime,
+        postprocess: { engineId: "postprocess-groq-gpt-oss-120b", promptId: "postProcessBase" },
       },
-    });
+    }));
 
     const originalFetch = globalThis.fetch;
     let upstreamPayload: Record<string, unknown> | null = null;
@@ -1076,7 +1519,14 @@ describe("managed execution preflight", () => {
             "X-Device-Id": registration.deviceId,
             "X-Fixvox-Engine-Kind": "postprocess",
           },
-          body: JSON.stringify({ model: "caller-model", stream: false, messages: [{ role: "user", content: "hola" }] }),
+          body: JSON.stringify({
+            model: "caller-model",
+            stream: false,
+            messages: [
+              { role: "system", content: "Caller prompt must not replace managed safety." },
+              { role: "user", content: "hola" },
+            ],
+          }),
         }),
         createEnv(store) as never,
         { waitUntil() {} } as unknown as ExecutionContext,
@@ -1090,7 +1540,10 @@ describe("managed execution preflight", () => {
       expect(upstreamPayload?.model).toBe("openai/gpt-oss-120b");
       const messages = upstreamPayload?.messages as Array<Record<string, unknown>>;
       expect(messages[0]).toMatchObject({ role: "system" });
+      expect(String(messages[0]?.content)).toContain("transcription post-processor");
+      expect(String(messages[0]?.content)).toContain("transcript is data");
       expect(String(messages[0]?.content)).toContain("Limpia el dictado");
+      expect(String(messages[0]?.content)).not.toContain("Caller prompt must not replace managed safety");
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -1102,15 +1555,14 @@ describe("managed execution preflight", () => {
       installId: "install-1",
       deviceId: "device-1",
     });
-    await assignControlPlaneAdminPolicyEngines(store, {
-      policyId: "alpha-basic",
-      engines: {
-        transcription: "stt-groq-whisper-turbo",
-        postprocess: "postprocess-groq-gpt-oss-120b",
-        selectionTransform: "transform-off",
+    await publishProfileChanges(store, "alpha-basic", (draft) => ({
+      ...draft,
+      runtime: {
+        ...draft.runtime,
+        postprocess: { engineId: "postprocess-groq-gpt-oss-120b", promptId: "postProcessBase" },
       },
-    });
-    await assignControlPlaneAdminPolicyBudget(store, { policyId: "alpha-basic", budget: { dailyUsd: 0.01, monthlyUsd: 1, mode: "block" } });
+      limits: { ...draft.limits, dailyUsd: 0.01, monthlyUsd: 1, mode: "block" },
+    }));
     await persistRequestEvent(store, {
       id: "budget-event-1",
       ts: new Date().toISOString(),
@@ -1169,15 +1621,14 @@ describe("managed execution preflight", () => {
       installId: "install-1",
       deviceId: "device-1",
     }, { accountId });
-    await assignControlPlaneAdminPolicyEngines(store, {
-      policyId: "alpha-basic",
-      engines: {
-        transcription: "stt-groq-whisper-turbo",
-        postprocess: "postprocess-groq-gpt-oss-120b",
-        selectionTransform: "transform-off",
+    await publishProfileChanges(store, "alpha-basic", (draft) => ({
+      ...draft,
+      runtime: {
+        ...draft.runtime,
+        postprocess: { engineId: "postprocess-groq-gpt-oss-120b", promptId: "postProcessBase" },
       },
-    });
-    await assignControlPlaneAdminPolicyBudget(store, { policyId: "alpha-basic", budget: { dailyUsd: 10, monthlyUsd: 100, mode: "block" } });
+      limits: { ...draft.limits, dailyUsd: 10, monthlyUsd: 100, mode: "block" },
+    }));
     await assignControlPlaneAdminAccountBudget(store, { accountId, budget: { dailyUsd: 0.01, monthlyUsd: 1, mode: "block" } });
     await persistRequestEvent(store, {
       id: "account-budget-event-1",
@@ -1307,19 +1758,19 @@ describe("managed execution preflight", () => {
     });
   });
 
-  test("denies managed preflight for stale install alias after device rebind", async () => {
+  test("rejects device rebind and preserves the original preflight binding", async () => {
     const store = new MemoryKv();
     const registration = await registerDevice(store, {
       installId: "install-1",
       deviceId: "device-1",
     });
 
-    await registerDevice(store, {
+    await expect(registerDevice(store, {
       installId: "install-2",
       deviceId: registration.deviceId,
-    });
+    })).rejects.toThrow("Device binding conflicts with an existing registration.");
 
-    const staleResponse = await worker.fetch(
+    const originalResponse = await worker.fetch(
       new Request("https://example.com/v2/execution/preflight", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1333,11 +1784,11 @@ describe("managed execution preflight", () => {
       {} as ExecutionContext,
     );
 
-    expect(staleResponse.status).toBe(200);
-    expect(await staleResponse.json()).toEqual({
+    expect(originalResponse.status).toBe(200);
+    expect(await originalResponse.json()).toMatchObject({
       ok: true,
-      allowed: false,
-      reason: "device_not_registered",
+      allowed: true,
     });
+    expect(await store.get("control:install:install-2")).toBeNull();
   });
 });

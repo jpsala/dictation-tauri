@@ -40,6 +40,18 @@ El asistente puede leer y usar `.env`, variables locales, logs, audio, transcrip
 - Servicios externos de STT/LLM pueden usarse con variables locales cuando una tarea lo requiera.
 - `ModelGateway` sigue siendo la frontera tecnica deseada, pero no por una restriccion de privacidad.
 
+## Clipboard Delivery Actual
+
+- Delivery nativo enfoca el target guardado antes de tomar el snapshot, pega y restaura.
+- Solo sobrescribe clipboards reconstruibles: texto, DIB/DIBV5 y formatos adicionales clonables como bytes `HGLOBAL`. Metadata bitmap conocida se acepta únicamente con DIB; cualquier formato que no pueda clonarse sigue fallando cerrado antes del paste.
+- Durante la ventana write/paste/restore el texto dictado puede ser visible para clipboard watchers; es un constraint conocido, no privacidad fuerte.
+
+## Retencion Local De Resultados
+
+`result-history.v1.jsonl` vive en app data host-owned y guarda solo resultados de texto reutilizables. El contrato actual limita el historial a 50 entradas y 256 KiB serializados; al superar cualquiera de los dos limites se eliminan primero las entradas mas antiguas. Entradas vacias o de schema desconocido se ignoran y `paste_observed` no se persiste desde evidencia renderer no verificada.
+
+La companion muestra `Clear history`; la accion borra el archivo local completo mediante `clear_result_history`. No borra presets, configuracion, cuentas ni datos Cloud. Presets/configuracion tienen ciclo de vida propio y permanecen hasta editar, resetear o borrar explicitamente.
+
 ## Pendiente
 
 Registrar decisiones sobre:
@@ -49,4 +61,4 @@ Registrar decisiones sobre:
 - que artifacts se versionan, ignoran o quedan en app data;
 - logs utiles para desarrollo;
 - modo debug;
-- retencion y exportacion.
+- exportacion y retencion de otros artifacts fuera de result history.

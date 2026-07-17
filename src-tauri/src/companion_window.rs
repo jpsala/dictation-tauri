@@ -1,12 +1,19 @@
-use tauri::{AppHandle, Manager, Runtime, WebviewWindow, WindowEvent};
+use std::{
+    sync::atomic::{AtomicU64, Ordering},
+    thread,
+    time::Duration,
+};
+use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewWindow, WindowEvent};
 
 pub const COMPANION_WINDOW_LABEL: &str = "dock-companion";
 pub const PRESET_PICKER_WINDOW_LABEL: &str = "preset-picker";
 const DOCK_WINDOW_LABEL: &str = "main";
 const COMPANION_WINDOW_WIDTH: i32 = 440;
 const COMPANION_WINDOW_HEIGHT: i32 = 420;
-const PRESET_PICKER_WINDOW_WIDTH: i32 = 420;
-const PRESET_PICKER_WINDOW_HEIGHT: i32 = 500;
+const PRESET_PICKER_WINDOW_WIDTH: i32 = 380;
+const PRESET_PICKER_WINDOW_HEIGHT: i32 = 320;
+const DOCK_COMPANION_COMMAND_EVENT: &str = "dock-companion://command";
+static PRESET_PICKER_WATCH_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 pub fn configure_companion_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window(COMPANION_WINDOW_LABEL) {
@@ -48,7 +55,9 @@ pub fn show_preset_picker(app: AppHandle) -> Result<(), String> {
         PRESET_PICKER_WINDOW_HEIGHT,
         "preset-picker",
     )
-    .map_err(|error| error.to_string())
+    .map_err(|error| error.to_string())?;
+    watch_preset_picker_focus(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -167,6 +176,67 @@ fn focus_webview_child<R: Runtime>(
     _window: &WebviewWindow<R>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
+}
+
+fn watch_preset_picker_focus<R: Runtime>(app: &AppHandle<R>) {
+    let generation = PRESET_PICKER_WATCH_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let Some(window) = app.get_webview_window(PRESET_PICKER_WINDOW_LABEL) else {
+        return;
+    };
+    let app = app.clone();
+
+    thread::spawn(move || {
+        let mut saw_picker_foreground = false;
+        loop {
+            if PRESET_PICKER_WATCH_GENERATION.load(Ordering::SeqCst) != generation
+                || !window.is_visible().unwrap_or(false)
+            {
+                return;
+            }
+
+            if is_picker_foreground(&window) {
+                saw_picker_foreground = true;
+            } else if saw_picker_foreground {
+                thread::sleep(Duration::from_millis(100));
+                if PRESET_PICKER_WATCH_GENERATION.load(Ordering::SeqCst) != generation
+                    || is_picker_foreground(&window)
+                {
+                    continue;
+                }
+
+                let _ = window.hide();
+                let _ = app.emit_to(
+                    DOCK_WINDOW_LABEL,
+                    DOCK_COMPANION_COMMAND_EVENT,
+                    serde_json::json!({
+                        "source": "dock_companion",
+                        "command": "close_companion",
+                    }),
+                );
+                return;
+            }
+
+            thread::sleep(Duration::from_millis(60));
+        }
+    });
+}
+
+#[cfg(windows)]
+fn is_picker_foreground<R: Runtime>(window: &WebviewWindow<R>) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetAncestor, GetForegroundWindow, GA_ROOT};
+
+    let Ok(hwnd) = window.hwnd() else {
+        return false;
+    };
+    let foreground = unsafe { GetForegroundWindow() };
+    !foreground.is_null()
+        && unsafe { GetAncestor(foreground, GA_ROOT) }
+            == hwnd.0 as windows_sys::Win32::Foundation::HWND
+}
+
+#[cfg(not(windows))]
+fn is_picker_foreground<R: Runtime>(window: &WebviewWindow<R>) -> bool {
+    window.is_focused().unwrap_or(false)
 }
 
 fn attach_hide_on_close<R: Runtime>(window: WebviewWindow<R>) {

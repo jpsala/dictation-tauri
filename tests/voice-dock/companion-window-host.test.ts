@@ -20,4 +20,22 @@ describe("Companion host window", () => {
     expect(config).toContain('"decorations": true');
     expect(config).toContain('"skipTaskbar": false');
   });
+
+  it("keeps the preset picker compact and hides it when focus moves elsewhere", () => {
+    const source = readFileSync("src-tauri/src/companion_window.rs", "utf8");
+    const appSource = readFileSync("src/App.tsx", "utf8");
+    const config = readFileSync("src-tauri/tauri.conf.json", "utf8");
+
+    expect(source).toContain("const PRESET_PICKER_WINDOW_WIDTH: i32 = 380");
+    expect(source).toContain("const PRESET_PICKER_WINDOW_HEIGHT: i32 = 320");
+    expect(source).toContain("watch_preset_picker_focus");
+    expect(source).toContain("GetForegroundWindow");
+    expect(source).toContain("saw_picker_foreground");
+    expect(source).toContain("DOCK_COMPANION_COMMAND_EVENT");
+    expect(appSource).not.toContain('window.addEventListener("blur"');
+    expect(source).toContain('"command": "close_companion"');
+    expect(config).toContain('"label": "preset-picker"');
+    expect(config).toContain('"width": 380');
+    expect(config).toContain('"height": 320');
+  });
 });

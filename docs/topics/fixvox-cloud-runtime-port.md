@@ -234,3 +234,26 @@ Orden recomendado:
 11. Crear installer Windows local reproducible con identidad `Fixvox Tauri`, app id separado `dev.jpsala.fixvox-tauri` y bundle NSIS local bajo `src-tauri/target/release/bundle/nsis/`.
 12. Completar activation/policy snapshot como cliente Fixvox Tauri.
 13. Publicar artifact separado para Tauri en el release repo de Fixvox solo con aprobacion explicita; no pisar el canal/update artifacts Fixvox legacy/Electrobun.
+
+## Invariante De Preflight Ante Presion De KV
+
+Diagnostico live read-only 2026-07-14: un dictado fallo antes del provider porque
+`evaluateExecutionPreflight` intento persistir el evento de cuota y Cloudflare KV
+respondio `KV put() limit exceeded for the day.`. La excepcion sin capturar produjo
+`500 text/plain`, que el cliente presento como contrato de preflight invalido. No
+hubo llamada STT.
+
+Reglas durables:
+
+- El profile `pro-unlimited` no debe escribir un evento de cuota por preflight;
+  sus limites practicamente ilimitados no justifican consumir writes KV.
+- Una falla inesperada de storage durante preflight debe responder JSON fail-closed
+  (`503`, `reason=service_unavailable`), nunca una excepcion `text/plain`.
+- Los profiles con cuota real conservan tracking y denial; no generalizar el
+  bypass a tiers limitados.
+- Verificar con tests Worker y `wrangler deploy --dry-run`; deploy y smoke live
+  requieren autorizacion explicita.
+
+Fix local preparado, todavia no desplegado al documentar esta regla:
+`cloud/fixvox-proxy/src/control-plane-store.ts` y
+`cloud/fixvox-proxy/src/index.ts`.

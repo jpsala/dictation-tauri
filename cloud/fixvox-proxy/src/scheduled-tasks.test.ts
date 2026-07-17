@@ -30,8 +30,8 @@ describe("runScheduledTasks", () => {
     const calls: string[] = [];
 
     runScheduledTasks(createEnv(), {
-      waitUntil(promise) {
-        calls.push("waitUntil");
+      schedule(promise) {
+        calls.push("schedule");
         void promise;
       },
     }, {
@@ -43,15 +43,15 @@ describe("runScheduledTasks", () => {
       },
     });
 
-    expect(calls).toEqual(["pricing", "waitUntil"]);
+    expect(calls).toEqual(["pricing", "schedule"]);
   });
 
   test("schedules discord scan when enabled", async () => {
     const calls: string[] = [];
 
     runScheduledTasks(createEnv({ DISCORD_SUPPORT_SCAN_ENABLED: "true" }), {
-      waitUntil(promise) {
-        calls.push("waitUntil");
+      schedule(promise) {
+        calls.push("schedule");
         void promise;
       },
     }, {
@@ -63,7 +63,7 @@ describe("runScheduledTasks", () => {
       },
     });
 
-    expect(calls).toEqual(["pricing", "waitUntil", "discord", "waitUntil"]);
+    expect(calls).toEqual(["pricing", "schedule", "discord", "schedule"]);
   });
 });
 

@@ -659,6 +659,7 @@ async fn run_assistant_chat_with_managed_chat(
             system_prompt: build_assistant_chat_system_prompt(),
             model: model.clone(),
             max_tokens: Some(1024),
+            engine_kind: None,
         },
     ) {
         Ok(preview) => preview,
@@ -850,6 +851,7 @@ async fn transform_selected_text_with_managed_chat(
             system_prompt: build_selection_transform_system_prompt(),
             model: model.clone(),
             max_tokens: Some(2048),
+            engine_kind: Some(fixvox_cloud::ManagedChatEngineKind::SelectionTransform),
         },
     ) {
         Ok(preview) => preview,
@@ -879,6 +881,10 @@ async fn transform_selected_text_with_managed_chat(
         .post(&preview.endpoint)
         .header(header::CONTENT_TYPE, "application/json")
         .header("X-Device-Id", device_id)
+        .header(
+            "X-Fixvox-Engine-Kind",
+            fixvox_cloud::ManagedChatEngineKind::SelectionTransform.as_header_value(),
+        )
         .header("X-Fixvox-Request-Context", format!("preset.{preset}"))
         .json(&preview.body)
         .send()
@@ -3186,6 +3192,7 @@ async fn apply_fixvox_managed_postprocess(
             system_prompt: build_raw_voice_postprocess_system_prompt(prompt),
             model: model.clone(),
             max_tokens: Some(4096),
+            engine_kind: Some(fixvox_cloud::ManagedChatEngineKind::Postprocess),
         },
     ) {
         Ok(preview) => preview,
@@ -3210,6 +3217,10 @@ async fn apply_fixvox_managed_postprocess(
         .post(&preview.endpoint)
         .header(header::CONTENT_TYPE, "application/json")
         .header("X-Device-Id", config.device_id.clone())
+        .header(
+            "X-Fixvox-Engine-Kind",
+            fixvox_cloud::ManagedChatEngineKind::Postprocess.as_header_value(),
+        )
         .json(&preview.body)
         .send()
         .await

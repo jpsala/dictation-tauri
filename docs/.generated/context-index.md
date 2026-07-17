@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-11T22:58:24.158Z
+Generated: 2026-07-17T12:21:31.339Z
 
 ## Topics
 
@@ -39,13 +39,20 @@ Generated: 2026-07-11T22:58:24.158Z
 - archived: [Fixvox Effective Runtime Parity](../tracks/archive/fixvox-effective-runtime-parity.md)
 - archived: [Prompt Para Proxima Sesion Archivado](../tracks/archive/next-session-prompt-2026-06-20.md)
 - archived: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md)
+- active: [Bounded Taskflow Implementation Spike](../tracks/bounded-taskflow-implementation-spike.md)
+- active: [Fixvox Admin Configuration Hub](../tracks/fixvox-admin-configuration-hub.md)
+- stable: [Fixvox Admin Profile Composer](../tracks/fixvox-admin-profile-composer.md)
 - active: [Fixvox Admin Web + Pi Chat](../tracks/fixvox-admin-web-pi-chat.md)
 - active: [Fixvox Lulu Assistant Parity Refactor](../tracks/fixvox-lulu-assistant-parity-refactor.md)
 - active: [Fixvox Lulu Assistant Safe Architecture Plan](../tracks/fixvox-lulu-assistant-safe-architecture-plan.md)
+- active: [Fixvox Product-First Self-Hosted Contract Plan](../tracks/fixvox-product-first-self-hosted-contract-plan.md)
 - active: [Fixvox Registered Users Opportunities](../tracks/fixvox-registered-users-opportunities.md)
+- superseded: [Fixvox Self-Hosted Checkpoint D Closure Plan](../tracks/fixvox-self-hosted-checkpoint-d-closure-plan.md)
 - active: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md)
 - active: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md)
 - active: [Pi Prod Workspace For Dictation Tauri](../tracks/pi-prod-workspace.md)
+- stable: [Profile Composer: Cloudflare rollout seguro y auditable](../tracks/profile-composer-cloudflare-rollout-plan.md)
+- stable: [Profile Composer Phase 3: preview, RBAC and safe publish](../tracks/profile-composer-phase-3-rbac-publish-plan.md)
 - active: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md)
 - active: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md)
 
@@ -69,6 +76,7 @@ Generated: 2026-07-11T22:58:24.158Z
 - [016-fixvox-cloud-consolidation](../../specs/016-fixvox-cloud-consolidation/)
 - [017-verified-paste-observer](../../specs/017-verified-paste-observer/)
 - [018-fixvox-audio-runtime-parity](../../specs/018-fixvox-audio-runtime-parity/)
+- [019-fixvox-self-hosted-control-plane](../../specs/019-fixvox-self-hosted-control-plane/)
 
 ## Skills
 

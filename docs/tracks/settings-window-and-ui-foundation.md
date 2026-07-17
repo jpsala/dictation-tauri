@@ -147,6 +147,20 @@ Pulido live de Settings/Dock/Cloud posterior al recorder hardening:
 - Checks: focused companion, `npm run test:pipeline -- tests/settings tests/voice-dock tests/desktop-control`, full `npm run test:pipeline`, `npm run build`.
 - Commit: `bb83fea fix: dedupe dock companion sync`.
 
+## Update 2026-07-13: Settings unificado y capability-aware
+
+JP eligió un Settings unificado: preferencias personales siguen nativas y la administración global reutiliza el Control Room existente, no duplica engines/prompts/profiles/accounts en React. Implementado local: `admin_settings` queda reservado a power-admin; Settings deriva acceso desde auth policy, oculta Presets cuando falta `selection_transform`, deshabilita mutaciones sin `custom_prompts` y ya no presenta provider/model local como routing efectivo. La sección Admin valida policy también en Rust, acepta HTTPS o localhost HTTP y no obtiene `ADMIN_API_KEY`. La WebView Tauri externa quedó en blanco incluso al forzar navegación host-level; JP eligió el fallback confiable y mínimo: `Open Control Room` abre la URL validada en el navegador autenticado mediante el opener host-owned existente.
+
+También quedó cerrado el primer límite de retención: result history conserva como máximo 50 entradas/256 KiB, evicta oldest-first y expone `Clear history`.
+
+Accounts del Admin Web ahora reconoce la cuenta de producto del administrador autenticado mediante el Google `sub` conservado solo server-side y el mismo hash `acc_<sha256>` del Control Plane. La fila existente recibe `Tu cuenta`, nombre y email enmascarado; las demás filas siguen redacted y una sesión sin vínculo muestra aviso sin fabricar ni duplicar accounts. El mock UI smoke completo pasó y dejó screenshot en `artifacts/ui-spikes/admin-web-ui-smoke/20260713-230707/`.
+
+Checks seguros: 443 tests pipeline, 98 Cloud, Rust 92 pass + 1 ignored, build/check verdes. Worker `3caacc64-279f-4209-b4ac-6be9df78e82d` fue desplegado con health verde y JP autorizó la mutación account-level: `acc_9c8…` ahora es Power Admin por Account override y conserva 1 device. Fixvox refrescó la policy con `admin_settings`, `custom_prompts`, `advanced_settings` y `debug_tools`; Settings mostró Admin y abrió el Control Room en Vivaldi. Chrome extension verificó en producción `Juan Pablo Sala · Tu cuenta · j…@gmail.com · Power Admin · Account override`, sin mutar prompts, engines, providers ni budgets. Evidencia: `artifacts/admin-web-prod-smoke/20260713-power-admin-account.png`.
+
+## Update 2026-07-14: Configuration hub desplegado
+
+Tras una crítica Impeccable de 17/40, JP eligió Configuration hub, Pi contextual y Profiles como primer slice. El corte separa Profiles/Engines/Prompts/Presets, oculta el rail Pi en Configuration, convierte Profiles en list-detail read-only y agrega `profileOptions` seguro al contrato Cloud. Elimina el falso `Guardar draft local` y evita montar catálogos fuera de su tab. JP luego confirmó que Overrides tenía poca utilidad con una sola plantilla cerrada: se ocultó el tab y la mutación por usuario, Groups quedó como targeting visible y los efectos legacy siguen solo read-only; backend/datos intactos. Checks: 446 pipeline, 99 Cloud, build y smoke mock verdes. Deploy: Worker `89ac13c1-6f30-4478-9670-ba54abe84cf7`; backups `/home/jpsal/.local/state/fixvox-admin-backups/configuration-hub-20260714-010506` y `hide-overrides-20260714-020057`. Health y Chrome production pasaron; cinco profiles, cuatro tabs y cero controles legacy, sin mutaciones. Evidencia: `artifacts/ui-spikes/admin-web-ui-smoke/20260714-015650/`. Track: `docs/tracks/fixvox-admin-configuration-hub.md`.
+
 ## Proximo Paso
 
 Siguiente lote recomendado:

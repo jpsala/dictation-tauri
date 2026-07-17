@@ -89,6 +89,7 @@ export type DesktopDictationControllerOptions = {
   delivery?: DesktopDeliveryGateway;
   allowDesktopDeliverySideEffects?: boolean;
   autoStop?: DesktopAutoStopSilencePolicy;
+  prepareDeliveryTargetOnStop?: () => Promise<void>;
   scheduler?: DesktopScheduler;
   createSessionId?: () => string;
   now?: () => string;
@@ -108,6 +109,7 @@ export class DesktopDictationController
   private readonly delivery: DesktopDeliveryGateway;
   private readonly allowDesktopDeliverySideEffects: boolean;
   private readonly autoStop?: DesktopAutoStopSilencePolicy;
+  private readonly prepareDeliveryTargetOnStop?: () => Promise<void>;
   private readonly scheduler: DesktopScheduler;
   private readonly createSessionId: () => string;
   private readonly now: () => string;
@@ -121,6 +123,7 @@ export class DesktopDictationController
     this.delivery = options.delivery ?? createReviewOnlyDeliveryGateway();
     this.allowDesktopDeliverySideEffects = options.allowDesktopDeliverySideEffects ?? false;
     this.autoStop = options.autoStop;
+    this.prepareDeliveryTargetOnStop = options.prepareDeliveryTargetOnStop;
     this.scheduler = options.scheduler ?? globalScheduler;
     this.createSessionId = options.createSessionId ?? createDefaultSessionId;
     this.now = options.now ?? (() => new Date().toISOString());
@@ -199,6 +202,9 @@ export class DesktopDictationController
     this.patchCurrent(session.sessionId, { state: "stopping" });
 
     try {
+      if (this.prepareDeliveryTargetOnStop) {
+        await this.prepareDeliveryTargetOnStop();
+      }
       const capture = await this.capture.stop({
         sessionId: session.sessionId,
         event,

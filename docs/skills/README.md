@@ -10,7 +10,7 @@
 
 ## Contenido Actual
 
-Las skills AOS portables se descubren desde el kit upstream y no se duplican en este repo. Las reglas y el contexto propios de Dictation Tauri permanecen en `AGENTS.md` y `docs/`.
+Las skills AOS portables se descubren desde el kit upstream y no se duplican en este repo. Las reglas y el contexto propios de Dictation Tauri permanecen en `AGENTS.md` y la documentación bajo `docs`.
 
 Quedan skills locales no colisionantes: aliases legacy preexistentes (`sigamos/`, `realinear-os/`, `evaluar-skills/`, `cerrar-sesion/`, `continuar-sesion*/`, `plan-implementar/`), `impeccable/` para UI/frontend y las skills SpecKit (`speckit-*`). Mantener los aliases solo como compatibilidad hasta una limpieza explicita.
 

@@ -13,6 +13,7 @@ import {
 describe("user preference contracts", () => {
   it("defaults auto-stop disabled with a safe silence duration", () => {
     expect(defaultUserPreferences).toMatchObject({
+      followFocusUntilDelivery: true,
       autoStopOnSilenceEnabled: false,
       autoStopSilenceMs: defaultAutoStopSilenceMs,
       muteOutputDuringRecording: false,
@@ -39,6 +40,7 @@ describe("user preference contracts", () => {
       showDockOnStartup: false,
       reviewBeforeDelivery: true,
       pressEnterAfterPaste: true,
+      followFocusUntilDelivery: true,
       autoStopOnSilenceEnabled: false,
       autoStopSilenceMs: defaultAutoStopSilenceMs,
       muteOutputDuringRecording: false,

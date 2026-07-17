@@ -103,7 +103,7 @@ describe("voice dock visual semantics", () => {
         session({ state: "transcribing" }),
         { activePreset: { presetName: "Corregir texto" } },
       ).activePreset,
-    ).toBeUndefined();
+    ).toEqual({ presetName: "Corregir texto" });
   });
 
   it("renders processing from stopping/transcribing/postprocessing/delivering without claiming paste observation", () => {

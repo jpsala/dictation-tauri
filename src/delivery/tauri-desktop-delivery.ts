@@ -152,6 +152,8 @@ function resolveAssuredDeliveryTarget(input: {
 export function createTauriSavedTargetDeliveryGateway(input: {
   invoke: TauriInvoke;
   getTarget: () => TauriDesktopDeliveryTarget | undefined;
+  getStopTarget?: () => TauriDesktopDeliveryTarget | undefined;
+  getFollowFocusUntilDelivery?: () => boolean;
   getPressEnterAfterPaste?: () => boolean;
   observer?: DesktopPasteObserver<TauriDesktopDeliveryTarget>;
 }): DesktopDeliveryGateway {
@@ -162,18 +164,23 @@ export function createTauriSavedTargetDeliveryGateway(input: {
       }
 
       const savedTarget = input.getTarget();
+      const useStopTarget = request.targetAffinity !== "saved" &&
+        input.getFollowFocusUntilDelivery?.() === false;
+      const stopTarget = useStopTarget ? input.getStopTarget?.() : undefined;
       const savedTargetIsExplicitTerminal = savedTarget?.inputLike === true &&
         isTerminalLikeTarget(savedTarget);
-      const currentTarget = request.targetAffinity === "saved"
+      const currentTarget = request.targetAffinity === "saved" || useStopTarget
         ? undefined
         : await captureTauriDesktopDeliveryTarget(input.invoke, {
             preferForegroundWatcherCacheOverTerminal: !savedTargetIsExplicitTerminal,
           });
-      const target = resolveAssuredDeliveryTarget({
-        savedTarget,
-        currentTarget,
-        targetAffinity: request.targetAffinity,
-      });
+      const target = useStopTarget
+        ? stopTarget?.inputLike ? stopTarget : undefined
+        : resolveAssuredDeliveryTarget({
+            savedTarget,
+            currentTarget,
+            targetAffinity: request.targetAffinity,
+          });
       if (!target) {
         return deriveDeliveryEvidence(request, {
           status: "failed",

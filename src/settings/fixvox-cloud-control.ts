@@ -57,6 +57,30 @@ export type FixvoxCloudStatus = {
   redacted: boolean;
 };
 
+export type SettingsAccess = {
+  canViewPresets: boolean;
+  canEditPresets: boolean;
+  canOpenAdmin: boolean;
+};
+
+export function resolveSettingsAccess(status: FixvoxCloudStatus | undefined): SettingsAccess {
+  const auth = status?.authPolicy;
+  const capabilities = new Set<FixvoxProductCapability>(
+    auth?.capabilities ?? (
+      auth?.policyTemplateId
+        ? [...getFixvoxPolicyTemplate(auth.policyTemplateId).capabilities]
+        : []
+    ),
+  );
+  const canViewPresets = capabilities.has("selection_transform") && capabilities.has("managed_llm");
+
+  return {
+    canViewPresets,
+    canEditPresets: canViewPresets && capabilities.has("custom_prompts"),
+    canOpenAdmin: capabilities.has("admin_settings"),
+  };
+}
+
 export type FixvoxCloudOperation = "register" | "refresh" | "activate";
 
 export type FixvoxCloudLoginStartStatus = {

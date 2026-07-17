@@ -53,7 +53,8 @@ es cambio chico; validar con <check>`.
 | Loop con verify command claro | until-done | advisor, lens, checks | verify command |
 | TODO secuencial claro | long-task | checks | ask_user si costo/side effects |
 | Fleet update AOS serial | long-task via `/aos-fleet-update` | checks, git, registry | commits solo si JP los pidio; no push |
-| Auditoria/fan-out/multi-repo | taskflow | advisor/council si aporta | workers read-only por defecto |
+| Investigacion/auditoria interactiva acotada en un repo | manual por etapas | `read`/`rg`/`bash`, web y checks | no Taskflow salvo pedido explicito |
+| Fan-out real/multi-repo | taskflow solo opt-in | advisor/council si aporta | confirmar costo/topologia antes; workers read-only por defecto |
 | Fan-out pesado experimental/benchmark | pi-dynamic-workflows | taskflow baseline, advisor | opt-in explicito, trigger seguro, tabla comparativa |
 | Research externo/versionado | manual/research | web_search, fetch_content, web_answer, librarian | no secretos/datos privados |
 | Prod/deploy/envios/datos/destructivo | el que corresponda | ask_user | confirmacion explicita |
@@ -75,6 +76,18 @@ Para elegir modelo y nivel de razonamiento dentro del motor ya seleccionado:
 
 Tests, conformance y riesgo prevalecen sobre las heuristicas de costo. Los
 cambios de settings requieren reload o una sesion nueva cuando aplique.
+
+## Preferencia Operativa JP: Manual Antes Que Taskflow
+
+Desde 2026-07-14, investigaciones conversacionales, explicaciones end-to-end y
+auditorias acotadas usan por defecto un flujo manual por etapas: descubrir con
+`rg`/`read`, verificar con comandos read-only, cruzar evidencia y sintetizar en
+la misma sesion. No iniciar Taskflow automaticamente por considerar una tarea
+"no trivial": agrega latencia y costo que no se justifican cuando un solo
+orquestador puede cerrar el trabajo. Taskflow queda reservado para fan-out/DAG
+real y solo despues de que JP lo pida o acepte explicitamente. Si JP dice
+`sin taskflow`, esa preferencia domina durante todo el trabajo y no se intenta
+reanudar un run pausado.
 
 ## Nesting Permitido
 

@@ -21,9 +21,17 @@ preview_id = "a7d287e75d8b4ee7bfc9ad7ff31fd012"
 name = "USAGE_COUNTERS"
 class_name = "UsageCounterDurableObject"
 
+[[durable_objects.bindings]]
+name = "CONTROL_PLANE_PUBLISH_LOCKS"
+class_name = "ControlPlanePublishDurableObject"
+
 [[migrations]]
 tag = "usage-counters-v1"
 new_sqlite_classes = ["UsageCounterDurableObject"]
+
+[[migrations]]
+tag = "control-plane-profile-mutations-v1"
+new_sqlite_classes = ["ControlPlanePublishDurableObject"]
 
 [triggers]
 crons = ["0 */6 * * *"]

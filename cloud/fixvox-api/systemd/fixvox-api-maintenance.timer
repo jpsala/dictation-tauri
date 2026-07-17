@@ -1,0 +1,11 @@
+# Template only. Do not enable before Checkpoint F authorization.
+[Unit]
+Description=Run Fixvox API safe maintenance jobs hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=fixvox-api-maintenance.service
+
+[Install]
+WantedBy=timers.target

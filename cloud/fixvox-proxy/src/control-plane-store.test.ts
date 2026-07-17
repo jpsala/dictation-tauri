@@ -3,13 +3,34 @@ import { describe, expect, test } from "bun:test";
 
 import {
   activateDevice,
+  assignControlPlaneAdminAccountPolicy,
   assignControlPlaneAdminDevicePolicy,
+  DeviceBindingConflictError,
   assignControlPlaneAdminSelectionPresetDefaults,
+  createControlPlaneAdminProfileDraft,
+  discardControlPlaneAdminProfileDraft,
+  deleteControlPlaneAdminEngine,
+  deleteControlPlaneAdminPrompt,
+  evaluateExecutionPreflight,
   getControlPlaneAdminVariantConfig,
+  listControlPlaneAdminAccounts,
   listControlPlaneAdminDevices,
+  listControlPlaneAdminProfiles,
+  publishControlPlaneAdminProfile,
+  previewControlPlaneAdminProfile,
   registerDevice,
+  resolveExecutionEngineForDevice,
+  rollbackControlPlaneAdminProfile,
+  saveControlPlaneAdminProfileDraft,
+  listControlPlaneAdminRoleBindings,
+  setControlPlaneAdminRoleBinding,
+  removeControlPlaneAdminRoleBinding,
+  ControlPlaneAdminRoleBindingError,
+  ControlPlaneAdminProfileStaleError,
+  listControlPlaneAdminAudit,
 } from "./control-plane-store";
 import { putRuntimePolicy } from "./runtime-policy-store";
+import { putPricingRecord } from "./pricing-store";
 
 function createKvStore() {
   const storage = new Map<string, string>();
@@ -53,6 +74,85 @@ describe("control-plane device activation", () => {
     expect(response.features["results.history"]).toBe(false);
     expect(response.limits?.managedUsage.policy.policyId).toBe("alpha-basic");
     expect(response.limits?.managedUsage.policy.matchedCohort).toBe("alpha-basic");
+  });
+
+  test("reuses the matching install alias when deviceId is omitted", async () => {
+    const kv = createKvStore();
+    const first = await registerDevice(kv.store, {
+      installId: "install-alias-refresh",
+      deviceId: "device-alias-refresh",
+    });
+
+    const refreshed = await registerDevice(kv.store, {
+      installId: "install-alias-refresh",
+      version: "0.1.1",
+    });
+
+    expect(refreshed.deviceId).toBe(first.deviceId);
+  });
+
+  test("rejects rebinding an existing device to a different install without mutating KV", async () => {
+    const kv = createKvStore();
+    const first = await registerDevice(kv.store, {
+      installId: "install-owner",
+      deviceId: "device-owner",
+    });
+    const originalRecord = kv.read(`control:device:${first.deviceId}`);
+    kv.puts.length = 0;
+
+    await expect(registerDevice(kv.store, {
+      installId: "install-attacker",
+      deviceId: first.deviceId,
+    })).rejects.toBeInstanceOf(DeviceBindingConflictError);
+
+    expect(kv.puts).toEqual([]);
+    expect(kv.read(`control:device:${first.deviceId}`)).toBe(originalRecord);
+    expect(kv.read("control:install:install-attacker")).toBeNull();
+  });
+
+  test("rejects a supplied device that conflicts with the install alias without mutating KV", async () => {
+    const kv = createKvStore();
+    await registerDevice(kv.store, {
+      installId: "install-bound",
+      deviceId: "device-bound",
+    });
+    kv.puts.length = 0;
+
+    await expect(registerDevice(kv.store, {
+      installId: "install-bound",
+      deviceId: "device-other",
+    })).rejects.toBeInstanceOf(DeviceBindingConflictError);
+
+    expect(kv.puts).toEqual([]);
+    expect(kv.read("control:install:install-bound")).toBe(JSON.stringify("device-bound"));
+    expect(kv.read("control:device:device-other")).toBeNull();
+  });
+
+  test("same-binding refresh preserves account, policy, and status", async () => {
+    const kv = createKvStore();
+    const first = await registerDevice(kv.store, {
+      installId: "install-stable",
+      deviceId: "device-stable",
+    }, { accountId: "google:stable-account" });
+    await assignControlPlaneAdminDevicePolicy(kv.store, {
+      deviceId: first.deviceId,
+      policyId: "pro",
+    });
+    const before = JSON.parse(kv.read(`control:device:${first.deviceId}`) ?? "{}");
+
+    await registerDevice(kv.store, {
+      installId: "install-stable",
+      deviceId: first.deviceId,
+      version: "0.1.1",
+    });
+    const after = JSON.parse(kv.read(`control:device:${first.deviceId}`) ?? "{}");
+
+    expect(after).toMatchObject({
+      accountId: before.accountId,
+      policyId: before.policyId,
+      policyLabel: before.policyLabel,
+      status: before.status,
+    });
   });
 
   test("exposes Fixvox preset prompt defaults for Settings sync", async () => {
@@ -316,6 +416,71 @@ test("updates Cloud selection preset defaults and syncs preset prompts", async (
       assistantWakeWords: "lulu",
       assistantModeToggleWords: "modo lulu,lulu",
       commandWakeWords: "comando,command",
+    });
+  });
+
+  test("rejects activating an existing device from a different install without mutating KV", async () => {
+    const kv = createKvStore();
+    const registered = await registerDevice(kv.store, {
+      installId: "install-activation-owner",
+      deviceId: "device-activation-owner",
+    });
+    const originalRecord = kv.read(`control:device:${registered.deviceId}`);
+    kv.puts.length = 0;
+
+    await expect(activateDevice(kv.store, {
+      installId: "install-activation-attacker",
+      deviceId: registered.deviceId,
+      inviteCode: "basic-code",
+    }, {
+      "BASIC-CODE": { policyId: "alpha-basic", policyLabel: "Alpha Basic" },
+    })).rejects.toBeInstanceOf(DeviceBindingConflictError);
+
+    expect(kv.puts).toEqual([]);
+    expect(kv.read(`control:device:${registered.deviceId}`)).toBe(originalRecord);
+    expect(kv.read("control:install:install-activation-attacker")).toBeNull();
+  });
+
+  test("rejects activation when the supplied device conflicts with the install alias", async () => {
+    const kv = createKvStore();
+    await registerDevice(kv.store, {
+      installId: "install-activation-bound",
+      deviceId: "device-activation-bound",
+    });
+    kv.puts.length = 0;
+
+    await expect(activateDevice(kv.store, {
+      installId: "install-activation-bound",
+      deviceId: "device-activation-other",
+      inviteCode: "basic-code",
+    }, {
+      "BASIC-CODE": { policyId: "alpha-basic", policyLabel: "Alpha Basic" },
+    })).rejects.toBeInstanceOf(DeviceBindingConflictError);
+
+    expect(kv.puts).toEqual([]);
+    expect(kv.read("control:install:install-activation-bound")).toBe(JSON.stringify("device-activation-bound"));
+    expect(kv.read("control:device:device-activation-other")).toBeNull();
+  });
+
+  test("allows activation when install and device keep the same binding", async () => {
+    const kv = createKvStore();
+    const registered = await registerDevice(kv.store, {
+      installId: "install-activation-stable",
+      deviceId: "device-activation-stable",
+    });
+
+    const activated = await activateDevice(kv.store, {
+      installId: "install-activation-stable",
+      deviceId: registered.deviceId,
+      inviteCode: "full-code",
+    }, {
+      "FULL-CODE": { policyId: "alpha-full", policyLabel: "Alpha Full" },
+    });
+
+    expect(activated).toMatchObject({
+      ok: true,
+      deviceId: registered.deviceId,
+      policyId: "alpha-full",
     });
   });
 
@@ -688,6 +853,46 @@ test("updates Cloud selection preset defaults and syncs preset prompts", async (
     expect((registeredAgain.defaults?.prompts as Record<string, Record<string, unknown>> | undefined)?.postProcessBase?.text).toContain("primero/segundo/tercero");
   });
 
+  test("assigns the capability-bearing power-admin profile", async () => {
+    const kv = createKvStore();
+    const registered = await registerDevice(kv.store, {
+      installId: "install-power-admin",
+      version: "0.1.0",
+      platform: "win32",
+    });
+
+    const updated = await assignControlPlaneAdminDevicePolicy(kv.store, {
+      deviceId: registered.deviceId,
+      policyId: "power-admin",
+    });
+
+    expect(updated.device.policyId).toBe("power-admin");
+    expect(updated.device.profiles).toMatchObject({
+      uiProfile: "alpha-full",
+      capabilityProfile: "power",
+      quotaProfile: "pro-unlimited",
+      llmProfile: "pro-best-voice",
+    });
+  });
+
+  test("lists safe profile summaries for the Configuration hub", async () => {
+    const kv = createKvStore();
+    const config = await getControlPlaneAdminVariantConfig(kv.store);
+    const byId = Object.fromEntries(config.profileOptions.map((profile) => [profile.policyId, profile]));
+
+    expect(Object.keys(byId)).toEqual(expect.arrayContaining(["alpha-basic", "alpha-full", "power-admin", "pro"]));
+    expect(byId["alpha-basic"].capabilities).toContain("dictation");
+    expect(byId["alpha-basic"].capabilities).not.toContain("selection_transform");
+    expect(byId["power-admin"].capabilities).toContain("admin_settings");
+    expect(byId["power-admin"].profiles).toMatchObject({
+      uiProfile: "alpha-full",
+      capabilityProfile: "power",
+      quotaProfile: "pro-unlimited",
+      llmProfile: "pro-best-voice",
+    });
+    expect(JSON.stringify(config.profileOptions)).not.toContain("promptContent");
+  });
+
   test("rejects unknown admin policy assignments", async () => {
     const kv = createKvStore();
     const registered = await registerDevice(kv.store, {
@@ -709,5 +914,550 @@ test("updates Cloud selection preset defaults and syncs preset prompts", async (
       installId: "install-bad",
       inviteCode: "bad-code",
     }, {})).rejects.toThrow("invalid_invite_code");
+  });
+});
+
+describe("durable control-plane RBAC", () => {
+  const bootstrapOwnerEmail = "jpsala@gmail.com";
+
+  test("bootstraps the configured normalized owner once and exposes only redacted bindings", async () => {
+    const kv = createKvStore();
+
+    const first = await listControlPlaneAdminRoleBindings(kv.store, { bootstrapOwnerEmail: "  JPSALA@GMAIL.COM " });
+    const persisted = kv.read("control:admin-roles:v1");
+    const second = await listControlPlaneAdminRoleBindings(kv.store, { bootstrapOwnerEmail });
+
+    expect(kv.puts).toEqual(["control:admin-roles:v1"]);
+    expect(first.bindings).toEqual([{ emailRedacted: "j…@gmail.com", role: "owner" }]);
+    expect(second.bindings).toEqual(first.bindings);
+    expect(JSON.stringify(first)).not.toContain(bootstrapOwnerEmail);
+    expect(persisted).not.toContain(bootstrapOwnerEmail);
+  });
+
+  test("fails closed when a non-owner attempts to manage durable role bindings", async () => {
+    const kv = createKvStore();
+    await listControlPlaneAdminRoleBindings(kv.store, { bootstrapOwnerEmail });
+    const before = kv.read("control:admin-roles:v1");
+    kv.puts.length = 0;
+
+    await expect(setControlPlaneAdminRoleBinding(kv.store, {
+      bootstrapOwnerEmail,
+      actorEmail: "editor@example.com",
+      subjectEmail: "publisher@example.com",
+      role: "publisher",
+    })).rejects.toBeInstanceOf(ControlPlaneAdminRoleBindingError);
+
+    expect(kv.puts).toEqual([]);
+    expect(kv.read("control:admin-roles:v1")).toBe(before);
+  });
+
+  test("allows an owner to grant a role but never demote or remove the final owner", async () => {
+    const kv = createKvStore();
+    await listControlPlaneAdminRoleBindings(kv.store, { bootstrapOwnerEmail });
+    await setControlPlaneAdminRoleBinding(kv.store, {
+      bootstrapOwnerEmail,
+      actorEmail: bootstrapOwnerEmail,
+      subjectEmail: "publisher@example.com",
+      role: "publisher",
+    });
+    expect((await listControlPlaneAdminRoleBindings(kv.store, { bootstrapOwnerEmail })).bindings).toEqual(expect.arrayContaining([
+      { emailRedacted: "j…@gmail.com", role: "owner" },
+      { emailRedacted: "p…@example.com", role: "publisher" },
+    ]));
+
+    const before = kv.read("control:admin-roles:v1");
+    kv.puts.length = 0;
+    await expect(setControlPlaneAdminRoleBinding(kv.store, {
+      bootstrapOwnerEmail,
+      actorEmail: bootstrapOwnerEmail,
+      subjectEmail: bootstrapOwnerEmail,
+      role: "publisher",
+    })).rejects.toBeInstanceOf(ControlPlaneAdminRoleBindingError);
+    await expect(removeControlPlaneAdminRoleBinding(kv.store, {
+      bootstrapOwnerEmail,
+      actorEmail: bootstrapOwnerEmail,
+      subjectEmail: bootstrapOwnerEmail,
+    })).rejects.toBeInstanceOf(ControlPlaneAdminRoleBindingError);
+
+    expect(kv.puts).toEqual([]);
+    expect(kv.read("control:admin-roles:v1")).toBe(before);
+  });
+});
+
+describe("profile composer preview", () => {
+  test("refreshes account effective profile labels after publish and rollback", async () => {
+    const kv = createKvStore();
+    const accountId = "google:profile-refresh-account";
+    const registered = await registerDevice(kv.store, {
+      installId: "install-profile-refresh",
+    }, { accountId, authProviders: ["google"] });
+    await assignControlPlaneAdminDevicePolicy(kv.store, { deviceId: registered.deviceId, policyId: "pro" });
+    await assignControlPlaneAdminAccountPolicy(kv.store, {
+      accountId,
+      policyId: "pro",
+    });
+
+    const before = await listControlPlaneAdminAccounts(kv.store);
+    expect(before.accounts[0]?.effectivePolicyLabel).toBe("Pro");
+
+    const created = await createControlPlaneAdminProfileDraft(kv.store, { profileId: "pro" });
+    if (!created.draft) throw new Error("expected pro draft");
+    await saveControlPlaneAdminProfileDraft(kv.store, {
+      profileId: "pro",
+      definition: { ...created.draft, label: "Pro refreshed" },
+    });
+    await publishControlPlaneAdminProfile(kv.store, {
+      profileId: "pro",
+      expectedActiveVersion: 1,
+      expectedDraftVersion: created.draft.version,
+      confirmation: `PUBLISH pro v${created.draft.version}`,
+    });
+
+    const afterPublish = await listControlPlaneAdminAccounts(kv.store);
+    expect(afterPublish.accounts[0]).toMatchObject({
+      policyLabel: "Pro refreshed",
+      effectivePolicyLabel: "Pro refreshed",
+    });
+    expect((await listControlPlaneAdminDevices(kv.store)).devices.find((device) => device.deviceId === registered.deviceId)?.policyLabel).toBe("Pro refreshed");
+
+    await rollbackControlPlaneAdminProfile(kv.store, {
+      profileId: "pro",
+      version: 1,
+      expectedActiveVersion: 2,
+      confirmation: "ROLLBACK pro to v1",
+    });
+    const afterRollback = await listControlPlaneAdminAccounts(kv.store);
+    expect(afterRollback.accounts[0]).toMatchObject({
+      policyLabel: "Pro",
+      effectivePolicyLabel: "Pro",
+    });
+    expect((await listControlPlaneAdminDevices(kv.store)).devices.find((device) => device.deviceId === registered.deviceId)?.policyLabel).toBe("Pro");
+  });
+
+  test("reports cached pricing for the draft runtime without refreshing providers", async () => {
+    const kv = createKvStore();
+    await putPricingRecord(kv.store, {
+      provider: "openrouter",
+      model: "anthropic/claude-sonnet-4",
+      pricingSource: "test-cache",
+      checkedAt: "2026-07-14T12:00:00.000Z",
+      status: "live",
+      unitType: "per_1m_tokens",
+      currency: "USD",
+      inputPrice: "3.00",
+      outputPrice: "15.00",
+      audioInputPrice: null,
+      audioOutputPrice: null,
+      requestPrice: null,
+      rawPriceJson: null,
+    });
+    for (const [provider, model] of [["groq", "whisper-large-v3-turbo"], ["groq", "llama-3.3-70b-versatile"]] as const) {
+      await putPricingRecord(kv.store, {
+        provider,
+        model,
+        pricingSource: "test-cache",
+        checkedAt: "2026-07-14T12:00:00.000Z",
+        status: "live",
+        unitType: "per_1m_tokens",
+        currency: "USD",
+        inputPrice: "1.00",
+        outputPrice: "2.00",
+        audioInputPrice: null,
+        audioOutputPrice: null,
+        requestPrice: null,
+        rawPriceJson: null,
+      });
+    }
+    const created = await createControlPlaneAdminProfileDraft(kv.store, { profileId: "pro" });
+    if (!created.draft) throw new Error("expected pro draft");
+    await saveControlPlaneAdminProfileDraft(kv.store, {
+      profileId: "pro",
+      definition: {
+        ...created.draft,
+        runtime: {
+          ...created.draft.runtime,
+          postprocess: { engineId: "postprocess-openrouter-premium", promptId: "postProcessBase" },
+        },
+      },
+    });
+
+    const preview = await previewControlPlaneAdminProfile(kv.store, { profileId: "pro" });
+
+    expect(preview.pricing).toMatchObject({
+      availability: "available",
+      cachedAt: "2026-07-14T12:00:00.000Z",
+      targets: expect.arrayContaining([expect.objectContaining({ operation: "postprocess", provider: "openrouter", model: "anthropic/claude-sonnet-4", status: "live" })]),
+    });
+  });
+
+  test("resolves a selected account target with its effective routing source", async () => {
+    const kv = createKvStore();
+    const accountId = "google:preview-account-target";
+    const registered = await registerDevice(kv.store, {
+      installId: "install-preview-account-target",
+    }, { accountId, authProviders: ["google"] });
+    await assignControlPlaneAdminAccountPolicy(kv.store, { accountId, policyId: "pro" });
+    const account = (await listControlPlaneAdminAccounts(kv.store)).accounts[0];
+    const created = await createControlPlaneAdminProfileDraft(kv.store, { profileId: "pro" });
+    if (!created.draft || !account) throw new Error("expected account profile draft");
+
+    const preview = await previewControlPlaneAdminProfile(kv.store, {
+      profileId: "pro",
+      accountHandle: account.accountHandle,
+    });
+
+    expect(preview.selectedTarget).toMatchObject({
+      accountHandle: account.accountHandle,
+      deviceId: registered.deviceId,
+      profileId: "pro",
+      policySource: "account",
+      routing: {
+        transcription: { engineId: "stt-groq-whisper-turbo", promptId: "transcriptBase" },
+        postprocess: { engineId: "postprocess-groq-gpt-oss-120b", promptId: "postProcessBase" },
+        selectionTransform: { engineId: "transform-groq-llama-70b", promptId: "selectionTransformBase" },
+      },
+    });
+  });
+
+  test("previews a draft without KV writes or changing the published runtime", async () => {
+    const kv = createKvStore();
+    const registered = await registerDevice(kv.store, { installId: "install-profile-preview" });
+    await assignControlPlaneAdminDevicePolicy(kv.store, { deviceId: registered.deviceId, policyId: "pro" });
+    const created = await createControlPlaneAdminProfileDraft(kv.store, { profileId: "pro" });
+    if (!created.draft) throw new Error("expected pro draft");
+    await saveControlPlaneAdminProfileDraft(kv.store, {
+      profileId: "pro",
+      definition: {
+        ...created.draft,
+        runtime: {
+          ...created.draft.runtime,
+          postprocess: { engineId: "postprocess-openrouter-premium", promptId: "postProcessBase" },
+        },
+      },
+    });
+    const publishedBefore = await resolveExecutionEngineForDevice(kv.store, {
+      deviceId: registered.deviceId,
+      usageKind: "aiAction",
+      engineKind: "postprocess",
+    });
+    kv.puts.length = 0;
+
+    const preview = await previewControlPlaneAdminProfile(kv.store, {
+      profileId: "pro",
+      deviceId: registered.deviceId,
+    });
+
+    expect(kv.puts).toEqual([]);
+    expect(preview.diff).toEqual(expect.arrayContaining([
+      expect.objectContaining({ section: "runtime", path: "runtime.postprocess.engineId", before: "postprocess-groq-gpt-oss-120b", after: "postprocess-openrouter-premium" }),
+    ]));
+    expect(preview.impact).toEqual({ accounts: 0, devices: 1, groups: 2 });
+    expect(preview.selectedTarget).toMatchObject({ deviceId: registered.deviceId, profileId: "pro" });
+    expect(preview.pricing).toMatchObject({ availability: "unavailable" });
+    expect(preview.warnings).toEqual([]);
+
+    const publishedAfter = await resolveExecutionEngineForDevice(kv.store, {
+      deviceId: registered.deviceId,
+      usageKind: "aiAction",
+      engineKind: "postprocess",
+    });
+    expect(publishedAfter?.engines.selected?.id).toBe(publishedBefore?.engines.selected?.id);
+    expect(publishedAfter?.engines.selected?.id).toBe("postprocess-groq-gpt-oss-120b");
+  });
+});
+
+describe("stale-safe profile mutations", () => {
+  test("rejects stale publish and rollback confirmations before writing history", async () => {
+    const kv = createKvStore();
+    const created = await createControlPlaneAdminProfileDraft(kv.store, { profileId: "pro" });
+    if (!created.draft || !created.published) throw new Error("expected pro versions");
+    const beforePublish = kv.read("control:profiles:v1");
+    kv.puts.length = 0;
+
+    await expect(publishControlPlaneAdminProfile(kv.store, {
+      profileId: "pro",
+      expectedActiveVersion: 99,
+      expectedDraftVersion: created.draft.version,
+      confirmation: "PUBLISH pro v2",
+    })).rejects.toBeInstanceOf(ControlPlaneAdminProfileStaleError);
+    expect(kv.puts).toEqual([]);
+    expect(kv.read("control:profiles:v1")).toBe(beforePublish);
+
+    const published = await publishControlPlaneAdminProfile(kv.store, {
+      profileId: "pro",
+      expectedActiveVersion: created.published.version,
+      expectedDraftVersion: created.draft.version,
+      confirmation: "PUBLISH pro v2",
+    });
+    if (!published.published) throw new Error("expected published version");
+    const beforeRollback = kv.read("control:profiles:v1");
+    kv.puts.length = 0;
+    await expect(rollbackControlPlaneAdminProfile(kv.store, {
+      profileId: "pro",
+      version: 1,
+      expectedActiveVersion: 1,
+      confirmation: "ROLLBACK pro to v1",
+    })).rejects.toBeInstanceOf(ControlPlaneAdminProfileStaleError);
+    expect(kv.puts).toEqual([]);
+    expect(kv.read("control:profiles:v1")).toBe(beforeRollback);
+  });
+});
+
+describe("versioned profile composer", () => {
+  test("discards only the expected draft while preserving published history", async () => {
+    const kv = createKvStore();
+    const created = await createControlPlaneAdminProfileDraft(kv.store, { profileId: "pro" });
+    if (!created.draft || !created.published) throw new Error("expected pro draft and publication");
+
+    await expect(discardControlPlaneAdminProfileDraft(kv.store, {
+      profileId: "pro",
+      expectedDraftVersion: created.draft.version + 1,
+      confirmation: `DISCARD pro v${created.draft.version + 1}`,
+    })).rejects.toBeInstanceOf(ControlPlaneAdminProfileStaleError);
+    await expect(discardControlPlaneAdminProfileDraft(kv.store, {
+      profileId: "pro",
+      expectedDraftVersion: created.draft.version,
+      confirmation: "DISCARD pro wrong",
+    })).rejects.toThrow("invalid discard confirmation");
+
+    expect(await discardControlPlaneAdminProfileDraft(kv.store, {
+      profileId: "pro",
+      expectedDraftVersion: created.draft.version,
+      confirmation: `DISCARD pro v${created.draft.version}`,
+    })).toEqual({ ok: true, profileId: "pro", discardedDraftVersion: created.draft.version, publishedVersion: created.published.version });
+    const profile = (await listControlPlaneAdminProfiles(kv.store)).profiles.find((item) => item.profileId === "pro");
+    expect(profile?.draft).toBeNull();
+    expect(profile?.published?.version).toBe(created.published.version);
+    expect(profile?.history.map((version) => version.version)).toEqual([created.published.version]);
+  });
+
+  test("seeds typed published profiles and persists a draft without changing runtime", async () => {
+    const kv = createKvStore();
+    const registered = await registerDevice(kv.store, {
+      installId: "install-profile-composer",
+      version: "0.1.0",
+      platform: "win32",
+    });
+    await assignControlPlaneAdminDevicePolicy(kv.store, {
+      deviceId: registered.deviceId,
+      policyId: "pro",
+    });
+
+    const seeded = await listControlPlaneAdminProfiles(kv.store);
+    expect(seeded.profiles.map((profile) => profile.profileId)).toEqual([
+      "alpha-basic",
+      "alpha-full",
+      "alpha-private",
+      "power-admin",
+      "pro",
+    ]);
+    const pro = seeded.profiles.find((profile) => profile.profileId === "pro");
+    expect(pro?.published).toMatchObject({
+      schemaVersion: 1,
+      profileId: "pro",
+      label: "Pro",
+      version: 1,
+      status: "published",
+      access: { capabilities: expect.arrayContaining(["dictation", "managed_stt"]) },
+      runtime: {
+        transcription: { engineId: "stt-groq-whisper-turbo", promptId: "transcriptBase" },
+        postprocess: { engineId: "postprocess-groq-gpt-oss-120b", promptId: "postProcessBase" },
+        selectionTransform: { engineId: "transform-groq-llama-70b", promptId: "selectionTransformBase" },
+      },
+      limits: { dailyUsd: 5, monthlyUsd: 50, mode: "warn", quotaProfile: "pro-unlimited" },
+    });
+    expect(pro?.draft).toBeNull();
+
+    const created = await createControlPlaneAdminProfileDraft(kv.store, { profileId: "pro" });
+    if (!created.draft) throw new Error("expected pro draft");
+    const draft = {
+      ...created.draft,
+      runtime: {
+        ...created.draft.runtime,
+        postprocess: { engineId: "postprocess-openrouter-premium", promptId: "postProcessBase" },
+      },
+    };
+    await saveControlPlaneAdminProfileDraft(kv.store, { profileId: "pro", definition: draft });
+
+    const persisted = await listControlPlaneAdminProfiles(kv.store);
+    expect(persisted.profiles.find((profile) => profile.profileId === "pro")?.draft?.runtime.postprocess.engineId).toBe("postprocess-openrouter-premium");
+    const runtime = await resolveExecutionEngineForDevice(kv.store, {
+      deviceId: registered.deviceId,
+      usageKind: "aiAction",
+      engineKind: "postprocess",
+    });
+    expect(runtime?.engines.selected?.id).toBe("postprocess-groq-gpt-oss-120b");
+
+    await publishControlPlaneAdminProfile(kv.store, { profileId: "pro", expectedActiveVersion: 1, expectedDraftVersion: 2, confirmation: "PUBLISH pro v2" });
+    const publishedRuntime = await resolveExecutionEngineForDevice(kv.store, {
+      deviceId: registered.deviceId,
+      usageKind: "aiAction",
+      engineKind: "postprocess",
+    });
+    expect(publishedRuntime?.engines.selected).toMatchObject({ id: "postprocess-openrouter-premium", promptKey: "postProcessBase" });
+  });
+
+  test("applies published access, defaults, and user controls only after publish", async () => {
+    const kv = createKvStore();
+    const accountId = "google:profile-composer-account";
+    const registered = await registerDevice(kv.store, {
+      installId: "install-profile-access",
+      version: "0.1.0",
+      platform: "win32",
+    }, { accountId, authProviders: ["google"] });
+    await assignControlPlaneAdminDevicePolicy(kv.store, { deviceId: registered.deviceId, policyId: "pro" });
+    const draftRecord = await createControlPlaneAdminProfileDraft(kv.store, { profileId: "pro" });
+    if (!draftRecord.draft) throw new Error("expected pro draft");
+    await saveControlPlaneAdminProfileDraft(kv.store, {
+      profileId: "pro",
+      definition: {
+        ...draftRecord.draft,
+        access: { capabilities: draftRecord.draft.access.capabilities.filter((capability) => capability !== "assistant_actions") },
+        userControls: { ...draftRecord.draft.userControls, "voice.pressEnterAfterPaste": "visible-locked" },
+        defaults: { ...draftRecord.draft.defaults, "voice.pressEnterAfterPaste": true },
+      },
+    });
+
+    const beforePublish = await registerDevice(kv.store, {
+      installId: "install-profile-access",
+      deviceId: registered.deviceId,
+      version: "0.1.0",
+      platform: "win32",
+    }, { accountId, authProviders: ["google"] });
+    expect(beforePublish.auth.capabilities).toContain("assistant_actions");
+    expect((beforePublish.defaults?.userSettingsDefaults as Record<string, Record<string, unknown>>)?.voice?.pressEnterAfterPaste).toBe(false);
+
+    await publishControlPlaneAdminProfile(kv.store, { profileId: "pro", expectedActiveVersion: 1, expectedDraftVersion: 2, confirmation: "PUBLISH pro v2" });
+    const afterPublish = await registerDevice(kv.store, {
+      installId: "install-profile-access",
+      deviceId: registered.deviceId,
+      version: "0.1.0",
+      platform: "win32",
+    }, { accountId, authProviders: ["google"] });
+    expect(afterPublish.auth.capabilities).not.toContain("assistant_actions");
+    expect((afterPublish.defaults?.userSettingsDefaults as Record<string, Record<string, unknown>>)?.voice?.pressEnterAfterPaste).toBe(true);
+    expect((afterPublish.defaults as unknown as Record<string, unknown>).profileUserControls).toMatchObject({ "voice.pressEnterAfterPaste": "visible-locked" });
+  });
+
+  test("publishes immutable versions as one KV snapshot and rolls back by appending history", async () => {
+    const kv = createKvStore();
+    await createControlPlaneAdminProfileDraft(kv.store, { profileId: "pro" });
+    const firstList = await listControlPlaneAdminProfiles(kv.store);
+    const firstDraft = firstList.profiles.find((profile) => profile.profileId === "pro")?.draft;
+    if (!firstDraft) throw new Error("expected pro draft");
+    await saveControlPlaneAdminProfileDraft(kv.store, {
+      profileId: "pro",
+      definition: {
+        ...firstDraft,
+        runtime: {
+          ...firstDraft.runtime,
+          postprocess: { engineId: "postprocess-openrouter-premium", promptId: "postProcessBase" },
+        },
+      },
+    });
+
+    kv.puts.length = 0;
+    const published = await publishControlPlaneAdminProfile(kv.store, { profileId: "pro", expectedActiveVersion: 1, expectedDraftVersion: 2, confirmation: "PUBLISH pro v2" });
+    expect(kv.puts).toEqual(["control:profiles:v1", "control:admin-audit:v1"]);
+    expect((await listControlPlaneAdminAudit(kv.store)).records).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: "publish", profileId: "pro", sourceVersion: 1, targetVersion: 2, result: "success" }),
+    ]));
+    expect(published.published).toMatchObject({ version: 2, status: "published", basedOnVersion: 1 });
+    expect(published.history.map((version) => version.version)).toEqual([1, 2]);
+    expect(published.history[0].runtime.postprocess.engineId).toBe("postprocess-groq-gpt-oss-120b");
+
+    const rolledBack = await rollbackControlPlaneAdminProfile(kv.store, { profileId: "pro", version: 1, expectedActiveVersion: 2, confirmation: "ROLLBACK pro to v1" });
+    expect(rolledBack.published).toMatchObject({ version: 3, status: "published", basedOnVersion: 1 });
+    if (!rolledBack.published) throw new Error("expected rolled back publication");
+    expect(rolledBack.published.runtime.postprocess.engineId).toBe("postprocess-groq-gpt-oss-120b");
+    expect(rolledBack.history.map((version) => version.version)).toEqual([1, 2, 3]);
+    expect(rolledBack.history[1].runtime.postprocess.engineId).toBe("postprocess-openrouter-premium");
+    expect((await listControlPlaneAdminAudit(kv.store)).records).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: "rollback", profileId: "pro", sourceVersion: 2, targetVersion: 1, resultingVersion: 3, requestedVersion: 1, result: "success" }),
+    ]));
+  });
+
+  test("validates typed references and clones into a new draft profile", async () => {
+    const kv = createKvStore();
+    const cloned = await createControlPlaneAdminProfileDraft(kv.store, {
+      profileId: "pro",
+      draftProfileId: "pro-clone",
+      label: "Pro clone",
+    });
+    expect(cloned.draft).toMatchObject({ profileId: "pro-clone", label: "Pro clone", status: "draft", basedOnVersion: 1 });
+    expect(cloned.published).toBeNull();
+    if (!cloned.draft) throw new Error("expected cloned draft");
+
+    await expect(saveControlPlaneAdminProfileDraft(kv.store, {
+      profileId: "pro-clone",
+      definition: {
+        ...cloned.draft,
+        access: { capabilities: [...cloned.draft.access.capabilities, "generic_override"] },
+      },
+    })).rejects.toThrow("unknown capability");
+    await expect(saveControlPlaneAdminProfileDraft(kv.store, {
+      profileId: "pro-clone",
+      definition: {
+        ...cloned.draft,
+        runtime: { ...cloned.draft.runtime, postprocess: { engineId: "missing-engine" } },
+      },
+    })).rejects.toThrow("unknown postprocess engine");
+    const { "appearance.themeId": _missingControl, ...missingControl } = cloned.draft.userControls;
+    await expect(saveControlPlaneAdminProfileDraft(kv.store, {
+      profileId: "pro-clone",
+      definition: { ...cloned.draft, userControls: missingControl },
+    })).rejects.toThrow("missing user control");
+
+    await publishControlPlaneAdminProfile(kv.store, { profileId: "pro-clone", expectedActiveVersion: null, expectedDraftVersion: 1, confirmation: "PUBLISH pro-clone v1" });
+    const registered = await registerDevice(kv.store, { installId: "install-profile-clone" });
+    const assigned = await assignControlPlaneAdminDevicePolicy(kv.store, { deviceId: registered.deviceId, policyId: "pro-clone" });
+    expect(assigned.device.policyId).toBe("pro-clone");
+    const runtime = await resolveExecutionEngineForDevice(kv.store, { deviceId: registered.deviceId, usageKind: "aiAction", engineKind: "postprocess" });
+    expect(runtime?.profile.policyId).toBe("pro-clone");
+    expect(runtime?.engines.selected?.id).toBe("postprocess-groq-gpt-oss-120b");
+
+    const usageEventKey = `control:usage:${registered.deviceId}:events`;
+    const preflight = await evaluateExecutionPreflight(kv.store, {
+      mode: "managed",
+      installId: "install-profile-clone",
+      deviceId: registered.deviceId,
+      usageKind: "transcription",
+    });
+    expect(preflight.allowed).toBe(true);
+    expect(preflight.profile?.policyId).toBe("pro-clone");
+    expect(preflight.limits?.managedUsage.windows.rolling5h.limit).toBe(1_000_000);
+    expect(preflight.limits?.managedUsage.windows.weekly.limit).toBe(10_000_000);
+    expect(kv.puts).not.toContain(usageEventKey);
+
+    const listed = await listControlPlaneAdminDevices(kv.store);
+    expect(listed.devices[0].limits.managedUsage.windows.rolling5h.limit).toBe(1_000_000);
+  });
+
+  test("protects engines and prompts referenced by published versions or drafts", async () => {
+    const kv = createKvStore();
+    await listControlPlaneAdminProfiles(kv.store);
+    await expect(deleteControlPlaneAdminEngine(kv.store, { id: "stt-groq-whisper-turbo" })).rejects.toThrow("referenced by profile");
+    await expect(deleteControlPlaneAdminPrompt(kv.store, { id: "postProcessBase" })).rejects.toThrow("referenced by profile");
+
+    const draftRecord = await createControlPlaneAdminProfileDraft(kv.store, { profileId: "pro" });
+    if (!draftRecord.draft) throw new Error("expected pro draft");
+    await saveControlPlaneAdminProfileDraft(kv.store, {
+      profileId: "pro",
+      definition: {
+        ...draftRecord.draft,
+        runtime: { ...draftRecord.draft.runtime, postprocess: { engineId: "postprocess-openrouter-premium", promptId: "postProcessBase" } },
+      },
+    });
+    await expect(deleteControlPlaneAdminEngine(kv.store, { id: "postprocess-openrouter-premium" })).rejects.toThrow("referenced by profile draft");
+
+    const normalized = await saveControlPlaneAdminProfileDraft(kv.store, {
+      profileId: "pro",
+      definition: {
+        ...draftRecord.draft,
+        runtime: { ...draftRecord.draft.runtime, postprocess: { engineId: "assistant-groq-8b-instant" } },
+      },
+    });
+    expect(normalized.draft?.runtime.postprocess.promptId).toBe("assistant.quickChat");
+    await expect(deleteControlPlaneAdminPrompt(kv.store, { id: "assistant.quickChat" })).rejects.toThrow("referenced by profile draft");
   });
 });

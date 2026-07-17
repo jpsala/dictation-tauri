@@ -155,7 +155,10 @@ export function VoiceDock({
       }}
     >
       {state.activePreset ? (
-        <PresetBadge preset={state.activePreset} />
+        <PresetBadge
+          preset={state.activePreset}
+          onClear={() => onCommand("clear_preset")}
+        />
       ) : null}
 
       {state.assistantModeEnabled ? (
@@ -342,13 +345,13 @@ type DotVisual = {
 };
 
 const skin4Dots = {
-  idleHeights: [6, 6, 6, 6, 6, 6, 6],
-  armingHeights: [8, 8, 9, 9, 9, 8, 8],
-  processingHeights: [7, 8, 8, 9, 8, 8, 7],
-  recordingBaseHeights: [6, 6, 6, 6, 6, 6, 6],
+  idleHeights: [5, 5, 5, 5, 5, 5, 5],
+  armingHeights: [7, 7, 8, 8, 8, 7, 7],
+  processingHeights: [6, 7, 7, 8, 7, 7, 6],
+  recordingBaseHeights: [5, 5, 5, 5, 5, 5, 5],
   recordingRangeHeights: [15, 15, 15, 15, 15, 15, 15],
   recordingOpacityWeights: [0.1, 0.12, 0.11, 0.14, 0.11, 0.12, 0.1],
-  width: 5,
+  width: 4,
 } as const;
 
 function getDotVisual(
@@ -361,7 +364,7 @@ function getDotVisual(
     const barLevel = rawLevel > 0
       ? clamp(0.18 + Math.sqrt(rawLevel) * 0.82, 0, 1)
       : 0;
-    const base = skin4Dots.recordingBaseHeights[index] ?? 6;
+    const base = skin4Dots.recordingBaseHeights[index] ?? 5;
     const range = skin4Dots.recordingRangeHeights[index] ?? 15;
 
     return {
@@ -377,19 +380,19 @@ function getDotVisual(
   }
 
   if (state.phase === "arming") {
-    return { width: skin4Dots.width, height: skin4Dots.armingHeights[index] ?? 8, opacity: 0.9, offset: 0 };
+    return { width: skin4Dots.width, height: skin4Dots.armingHeights[index] ?? 7, opacity: 0.9, offset: 0 };
   }
 
   if (state.phase === "processing") {
     return {
       width: skin4Dots.width,
-      height: skin4Dots.processingHeights[index] ?? 8,
+      height: skin4Dots.processingHeights[index] ?? 7,
       opacity: 0.82,
       offset: 0,
     };
   }
 
-  return { width: skin4Dots.width, height: skin4Dots.idleHeights[index] ?? 6, opacity: 0.72, offset: 0 };
+  return { width: skin4Dots.width, height: skin4Dots.idleHeights[index] ?? 5, opacity: 0.72, offset: 0 };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -431,6 +434,7 @@ function getActionSide(command: DockCommand): "left" | "center" | "right" {
     case "cancel":
     case "retry":
     case "paste_last_safe":
+    case "clear_preset":
     case "start":
       return "right";
   }
@@ -477,20 +481,28 @@ function createDockActions(state: VoiceDockState): DockAction[] {
   ];
 }
 
-function PresetBadge({ preset }: { preset: NonNullable<VoiceDockState["activePreset"]> }) {
-  const title = preset.appKey
-    ? `Active preset: ${preset.presetName} (${preset.appKey}). Right-click to change or disable.`
-    : `Active preset: ${preset.presetName}. Right-click to change or disable.`;
+function PresetBadge({
+  preset,
+  onClear,
+}: {
+  preset: NonNullable<VoiceDockState["activePreset"]>;
+  onClear: () => void;
+}) {
+  const label = `Disable active preset: ${preset.presetName}`;
 
   return (
-    <div
+    <button
+      type="button"
       className="voice-dock__preset-badge"
       data-testid="voice-dock-preset-badge"
-      title={title}
-      aria-label={title}
+      data-command="clear_preset"
+      title={label}
+      aria-label={label}
+      onClick={onClear}
     >
       <span className="voice-dock__preset-dot" aria-hidden="true" />
       <span className="voice-dock__preset-name">{preset.presetName}</span>
-    </div>
+      <span className="voice-dock__preset-clear" aria-hidden="true">×</span>
+    </button>
   );
 }

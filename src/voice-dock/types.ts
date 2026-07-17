@@ -15,7 +15,8 @@ export type DockCommand =
   | "cancel"
   | "retry"
   | "copy"
-  | "paste_last_safe";
+  | "paste_last_safe"
+  | "clear_preset";
 
 export type DockActivePreset = {
   presetName: string;

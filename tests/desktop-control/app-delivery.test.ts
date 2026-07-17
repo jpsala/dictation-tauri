@@ -11,6 +11,7 @@ import {
   getReviewCopyLabel,
   getTranscriptReview,
   mapPipelineEvidenceToDesktopEvidence,
+  resolveDictationPostProcessPolicy,
 } from "../../src/App";
 import type { DesktopRuntimeResult } from "../../src/desktop-control/controller";
 import type { SimulatedRunSummary } from "../../src/pipeline/types";
@@ -212,6 +213,7 @@ describe("App delivery fallback", () => {
     expect(routed.transcript).toBe("cuanto es dos mas dos?");
     expect(routed.output).toBe("4");
     expect(routed.deliveryStrategy).toBe("paste_send");
+    expect(routed.deliveryTargetAffinity).toBe("current");
     expect(routed.deliveryReason).toBe("Assistant prefix detected; local answer will be pasted like Fixvox.");
     expect((routed.summary as SimulatedRunSummary).resultSource).toBe("assistant");
   });
@@ -413,6 +415,27 @@ describe("App delivery fallback", () => {
       source: "dictation",
     });
     expect(getReviewCopyLabel(summary)).toBe("Copy transcript");
+  });
+
+  it("keeps policy post-process for ordinary dictation only", () => {
+    expect(resolveDictationPostProcessPolicy({})).toBeUndefined();
+    expect(resolveDictationPostProcessPolicy({ presetId: "corregir-texto" })).toEqual({
+      enabled: false,
+      source: "exclusive-transform-route",
+    });
+    expect(resolveDictationPostProcessPolicy({
+      selection: {
+        selectionId: "selection-route",
+        selectedText: "selected text",
+        textLength: 13,
+        source: "host_capture",
+        confidence: "medium",
+        redacted: true,
+      },
+    })).toEqual({
+      enabled: false,
+      source: "exclusive-transform-route",
+    });
   });
 
   it("turns an active selection preset into review-only transformed output", () => {

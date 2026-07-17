@@ -1,3 +1,4 @@
+// @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -8,6 +9,12 @@ type PackageJson = {
 type TauriConfig = {
   productName?: string;
   identifier?: string;
+  app?: {
+    security?: {
+      csp?: string | Record<string, string> | null;
+      devCsp?: string | Record<string, string> | null;
+    };
+  };
   bundle?: {
     active?: boolean;
     targets?: string | string[];
@@ -44,6 +51,21 @@ describe("Fixvox Tauri Windows release bootstrap", () => {
     });
   });
 
+  it("enforces a restrictive production CSP without renderer cloud access", () => {
+    const config = JSON.parse(
+      readFileSync("src-tauri/tauri.conf.json", "utf8"),
+    ) as TauriConfig;
+    const csp = JSON.stringify(config.app?.security?.csp ?? null);
+
+    expect(config.app?.security?.csp).not.toBeNull();
+    expect(csp).toContain("default-src");
+    expect(csp).toContain("object-src");
+    expect(csp).toContain("'none'");
+    expect(csp).toContain("ipc:");
+    expect(csp).not.toContain("*.jpsala.dev");
+    expect(csp).not.toContain("https:");
+  });
+
   it("exposes a local-only release script that builds NSIS without publishing", () => {
     const packageJson = JSON.parse(
       readFileSync("package.json", "utf8"),
@@ -58,6 +80,7 @@ describe("Fixvox Tauri Windows release bootstrap", () => {
     expect(releaseScript).toContain("--ci");
     expect(releaseScript).toContain("--no-sign");
     expect(releaseScript).toContain("target/release/bundle/nsis");
+    expect(releaseScript).toContain("cargo test --no-run");
     expect(releaseScript).toContain("does not publish, upload, deploy");
     expect(releaseScript).not.toMatch(/\b(gh(\.exe)?\s+release|git\s+push|npm\s+publish|wrangler\s+deploy)\b/i);
   });

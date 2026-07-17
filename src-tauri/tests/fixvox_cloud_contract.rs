@@ -457,6 +457,7 @@ fn refresh_policy_helper_reuses_register_contract_without_network() {
         policy_label: Some("Alpha Old".to_string()),
         transport_policy: None,
         policy_snapshot: None,
+        auth_policy: None,
     };
     persist_device_state(&state_path, &initial_state).expect("initial state should persist");
     let client = FakeRegisterClient {
@@ -499,6 +500,7 @@ fn refresh_policy_persists_full_runtime_policy_payload_for_host_resolution() {
         policy_label: Some("Pro".to_string()),
         transport_policy: None,
         policy_snapshot: None,
+        auth_policy: None,
     };
     persist_device_state(&state_path, &initial_state).expect("initial state should persist");
     let client = FakeRegisterClient {
@@ -694,6 +696,7 @@ fn managed_chat_postprocess_uses_device_id_header_and_never_vendor_bearer() {
             system_prompt: "Clean up the transcript.".to_string(),
             model: "openai/gpt-oss-120b".to_string(),
             max_tokens: Some(512),
+            engine_kind: Some(ManagedChatEngineKind::Postprocess),
         },
     )
     .expect("managed chat request preview should be constructable without network");
@@ -706,6 +709,10 @@ fn managed_chat_postprocess_uses_device_id_header_and_never_vendor_bearer() {
         .headers
         .iter()
         .any(|(name, value)| name == "X-Device-Id" && value == "dev_test_1234567890abcdef"));
+    assert!(preview
+        .headers
+        .iter()
+        .any(|(name, value)| name == "X-Fixvox-Engine-Kind" && value == "postprocess"));
     assert!(!preview.has_authorization_header);
     assert!(preview
         .headers

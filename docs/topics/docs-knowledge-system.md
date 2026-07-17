@@ -45,3 +45,20 @@ La documentacion debe permitir que un agente lea poco y encuentre rapido la fuen
 - Si una track descubre algo durable, promoverlo a docs raiz, topic, decision o spec.
 - Si aparece un documento suelto, integrarlo, indexarlo, archivarlo con estado claro o preguntar antes de borrarlo.
 - Mantener cambios documentales en Small Batches: una decision, topic o sincronizacion de contexto por commit cuando sea separable.
+
+## Guardar Sesion
+
+Guardar solo valor durable, sin transcript ni handoff:
+
+1. Extraer decisiones, estado vivo, riesgos, archivos relevantes, checks y proximo paso.
+2. Rutear cada elemento a decision, topic, track, spec, `WORKING_MEMORY.md` o reglas del agente.
+3. Dejar `WORKING_MEMORY.md` como indice operativo corto y mover detalle al topic/track canonico.
+4. Regenerar el indice si cambian topics, tracks, specs, skills, aliases o prompts documentados.
+5. Correr audit si cambia la capa agentica o existe riesgo de drift.
+6. Seguir en la misma sesion: no abrir thread, preparar handoff, iniciar loops ni compactar salvo pedido explicito.
+
+## Cierre Y Continuacion De Sesion
+
+- Cerrar sesion = ejecutar Guardar Sesion y responder con una sintesis final compacta.
+- Continuar sesion = cerrar con valor y preparar un handoff corto que apunte a docs vivos; el handoff nunca reemplaza la documentacion canonica.
+- Abrir una sesion/thread nuevo es una accion separada. No ejecutar `gol`, loops ni compaction por defecto.

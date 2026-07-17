@@ -24,7 +24,22 @@ describe("Dock shell host visibility", () => {
     expect(dockSource).toContain("ShowWindow(raw_hwnd, SW_HIDE)");
     expect(dockSource).toContain("last_dock_state()");
     expect(dockSource).toContain("DOCK_BOTTOM_MARGIN");
-    expect(dockSource).toContain("monitor.size()");
+    expect(dockSource).toContain("monitor.work_area()");
     expect(dockSource).not.toContain("DOCK_TASKBAR_CLEARANCE");
+  });
+
+  it("follows the cursor monitor while idle and preserves a position per monitor", () => {
+    const dockSource = readFileSync("src-tauri/src/dock_shell.rs", "utf8");
+
+    expect(dockSource).toContain("DOCK_MONITOR_POLL_INTERVAL");
+    expect(dockSource).toContain("Duration::from_millis(180)");
+    expect(dockSource).toContain("app.monitor_from_point");
+    expect(dockSource).toContain("platform::cursor_position()");
+    expect(dockSource).toContain("platform::primary_mouse_button_down()");
+    expect(dockSource).toContain("state == DockShellState::Idle");
+    expect(dockSource).toContain("dock_monitor_probe_point(position, layout)");
+    expect(dockSource).toContain('DOCK_POSITION_FILE: &str = "dock-positions.v2.json"');
+    expect(dockSource).toContain("BTreeMap<String, DockPosition>");
+    expect(dockSource).toContain("repositioned for cursor monitor");
   });
 });

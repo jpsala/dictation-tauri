@@ -169,6 +169,27 @@ describe("DesktopDictationController US1 session lifecycle", () => {
     });
   });
 
+  it("prepares the delivery target before stopping capture", async () => {
+    const order: string[] = [];
+    const controller = createController({
+      prepareDeliveryTargetOnStop: vi.fn(async () => {
+        order.push("target");
+      }),
+      capture: {
+        start: vi.fn(async () => undefined),
+        stop: vi.fn(async () => {
+          order.push("capture");
+          return { captureId: "clip-stop-target" };
+        }),
+      },
+    });
+
+    await controller.handleControl(createControlEvent({ action: "start" }));
+    await controller.handleControl(createControlEvent({ action: "stop", id: "stop-target" }));
+
+    expect(order).toEqual(["target", "capture"]);
+  });
+
   it("feeds review-only delivery evidence into a runtime summary without paste observation", async () => {
     const controller = createController({
       runtime: {
@@ -556,6 +577,7 @@ function createController(input: {
   delivery?: DesktopDeliveryGateway;
   allowDesktopDeliverySideEffects?: boolean;
   autoStop?: DesktopAutoStopSilencePolicy;
+  prepareDeliveryTargetOnStop?: () => Promise<void>;
   scheduler?: {
     setInterval(callback: () => void, ms: number): unknown;
     clearInterval(handle: unknown): void;
@@ -573,6 +595,7 @@ function createController(input: {
     },
     delivery: input.delivery,
     allowDesktopDeliverySideEffects: input.allowDesktopDeliverySideEffects,
+    prepareDeliveryTargetOnStop: input.prepareDeliveryTargetOnStop,
     autoStop: input.autoStop,
     scheduler: input.scheduler,
     createSessionId: () => "desktop-session-001",

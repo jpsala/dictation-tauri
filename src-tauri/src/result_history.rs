@@ -7,6 +7,7 @@ use tauri::{AppHandle, Manager};
 
 pub const RESULT_HISTORY_FILE: &str = "result-history.v1.jsonl";
 pub const RESULT_HISTORY_LIMIT: usize = 50;
+pub const RESULT_HISTORY_MAX_BYTES: usize = 256 * 1024;
 const UNTRUSTED_PASTE_OBSERVED_HISTORY_ERROR: &str =
     "paste_observed history entries require a verified native observer append path";
 
@@ -51,9 +52,7 @@ pub fn append_result_history_entry(
     let mut entries = read_entries_from_path(&path).map_err(|error| error.to_string())?;
     entries.retain(|existing| existing.id != entry.id);
     entries.push_back(entry);
-    while entries.len() > RESULT_HISTORY_LIMIT {
-        entries.pop_front();
-    }
+    trim_entries_to_limits(&mut entries);
     write_entries_to_path(&path, &entries).map_err(|error| error.to_string())?;
     Ok(entries.into_iter().collect())
 }
@@ -94,6 +93,26 @@ fn validate_appendable_delivery_evidence(entry: &ResultHistoryEntry) -> Result<(
     Ok(())
 }
 
+fn trim_entries_to_limits(entries: &mut VecDeque<ResultHistoryEntry>) {
+    while entries.len() > RESULT_HISTORY_LIMIT {
+        entries.pop_front();
+    }
+
+    let mut total_bytes = entries.iter().fold(0usize, |total, entry| {
+        total.saturating_add(serialized_entry_bytes(entry))
+    });
+    while total_bytes > RESULT_HISTORY_MAX_BYTES {
+        let Some(entry) = entries.pop_front() else {
+            break;
+        };
+        total_bytes = total_bytes.saturating_sub(serialized_entry_bytes(&entry));
+    }
+}
+
+fn serialized_entry_bytes(entry: &ResultHistoryEntry) -> usize {
+    serde_json::to_vec(entry).map_or(usize::MAX, |bytes| bytes.len().saturating_add(1))
+}
+
 fn read_entries_from_path(path: &PathBuf) -> std::io::Result<VecDeque<ResultHistoryEntry>> {
     if !path.exists() {
         return Ok(VecDeque::new());
@@ -113,9 +132,7 @@ fn read_entries_from_path(path: &PathBuf) -> std::io::Result<VecDeque<ResultHist
             }
         }
     }
-    while entries.len() > RESULT_HISTORY_LIMIT {
-        entries.pop_front();
-    }
+    trim_entries_to_limits(&mut entries);
     Ok(entries)
 }
 
@@ -176,6 +193,31 @@ mod tests {
     }
 
     #[test]
+    fn keeps_serialized_history_under_the_byte_cap() {
+        let mut entries = VecDeque::new();
+        for index in 0..10 {
+            let mut entry = history_entry_with_delivery_status("available");
+            entry.id = format!("entry-{index}");
+            entry.run_id = format!("run-{index}");
+            entry.text = "x".repeat(RESULT_HISTORY_MAX_BYTES / 3);
+            entry.text_length = entry.text.len();
+            entries.push_back(entry);
+        }
+
+        trim_entries_to_limits(&mut entries);
+
+        let bytes: usize = entries
+            .iter()
+            .map(|entry| serde_json::to_vec(entry).unwrap().len() + 1)
+            .sum();
+        assert!(bytes <= RESULT_HISTORY_MAX_BYTES);
+        assert_eq!(
+            entries.back().map(|entry| entry.id.as_str()),
+            Some("entry-9")
+        );
+    }
+
+    #[test]
     fn keeps_only_bounded_successful_plaintext_entries() {
         let mut entries = VecDeque::new();
         for index in 0..(RESULT_HISTORY_LIMIT + 3) {
@@ -196,9 +238,7 @@ mod tests {
             });
         }
 
-        while entries.len() > RESULT_HISTORY_LIMIT {
-            entries.pop_front();
-        }
+        trim_entries_to_limits(&mut entries);
 
         assert_eq!(entries.len(), RESULT_HISTORY_LIMIT);
         assert_eq!(

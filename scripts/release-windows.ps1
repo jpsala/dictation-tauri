@@ -36,6 +36,9 @@ try {
 
       & cargo check
       if ($LASTEXITCODE -ne 0) { throw "Rust compile check failed with exit code $LASTEXITCODE" }
+
+      & cargo test --no-run
+      if ($LASTEXITCODE -ne 0) { throw "Rust test compile check failed with exit code $LASTEXITCODE" }
     } finally {
       Pop-Location
     }

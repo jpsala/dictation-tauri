@@ -113,15 +113,52 @@ Objetivo: poder operar usuarios/devices/policies desde este repo sin scripts sue
 - [x] A4 Agregar tests Worker para listar usuarios, asignar policy por account y verificar redaccion.
 - [x] A5 Documentar runbook admin local: listar, asignar Pro/basic, restaurar Pro, verificar policy.
 
+### Phase B0 — Observabilidad local de prewarm
+
+Objetivo: hacer medible `prewarm` sin agregar escrituras KV, cambiar su respuesta ni tocar producción.
+
+- [x] B0.1 Persistir por device, dentro del Durable Object existente, sólo contadores diarios sanitizados de intentos, éxitos y fallos.
+- [x] B0.2 Limitar la retención a siete buckets diarios con cleanup por alarm; sin IDs, contenido, payloads ni llamadas a providers en el valor persistido.
+- [x] B0.3 Encolar observación best-effort con `ctx.waitUntil`; un fallo de observabilidad no cambia la respuesta de prewarm.
+- [x] B0.4 Agregar tests provider-free para conteos, retención, cero writes KV, ausencia de datos crudos y fallo fail-open de observabilidad.
+
+**Lean Checkpoint Loop v0.1 receipt (2026-07-15)**
+
+- Protocol / checkpoint / class / scope: v0.1 / B0 / L1 / B0.1-B0.4; base `84e5ebea471626ae5d3b76c45ed8f70aa1f1de4e`.
+- Files changed: `cloud/fixvox-proxy/src/index.ts`, `cloud/fixvox-proxy/src/prewarm-observability.test.ts`, este track, `docs/WORKING_MEMORY.md`, `docs/.generated/context-index.md`, `plans/aos-autonomous-checkpoint-loop.md`.
+- Invariant: cero nuevas escrituras `env.USAGE` por prewarm; mismo contrato público; DO existente con identidad implícita, retención acotada y valor sin IDs/contenido.
+- Focused rerun, cwd `cloud/fixvox-proxy`: `bun test src/prewarm-observability.test.ts` -> 4/4; `bun test src/contract-runner.test.ts` -> 2/2.
+- Close rerun, cwd repo: `npm run cloud:test` -> exit 0; `bun scripts/context-index.ts && bun scripts/agent-context-audit.ts` -> 0 errors/3 size warnings; cwd `cloud/fixvox-proxy`: `npx wrangler deploy --dry-run` -> Green, sin deploy.
+- Failure/gate: primero se invocó por error el dry-run desde el cwd raíz; `npx` descargó Wrangler 4.110.0 en caché temporal y falló antes de bundle/deploy. No creó config ni cambió package/lockfiles raíz.
+- Human decision: JP aceptó explícitamente el efecto incidental y autorizó finalizar; no se limpió caché ni se revirtió código.
+- Advisor -> cambio: recomendación no-KV se concretó usando `USAGE_COUNTERS`, prefijo determinista por device, counters sanitizados y `waitUntil` best-effort.
+- Result: implementación/checks Green; evaluación del protocolo Red por breach de install gate. Sin provider, producción, secrets, datos reales ni deploy.
+- Next gate at B0 close: B1-B4 requerían autorización separada; luego fueron autorizados y cerrados en el receipt siguiente. B5 y Spec 019 C/T013 siguen gated.
+
 ### Phase B — Usage/quota visible
 
 Objetivo: ver costo/uso y controlar limites antes de abrir beta mas amplia.
 
-- [ ] B1 Definir metricas por user/device: STT seconds, LLM actions, prewarm, failures, quota remaining.
-- [ ] B2 Exponer endpoint admin de usage por account/device con IDs redacted.
-- [ ] B3 Mostrar quota/usage en admin page existente o panel nuevo simple.
-- [ ] B4 Tests de quota/usage: agregacion, redaccion, empty state y over-limit.
+- [x] B1 Definir metricas por user/device: STT seconds, LLM actions, prewarm, failures, quota remaining.
+- [x] B2 Exponer endpoint admin de usage por account/device con IDs redacted.
+- [x] B3 Mostrar quota/usage en admin page existente o panel nuevo simple.
+- [x] B4 Tests de quota/usage: agregacion, redaccion, empty state y over-limit.
 - [ ] B5 Smoke redacted con usuario real aprobado.
+
+**Lean Checkpoint Loop v0.1 receipt (2026-07-15)**
+
+- Protocol / checkpoint / class / scope: v0.1 / B1-B4 / L1 / read-only usage projection + Admin UI; base `84e5ebea471626ae5d3b76c45ed8f70aa1f1de4e`.
+- Files changed: `cloud/fixvox-proxy/src/{usage-admin.ts,usage-admin.test.ts,index.ts,control-plane-store.ts}`, `admin/fixvox-web/{public/app.js,server.mjs,server.test.mjs}`, este track, `docs/WORKING_MEMORY.md`, `docs/.generated/context-index.md`, `plans/aos-autonomous-checkpoint-loop.md`.
+- Invariants: endpoint existente extendido aditivamente; IDs redacted; límites derivados de `DeviceLimits`; telemetry recent cap 100; devices cap 20; prewarm 7d; cero writers/providers nuevos.
+- Focused rerun, cwd `cloud/fixvox-proxy`: `bun test src/usage-admin.test.ts src/control-plane-store.test.ts` -> 39 pass; `bun test src/contract-runner.test.ts` -> 2/2.
+- Admin rerun, cwd repo: `node --test admin/fixvox-web/server.test.mjs` -> 10/10; `node --check admin/fixvox-web/public/app.js && node --check admin/fixvox-web/server.mjs` -> Green.
+- Close rerun, cwd repo: `npm run cloud:test` -> exit 0; `bun scripts/context-index.ts && bun scripts/agent-context-audit.ts` -> 0 errors/3 size warnings; cwd `cloud/fixvox-proxy`: `npm exec --offline -- wrangler deploy --dry-run` -> Green, sin download ni deploy.
+- Failure/repair: un assertion de redacción matcheó por error el identificador legítimo `transcriptBase`; se acotó al sentinel sensible y el focused Admin rerun pasó 10/10.
+- Advisor -> cambio: módulo `usage-admin.ts`, proyección bounded, account handle/device redacted, cuota sin duplicar policy, máximo 20 devices con queries DO en batches de 8 y unavailable fail-open para respetar subrequest budget.
+- Result: Green; 0 preguntas rutinarias, 0 cambios de storage, 0 installs, providers, secrets, producción, datos reales o deploy.
+- Diagnostics: persisten el finding estructural preexistente `app.js:248` y el ambient LSP faltante para `bun:test`; tests/runtime checks son verdes y no se ampliaron fuera de scope.
+- Remaining: B5 no iniciado; el dashboard declara cobertura parcial y no promete historia exhaustiva. Spec 019 C/T013 permanece sin iniciar.
+- Producción 2026-07-15: el bundle B0-B4 se promovió junto con el fix urgente de preflight a Worker `f5919894-d287-46f9-b91b-7309e2efe56d`; health respondió 200 y una transcripción managed real pasó con provider request. B5 sigue pendiente porque esta sesión no tenía una credencial Admin view local para validar la proyección `/admin/usage/summary` con el usuario real.
 
 ### Phase C — Planes/capabilities vendibles
 

@@ -168,6 +168,53 @@ describe("SettingsSurface", () => {
     expect(html).not.toContain("gsk_");
   });
 
+  it("hides preset navigation when the effective policy cannot run transforms", () => {
+    const html = renderToStaticMarkup(<SettingsSurface
+      initialSection="presets"
+      initialCloudStatus={{
+        backendBaseUrl: "redacted",
+        statePath: "redacted",
+        installIdPresent: true,
+        deviceRegistered: true,
+        lastRegisterOk: true,
+        authPolicy: {
+          accessMode: "signed_in",
+          policyTemplateId: "dictation-basic",
+          redacted: true,
+        },
+        redacted: true,
+      }}
+    />);
+
+    expect(html).not.toContain("Preset prompt editor");
+    expect(html).not.toContain("Add preset");
+    expect(html).toContain("Essentials");
+  });
+
+  it("shows the integrated Control Room only for admin settings capability", () => {
+    const html = renderToStaticMarkup(<SettingsSurface
+      initialSection="admin"
+      initialCloudStatus={{
+        backendBaseUrl: "redacted",
+        statePath: "redacted",
+        installIdPresent: true,
+        deviceRegistered: true,
+        lastRegisterOk: true,
+        authPolicy: {
+          accessMode: "signed_in",
+          policyTemplateId: "power-admin",
+          capabilities: ["admin_settings"],
+          redacted: true,
+        },
+        redacted: true,
+      }}
+    />);
+
+    expect(html).toContain("Control Room");
+    expect(html).toContain("Open Control Room");
+    expect(html).not.toContain("ADMIN_API_KEY");
+  });
+
   it("renders local preset administration for starter prompt overrides", () => {
     const html = renderToStaticMarkup(<SettingsSurface initialSection="presets" />);
 
@@ -183,8 +230,10 @@ describe("SettingsSurface", () => {
     expect(html).toContain("Picker key");
     expect(html).toContain("Enabled");
     expect(html).toContain("Hotkey");
-    expect(html).toContain("Provider");
-    expect(html).toContain("Model");
+    expect(html).toContain("Managed engine");
+    expect(html).toContain("Configured in Control Room");
+    expect(html).not.toContain("Preset provider");
+    expect(html).not.toContain("Preset model");
     expect(html).toContain("No confirm");
     expect(html).toContain("Duplicate");
     expect(html).toContain("Save prompt");
@@ -213,9 +262,9 @@ describe("SettingsSurface", () => {
     expect(source).toContain("Press new shortcut…");
     expect(source).toContain("onClick={() => setSelectedSection(section.id)}");
     expect(source).not.toContain("disabled={!isActive}");
-    expect(source).toContain("selectedSection === \"hotkeys\"");
-    expect(source).toContain("selectedSection === \"cloud\"");
-    expect(source).toContain("selectedSection === \"presets\"");
+    expect(source).toContain("effectiveSection === \"hotkeys\"");
+    expect(source).toContain("effectiveSection === \"cloud\"");
+    expect(source).toContain("effectiveSection === \"presets\"");
     expect(source).toContain("getTauriActionHotkeyConfig");
     expect(source).toContain("applyTauriActionHotkeyRegistration");
     expect(source).toContain("essentialsTabs");
@@ -234,6 +283,8 @@ describe("SettingsSurface", () => {
     expect(source).toContain("autoStopOnSilenceEnabled");
     expect(source).toContain("autoStopSilenceMs");
     expect(source).toContain("Auto-stop after silence");
+    expect(source).toContain("followFocusUntilDelivery");
+    expect(source).toContain("Follow focus until paste");
     expect(source).toContain("muteOutputDuringRecording");
     expect(source).toContain("Mute output while recording");
     expect(source).toContain("dictationSoundCuesEnabled");
@@ -259,6 +310,8 @@ describe("SettingsSurface", () => {
     expect(appSource).toContain("userPreferencesChangedEvent");
     expect(appSource).toContain("getUserPreferences()");
     expect(appSource).toContain("userPreferencesRef.current.pressEnterAfterPaste");
+    expect(appSource).toContain("userPreferencesRef.current.followFocusUntilDelivery");
+    expect(settingsControlSource).toContain("followFocusUntilDelivery");
     expect(settingsControlSource).toContain("autoStopOnSilenceEnabled");
     expect(settingsControlSource).toContain("defaultAutoStopSilenceMs");
     expect(settingsControlSource).toContain("createMuteOutputPolicy");

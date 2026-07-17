@@ -1,7 +1,7 @@
 ---
 status: active
 started: 2026-07-08
-updated: 2026-07-08
+updated: 2026-07-13
 priority: high
 owner: Pi
 related:
@@ -57,7 +57,8 @@ Evidencia de auditoría:
 
 - `npm run test:pipeline` pasó: 86 archivos, 418 tests.
 - `cd src-tauri && cargo test --no-run` falla por dos inicializadores incompletos de `FixvoxDeviceState`.
-- `src-tauri/tauri.conf.json` tiene `"csp": null`.
+- Baseline 2026-07-08: `src-tauri/tauri.conf.json` tenía `"csp": null`.
+- Update 2026-07-13: CSP productiva y dev son explícitas, sin red cloud desde renderer; config test, frontend build, Rust check y debug Tauri build pasan. Startup smoke WebView2 inconcluso: debug nuevo y release control fallan igual sin marker de page load.
 - `src/desktop-control/controller.ts` define `cryptoSafeRandom()` con `Math.random()` para session IDs no secretos.
 - `persist_auth_session_state()` guarda secretos de sesión como JSON plano.
 - `runtime_transcription.rs` usa `Command::new("ffmpeg")` por PATH.
@@ -177,19 +178,13 @@ npm run build
 - `src-tauri/tauri.conf.json`
 - posiblemente docs si se documenta endpoint permitido.
 
-**Política inicial propuesta:**
+**Estado 2026-07-13:** implementada.
 
-```json
-"csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost https://auth-fixvox.jpsala.dev https://*.jpsala.dev; media-src 'self' asset: blob: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
-```
-
-**Notas:**
-
-- Tauri/WebView IPC puede necesitar esquema específico (`ipc:` / `http://ipc.localhost`) según runtime. Validar contra runtime real; si `http://ipc.localhost` no hace falta, quitarlo antes de release.
-- No permitir `img-src https:` salvo evidencia concreta: facilita exfiltración por tags de imagen si alguna XSS llega al DOM.
-- `style-src 'unsafe-inline'` se acepta por React/CSS runtime actual; no meter nonce/hash ahora.
-- Si algo falla por CSP, relajar solo la directiva necesaria y registrar evidencia.
-- Revisar si existe uso de WebSocket (`new WebSocket`, `wss://`) antes de cerrar `connect-src`; si existe, agregar la fuente mínima necesaria.
+- Producción permite solo recursos locales, `ipc:`/`http://ipc.localhost`, `data:`/`blob:` donde la UI lo requiere y bloquea objects/base/frames.
+- No se agregó `https://*.jpsala.dev`: cloud permanece host-owned en Rust.
+- `devCsp` agrega únicamente `ws://127.0.0.1:1420` para HMR de Vite.
+- `style-src 'unsafe-inline'` se mantiene por estilos inline existentes; Tauri conserva su inyección automática de hashes/nonces.
+- Si runtime falla por CSP, relajar solo la directiva necesaria y registrar evidencia.
 
 **Pasos:**
 
@@ -220,6 +215,8 @@ npm run visual:check
 - `npm run build` y `cargo check` pasan como validación de formato/compilación, pero no prueban CSP runtime.
 - CSP queda validada en Tauri runtime o marcada explícitamente como `[runtime no verificado]` con el comando pendiente.
 - Cualquier relajación queda documentada.
+
+Resultado actual: config/build/check/debug Tauri build verificados. `[runtime inconcluso]`: `artifacts/startup-smoke/20260713-csp-runtime/` y `20260713-csp-control/` fallan igual sin marker `main WebView loaded`, por lo que no se atribuye el fallo a CSP ni se relaja la policy.
 
 ---
 

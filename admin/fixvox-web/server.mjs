@@ -6,6 +6,7 @@ import http from 'node:http'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { fileURLToPath } from 'node:url'
+import { accountHandleForGoogleSubject, annotateCurrentAdminAccount, redactGoogleEmail } from './account-identity.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..')
@@ -18,6 +19,10 @@ const PI_ARGS = splitArgs(process.env.PI_CHAT_ARGS || '')
 const ADMIN_BASE_URL = (process.env.FIXVOX_ADMIN_BASE_URL || 'https://auth-fixvox.jpsala.dev').replace(/\/+$/g, '')
 const ADMIN_ENV = process.env.FIXVOX_ADMIN_ENV || (ADMIN_BASE_URL.includes('127.0.0.1') || ADMIN_BASE_URL.includes('localhost') ? 'local' : 'production')
 const sessions = new Map()
+const mockProfileDrafts = new Map()
+const mockProfileHistories = new Map()
+const mockRoleBindings = new Map([['jpsala@gmail.com', 'owner']])
+const mockAuditRecords = []
 
 loadEnvFile(path.join(repoRoot, 'cloud', 'fixvox-proxy', '.dev.vars'))
 loadEnvFile(path.join(process.env.HOME || '', '.config', 'dictation-tauri', 'admin.env'))
@@ -26,7 +31,16 @@ const WEB_TOKEN = process.env.FIXVOX_ADMIN_WEB_TOKEN || process.env.FIXVOX_ADMIN
 const GOOGLE_CLIENT_ID = process.env.FIXVOX_ADMIN_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLOUD_CLIENT_ID || ''
 const GOOGLE_CLIENT_SECRET = process.env.FIXVOX_ADMIN_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLOUD_CLIENT_SECRET || ''
 const ALLOWED_EMAILS = new Set(String(process.env.FIXVOX_ADMIN_ALLOWED_EMAILS || '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean))
+const RBAC_BOOTSTRAP_OWNER_EMAIL = normalizeGoogleEmail(process.env.FIXVOX_ADMIN_BOOTSTRAP_OWNER_EMAIL || 'jpsala@gmail.com')
+const PRIVILEGED_OAUTH_MAX_AGE_MS = 10 * 60 * 1000
 const MOCK_MODE = process.env.FIXVOX_ADMIN_MOCK === '1'
+const ADMIN_CREDENTIAL_ENV_KEYS = ['ADMIN_API_KEY', 'ADMIN_VIEW_API_KEY', 'ADMIN_EDIT_API_KEY', 'ADMIN_PUBLISH_API_KEY']
+
+function piProcessEnv() {
+  const env = { ...process.env }
+  for (const key of ADMIN_CREDENTIAL_ENV_KEYS) delete env[key]
+  return env
+}
 
 function loadEnvFile(file) {
   if (!file || !fs.existsSync(file)) return
@@ -63,7 +77,7 @@ class PiRpcProcess {
     if (this.running) return
     const child = spawn(PI_BIN, [...PI_ARGS, '--mode', 'rpc', '--approve', '--name', 'fixvox-admin-web-pi'], {
       cwd: PI_CWD,
-      env: process.env,
+      env: piProcessEnv(),
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     })
@@ -162,7 +176,7 @@ const pi = new PiRpcProcess()
 
 async function getPiVersion() {
   return new Promise((resolve) => {
-    const child = spawn(PI_BIN, [...PI_ARGS, '--version'], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    const child = spawn(PI_BIN, [...PI_ARGS, '--version'], { env: piProcessEnv(), stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     let stdout = '', stderr = ''
     const timeout = setTimeout(() => { child.kill('SIGKILL'); resolve({ ok: false, error: 'Timeout ejecutando pi --version' }) }, 5000)
     child.stdout.on('data', (chunk) => { stdout += chunk.toString() })
@@ -172,8 +186,54 @@ async function getPiVersion() {
   })
 }
 
+function normalizeGoogleEmail(value) {
+  const email = String(value || '').trim().toLowerCase()
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Google email inválido.')
+  return email
+}
+function redactAdminEmail(value) {
+  const [local, domain] = normalizeGoogleEmail(value).split('@')
+  return `${local[0] || 'u'}…@${domain}`
+}
+function mockAuditPayload() {
+  return { schemaVersion: 1, records: mockAuditRecords.map((record) => ({ ...record })) }
+}
+function mockRolePayload() {
+  return {
+    bindings: [...mockRoleBindings.entries()].map(([email, role]) => ({ emailRedacted: redactAdminEmail(email), role })).sort((left, right) => left.emailRedacted.localeCompare(right.emailRedacted)),
+  }
+}
+function mockSetRoleBinding(body, actorEmail) {
+  const subjectEmail = normalizeGoogleEmail(body.subjectEmail)
+  const role = String(body.role || '')
+  if (!['viewer', 'editor', 'publisher', 'owner'].includes(role)) throw Object.assign(new Error('invalid role'), { status: 400 })
+  if (mockRoleBindings.get(normalizeGoogleEmail(actorEmail)) !== 'owner') throw Object.assign(new Error('owner role required'), { status: 403 })
+  if (mockRoleBindings.get(subjectEmail) === 'owner' && role !== 'owner' && [...mockRoleBindings.values()].filter((value) => value === 'owner').length === 1) throw Object.assign(new Error('cannot demote the final owner'), { status: 403 })
+  mockRoleBindings.set(subjectEmail, role)
+  return mockRolePayload()
+}
+function mockRemoveRoleBinding(body, actorEmail) {
+  const subjectEmail = normalizeGoogleEmail(body.subjectEmail)
+  if (mockRoleBindings.get(normalizeGoogleEmail(actorEmail)) !== 'owner') throw Object.assign(new Error('owner role required'), { status: 403 })
+  if (mockRoleBindings.get(subjectEmail) === 'owner' && [...mockRoleBindings.values()].filter((value) => value === 'owner').length === 1) throw Object.assign(new Error('cannot remove the final owner'), { status: 403 })
+  mockRoleBindings.delete(subjectEmail)
+  return mockRolePayload()
+}
+function rbacPrincipalKeyForEmail(email) {
+  return `arp_${crypto.createHash('sha256').update(`admin-role:${normalizeGoogleEmail(email)}`).digest('hex')}`
+}
 function readSession(req) {
-  if (MOCK_MODE) return { provider: 'mock', email: 'local@fixvox.dev', name: 'Local Fixvox', expiresAt: Date.now() + 86400000 }
+  if (MOCK_MODE) {
+    const email = normalizeGoogleEmail(process.env.FIXVOX_ADMIN_MOCK_EMAIL || 'jpsala@gmail.com')
+    return {
+      provider: 'google',
+      email,
+      name: email === RBAC_BOOTSTRAP_OWNER_EMAIL ? 'Juan Pablo Sala' : 'Mock admin',
+      sub: process.env.FIXVOX_ADMIN_MOCK_SUB || (email === RBAC_BOOTSTRAP_OWNER_EMAIL ? 'mock-jpsala-google-sub' : `mock-${email}`),
+      authenticatedAt: Number(process.env.FIXVOX_ADMIN_MOCK_AUTHENTICATED_AT || Date.now()),
+      expiresAt: Date.now() + 86400000,
+    }
+  }
   const cookie = req.headers.cookie || ''
   const match = cookie.match(/(?:^|;\s*)fixvox_admin_session=([^;]+)/)
   const token = match?.[1]
@@ -186,7 +246,7 @@ function isAuthed(req) {
 }
 function setSession(res, user = { provider: 'token', email: null }) {
   const token = crypto.randomBytes(24).toString('base64url')
-  sessions.set(token, { ...user, expiresAt: Date.now() + 1000 * 60 * 60 * 24 })
+  sessions.set(token, { ...user, authenticatedAt: Date.now(), expiresAt: Date.now() + 1000 * 60 * 60 * 24 })
   res.setHeader('Set-Cookie', `fixvox_admin_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=86400`)
 }
 function clearSession(res) {
@@ -223,7 +283,7 @@ async function exchangeGoogleCode(req, code) {
   const email = String(user.email || '').toLowerCase()
   if (!email || user.email_verified === false) throw new Error('Google email no verificado')
   if (ALLOWED_EMAILS.size > 0 && !ALLOWED_EMAILS.has(email)) throw new Error('Email no autorizado para Fixvox Admin')
-  return { provider: 'google', email, name: user.name || email }
+  return { provider: 'google', email, name: user.name || email, sub: String(user.sub || '').trim() || null }
 }
 
 function sendJson(res, status, data) {
@@ -237,14 +297,52 @@ function readBody(req) {
     req.on('end', () => resolve(body))
   })
 }
-async function proxyAdmin(pathname, method = 'GET', body) {
-  const headers = { Authorization: `Bearer ${process.env.ADMIN_API_KEY || ''}` }
+function adminCredential(required) {
+  const candidates = required === 'view'
+    ? [process.env.ADMIN_VIEW_API_KEY, process.env.ADMIN_EDIT_API_KEY, process.env.ADMIN_API_KEY]
+    : [process.env.ADMIN_EDIT_API_KEY, process.env.ADMIN_API_KEY]
+  return candidates.find((candidate) => String(candidate || '').trim()) || ''
+}
+
+async function proxyAdmin(pathname, method = 'GET', body, credential = adminCredential(method === 'GET' ? 'view' : 'edit')) {
+  const headers = { Authorization: `Bearer ${credential}` }
   if (body !== undefined) headers['content-type'] = 'application/json'
   const response = await fetch(`${ADMIN_BASE_URL}${pathname}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
   const text = await response.text()
   const payload = text ? JSON.parse(text) : null
   if (!response.ok) throw Object.assign(new Error(payload?.error?.message || 'Fixvox admin request failed'), { status: response.status, payload })
   return payload
+}
+
+async function resolveServerRole(session) {
+  if (MOCK_MODE) {
+    const email = normalizeGoogleEmail(session.email)
+    if (email === RBAC_BOOTSTRAP_OWNER_EMAIL) return 'owner'
+    const configuredRole = String(process.env.FIXVOX_ADMIN_MOCK_ROLE || '').trim()
+    if (['viewer', 'editor', 'publisher', 'owner'].includes(configuredRole)) return configuredRole
+    return mockRoleBindings.get(email) || null
+  }
+  const principalKey = rbacPrincipalKeyForEmail(session.email)
+  const query = new URLSearchParams({ bootstrapOwnerEmail: RBAC_BOOTSTRAP_OWNER_EMAIL, principalKey })
+  const payload = await proxyAdmin(`/admin/control-plane/roles/resolve?${query}`)
+  return ['viewer', 'editor', 'publisher', 'owner'].includes(payload?.role) ? payload.role : null
+}
+async function requireGoogleRole(req, allowedRoles) {
+  const session = readSession(req)
+  if (!session || session.provider !== 'google' || !session.email) {
+    throw Object.assign(new Error('Verified Google authentication required.'), { status: 403 })
+  }
+  const role = await resolveServerRole(session)
+  if (!role || !allowedRoles.includes(role)) throw Object.assign(new Error('Forbidden.'), { status: 403 })
+  return { email: normalizeGoogleEmail(session.email), role }
+}
+
+async function requireRecentGoogleRole(req, allowedRoles) {
+  const session = readSession(req)
+  if (!session || session.provider !== 'google' || !session.email || Date.now() - Number(session.authenticatedAt || 0) > PRIVILEGED_OAUTH_MAX_AGE_MS) {
+    throw Object.assign(new Error('Recent verified Google authentication required.'), { status: 403 })
+  }
+  return requireGoogleRole(req, allowedRoles)
 }
 
 
@@ -263,6 +361,7 @@ function mockSessionState() {
   }
 }
 let mockAccountsData = null
+const MOCK_PROFILE_USER_SETTINGS = ['appearance.themeId', 'appearance.dockSkin', 'general.onboardingDone', 'general.showDockOnStartup', 'general.startWithWindows', 'general.preferredSurface', 'general.uiLanguage', 'hotkeys.pasteLast', 'hotkeys.quickChat', 'hotkeys.resultHistory', 'hotkeys.picker', 'hotkeys.pushToTalk', 'hotkeys.stopAndSubmit', 'hotkeys.toggleAssistantMode', 'hotkeys.togglePressEnterAfterPaste', 'hotkeys.voiceRecord', 'transcript.language', 'voice.muteOutputDuringRecording', 'voice.pressEnterAfterPaste', 'voice.showQuickChatReasoning', 'voice.showPresetReasoning', 'voice.assistantWakeWords', 'voice.assistantModeToggleWords', 'voice.commandWakeWords']
 function mockPolicyLabel(policyId) {
   return policyId === 'pro' ? 'Pro' : policyId === 'alpha-full' ? 'Alpha full' : policyId === 'alpha-basic' ? 'Alpha basic' : policyId || null
 }
@@ -284,14 +383,14 @@ function defaultMockAccountsData() {
   return {
     ok: true,
     accounts: [
-      { accountHandle: 'acc_jp_owner', accountIdRedacted: 'account redacted', userRedacted: 'j…@gmail.com', userEmail: 'jpsala@gmail.com', provider: 'google', policyId: 'pro', policyLabel: 'Pro', variants: ['owner', 'debug-tools', 'best-voice'], segments: ['owner', 'debug-tools', 'best-voice'], groups: ['friends', 'paid'], deviceCount: 2, lastSeenAt: '2026-06-30T14:20:00.000Z', devices: [
+      { accountHandle: accountHandleForGoogleSubject('mock-jpsala-google-sub'), accountIdRedacted: 'account redacted', userRedacted: 'j…@gmail.com', userEmailRedacted: 'j…@gmail.com', provider: 'google', policyId: 'pro', policyLabel: 'Pro', variants: ['owner', 'debug-tools', 'best-voice'], segments: ['owner', 'debug-tools', 'best-voice'], groups: ['friends', 'paid'], deviceCount: 2, lastSeenAt: '2026-06-30T14:20:00.000Z', devices: [
         { deviceIdRedacted: 'dev_redacted_owner', policyId: 'pro', policyLabel: 'Pro', status: 'active', lastSeenAt: '2026-06-30T14:20:00.000Z' },
         { deviceIdRedacted: 'dev_redacted_tablet', policyId: 'pro', policyLabel: 'Pro', status: 'active', lastSeenAt: '2026-06-30T12:55:00.000Z' },
       ] },
-      { accountHandle: 'acc_alpha_team', accountIdRedacted: 'account redacted', userRedacted: 'a…@gmail.com', userEmail: 'alpha@gmail.com', provider: 'google', policyId: null, policyLabel: null, variants: ['friend', 'tester'], segments: ['friend', 'tester'], groups: ['private-alpha'], deviceCount: 1, lastSeenAt: '2026-06-30T13:10:00.000Z', devices: [
+      { accountHandle: 'acc_alpha_team', accountIdRedacted: 'account redacted', userRedacted: 'a…@gmail.com', userEmailRedacted: 'a…@gmail.com', provider: 'google', policyId: null, policyLabel: null, variants: ['friend', 'tester'], segments: ['friend', 'tester'], groups: ['private-alpha'], deviceCount: 1, lastSeenAt: '2026-06-30T13:10:00.000Z', devices: [
         { deviceIdRedacted: 'dev_redacted_laptop', policyId: 'alpha-full', policyLabel: 'Alpha full', status: 'active', lastSeenAt: '2026-06-30T13:10:00.000Z' },
       ] },
-      { accountHandle: 'acc_trial_user', accountIdRedacted: 'account redacted', userRedacted: 't…@gmail.com', userEmail: 'trial@gmail.com', provider: 'google', policyId: 'alpha-basic', policyLabel: 'Alpha basic', variants: ['trial'], segments: ['trial'], groups: ['trial'], deviceCount: 1, lastSeenAt: '2026-06-29T22:44:00.000Z', devices: [
+      { accountHandle: 'acc_trial_user', accountIdRedacted: 'account redacted', userRedacted: 't…@gmail.com', userEmailRedacted: 't…@gmail.com', provider: 'google', policyId: 'alpha-basic', policyLabel: 'Alpha basic', variants: ['trial'], segments: ['trial'], groups: ['trial'], deviceCount: 1, lastSeenAt: '2026-06-29T22:44:00.000Z', devices: [
         { deviceIdRedacted: 'dev_redacted_trial', policyId: 'alpha-basic', policyLabel: 'Alpha basic', status: 'active', lastSeenAt: '2026-06-29T22:44:00.000Z' },
       ] },
     ],
@@ -466,33 +565,6 @@ function mockAssignPolicyVariants(payload) {
   else delete mockAccountsData.policyVariants[policyId]
   return { ok: true, variantOptions: mockAccountsData.variantOptions, availableSegments: mockAccountsData.availableSegments, policyVariants: mockAccountsData.policyVariants, policyEngines: mockAccountsData.policyEngines || {} }
 }
-function mockAssignPolicyEngines(payload) {
-  mockAccountsData ||= defaultMockAccountsData()
-  const policyId = String(payload.policyId || '').trim()
-  const input = payload.engines && typeof payload.engines === 'object' ? payload.engines : {}
-  if (!policyId) return { ok: false, error: 'policyId required' }
-  const allowed = (kind) => new Set((mockAccountsData.engineOptions || []).filter((engine) => engine.kind === kind).map((engine) => engine.id))
-  const pick = (key, fallback) => allowed(key).has(String(input[key] || '')) ? String(input[key]) : fallback
-  mockAccountsData.policyEngines = { ...(mockAccountsData.policyEngines || {}), [policyId]: {
-    transcription: pick('transcription', 'stt-groq-balanced'),
-    postprocess: pick('postprocess', 'postprocess-openrouter-cheap'),
-    selectionTransform: pick('selectionTransform', 'transform-openrouter-cheap'),
-  } }
-  return { ok: true, variantOptions: mockAccountsData.variantOptions, availableSegments: mockAccountsData.availableSegments, engineOptions: mockAccountsData.engineOptions || [], promptOptions: mockAccountsData.promptOptions || [], policyVariants: mockAccountsData.policyVariants || {}, policyEngines: mockAccountsData.policyEngines, policyBudgets: mockAccountsData.policyBudgets || {} }
-}
-function mockAssignPolicyBudget(payload) {
-  mockAccountsData ||= defaultMockAccountsData()
-  const policyId = String(payload.policyId || '').trim()
-  if (!policyId) return { ok: false, error: 'policyId required' }
-  const budget = payload.budget || {}
-  mockAccountsData.policyBudgets ||= {}
-  mockAccountsData.policyBudgets[policyId] = {
-    dailyUsd: budget.dailyUsd === '' || budget.dailyUsd == null ? null : Number(budget.dailyUsd),
-    monthlyUsd: budget.monthlyUsd === '' || budget.monthlyUsd == null ? null : Number(budget.monthlyUsd),
-    mode: budget.mode === 'warn' ? 'warn' : 'block',
-  }
-  return { ok: true, variantOptions: mockAccountsData.variantOptions, availableSegments: mockAccountsData.availableSegments, engineOptions: mockAccountsData.engineOptions || [], promptOptions: mockAccountsData.promptOptions || [], policyVariants: mockAccountsData.policyVariants || {}, policyEngines: mockAccountsData.policyEngines || {}, policyBudgets: mockAccountsData.policyBudgets || {} }
-}
 function mockAssignSelectionPresetDefaults(payload) {
   mockAccountsData ||= defaultMockAccountsData()
   const selectionPresets = payload.selectionPresets && typeof payload.selectionPresets === 'object' ? payload.selectionPresets : {}
@@ -612,7 +684,7 @@ function mockPricingSnapshot() {
 function mockPolicies() {
   const accounts = mockAccounts()
   const pricing = mockPricingSnapshot()
-  return {
+  const payload = {
     ok: true,
     variantOptions: accounts.variantOptions,
     availableSegments: accounts.availableSegments,
@@ -623,6 +695,12 @@ function mockPolicies() {
     promptOptions: accounts.promptOptions || [],
     pricing: pricing.pricing,
     pricingWatchlist: pricing.watchlist,
+    profileOptions: [
+      { policyId: 'alpha-basic', policyLabel: 'Alpha Basic', source: 'built-in', capabilities: ['dictation', 'postprocess', 'managed_stt', 'managed_llm'], profiles: { uiProfile: 'alpha-basic', capabilityProfile: 'basic', quotaProfile: 'alpha-basic', llmProfile: 'basic', settingsDefaultsProfile: 'alpha-lulu' } },
+      { policyId: 'alpha-full', policyLabel: 'Alpha Full', source: 'built-in', capabilities: ['translate', 'dictation', 'postprocess', 'selection_transform', 'assistant_actions', 'custom_prompts', 'advanced_settings', 'managed_stt', 'managed_llm'], profiles: { uiProfile: 'alpha-full', capabilityProfile: 'full', quotaProfile: 'alpha-full', llmProfile: 'full', settingsDefaultsProfile: 'alpha-lulu' } },
+      { policyId: 'power-admin', policyLabel: 'Power Admin', source: 'built-in', capabilities: ['translate', 'dictation', 'postprocess', 'selection_transform', 'assistant_actions', 'custom_prompts', 'advanced_settings', 'debug_tools', 'managed_stt', 'managed_llm', 'admin_settings'], profiles: { uiProfile: 'alpha-full', capabilityProfile: 'power', quotaProfile: 'pro-unlimited', llmProfile: 'pro-best-voice', settingsDefaultsProfile: 'alpha-lulu' } },
+      { policyId: 'pro', policyLabel: 'Pro', source: 'built-in', capabilities: ['translate', 'dictation', 'postprocess', 'selection_transform', 'assistant_actions', 'custom_prompts', 'advanced_settings', 'managed_stt', 'managed_llm'], profiles: { uiProfile: 'alpha-full', capabilityProfile: 'full', quotaProfile: 'pro-unlimited', llmProfile: 'pro-best-voice', settingsDefaultsProfile: 'alpha-lulu' } },
+    ],
     policies: [
       { id: 'pro', label: 'Pro', capabilities: ['dictation', 'managed_stt', 'advanced_settings'] },
       { id: 'alpha-full', label: 'Alpha full', capabilities: ['dictation', 'managed_stt'] },
@@ -630,6 +708,126 @@ function mockPolicies() {
     ],
     redacted: true,
   }
+  payload.profileVersions = payload.profileOptions.map((profile) => {
+    const engines = payload.policyEngines[profile.policyId] || {}
+    const published = {
+      schemaVersion: 1,
+      profileId: profile.policyId,
+      label: profile.policyLabel,
+      version: 1,
+      status: 'published',
+      access: { capabilities: profile.capabilities },
+      runtime: {
+        transcription: { engineId: engines.transcription || 'stt-groq-whisper-turbo', promptId: 'transcriptBase' },
+        postprocess: { engineId: engines.postprocess || (profile.policyId === 'alpha-basic' ? 'postprocess-off' : 'postprocess-groq-gpt-oss-120b'), promptId: profile.policyId === 'alpha-basic' ? 'none' : 'postProcessBase' },
+        selectionTransform: { engineId: engines.selectionTransform || (profile.policyId === 'alpha-basic' ? 'transform-off' : 'transform-groq-llama-70b'), promptId: profile.policyId === 'alpha-basic' ? 'none' : 'selectionTransformBase' },
+      },
+      limits: { ...(payload.policyBudgets[profile.policyId] || { mode: 'block' }), quotaProfile: profile.profiles.quotaProfile || undefined },
+      userControls: Object.fromEntries(MOCK_PROFILE_USER_SETTINGS.map((setting) => [setting, 'editable'])),
+      defaults: { 'general.showDockOnStartup': false, 'voice.pressEnterAfterPaste': false },
+    }
+    const history = mockProfileHistories.get(profile.policyId) || [published]
+    const active = history.at(-1) || null
+    const draft = mockProfileDrafts.get(profile.policyId) || null
+    return { profileId: profile.policyId, label: draft?.label || active?.label || profile.policyLabel, published: active, draft, history }
+  })
+  for (const profileId of new Set([...mockProfileDrafts.keys(), ...mockProfileHistories.keys()])) {
+    if (payload.profileVersions.some((profile) => profile.profileId === profileId)) continue
+    const draft = mockProfileDrafts.get(profileId) || null
+    const history = mockProfileHistories.get(profileId) || []
+    const active = history.at(-1) || null
+    payload.profileVersions.push({ profileId, label: draft?.label || active?.label || profileId, published: active, draft, history })
+  }
+  return payload
+}
+function mockCreateProfileDraft(body) {
+  const source = mockPolicies().profileVersions.find((profile) => profile.profileId === body.profileId)
+  const draftProfileId = String(body.draftProfileId || body.profileId || '').trim()
+  if (!source || !draftProfileId) throw Object.assign(new Error('profile not found'), { status: 404 })
+  const existing = mockProfileDrafts.get(draftProfileId)
+  if (existing) return mockPolicies().profileVersions.find((profile) => profile.profileId === draftProfileId)
+  const history = mockProfileHistories.get(draftProfileId) || []
+  const sourceDefinition = source.published || source.draft
+  const draft = {
+    ...structuredClone(sourceDefinition),
+    profileId: draftProfileId,
+    label: String(body.label || source.label).trim(),
+    version: history.length ? Math.max(...history.map((version) => version.version)) + 1 : draftProfileId === source.profileId && source.published ? source.published.version + 1 : 1,
+    status: 'draft',
+    ...(source.published?.version ? { basedOnVersion: source.published.version } : {}),
+  }
+  mockProfileDrafts.set(draftProfileId, draft)
+  return mockPolicies().profileVersions.find((profile) => profile.profileId === draftProfileId)
+}
+function mockSaveProfileDraft(body) {
+  const existing = mockProfileDrafts.get(body.profileId)
+  if (!existing || !body.definition) throw Object.assign(new Error('profile draft not found'), { status: 404 })
+  const draft = { ...structuredClone(body.definition), profileId: body.profileId, version: existing.version, status: 'draft', ...(existing.basedOnVersion ? { basedOnVersion: existing.basedOnVersion } : {}) }
+  mockProfileDrafts.set(body.profileId, draft)
+  return mockPolicies().profileVersions.find((profile) => profile.profileId === body.profileId)
+}
+function mockDiscardProfileDraft(body) {
+  const profileId = String(body.profileId || '').trim()
+  const draft = mockProfileDrafts.get(profileId)
+  if (!draft) throw Object.assign(new Error('profile draft not found'), { status: 404 })
+  if (body.expectedDraftVersion !== draft.version) throw Object.assign(new Error('The profile version no longer matches this confirmation.'), { status: 409 })
+  if (body.confirmation !== `DISCARD ${profileId} v${draft.version}`) throw Object.assign(new Error('invalid discard confirmation'), { status: 400 })
+  mockProfileDrafts.delete(profileId)
+  return { ok: true, profileId, discardedDraftVersion: draft.version, publishedVersion: mockProfileRecord(profileId)?.published?.version ?? null }
+}
+function mockPreviewProfile(query) {
+  const profileId = String(query.get('profileId') || '').trim()
+  const record = mockPolicies().profileVersions.find((profile) => profile.profileId === profileId)
+  if (!record?.draft) throw Object.assign(new Error('profile draft not found'), { status: 404 })
+  const before = record.published || {}
+  const after = record.draft
+  const diff = []
+  for (const [operation, draftOperation] of Object.entries(after.runtime || {})) {
+    const previousOperation = before.runtime?.[operation] || {}
+    if (previousOperation.engineId !== draftOperation.engineId) diff.push({ section: 'runtime', path: `runtime.${operation}.engineId`, before: previousOperation.engineId, after: draftOperation.engineId })
+    if (previousOperation.promptId !== draftOperation.promptId) diff.push({ section: 'runtime', path: `runtime.${operation}.promptId`, before: previousOperation.promptId, after: draftOperation.promptId })
+  }
+  const devices = mockDevices().devices.filter((device) => device.policyId === profileId)
+  return {
+    profileId,
+    draftVersion: after.version,
+    activeVersion: record.published?.version || null,
+    diff,
+    warnings: [],
+    impact: { accounts: 0, devices: devices.length, groups: mockAccounts().groupOptions.filter((group) => group.policyId === profileId).length },
+    selectedTarget: { accountHandle: query.get('accountHandle') || null, deviceId: query.get('deviceId') || null, profileId, policySource: query.get('deviceId') ? 'device' : query.get('accountHandle') ? 'account' : null },
+    pricing: { availability: 'available', cachedAt: new Date('2026-06-30T20:00:00.000Z').toISOString(), targets: [] },
+  }
+}
+function mockProfileRecord(profileId) {
+  return mockPolicies().profileVersions.find((profile) => profile.profileId === profileId) || null
+}
+function mockPublishProfile(body) {
+  const profile = mockProfileRecord(String(body.profileId || '').trim())
+  const draft = mockProfileDrafts.get(String(body.profileId || '').trim())
+  if (!profile || !draft) throw Object.assign(new Error('profile draft not found'), { status: 404 })
+  if (body.expectedActiveVersion !== (profile.published?.version ?? null) || body.expectedDraftVersion !== draft.version) throw Object.assign(new Error('The profile version no longer matches this confirmation.'), { status: 409 })
+  if (body.confirmation !== `PUBLISH ${profile.profileId} v${draft.version}`) throw Object.assign(new Error('invalid publish confirmation'), { status: 400 })
+  const nextVersion = Math.max(0, ...profile.history.map((version) => version.version)) + 1
+  const published = { ...structuredClone(draft), version: nextVersion, status: 'published' }
+  mockProfileHistories.set(profile.profileId, [...profile.history, published])
+  mockProfileDrafts.delete(profile.profileId)
+  mockAuditRecords.push({ actor: String(body.actorKey || 'worker-publish-credential'), action: 'publish', profileId: profile.profileId, sourceVersion: profile.published?.version ?? null, targetVersion: nextVersion, resultingVersion: nextVersion, requestedVersion: null, timestamp: new Date().toISOString(), result: 'success' })
+  return mockProfileRecord(profile.profileId)
+}
+function mockRollbackProfile(body) {
+  const profile = mockProfileRecord(String(body.profileId || '').trim())
+  const version = Number(body.version)
+  const target = profile?.history.find((candidate) => candidate.version === version)
+  if (!profile || !target) throw Object.assign(new Error('profile version not found'), { status: 404 })
+  if (body.expectedActiveVersion !== (profile.published?.version ?? null)) throw Object.assign(new Error('The profile version no longer matches this confirmation.'), { status: 409 })
+  if (body.confirmation !== `ROLLBACK ${profile.profileId} to v${version}`) throw Object.assign(new Error('invalid rollback confirmation'), { status: 400 })
+  const nextVersion = Math.max(...profile.history.map((candidate) => candidate.version)) + 1
+  const published = { ...structuredClone(target), version: nextVersion, status: 'published', basedOnVersion: version }
+  mockProfileHistories.set(profile.profileId, [...profile.history, published])
+  mockProfileDrafts.delete(profile.profileId)
+  mockAuditRecords.push({ actor: String(body.actorKey || 'worker-publish-credential'), action: 'rollback', profileId: profile.profileId, sourceVersion: profile.published?.version ?? null, targetVersion: version, resultingVersion: nextVersion, requestedVersion: version, timestamp: new Date().toISOString(), result: 'success' })
+  return mockProfileRecord(profile.profileId)
 }
 function mockUsage() {
   const today = {
@@ -656,9 +854,26 @@ function mockUsage() {
     last7d: { requestCount: 42, totalCostUsd: 1.12, totalTokens: 8800 },
     summary: { accounts: 3, activeDevices: 4, managedRequests24h: 18, estimatedCostUsd24h: 0.42 },
     rows: [
-      { accountHandle: 'acc_jp_owner', managedRequests24h: 12, quotaStatus: 'ok' },
-      { accountHandle: 'acc_alpha_team', managedRequests24h: 6, quotaStatus: 'ok' },
+      {
+        accountHandle: 'acct_jp_owner', deviceHandle: 'device…1234', status: 'active', sttSeconds: 82.4, llmActions: 6, failures: 0,
+        prewarm: { available: true, attempts: 12, successes: 12, failures: 0 },
+        quota: {
+          managedUsage: { state: 'ok', rolling5hRemaining: 98, weeklyRemaining: 490 },
+          transcription: { state: 'ok', rolling5hRemaining: 3200, weeklyRemaining: 18000 },
+          aiActions: { state: 'ok', rolling5hRemaining: 44, weeklyRemaining: 210 },
+        },
+      },
+      {
+        accountHandle: 'acct_alpha_team', deviceHandle: 'device…9876', status: 'active', sttSeconds: 34.1, llmActions: 2, failures: 1,
+        prewarm: { available: false, attempts: 0, successes: 0, failures: 0 },
+        quota: {
+          managedUsage: { state: 'almost_used', rolling5hRemaining: 2, weeklyRemaining: 16 },
+          transcription: { state: 'blocked', rolling5hRemaining: 0, weeklyRemaining: 120 },
+          aiActions: { state: 'ok', rolling5hRemaining: 8, weeklyRemaining: 32 },
+        },
+      },
     ],
+    coverage: { knownDevices: 2, deviceCap: 20, recentEvents: 18, recentEventCap: 100, eventsPartial: false, oldestEventAt: null, newestEventAt: null, prewarmRetentionDays: 7, prewarmUnavailableDevices: 1 },
     redacted: true,
   }
 }
@@ -736,7 +951,7 @@ function appHtml() {
 function escapeHtml(text) {
   return String(text).replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]))
 }
-function serveStatic(req, res, pathname) {
+function serveStatic(_req, res, pathname) {
   const relative = pathname.replace(/^\/assets\//, '')
   const filePath = path.normalize(path.join(publicDir, relative))
   if (!filePath.startsWith(publicDir) || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return false
@@ -805,20 +1020,51 @@ const server = http.createServer(async (req, res) => {
       return res.end()
     }
     if (url.pathname === '/' || url.pathname === '/admin' || url.pathname === '/admin/pi') return html(res, appHtml())
-    if (url.pathname === '/api/admin/env') return sendJson(res, 200, {
-      ok: true,
-      environment: MOCK_MODE ? 'local-mock' : ADMIN_ENV,
-      production: !MOCK_MODE && ADMIN_ENV === 'production',
-      mock: MOCK_MODE,
-      adminBaseUrl: MOCK_MODE ? 'mock://fixvox-admin' : ADMIN_BASE_URL,
-      piCwd: PI_CWD,
-      user: readSession(req) ? { provider: readSession(req).provider, email: readSession(req).email || null, name: readSession(req).name || null } : null,
+    if (url.pathname === '/api/admin/rbac') {
+      const principal = await requireGoogleRole(req, ['viewer', 'editor', 'publisher', 'owner'])
+      return sendJson(res, 200, { ok: true, role: principal.role })
+    }
+    if (url.pathname === '/api/admin/audit' && req.method === 'GET') {
+      await requireGoogleRole(req, ['viewer', 'editor', 'publisher', 'owner'])
+      if (MOCK_MODE) return sendJson(res, 200, mockAuditPayload())
+      return sendJson(res, 200, await proxyAdmin('/admin/control-plane/audit'))
+    }
+    if (url.pathname === '/api/admin/roles' && req.method === 'GET') {
+      await requireGoogleRole(req, ['viewer', 'editor', 'publisher', 'owner'])
+      if (MOCK_MODE) return sendJson(res, 200, mockRolePayload())
+      return sendJson(res, 200, await proxyAdmin(`/admin/control-plane/roles?bootstrapOwnerEmail=${encodeURIComponent(RBAC_BOOTSTRAP_OWNER_EMAIL)}`))
+    }
+    if (url.pathname === '/api/admin/roles' && req.method === 'POST') {
+      const principal = await requireRecentGoogleRole(req, ['owner'])
+      const body = JSON.parse(await readBody(req) || '{}')
+      const brokeredBody = { ...body, actorEmail: principal.email, bootstrapOwnerEmail: RBAC_BOOTSTRAP_OWNER_EMAIL }
+      if (MOCK_MODE) return sendJson(res, 200, mockSetRoleBinding(brokeredBody, principal.email))
+      return sendJson(res, 200, await proxyAdmin('/admin/control-plane/roles', 'POST', brokeredBody))
+    }
+    if (url.pathname === '/api/admin/roles/remove' && req.method === 'POST') {
+      const principal = await requireRecentGoogleRole(req, ['owner'])
+      const body = JSON.parse(await readBody(req) || '{}')
+      const brokeredBody = { ...body, actorEmail: principal.email, bootstrapOwnerEmail: RBAC_BOOTSTRAP_OWNER_EMAIL }
+      if (MOCK_MODE) return sendJson(res, 200, mockRemoveRoleBinding(brokeredBody, principal.email))
+      return sendJson(res, 200, await proxyAdmin('/admin/control-plane/roles/remove', 'POST', brokeredBody))
+    }
+    if (url.pathname === '/api/admin/env') {
+      const session = readSession(req)
+      return sendJson(res, 200, {
+        ok: true,
+        environment: MOCK_MODE ? 'local-mock' : ADMIN_ENV,
+        production: !MOCK_MODE && ADMIN_ENV === 'production',
+        mock: MOCK_MODE,
+        adminBaseUrl: MOCK_MODE ? 'mock://fixvox-admin' : ADMIN_BASE_URL,
+        piCwd: PI_CWD,
+        user: session ? { provider: session.provider, emailRedacted: session.email ? redactGoogleEmail(session.email) : null, name: session.name || null } : null,
       guardrails: [
         'No push/deploy/systemd/tunnel sin aprobacion explicita.',
         'No mutar policies/users en production sin confirmacion explicita.',
         'No imprimir tokens, account IDs crudos, device IDs completos, transcripts ni audio.',
-      ],
-    })
+        ],
+      })
+    }
     if (url.pathname === '/api/pi-chat/health') return sendJson(res, 200, MOCK_MODE ? { ok: true, cwd: PI_CWD, piBin: PI_BIN, piVersion: '0.80.2-mock', process: 'mock' } : await pi.health())
     if (url.pathname === '/api/pi-chat/command' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req) || '{}')
@@ -846,16 +1092,32 @@ const server = http.createServer(async (req, res) => {
       catch (error) { send({ type: 'web_error', error: error instanceof Error ? error.message : 'Pi error' }) }
       return res.end()
     }
-    if (MOCK_MODE && url.pathname === '/api/admin/accounts/policy' && req.method === 'POST') return sendJson(res, 200, mockAssignAccountPolicy(JSON.parse(await readBody(req) || '{}')))
-    if (MOCK_MODE && url.pathname === '/api/admin/accounts/budget' && req.method === 'POST') return sendJson(res, 200, mockAssignAccountBudget(JSON.parse(await readBody(req) || '{}')))
-    if (MOCK_MODE && url.pathname === '/api/admin/accounts/groups' && req.method === 'POST') return sendJson(res, 200, mockAssignAccountGroups(JSON.parse(await readBody(req) || '{}')))
-    if (MOCK_MODE && (url.pathname === '/api/admin/accounts/segments' || url.pathname === '/api/admin/accounts/variants/assign') && req.method === 'POST') return sendJson(res, 200, mockAssignAccountSegments(JSON.parse(await readBody(req) || '{}')))
-    if (MOCK_MODE && url.pathname === '/api/admin/groups' && req.method === 'POST') return sendJson(res, 200, mockCreateGroup(JSON.parse(await readBody(req) || '{}')))
-    if (MOCK_MODE && url.pathname === '/api/admin/accounts/variants' && req.method === 'POST') return sendJson(res, 200, mockCreateAccountVariant(JSON.parse(await readBody(req) || '{}')))
-    if (MOCK_MODE && url.pathname === '/api/admin/accounts/variants/delete' && req.method === 'POST') return sendJson(res, 200, mockDeleteAccountVariant(JSON.parse(await readBody(req) || '{}')))
+    if (url.pathname === '/api/admin/profiles/drafts' && (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE')) await requireGoogleRole(req, ['editor', 'publisher', 'owner'])
+    if (url.pathname === '/api/admin/profiles/preview' && req.method === 'GET') await requireGoogleRole(req, ['viewer', 'editor', 'publisher', 'owner'])
+    if (MOCK_MODE && url.pathname === '/api/admin/profiles/drafts' && req.method === 'POST') return sendJson(res, 200, mockCreateProfileDraft(JSON.parse(await readBody(req) || '{}')))
+    if (MOCK_MODE && url.pathname === '/api/admin/profiles/drafts' && req.method === 'PUT') return sendJson(res, 200, mockSaveProfileDraft(JSON.parse(await readBody(req) || '{}')))
+    if (MOCK_MODE && url.pathname === '/api/admin/profiles/drafts' && req.method === 'DELETE') return sendJson(res, 200, mockDiscardProfileDraft(JSON.parse(await readBody(req) || '{}')))
+    if (MOCK_MODE && url.pathname === '/api/admin/profiles/preview' && req.method === 'GET') return sendJson(res, 200, mockPreviewProfile(url.searchParams))
+    if (MOCK_MODE && !process.env.FIXVOX_ADMIN_BASE_URL && (url.pathname === '/api/admin/profiles/publish' || url.pathname === '/api/admin/profiles/rollback') && req.method === 'POST') {
+      const principal = await requireRecentGoogleRole(req, ['publisher', 'owner'])
+      const body = JSON.parse(await readBody(req) || '{}')
+      const brokeredBody = { ...body, actorKey: rbacPrincipalKeyForEmail(principal.email) }
+      try {
+        return sendJson(res, 200, url.pathname.endsWith('/publish') ? mockPublishProfile(brokeredBody) : mockRollbackProfile(brokeredBody))
+      } catch (error) {
+        return sendJson(res, error.status || 400, { ok: false, error: { message: error.message || 'Mock profile mutation failed.' } })
+      }
+    }
+    if (req.method === 'POST' && (url.pathname === '/api/admin/policies/engines' || url.pathname === '/api/admin/policies/budget')) return sendJson(res, 409, { ok: false, error: { message: 'Direct profile mutation is read-only; use a typed profile draft.', code: 'profile_composer_required' } })
+    if (MOCK_MODE && url.pathname === '/api/admin/accounts' && req.method === 'GET') return sendJson(res, 200, annotateCurrentAdminAccount(mockAccounts(), readSession(req)))
+    if (MOCK_MODE && url.pathname === '/api/admin/accounts/policy' && req.method === 'POST') return sendJson(res, 200, annotateCurrentAdminAccount(mockAssignAccountPolicy(JSON.parse(await readBody(req) || '{}')), readSession(req)))
+    if (MOCK_MODE && url.pathname === '/api/admin/accounts/budget' && req.method === 'POST') return sendJson(res, 200, annotateCurrentAdminAccount(mockAssignAccountBudget(JSON.parse(await readBody(req) || '{}')), readSession(req)))
+    if (MOCK_MODE && url.pathname === '/api/admin/accounts/groups' && req.method === 'POST') return sendJson(res, 200, annotateCurrentAdminAccount(mockAssignAccountGroups(JSON.parse(await readBody(req) || '{}')), readSession(req)))
+    if (MOCK_MODE && (url.pathname === '/api/admin/accounts/segments' || url.pathname === '/api/admin/accounts/variants/assign') && req.method === 'POST') return sendJson(res, 200, annotateCurrentAdminAccount(mockAssignAccountSegments(JSON.parse(await readBody(req) || '{}')), readSession(req)))
+    if (MOCK_MODE && url.pathname === '/api/admin/groups' && req.method === 'POST') return sendJson(res, 200, annotateCurrentAdminAccount(mockCreateGroup(JSON.parse(await readBody(req) || '{}')), readSession(req)))
+    if (MOCK_MODE && url.pathname === '/api/admin/accounts/variants' && req.method === 'POST') return sendJson(res, 200, annotateCurrentAdminAccount(mockCreateAccountVariant(JSON.parse(await readBody(req) || '{}')), readSession(req)))
+    if (MOCK_MODE && url.pathname === '/api/admin/accounts/variants/delete' && req.method === 'POST') return sendJson(res, 200, annotateCurrentAdminAccount(mockDeleteAccountVariant(JSON.parse(await readBody(req) || '{}')), readSession(req)))
     if (MOCK_MODE && url.pathname === '/api/admin/policies/variants' && req.method === 'POST') return sendJson(res, 200, mockAssignPolicyVariants(JSON.parse(await readBody(req) || '{}')))
-    if (MOCK_MODE && url.pathname === '/api/admin/policies/engines' && req.method === 'POST') return sendJson(res, 200, mockAssignPolicyEngines(JSON.parse(await readBody(req) || '{}')))
-    if (MOCK_MODE && url.pathname === '/api/admin/policies/budget' && req.method === 'POST') return sendJson(res, 200, mockAssignPolicyBudget(JSON.parse(await readBody(req) || '{}')))
     if (MOCK_MODE && url.pathname === '/api/admin/policies/selection-presets' && req.method === 'POST') return sendJson(res, 200, mockAssignSelectionPresetDefaults(JSON.parse(await readBody(req) || '{}')))
     if (MOCK_MODE && url.pathname === '/api/admin/pricing') return sendJson(res, 200, mockPricingSnapshot())
     if (MOCK_MODE && url.pathname === '/api/admin/pricing/refresh' && req.method === 'POST') return sendJson(res, 200, mockPricingSnapshot())
@@ -864,17 +1126,39 @@ const server = http.createServer(async (req, res) => {
     if (MOCK_MODE && url.pathname === '/api/admin/prompts' && req.method === 'POST') return sendJson(res, 200, mockSavePrompt(JSON.parse(await readBody(req) || '{}')))
     if (MOCK_MODE && url.pathname === '/api/admin/prompts/delete' && req.method === 'POST') return sendJson(res, 200, mockDeletePrompt(JSON.parse(await readBody(req) || '{}')))
     if (MOCK_MODE && url.pathname.startsWith('/api/admin/')) { const mocked = mockAdmin(url.pathname); if (mocked) return sendJson(res, 200, mocked) }
-    if (url.pathname === '/api/admin/accounts') return sendJson(res, 200, await proxyAdmin(`/admin/control-plane/accounts?limit=${encodeURIComponent(url.searchParams.get('limit') || '20')}`))
-    if (url.pathname === '/api/admin/accounts/policy' && req.method === 'POST') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/accounts/policy', 'POST', JSON.parse(await readBody(req) || '{}')))
-    if (url.pathname === '/api/admin/accounts/budget' && req.method === 'POST') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/accounts/budget', 'POST', JSON.parse(await readBody(req) || '{}')))
-    if (url.pathname === '/api/admin/accounts/groups' && req.method === 'POST') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/accounts/groups', 'POST', JSON.parse(await readBody(req) || '{}')))
-    if ((url.pathname === '/api/admin/accounts/segments' || url.pathname === '/api/admin/accounts/variants/assign') && req.method === 'POST') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/accounts/variants/assign', 'POST', JSON.parse(await readBody(req) || '{}')))
-    if (url.pathname === '/api/admin/groups' && req.method === 'POST') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/groups', 'POST', JSON.parse(await readBody(req) || '{}')))
-    if (url.pathname === '/api/admin/accounts/variants' && req.method === 'POST') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/accounts/variants', 'POST', JSON.parse(await readBody(req) || '{}')))
-    if (url.pathname === '/api/admin/accounts/variants/delete' && req.method === 'POST') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/accounts/variants/delete', 'POST', JSON.parse(await readBody(req) || '{}')))
+    if (url.pathname === '/api/admin/profiles/drafts' && (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE')) return sendJson(res, 200, await proxyAdmin('/admin/control-plane/profiles/drafts', req.method, JSON.parse(await readBody(req) || '{}')))
+    if (url.pathname === '/api/admin/profiles/preview' && req.method === 'GET') {
+      const query = new URLSearchParams()
+      for (const key of ['profileId', 'accountHandle', 'deviceId']) {
+        const value = url.searchParams.get(key)
+        if (value) query.set(key, value)
+      }
+      return sendJson(res, 200, await proxyAdmin(`/admin/control-plane/profiles/preview?${query}`))
+    }
+    if ((url.pathname === '/api/admin/profiles/publish' || url.pathname === '/api/admin/profiles/rollback') && req.method === 'POST') {
+      const principal = await requireRecentGoogleRole(req, ['publisher', 'owner'])
+      const body = JSON.parse(await readBody(req) || '{}')
+      const brokeredBody = { ...body, actorKey: rbacPrincipalKeyForEmail(principal.email) }
+      return sendJson(res, 200, await proxyAdmin(
+        url.pathname === '/api/admin/profiles/publish' ? '/admin/control-plane/profiles/publish' : '/admin/control-plane/profiles/rollback',
+        'POST',
+        brokeredBody,
+        process.env.ADMIN_PUBLISH_API_KEY || '',
+      ))
+    }
+    if (url.pathname === '/api/admin/audit' && req.method === 'GET') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/audit'))
+    if (url.pathname === '/api/admin/accounts') {
+      const accounts = await proxyAdmin(`/admin/control-plane/accounts?limit=${encodeURIComponent(url.searchParams.get('limit') || '20')}`)
+      return sendJson(res, 200, annotateCurrentAdminAccount(accounts, readSession(req)))
+    }
+    if (url.pathname === '/api/admin/accounts/policy' && req.method === 'POST') return sendJson(res, 200, annotateCurrentAdminAccount(await proxyAdmin('/admin/control-plane/accounts/policy', 'POST', JSON.parse(await readBody(req) || '{}')), readSession(req)))
+    if (url.pathname === '/api/admin/accounts/budget' && req.method === 'POST') return sendJson(res, 200, annotateCurrentAdminAccount(await proxyAdmin('/admin/control-plane/accounts/budget', 'POST', JSON.parse(await readBody(req) || '{}')), readSession(req)))
+    if (url.pathname === '/api/admin/accounts/groups' && req.method === 'POST') return sendJson(res, 200, annotateCurrentAdminAccount(await proxyAdmin('/admin/control-plane/accounts/groups', 'POST', JSON.parse(await readBody(req) || '{}')), readSession(req)))
+    if ((url.pathname === '/api/admin/accounts/segments' || url.pathname === '/api/admin/accounts/variants/assign') && req.method === 'POST') return sendJson(res, 200, annotateCurrentAdminAccount(await proxyAdmin('/admin/control-plane/accounts/variants/assign', 'POST', JSON.parse(await readBody(req) || '{}')), readSession(req)))
+    if (url.pathname === '/api/admin/groups' && req.method === 'POST') return sendJson(res, 200, annotateCurrentAdminAccount(await proxyAdmin('/admin/control-plane/groups', 'POST', JSON.parse(await readBody(req) || '{}')), readSession(req)))
+    if (url.pathname === '/api/admin/accounts/variants' && req.method === 'POST') return sendJson(res, 200, annotateCurrentAdminAccount(await proxyAdmin('/admin/control-plane/accounts/variants', 'POST', JSON.parse(await readBody(req) || '{}')), readSession(req)))
+    if (url.pathname === '/api/admin/accounts/variants/delete' && req.method === 'POST') return sendJson(res, 200, annotateCurrentAdminAccount(await proxyAdmin('/admin/control-plane/accounts/variants/delete', 'POST', JSON.parse(await readBody(req) || '{}')), readSession(req)))
     if (url.pathname === '/api/admin/policies/variants' && req.method === 'POST') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/policy/variants', 'POST', JSON.parse(await readBody(req) || '{}')))
-    if (url.pathname === '/api/admin/policies/engines' && req.method === 'POST') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/policy/engines', 'POST', JSON.parse(await readBody(req) || '{}')))
-    if (url.pathname === '/api/admin/policies/budget' && req.method === 'POST') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/policy/budget', 'POST', JSON.parse(await readBody(req) || '{}')))
     if (url.pathname === '/api/admin/policies/selection-presets' && req.method === 'POST') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/policy/selection-presets', 'POST', JSON.parse(await readBody(req) || '{}')))
     if (url.pathname === '/api/admin/pricing') return sendJson(res, 200, await proxyAdmin('/admin/pricing'))
     if (url.pathname === '/api/admin/pricing/refresh' && req.method === 'POST') return sendJson(res, 200, await proxyAdmin('/admin/pricing/refresh', 'POST', {}))

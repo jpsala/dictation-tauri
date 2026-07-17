@@ -21,6 +21,22 @@ primary_refs:
 
 # Backend Y Model Routing
 
+## Actualizacion 2026-07-13
+
+La policy efectiva local `pro` esta fresca y habilita `sttPromptEnabled` + `postProcessEnabled`; auth permite `dictation`, `managed_stt`, `postprocess`, `selection_transform` y `managed_llm`.
+
+Semantica decidida e implementada en el slice local:
+
+- Sin preset y sin seleccion: STT managed y luego postprocess solo si la policy lo habilita.
+- Con preset persistente y sin seleccion: STT y una sola transformacion del preset; el request de STT deshabilita postprocess base.
+- Con seleccion: STT produce la instruccion y una sola selection transform actua sobre la seleccion; un preset activo agrega body/constraints sin postprocess previo.
+- STT queda ligado por Cloud al engine de transcripcion del profile.
+- Postprocess envia `X-Fixvox-Engine-Kind: postprocess`; selection/preset envia `selectionTransform`. Cloud resuelve provider/model/prompt por profile.
+- El Worker aplica un safety baseline inmutable para postprocess y luego agrega el prompt administrable; un system prompt del caller no puede reemplazar ese baseline.
+- Provider/model guardados por preset no gobiernan runtime. Settings normal dejara de presentarlos como controles efectivos; un override futuro requiere capability y enforcement Worker explicitos.
+
+Checks provider-free del slice: app delivery/routing, contrato Rust managed chat, `npm run cloud:test` (97 pass) y `cargo check` con target aislado por lock transitorio.
+
 ## Actualizacion 2026-06-20
 
 Despues de estudiar `C:\dev\fixvox`, el norte cambia: Dictation Tauri debe poder usar la misma infraestructura cloud managed de Fixvox, pero reimplementando el runtime desktop en Rust/Tauri.
@@ -102,7 +118,7 @@ Usar Opcion C, pero promoviendo el adapter proxied/managed de Fixvox a camino pr
 
 Dictation Tauri mantiene un `ModelGateway`/host boundary propio, pero el runtime real recomendado debe resolver primero la ruta managed cloud cuando exista backend/device valido. El adapter directo local queda para BYOK/dev y para aislar fallas durante desarrollo.
 
-Correccion 2026-06-29: el problema pendiente ya no es solo elegir managed vs directo. Hay que resolver el **plan efectivo** igual que Fixvox: provider/model/prompt de STT, language, request fields y postprocess enabled/provider/model/prompt deben salir de policy/cache/control-plane, no de React ni de defaults Rust. En la policy real de JP Fixvox usa `whisper-large-v3-turbo` y postprocess off; Dictation Tauri no debe caer a `whisper-large-v3` ni correr chat-completions extra.
+Correccion 2026-06-29: el problema pendiente ya no es solo elegir managed vs directo. Hay que resolver el **plan efectivo** igual que Fixvox: provider/model/prompt de STT, language, request fields y postprocess enabled/provider/model/prompt deben salir de policy/cache/control-plane, no de React ni de defaults Rust. En la policy auditada ese dia JP usaba `whisper-large-v3-turbo` y postprocess off; la policy efectiva cambio y queda registrada en la actualizacion 2026-07-13.
 
 ## Decision Cerrada
 
@@ -147,8 +163,7 @@ Reglas:
 
 ## Pendiente
 
-- Implementar `specs/009-fixvox-cloud-runtime-port/` por Small Batches.
-- Decidir si Dictation Tauri registra device ids con semantica propia o reutiliza la semantica alpha de Fixvox tal cual.
-- Definir persistencia local de `installId`/`deviceId` en Rust/Tauri.
-- Confirmar/reparar el dominio `https://fixvox-api.jpsala.dev`; mientras tanto preferir `https://auth-fixvox.jpsala.dev` o `https://fixvox-proxy.jpsala.workers.dev` configurables.
-- Definir provider/model inicial para postprocess managed despues de cerrar STT cloud.
+- Gatear la apertura del picker antes de mostrarlo cuando falta `selection_transform`; el runtime managed ya falla cerrado.
+- Hacer smoke visual/local de la sección Admin sin login y asignar power-admin a JP solo con aprobación de mutation real.
+- No implementar override provider/model por preset sin capability y enforcement Worker explícitos.
+- Mantener BYOK como fallback explicito, nunca automatico.

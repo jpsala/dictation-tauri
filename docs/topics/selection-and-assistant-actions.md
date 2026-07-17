@@ -73,7 +73,7 @@ Primer slice 2026-07-03:
 - Noveno slice 2026-07-03: el bridge managed de Quick Chat ya envia una ventana local corta de conversacion (`history` user/assistant, max 8 mensajes, texto UI redacted/truncable) al comando Tauri `run_assistant_chat`; el host la incluye como `<ASSISTANT_HISTORY>` antes del prompt actual para follow-ups multi-turn sin pegar texto normal ni mutar targets.
 - Decimo slice 2026-07-03: Quick Chat reconoce comandos cloud/externos obvios y los mantiene gated: login/connect/import/sync/refresh cloud responden que requieren confirmacion explicita desde Settings; preguntas de estado de Fixvox Cloud solo abren Settings y no mutan cloud ni inician auth.
 - Undecimo slice 2026-07-03: se corrigio paridad visual Lulu/Fixvox: resultados `assistant` ya no aparecen como `Transcript ready`; el dock muestra `Lulu ready` y la companion abre Quick Chat sin recovery/copy transcript. Tambien se agrego heuristica local tipo Smart Agent para follow-ups de presets como `activa el que arregla el texto` -> `corregir-texto` y `... en ingles` -> `fix-writing`, sin provider. Las respuestas locales insertables tipo `cuanto es dos mas dos` devuelven `4` y usan `paste_send` Fixvox-like en vez de abrir Quick Chat. Preguntas Lulu que no matchean comando local intentan `run_assistant_chat` managed y muestran la respuesta real en Quick Chat en vez del eco `Quick Chat local recibio...`.
-- Duodecimo slice 2026-07-03: delivery desktop vuelve a paridad Fixvox: en vez de `KEYEVENTF_UNICODE` primero, usa snapshot de clipboard (texto + DIB/DIBV5), escribe texto, enfoca target, manda `Ctrl+V`, espera y restaura/limpia clipboard. Esto evita que el flujo normal dependa de input unicode directo y preserva mejor clipboards con imagen. El boton `Copy transcript` en Tauri tambien usa ahora comando nativo `copy_text_to_clipboard`, no `navigator.clipboard.writeText`, para evitar `Document is not focused` desde companion.
+- Duodecimo slice 2026-07-03: delivery desktop vuelve a paridad Fixvox: en vez de `KEYEVENTF_UNICODE` primero, enfoca el target guardado, toma snapshot de clipboard reconstruible (texto + DIB/DIBV5), escribe texto, manda `Ctrl+V`, espera y restaura/limpia clipboard. Metadata bitmap conocida (`DataObject`, `System.Drawing.Bitmap`, `Ole Private Data`) se acepta solo junto a DIB/DIBV5 reconstruible; desde el hardening de dogfood, formatos adicionales clonables como bytes `HGLOBAL` también se preservan y solo los no clonables fallan cerrado antes de sobrescribir. Esto evita que el flujo normal dependa de input unicode directo y preserva clipboards de texto/imagen/custom soportados. El boton `Copy transcript` en Tauri tambien usa ahora comando nativo `copy_text_to_clipboard`, no `navigator.clipboard.writeText`, para evitar `Document is not focused` desde companion.
 - Falta portar un Smart Agent mas completo con tool loop/opcion picker para ambiguedades y acciones mutantes con aprobacion explicita, y mejorar chat real streaming cuando policy lo habilite.
 - Tests focales: `tests/voice-dock/assistant-voice-prefix.test.ts`, `tests/voice-dock/assistant-managed-chat.test.ts`, `tests/voice-dock/companion-state.test.ts`, `tests/voice-dock/companion-view.test.tsx` y `tests/desktop-control/app-delivery.test.ts`.
 
@@ -177,7 +177,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/selection-browser-sm
 
 Riesgos abiertos:
 
-- Clipboard roundtrip de selection capture puede disparar UI externa o interferir con contenido no-texto; si reaparece una ventana `pi-clipboard-*.png`, distinguir delivery vs selection capture. Delivery desktop ahora preserva texto + DIB/DIBV5 estilo Fixvox; selection capture fallback sigue gated por `DICTATION_TAURI_ALLOW_SELECTION_CLIPBOARD_FALLBACK`.
+- Clipboard roundtrip de selection capture puede disparar UI externa o interferir con contenido no-texto; si reaparece una ventana `pi-clipboard-*.png`, distinguir delivery vs selection capture. Delivery desktop preserva texto + DIB/DIBV5 estilo Fixvox y formatos adicionales clonables como bytes `HGLOBAL`; acepta metadata bitmap conocida solo con DIB y falla cerrado ante formatos no clonables. Selection capture fallback sigue gated por `DICTATION_TAURI_ALLOW_SELECTION_CLIPBOARD_FALLBACK`.
 - La captura real de seleccion y replace-selection son side effects aprobados para este flujo, pero no deben generalizarse a nuevas rutas sin test/smoke y decision clara.
 - Si el transform falla, el comportamiento correcto es error/recovery, no paste de transcript ni fallback al original.
 
@@ -199,11 +199,13 @@ Adaptacion aplicada en Dictation Tauri:
 
 - `Alt+Q` queda como shortcut host-owned separado de la dictation key y emite `show_preset_picker`.
 - Al abrir el picker, el renderer guarda target y captura seleccion contra ese target antes de enfocar la UI, para preservar foco/seleccion del target original.
-- La UI activa es una ventana Tauri dedicada `preset-picker` con search, flechas, Enter/Esc y presets activos cargados desde la store host-owned cuando corre en Tauri; los starters bundled son `como-yo-es`, `corregir-texto`, `fix-writing`, `like-me-en`.
-- Con seleccion capturada, el preset corre inmediatamente con `transform_selected_text` y delivery `paste_send` al target guardado.
-- Sin seleccion, elegir preset inicia captura de voz preservando el target guardado; el transcript se procesa por el preset antes de delivery.
-- El preset elegido desde quickpick es one-shot: no debe quedar como `activePreset` persistente ni como badge residual en el dock al volver a idle. La implementacion usa estado interno temporal para la ruta de voz y lo limpia al terminar, cancelar o fallar.
-- Quick Chat queda separado de este picker, como en Fixvox: no se mezcla con replacement presets hasta implementar su superficie propia.
+- La UI activa es una ventana Tauri dedicada `preset-picker` de `380×320`, con una sola lista, search, flechas, Enter/Esc y teclas directas; los starters bundled son `como-yo-es`, `corregir-texto`, `fix-writing`, `like-me-en`.
+- Con seleccion capturada, el preset corre inmediatamente como accion one-off con `transform_selected_text` y delivery `paste_send` al target guardado; al terminar no deja ningun preset activo, aunque antes hubiera uno persistente.
+- Sin seleccion, elegir preset lo activa para todos los dictados siguientes sin iniciar captura. El estado usa el snapshot local existente, sobrevive reload/restart, puede reemplazarse con otro preset y se desactiva desde el badge `×` del dock. La WebView main hidrata el preset store host-owned al iniciar y antes de ejecutar/transcribir, para que customizaciones y presets custom no queden stale respecto de Settings/picker.
+- El picker se oculta cuando el HWND foreground deja de ser el picker, después de haber sido foreground al menos una vez; esto evita los falsos blur internos de WebView2 y sincroniza el cierre con la ventana main.
+- Quick Chat queda separado y ya no aparece como nota dentro del picker.
+- Retry real 2026-07-13 confirmó delivery con clipboard bitmap WinForms tras aceptar `DataObject`/`System.Drawing.Bitmap`/`Ole Private Data` solo junto a DIB/DIBV5; `artifacts/live-app/20260713-160652/tauri-dev.log` volvió a Idle sin error. El dogfood posterior mostró una regresión recurrente con formatos custom; se corrigió preservando los clonables como bytes `HGLOBAL`, mientras los no clonables siguen fail-closed con diagnóstico redacted de id/nombre/cloneable.
+- El badge de preset se bajó 10 px (`top: 3px`) para evitar clipping en el borde superior del dock.
 
 Diferencias conscientes del primer slice:
 
@@ -219,8 +221,9 @@ npm run build
 
 Archivos relevantes:
 
-- `src/App.tsx` (`openPresetPicker`, `runPickerPreset`, `pendingPickerPresetRef`).
-- `src/voice-dock/visual-semantics.ts` (dock vuelve a idle cuando delivery fue `paste_sent`/`paste_observed`).
+- `src/App.tsx` (`openPresetPicker`, `runPickerPreset`, `readStoredActivePreset`, `storeActivePreset`).
+- `src-tauri/src/companion_window.rs` (`watch_preset_picker_focus`).
+- `src/voice-dock/VoiceDock.tsx` y `visual-semantics.ts` (badge persistente y clear accesible durante todos los estados).
 
 ## Preguntas Abiertas Reducidas
 

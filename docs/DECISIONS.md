@@ -4,6 +4,64 @@ Registro corto de decisiones durables.
 
 ## Aprobadas
 
+### 2026-07-16 - Producto primero para la arquitectura self-hosted
+
+Estado: accepted
+
+Decision: el Worker de Fixvox y sus 73 fixtures HTTP dejan de ser el contrato objetivo del runtime self-hosted. Son inventario histórico y evidencia de migración. La arquitectura canónica se define desde los flujos actuales de Dictation Tauri y Control Room; API, Bun, Tauri y Admin pueden cambiar coordinadamente cuando reduzca deuda o mejore seguridad, claridad y operación.
+
+Invariantes: privacidad y redacción; auth/capabilities fail-closed; secretos fuera del renderer; cuota autoritativa inmediatamente antes de una única llamada provider; cero persistencia normal de audio/transcript raw; audit inmutable; Cloudflare conserva autoridad hasta un cutover aprobado.
+
+Política de transición: no hacer clean slate riesgoso ni retirar una ruta todavía consumida. Cada capacidad se clasifica como `canonical`, `redesign`, `temporary-compat` o `drop`; la compatibilidad legacy sólo existe como puente con consumidor y fecha/condición de retiro. Discord, Telegram, la página Admin embebida y helpers internos de Usage no entran por defecto al producto nuevo.
+
+Consecuencia inmediata: el Batch 2 de paridad de Spec 019 queda reemplazado por una recalibración documental y un mapa de consumidores/capacidades. Checkpoint D cerrará por flujos canónicos provider-free verificados, no por igualdad de las 73 respuestas del Worker. Cambios de runtime/clientes se planifican después y producción/cutover mantienen gates separados. Plan ejecutable: `docs/tracks/fixvox-product-first-self-hosted-contract-plan.md`.
+
+### 2026-07-14 - Profile Composer versionado como única superficie de composición
+
+Estado: accepted
+
+Decision: Profiles evoluciona a un Composer tipado y server-authoritative con `draft -> preview -> publish`, versiones publicadas inmutables, clone, compare y rollback. Cada profile compone Access, Runtime, Limits, User Controls y Defaults. Runtime referencia Engines y Prompts existentes; no duplica provider/model ni contenido de prompts. Cada user setting usa `hidden`, `visible-locked` o `editable`. Groups selecciona profiles; Account puede seleccionar profile o budget; Device conserva solo override operativo excepcional.
+
+Motivo: el editor anterior mezclaba catálogos, usaba un guardado local no durable y presentaba Overrides de una plantilla cerrada que confundían audiencias con cambios de comportamiento. JP quiere una superficie potente para gobernar qué usa cada clase de usuario y qué puede modificar, con diff, impacto y rollback antes de tocar producción.
+
+Límites: no vuelve un editor genérico de Overrides; los datos legacy quedan almacenados y read-only hasta una decisión explícita. Pi puede explicar, comparar y proponer drafts visibles, pero no publicar. Provider/model siguen en Engines y prompt content en Prompts. View, edit y publish serán capabilities separadas y Worker las hará cumplir.
+
+Plan aprobado: implementar en una sesión nueva empezando por el contrato durable de versiones y un vertical slice que renderice un profile existente, cree/guarde un draft real y pruebe que runtime publicado no cambia antes de publish. Track canónico: `docs/tracks/fixvox-admin-profile-composer.md`.
+
+### 2026-07-14 - Publish brokered por Admin Web con OAuth y RBAC
+
+Estado: accepted; implementación local validada el 2026-07-14
+
+Decision: Admin Web pasa a ser el broker server-side de publish/rollback, pero el browser sigue sin recibir credenciales Worker. Google OAuth identifica al operador mediante email verificado; una tabla durable server-side asigna roles `viewer`, `editor`, `publisher` y `owner`. El bootstrap inicial de owner será configuración server-side para `jpsala@gmail.com`. Solo `owner` administra roles y no puede eliminar/demover al último owner. Publish/rollback requieren reauth OAuth reciente, preview visible, confirmación tipada y versiones esperadas. El Worker conserva enforcement por capability key, rechaza confirmaciones stale y registra auditoría de actor/acción/versiones/resultado.
+
+Motivo: una consola separada agrega fricción operativa sin mejorar la protección principal. Un broker server-side permite conservar una única UI, mantener secretos fuera del browser y añadir una elevación explícita, trazable y reversible para los cambios que alteran runtime publicado.
+
+Límites: esta decisión no concede autoridad de publish a Pi ni a roles view/edit, no agrega generic Overrides y no cambia production hasta aprobar deploy. La garantía concurrente sigue siendo single-writer hasta migrar a transacción Durable Object; esa migración es la deuda de la próxima sesión. Validación local: Cloud 113, pipeline 449, build OK, server tests 7 y Admin Web smoke 8818. Plan canónico: `docs/tracks/profile-composer-phase-3-rbac-publish-plan.md`.
+
+### 2026-07-13 - Rutas LLM exclusivas y Settings unificado con Control Room
+
+Estado: accepted
+
+Decision: el dictado normal ejecuta post-process solo cuando la policy lo habilita; un preset activo o una selection transform reemplazan esa etapa y hacen una sola transformación. Postprocess y selection transform usan engines managed por profile mediante `X-Fixvox-Engine-Kind`; provider/model del preset no gobiernan runtime. Settings será capability-aware y ofrecerá a JP/power-admin una entrada al Control Room autenticado existente, sin duplicar su CRUD ni llevar `ADMIN_API_KEY` al cliente.
+
+Motivo: JP necesita control total desde la aplicación y, al mismo tiempo, decidir qué puede ver o mutar cada categoría de usuario. Las rutas exclusivas evitan costo, latencia y reescritura dobles; el Control Plane conserva autoridad sobre modelos/costos y el Admin Web conserva OAuth/secretos server-side.
+
+Alcance inicial: runtime y routing provider-free, capabilities separadas para ver/mutar, provider/model ocultos del editor normal y límites/retención con clear visible. Overrides provider/model por preset quedan fuera hasta existir capability y enforcement Worker explícitos.
+
+Actualización 2026-07-13: la WebView Tauri externa de Control Room quedó en blanco incluso con navegación host-level forzada. JP eligió que la entrada Admin de Settings abra la URL validada en el navegador autenticado. Se preservan las garantías: policy `admin_settings` verificada en Rust, OAuth/credenciales server-side y ningún `ADMIN_API_KEY` en renderer. Worker `3caacc64-279f-4209-b4ac-6be9df78e82d` y la asignación account-level `power-admin` fueron desplegados con aprobación explícita.
+
+### 2026-07-13 - Restringir el renderer con CSP explícita y red host-owned
+
+Estado: accepted
+
+Decision: Fixvox Tauri usa una CSP de producción explícita con recursos locales, `ipc:`/`http://ipc.localhost`, estilos inline requeridos por la UI y sin endpoints cloud en `connect-src`. Las llamadas operativas a Fixvox Cloud siguen siendo host-owned en Rust. Desarrollo agrega solo `ws://127.0.0.1:1420` para HMR local; no se habilitan wildcards HTTPS.
+
+Motivo: el renderer puede invocar capacidades Tauri sensibles; limitar scripts, conexiones, objetos, bases y frames reduce el impacto de una inyección WebView sin ampliar innecesariamente la superficie de red. Tauri 2.11.2 inyecta nonces/hashes durante build y acepta `csp`/`devCsp` separados.
+
+Validación: config test, frontend build, Rust check y debug Tauri build pasan. El startup smoke quedó inconcluso porque tanto el debug nuevo como el release control fallaron por ausencia del marker `main WebView loaded`; esto descarta atribuir el fallo a CSP. Evidencia: `artifacts/startup-smoke/20260713-csp-runtime/` y `20260713-csp-control/`.
+
+Proximo paso: diagnosticar el harness WebView2 por separado; relajar CSP solo ante evidencia runtime que también pase el control.
+
 ### 2026-07-11 - Distribuir FFmpeg versionado como sidecar del cliente Windows
 
 Estado: accepted

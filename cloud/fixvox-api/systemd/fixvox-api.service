@@ -1,0 +1,23 @@
+# Template only. Checkpoint D does not install, enable, or start this unit.
+[Unit]
+Description=Fixvox self-hosted API (loopback only)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fixvox
+Group=fixvox
+WorkingDirectory=/opt/fixvox-api
+EnvironmentFile=/etc/fixvox-api/fixvox-api.env
+ExecStart=/usr/local/bin/bun run src/main.ts
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/fixvox-api
+
+[Install]
+WantedBy=multi-user.target

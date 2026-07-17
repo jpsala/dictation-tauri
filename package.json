@@ -42,6 +42,7 @@
     "tauri:build": "tauri build",
     "release:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-windows.ps1",
     "cloud:test": "cd cloud/fixvox-proxy && bun test",
+    "cloud:contract:parity": "npm run cloud:test && cd cloud/fixvox-api && bun run test:contract && bun run test:contract:compare",
     "cloud:dev": "cd cloud/fixvox-proxy && bun run dev",
     "cloud:dev:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cloud-dev-local.ps1",
     "cloud:deploy": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/cloud-deploy.ps1",

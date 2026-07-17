@@ -8,6 +8,7 @@ export type UserPreferences = {
   showDockOnStartup: boolean;
   reviewBeforeDelivery: boolean;
   pressEnterAfterPaste: boolean;
+  followFocusUntilDelivery: boolean;
   autoStopOnSilenceEnabled: boolean;
   autoStopSilenceMs: number;
   muteOutputDuringRecording: boolean;
@@ -32,6 +33,7 @@ export const defaultUserPreferences: UserPreferences = {
   showDockOnStartup: true,
   reviewBeforeDelivery: false,
   pressEnterAfterPaste: false,
+  followFocusUntilDelivery: true,
   autoStopOnSilenceEnabled: false,
   autoStopSilenceMs: defaultAutoStopSilenceMs,
   muteOutputDuringRecording: false,

@@ -157,9 +157,7 @@ function Send-AltQ() {
   Release-Modifiers
 }
 
-function Send-PresetPickerSearchAndEnter([string]$Preset) {
-  $KEYEVENTF_KEYUP = 0x0002
-  $VK_RETURN = 0x0D
+function Select-PresetPickerResult([object]$PickerPage, [string]$Preset) {
   $query = switch ($Preset) {
     'como-yo-es' { 'como' }
     'corregir-texto' { 'corregir' }
@@ -167,20 +165,26 @@ function Send-PresetPickerSearchAndEnter([string]$Preset) {
     'like-me-en' { 'like' }
     default { $Preset }
   }
-  Release-Modifiers
-  Start-Sleep -Milliseconds 80
-  foreach ($char in $query.ToCharArray()) {
-    $vk = [byte][char]([string]$char).ToUpperInvariant()
-    [SelectionBrowserSmokeWin32]::keybd_event($vk, 0, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 35
-    [SelectionBrowserSmokeWin32]::keybd_event($vk, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 35
+  $queryJson = $query | ConvertTo-Json -Compress
+  $selection = Invoke-CdpJson $PickerPage.webSocketDebuggerUrl @"
+(async () => {
+  const input = document.getElementById('dock-preset-picker-search');
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  if (!input || !setter) return JSON.stringify({ ready: false });
+  setter.call(input, $queryJson);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const debug = window.__dictationPresetPickerDebug || null;
+  return JSON.stringify({ ready: true, debug });
+})()
+"@ 5000
+  if (-not $selection.ready -or $selection.debug.selectedPresetId -ne $Preset) {
+    throw "Preset picker search did not select $Preset. State: $(($selection | ConvertTo-Json -Compress -Depth 8))"
   }
-  Start-Sleep -Milliseconds 120
-  [SelectionBrowserSmokeWin32]::keybd_event($VK_RETURN, 0, 0, [UIntPtr]::Zero)
-  Start-Sleep -Milliseconds 80
-  [SelectionBrowserSmokeWin32]::keybd_event($VK_RETURN, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
-  Release-Modifiers
+  $click = Invoke-CdpJson $PickerPage.webSocketDebuggerUrl "(() => { const button = document.querySelector('.dock-preset-picker-item.selected'); if (button) button.click(); return JSON.stringify({ clicked: Boolean(button) }); })()" 5000
+  if (-not $click.clicked) {
+    throw "Preset picker result for $Preset was not clickable."
+  }
 }
 
 function Send-DictationKey() {
@@ -443,7 +447,7 @@ try {
     $pickerReady = Wait-ForPresetPickerReady $TauriDebugPort 10
     $report.presetPickerReady = [ordered]@{ url = $pickerReady.page.url; state = $pickerReady.state }
     Add-Check 'Alt+Q preset picker opened and exposed debug state' ($pickerReady.state.debug.open -eq $true) $report.presetPickerReady
-    Send-PresetPickerSearchAndEnter $PresetId
+    Select-PresetPickerResult $pickerReady.page $PresetId
     $pickerExecuted = Wait-ForPresetPickerExecution $pickerReady.page $PresetId 5
     $report.presetPickerExecuted = $pickerExecuted
     Add-Check 'Alt+Q preset picker executed requested preset' ($pickerExecuted.lastExecutedPresetId -eq $PresetId) $pickerExecuted
@@ -451,7 +455,7 @@ try {
     $mainPickerDebug = Invoke-CdpJson $tauriPage.webSocketDebuggerUrl "(() => JSON.stringify(window.__dictationPresetPickerMainDebug || null))()" 5000
     $report.presetPickerMainDebug = $mainPickerDebug
     Add-Check 'Alt+Q preset picker command reached dock runtime' ($mainPickerDebug -and $mainPickerDebug.presetId -eq $PresetId) $mainPickerDebug
-    if ($mainPickerDebug.lastAction -ne 'run_text_path') {
+    if ($mainPickerDebug.lastAction -ne 'transform_selection') {
       throw "Alt+Q picker did not enter selected-text preset path. Main debug: $(($mainPickerDebug | ConvertTo-Json -Compress -Depth 8))"
     }
     $report.hotkeyStopAt = (Get-Date).ToString('o')
@@ -479,6 +483,25 @@ try {
     Start-Sleep -Seconds 2
   }
 
+  if (-not $matched) {
+    try {
+      $report.runtimeDiagnostic = Invoke-CdpJson $tauriPage.webSocketDebuggerUrl @"
+(() => {
+  const deliveryLabel = [...document.querySelectorAll('dt')].find((node) => node.textContent?.trim() === 'Delivery');
+  return JSON.stringify({
+    dockPhase: document.querySelector('[data-testid="voice-dock"]')?.getAttribute('data-phase') || null,
+    pipelineState: document.querySelector('[data-testid="pipeline-state"]')?.textContent?.trim() || null,
+    pipelineMessage: document.querySelector('[data-testid="pipeline-message"]')?.textContent?.trim() || null,
+    delivery: deliveryLabel?.nextElementSibling?.textContent?.trim() || null,
+    redactedRunSummary: document.querySelector('[data-testid="redacted-run-summary"]')?.textContent?.trim() || null
+  });
+})()
+"@ 5000
+    } catch {
+      $report.warnings += "runtime diagnostic unavailable: $($_.Exception.Message)"
+    }
+  }
+
   $report.browserSelectionTransformOutcome = [ordered]@{
     matchedExpectedFinal = $matched
     expectedFinalLength = $ExpectedFinalText.Length
@@ -491,6 +514,11 @@ try {
   }
   $checkName = if ($UseAltQPicker) { 'browser Alt+Q picker preset replaced textarea selection' } else { 'browser hotkey voice STT selection transform replaced textarea selection' }
   Add-Check $checkName $matched $report.browserSelectionTransformOutcome
+  if ($UseAltQPicker) {
+    $activePresetState = Invoke-CdpJson $tauriPage.webSocketDebuggerUrl "(() => JSON.stringify({ active: Boolean(document.querySelector('[data-testid=voice-dock-preset-badge]')) }))()" 5000
+    $report.activePresetAfterSelectionTransform = $activePresetState
+    Add-Check 'Alt+Q selection transform did not leave a preset active' (-not $activePresetState.active) $activePresetState
+  }
   $report.status = 'passed'
 } catch {
   $report.status = 'failed'

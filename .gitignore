@@ -44,10 +44,12 @@ NUL
 
 # Local agent state and compatibility links
 .agents/skills/
+.impeccable/critique/
 .pi/npm/
 .pi/settings.json
 .pi/taskflows/
 tmp/
+*TEMPdesktop_delivery_head.rs
 
 # Local runtime and smoke evidence
 artifacts/

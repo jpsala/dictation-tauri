@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { CompanionSurfaceView } from "../../src/App";
+import { CompanionSurfaceView, resolvePresetPickerAction } from "../../src/App";
 import {
   createDockCompanionSnapshot,
   type DockCompanionCommandPayload,
@@ -51,13 +51,14 @@ describe("dock companion view", () => {
     expect(html.toLowerCase()).not.toContain("paste observed");
   });
 
-  it("renders the Alt+Q action picker with preset commands", () => {
+  it("renders a compact Alt+Q picker for persistent dictation presets", () => {
     const onCommand = vi.fn<(payload: DockCompanionCommandPayload) => void>();
     const snapshot = createDockCompanionSnapshot({
       voiceDockState: createVoiceDockState({ state: "idle" }),
       resultHistoryOpen: false,
       resultHistoryEntries: [],
       settingsPanelOpen: true,
+      presetPickerMode: "dictation",
       activePreset: { presetId: "corregir-texto", presetName: "Corregir texto", appKey: "global" },
     });
 
@@ -65,22 +66,75 @@ describe("dock companion view", () => {
       <CompanionSurfaceView snapshot={snapshot} onCommand={onCommand} />,
     );
 
-    expect(html).toContain("Preset picker");
+    expect(html).toContain("Presets");
+    expect(html).toContain("Set a persistent preset for future dictation.");
     expect(html).toContain("Search presets…");
     expect(html).toContain("Como yo (español)");
     expect(html).toContain("Corregir texto");
     expect(html).toContain("Fix Writing");
     expect(html).toContain("Like me (English)");
-    expect(html).toContain("Alt+Q then Y");
-    expect(html).toContain("Preset multi-chord shortcuts");
+    expect(html).toContain("Active");
     expect(html).toContain("navigate");
-    expect(html).toContain("run");
-    expect(html).toContain("quick run");
-    expect(html).toContain("Quick Chat");
-    expect(html).toContain("Separate surface");
-    expect(html).toContain("Close companion");
-    expect(html).toContain("×");
-    expect(html).not.toContain("Dismiss");
+    expect(html).toContain("select");
+    expect(html).toContain("close");
+    expect(html).not.toContain("Preset multi-chord shortcuts");
+    expect(html).not.toContain("quick run");
+    expect(html).not.toContain("Quick Chat");
+    expect(html).not.toContain("Separate surface");
+  });
+
+  it("explains that presets apply immediately when text is selected", () => {
+    const snapshot = createDockCompanionSnapshot({
+      voiceDockState: createVoiceDockState({ state: "idle" }),
+      resultHistoryOpen: false,
+      resultHistoryEntries: [],
+      settingsPanelOpen: true,
+      presetPickerMode: "selection",
+    });
+
+    const html = renderToStaticMarkup(<CompanionSurfaceView snapshot={snapshot} />);
+
+    expect(html).toContain("Apply a preset to the selected text.");
+  });
+
+  it("routes picker choices by whether selected text exists", () => {
+    expect(resolvePresetPickerAction("selected paragraph")).toBe("transform_selection");
+    expect(resolvePresetPickerAction("   ")).toBe("activate_dictation_preset");
+    expect(resolvePresetPickerAction(undefined)).toBe("activate_dictation_preset");
+  });
+
+  it("activates and restores a persistent dictation preset without starting capture", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+    const appFlow = source.slice(source.indexOf("export function App"));
+    const transcribeFlow = appFlow.slice(
+      appFlow.indexOf("async transcribe"),
+      appFlow.indexOf("const base = await baseRuntime.transcribe"),
+    );
+    const storedPresetFlow = source.slice(
+      source.indexOf("function readStoredActivePreset"),
+      source.indexOf("function storeDockCompanionSnapshot"),
+    );
+    const pickerFlow = source.slice(
+      source.indexOf("async function runPickerPreset"),
+      source.indexOf("function handleHostCommandPayload"),
+    );
+
+    expect(source).toContain("function readStoredActivePreset");
+    expect(storedPresetFlow).not.toContain("normalizeDockPresetId");
+    expect(storedPresetFlow).toContain("storedPreset?.presetId?.trim()");
+    expect(source).toContain("function storeActivePreset");
+    expect(source).toContain("storeActivePreset(nextPreset)");
+    expect(source).toContain("useRef<DockActivePreset | undefined>(readStoredActivePreset())");
+    expect(transcribeFlow).toContain("await loadSelectionPresetStore()");
+    expect(pickerFlow).toContain("await loadSelectionPresetStore()");
+    expect(pickerFlow).toContain('action === "activate_dictation_preset"');
+    expect(pickerFlow).toContain("selectActivePreset(presetId)");
+    expect(pickerFlow).toContain("clearActivePreset()");
+    expect(pickerFlow.indexOf("clearActivePreset()")).toBeGreaterThan(
+      pickerFlow.indexOf('action === "activate_dictation_preset"'),
+    );
+    expect(pickerFlow).toContain('targetAffinity: "saved"');
+    expect(pickerFlow).not.toContain("startCapture(");
   });
 
   it("renders assistant quick chat with a local follow-up input", () => {
@@ -192,7 +246,7 @@ describe("dock companion view", () => {
     expect(source).toContain("executePickerPreset(preset.presetId)");
     expect(source).toContain("resolvePresetPickerChord");
     expect(source).toContain("run_preset_picker_chord");
-    expect(source).toContain("quickRunHint");
+    expect(source).not.toContain("dock-preset-picker-which-key");
   });
 
   it("renders history metadata as selectable buttons with an X close action", () => {
@@ -216,6 +270,8 @@ describe("dock companion view", () => {
     expect(html).toContain("rewrite this selected paragraph");
     expect(html).toContain("selection transform · 64 chars · available");
     expect(html).toContain("select_history_entry");
+    expect(html).toContain("Clear history");
+    expect(html).toContain("clear_result_history");
     expect(html).toContain("Close companion");
     expect(html).toContain("×");
     expect(html).not.toContain("Dismiss");

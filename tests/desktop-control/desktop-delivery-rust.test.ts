@@ -13,7 +13,8 @@ describe("Windows desktop delivery native paste", () => {
     expect(source).not.toContain("send_unicode_text");
     expect(source).not.toContain("DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK");
     expect(source).toContain("using Fixvox-like clipboard paste delivery");
-    expect(source).toContain("deliver_text_with_clipboard(&text, &target, hwnd, press_enter_after_paste)?");
+    expect(source).toContain("deliver_text_with_clipboard(&text, &target, hwnd, press_enter_after_paste)");
+    expect(source).toContain("[dictation-tauri][desktop-delivery] failed reason={error}");
   });
 
   it("snapshots and restores text and image clipboard formats around Ctrl+V paste", () => {
@@ -25,13 +26,26 @@ describe("Windows desktop delivery native paste", () => {
     expect(source).toContain("read_clipboard_snapshot()");
     expect(source).toContain("restore_clipboard_snapshot(previous_clipboard)");
     expect(source).toContain("send_ctrl_v()?");
-    expect(source.indexOf("let previous_clipboard = read_clipboard_snapshot()"))
-      .toBeLessThan(source.indexOf("write_clipboard_text(text)?"));
-    expect(source.indexOf("write_clipboard_text(text)?"))
-      .toBeLessThan(source.indexOf("send_ctrl_v()?"));
-    expect(source.indexOf("send_ctrl_v()?")).toBeLessThan(
-      source.indexOf("restore_clipboard_snapshot(previous_clipboard)"),
-    );
+    const focusIndex = source.indexOf("focus_window(hwnd)?");
+    const snapshotIndex = source.indexOf("let previous_clipboard = read_clipboard_snapshot()?");
+    const writeIndex = source.indexOf("if let Err(write_error) = write_clipboard_text(text)");
+    const pasteIndex = source.indexOf("send_ctrl_v()?");
+    const restoreIndex = source.lastIndexOf("restore_clipboard_snapshot(previous_clipboard)");
+    expect(focusIndex).toBeLessThan(snapshotIndex);
+    expect(snapshotIndex).toBeLessThan(writeIndex);
+    expect(writeIndex).toBeLessThan(pasteIndex);
+    expect(pasteIndex).toBeLessThan(restoreIndex);
+    expect(source).toContain("Desktop target lost focus before paste; no keys were sent.");
+    expect(source).toContain("Desktop target lost focus before Ctrl+V; no paste keys were sent.");
+    expect(source).toContain("Clipboard contains unsupported data and was left unchanged.");
+    expect(source).toContain("RESTORABLE_BITMAP_METADATA_FORMAT_NAMES");
+    expect(source).toContain('"System.Drawing.Bitmap"');
+    expect(source).toContain("struct ClipboardAdditionalFormat");
+    expect(source).toContain("snapshot.additional_formats");
+    expect(source).toContain("clipboard_format_diagnostic");
+    expect(source).toContain("GetClipboardFormatNameW");
+    expect(source).toContain("combine_paste_and_restore_results");
+    expect(source).toContain("Delivery warning:");
   });
 
   it("skips the bounded Win32 observer on Chromium targets", () => {

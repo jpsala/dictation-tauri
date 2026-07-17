@@ -44,8 +44,8 @@ describe("VoiceDock Fixvox Skin4 parity contract", () => {
     expect(html).toContain('data-phase="idle"');
     expect(html).toContain('role="meter"');
     expect((html.match(/data-testid="voice-dock-vu-dot"/g) ?? []).length).toBe(7);
-    expect((html.match(/--dot-width:5px/g) ?? []).length).toBe(7);
-    expect((html.match(/--dot-height:6px/g) ?? []).length).toBe(7);
+    expect((html.match(/--dot-width:4px/g) ?? []).length).toBe(7);
+    expect((html.match(/--dot-height:5px/g) ?? []).length).toBe(7);
     expect((html.match(/data-active="false"/g) ?? []).length).toBe(7);
     expect(html).not.toContain('data-testid="voice-dock-companion"');
     expect(html).not.toContain('class="voice-dock__actions"');
@@ -90,8 +90,9 @@ describe("VoiceDock Fixvox Skin4 parity contract", () => {
     );
 
     expect(html).toContain('data-testid="voice-dock-preset-badge"');
+    expect(html).toContain('data-command="clear_preset"');
     expect(html).toContain("Corregir texto");
-    expect(html).toContain("Active preset: Corregir texto (global)");
+    expect(html).toContain("Disable active preset: Corregir texto");
     expect(html).toContain('data-testid="voice-dock-assistant-indicator"');
     expect(html).toContain("Assistant mode available");
     expectNoDeveloperLeakage(html);
@@ -115,11 +116,17 @@ describe("VoiceDock Fixvox Skin4 parity contract", () => {
     expect(styles).toMatch(/body\s*{[^}]*min-width:\s*164px;[^}]*min-height:\s*64px;[^}]*background:\s*transparent;/s);
     expect(styles).toMatch(/\.voice-dock\s*{[^}]*width:\s*164px;[^}]*height:\s*64px;[^}]*background:\s*transparent;/s);
     expect(styles).toMatch(/\.voice-dock__vu\s*{[^}]*gap:\s*3\.5px;[^}]*height:\s*24px;/s);
-    expect(styles).toMatch(/\.voice-dock__vu-dot\s*{[^}]*width:\s*var\(--dot-width, 5px\);[^}]*height:\s*var\(--dot-height, 6px\);/s);
+    expect(styles).toMatch(/\.voice-dock__vu-dot\s*{[^}]*--dot-neon-glow:\s*rgb\(239 68 68 \/ 82%\);[^}]*width:\s*var\(--dot-width, 4px\);[^}]*height:\s*var\(--dot-height, 5px\);[^}]*radial-gradient\(circle at 50% 16%[^}]*color-mix\(in srgb, var\(--dot-neon-color\) 28%, white\)[^}]*0 0 5px var\(--dot-neon-glow\);/s);
+    expect(styles).toContain("--dot-neon-color: rgb(255 196 189)");
+    expect(styles).toMatch(/\.voice-dock--idle \.voice-dock__vu-dot\s*{[^}]*opacity:\s*0\.96;[^}]*0 0 6px var\(--dot-neon-glow\);/s);
+    expect(styles).toMatch(/\.voice-dock--idle \.voice-dock__orb:not\(:disabled\):hover \+ \.voice-dock__status \.voice-dock__vu-dot\s*{[^}]*animation:\s*voice-dock-dot-hover-comet 1120ms[^}]*animation-delay:\s*var\(--dot-hover-delay\);/s);
+    expect(styles).toMatch(/@keyframes voice-dock-dot-hover-comet\s*{[\s\S]*?filter:\s*brightness\(1\.14\) saturate\(1\.12\);[\s\S]*?0 0 13px var\(--dot-neon-glow\);[\s\S]*?translateY\(-0\.5px\) scale\(1\.06\);/s);
+    expect(styles).toContain("--dot-hover-delay: 420ms");
     expect(styles).toContain("--voice-dock-primary-cursor: default");
     expect(styles).toMatch(/\.voice-dock__orb\s*{[^}]*cursor:\s*var\(--voice-dock-primary-cursor\);/s);
     expect(styles).toMatch(/\.voice-dock__action::before\s*{[^}]*font-size:\s*22px;/s);
     expect(styles).toMatch(/\.voice-dock__action\[data-side="center"\]\s*{[^}]*transform:\s*translate\(-50%, calc\(34% \+ 5px\)\);/s);
+    expect(styles).toMatch(/\.voice-dock--recording \.voice-dock__vu-dot\s*{[^}]*0 0 13px rgb\(239 68 68 \/ 72%\);/s);
     expect(styles).not.toContain("--voice-dock-mic-cursor");
     expect(styles).not.toContain("cursor: grab");
     expect(styles).not.toContain("cursor: grabbing");

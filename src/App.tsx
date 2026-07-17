@@ -31,7 +31,8 @@ import {
   type HostReadinessUiState,
 } from "./host-runtime/readiness-ui";
 import { createHostRuntimeClientRuntime } from "./host-runtime/runtime-selection";
-import type { HostRuntimeClient } from "./host-runtime/types";import {
+import type { HostPostProcessPolicy, HostRuntimeClient } from "./host-runtime/types";
+import {
   deriveRuntimeRecoveryAction,
   type RuntimeRecoveryAction,
 } from "./model-gateway/runtime-transcription";
@@ -410,9 +411,18 @@ export function applyAssistantVoicePrefixToRuntimeResult(input: {
         ? "Assistant prefix detected; local answer will be pasted like Fixvox."
         : "Assistant prefix detected; normal dictation delivery skipped."
       : parsed.reason,
-    deliveryTargetAffinity: "saved",
+    deliveryTargetAffinity: "current",
     summary,
   };
+}
+
+export function resolveDictationPostProcessPolicy(input: {
+  selection?: SelectionContext;
+  presetId?: DockCompanionPresetId;
+}): HostPostProcessPolicy | undefined {
+  return input.selection?.selectedText?.trim() || input.presetId
+    ? { enabled: false, source: "exclusive-transform-route" }
+    : undefined;
 }
 
 export function applySelectionTransformOutputToRuntimeResult(input: {
@@ -770,6 +780,12 @@ function normalizeDockPresetId(presetId: string | null | undefined): DockCompani
   return isSelectionTransformPresetId(presetId) ? presetId : undefined;
 }
 
+export function resolvePresetPickerAction(
+  selectedText: string | null | undefined,
+): "transform_selection" | "activate_dictation_preset" {
+  return selectedText?.trim() ? "transform_selection" : "activate_dictation_preset";
+}
+
 function presetDisplayName(presetId: DockCompanionPresetId): string {
   return selectionTransformPresetDisplayName(presetId);
 }
@@ -1106,13 +1122,20 @@ function companionActionLabel(command: DockCommand): string {
       return "Stop & submit";
     case "cancel":
       return "Cancel";
+    case "clear_preset":
+      return "Disable preset";
   }
 }
 
 function companionCommandForDockCommand(
   command: DockCommand,
 ): DockCompanionCommandPayload | undefined {
-  if (command === "copy" || command === "paste_last_safe" || command === "retry") {
+  if (
+    command === "copy" ||
+    command === "paste_last_safe" ||
+    command === "retry" ||
+    command === "clear_preset"
+  ) {
     return { source: "dock_companion", command };
   }
 
@@ -1188,7 +1211,7 @@ export function CompanionSurfaceView({
     }),
     [pickerPresetVersion, presetPickerHotkeyLabel],
   );
-  const quickRunHint = pickerPresets.flatMap((preset) => preset.chordKeys).slice(0, 6).join("/");
+  const pickerMode = snapshot.settings.presetPickerMode ?? "dictation";
   const filteredPickerPresets = useMemo(() => {
     const query = pickerQuery.trim().toLowerCase();
     return query
@@ -1392,7 +1415,19 @@ export function CompanionSurfaceView({
         <section className="dock-companion-card dock-companion-card--standalone">
           <div className="dock-companion-title-row">
             <p className="dock-companion-kicker">Result history</p>
-            {closeButton}
+            <div className="dock-companion-title-actions">
+              {snapshot.history.items.length > 0 ? (
+                <CompanionCommandButton
+                  payload={{ source: "dock_companion", command: "clear_result_history" }}
+                  onCommand={onCommand}
+                  className="secondary-button"
+                  ariaLabel="Clear result history"
+                >
+                  Clear history
+                </CompanionCommandButton>
+              ) : null}
+              {closeButton}
+            </div>
           </div>
           {snapshot.history.items.length === 0 ? (
             <p>No reusable results saved yet.</p>
@@ -1433,9 +1468,17 @@ export function CompanionSurfaceView({
           data-query={pickerQuery}
           data-selected-index={pickerIndex}
           data-filtered-count={filteredPickerPresets.length}
+          data-mode={pickerMode}
         >
           <div className="dock-companion-title-row">
-            <p className="dock-companion-kicker">Preset picker</p>
+            <div className="dock-preset-picker-heading">
+              <strong>Presets</strong>
+              <span>
+                {pickerMode === "selection"
+                  ? "Apply a preset to the selected text."
+                  : "Set a persistent preset for future dictation."}
+              </span>
+            </div>
             {closeButton}
           </div>
           <label className="dock-preset-picker-search" htmlFor="dock-preset-picker-search">
@@ -1454,43 +1497,39 @@ export function CompanionSurfaceView({
               spellCheck={false}
             />
           </label>
-          <div className="dock-preset-picker-which-key" aria-label="Preset multi-chord shortcuts">
-            {filteredPickerPresets.map((preset) => (
-              <span key={preset.presetId} title={preset.hotkey}>
-                <kbd>{preset.chordKeys[0] ?? preset.pickerKey}</kbd>
-                {preset.name}
-              </span>
-            ))}
-          </div>
           <div className="dock-preset-picker-list" role="listbox" aria-label="Preset picker results">
             {filteredPickerPresets.length === 0 ? (
               <div className="dock-preset-picker-empty">No presets found</div>
-            ) : filteredPickerPresets.map((preset, index) => (
-              <button
-                key={preset.presetId}
-                type="button"
-                role="option"
-                aria-selected={index === pickerIndex}
-                className={index === pickerIndex ? "dock-preset-picker-item selected" : "dock-preset-picker-item"}
-                onMouseEnter={() => setPickerIndex(index)}
-                onClick={() => executePickerPreset(preset.presetId)}
-              >
-                <span>{preset.name}</span>
-                <kbd>{preset.hotkey}</kbd>
-              </button>
-            ))}
+            ) : filteredPickerPresets.map((preset, index) => {
+              const isActive = pickerMode === "dictation" &&
+                preset.presetId === snapshot.settings.activePreset?.presetId;
+              return (
+                <button
+                  key={preset.presetId}
+                  type="button"
+                  role="option"
+                  aria-selected={isActive}
+                  className={[
+                    "dock-preset-picker-item",
+                    index === pickerIndex ? "selected" : "",
+                    isActive ? "active" : "",
+                  ].filter(Boolean).join(" ")}
+                  onMouseEnter={() => setPickerIndex(index)}
+                  onClick={() => executePickerPreset(preset.presetId)}
+                  title={preset.hotkey}
+                >
+                  <span className="dock-preset-picker-item-label">
+                    <span>{preset.name}</span>
+                    {isActive ? <small>Active</small> : null}
+                  </span>
+                  <kbd>{preset.chordKeys[0] ?? preset.pickerKey}</kbd>
+                </button>
+              );
+            })}
           </div>
           <div className="dock-preset-picker-footer">
-            <span><kbd>↑↓</kbd> navigate</span>
-            <span><kbd>↵</kbd> run</span>
-            <span><kbd>{quickRunHint || "key"}</kbd> quick run</span>
+            <span><kbd>↑↓</kbd><kbd>↵</kbd> navigate &amp; select</span>
             <span><kbd>Esc</kbd> close</span>
-          </div>
-          <div className="dock-companion-assistant-note" aria-label="Assistant mode status">
-            <span>Quick Chat</span>
-            <p>
-              Separate surface. This picker hides before running a replacement preset or preset voice capture.
-            </p>
           </div>
         </section>
       ) : null}
@@ -1603,6 +1642,18 @@ function readStoredDockCompanionSnapshot(): DockCompanionSnapshot | undefined {
   }
 }
 
+function readStoredActivePreset(): DockActivePreset | undefined {
+  const storedPreset = readStoredDockCompanionSnapshot()?.settings.activePreset;
+  const presetId = storedPreset?.presetId?.trim();
+  return presetId
+    ? {
+        presetId,
+        presetName: storedPreset?.presetName?.trim() || presetId,
+        appKey: "global",
+      }
+    : undefined;
+}
+
 function storeDockCompanionSnapshot(snapshot: DockCompanionSnapshot): void {
   if (typeof window === "undefined") {
     return;
@@ -1615,16 +1666,37 @@ function storeDockCompanionSnapshot(snapshot: DockCompanionSnapshot): void {
   }
 }
 
-function createPresetPickerSnapshot(): DockCompanionSnapshot {
-  const snapshot = createEmptyDockCompanionSnapshot();
-  return {
+function storeActivePreset(activePreset: DockActivePreset | undefined): void {
+  const snapshot = readStoredDockCompanionSnapshot() ?? createEmptyDockCompanionSnapshot();
+  storeDockCompanionSnapshot({
     ...snapshot,
-    visible: true,
     settings: {
       ...snapshot.settings,
-      open: true,
+      activePreset,
     },
-  };
+  });
+}
+
+function createPresetPickerSnapshot(): DockCompanionSnapshot {
+  return createEmptyDockCompanionSnapshot();
+}
+
+function dispatchDockCompanionCommand(payload: DockCompanionCommandPayload): void {
+  if (!isTauri()) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      dockCompanionCommandStorageKey,
+      JSON.stringify({ id: `${Date.now()}-${Math.random()}`, payload }),
+    );
+  } catch {
+    // Best-effort fallback bridge; Tauri events remain the primary route.
+  }
+
+  void emitTo("main", dockCompanionCommandEvent, payload)
+    .catch(() => emit(dockCompanionCommandEvent, payload).catch(() => undefined));
 }
 
 function CompanionSurface({ surface }: { surface: "companion" | "preset-picker" }) {
@@ -1665,29 +1737,27 @@ function CompanionSurface({ surface }: { surface: "companion" | "preset-picker" 
     };
   }, [surface]);
 
-  const handleCompanionCommand = (payload: DockCompanionCommandPayload) => {
-    if (!isTauri()) {
+  useEffect(() => {
+    if (surface !== "preset-picker") {
       return;
     }
 
-    try {
-      window.localStorage.setItem(
-        dockCompanionCommandStorageKey,
-        JSON.stringify({ id: `${Date.now()}-${Math.random()}`, payload }),
-      );
-    } catch {
-      // Best-effort fallback bridge; Tauri events remain the primary route.
-    }
-
-    void emitTo("main", dockCompanionCommandEvent, payload)
-      .catch(() => emit(dockCompanionCommandEvent, payload).catch(() => undefined));
-  };
+    const refreshPickerSnapshot = () => {
+      const stored = readStoredDockCompanionSnapshot();
+      if (stored?.settings.open) {
+        setSnapshot(stored);
+      }
+    };
+    refreshPickerSnapshot();
+    window.addEventListener("focus", refreshPickerSnapshot);
+    return () => window.removeEventListener("focus", refreshPickerSnapshot);
+  }, [surface]);
 
   return (
     <main className="companion-shell" aria-label="Dock companion">
       <CompanionSurfaceView
         snapshot={snapshot}
-        onCommand={handleCompanionCommand}
+        onCommand={dispatchDockCompanionCommand}
         showChromeClose={false}
       />
     </main>
@@ -1714,8 +1784,8 @@ export function App() {
   );
   const gateway = captureRuntime.gateway;
   const savedDeliveryTargetRef = useRef<TauriDesktopDeliveryTarget | undefined>(undefined);
-  const activePresetRef = useRef<DockActivePreset | undefined>(undefined);
-  const pendingPickerPresetRef = useRef<DockActivePreset | undefined>(undefined);
+  const stopDeliveryTargetRef = useRef<TauriDesktopDeliveryTarget | undefined>(undefined);
+  const activePresetRef = useRef<DockActivePreset | undefined>(readStoredActivePreset());
   const selectionContextRef = useRef<SelectionContext | undefined>(undefined);
   const dockDragRef = useRef<{
     startScreenX: number;
@@ -1743,6 +1813,8 @@ export function App() {
         ? createTauriSavedTargetDeliveryGateway({
             invoke,
             getTarget: () => savedDeliveryTargetRef.current,
+            getStopTarget: () => stopDeliveryTargetRef.current,
+            getFollowFocusUntilDelivery: () => userPreferencesRef.current.followFocusUntilDelivery,
             getPressEnterAfterPaste: () =>
               userPreferencesRef.current.pressEnterAfterPaste ||
               forcePressEnterAfterPasteRef.current,
@@ -1765,7 +1837,26 @@ export function App() {
       capture: createCaptureGatewayControllerAdapter(gateway),
       runtime: {
         async transcribe(input) {
-            const base = await baseRuntime.transcribe(input);
+            await loadSelectionPresetStore().catch(() => undefined);
+            const storedPresetId = activePresetRef.current?.presetId;
+            const activePresetId = normalizeDockPresetId(storedPresetId);
+            if (activePresetId) {
+              selectActivePreset(activePresetId);
+            } else if (storedPresetId) {
+              clearActivePreset();
+            }
+            const postProcess = resolveDictationPostProcessPolicy({
+              selection: selectionContextRef.current,
+              presetId: activePresetId,
+            });
+            const runtimeForRoute = postProcess
+              ? createHostRuntimeControllerAdapter(hostRuntime.client, {
+                  mode: "real",
+                  allowProviderCall: true,
+                  postProcess,
+                })
+              : baseRuntime;
+            const base = await runtimeForRoute.transcribe(input);
             const parsedAssistant = parseAssistantVoicePrefix(base.transcript);
             const availablePresets = listSelectionTransformPresets().map((preset) => ({
               id: preset.id,
@@ -1773,11 +1864,11 @@ export function App() {
             }));
             const localAssistantResponse = parsedAssistant.kind === "assistant"
               ? createAssistantQuickResponse(parsedAssistant.prompt, {
-                  activePresetId: (pendingPickerPresetRef.current ?? activePresetRef.current)?.presetId ?? undefined,
-                  activePresetName: (pendingPickerPresetRef.current ?? activePresetRef.current)?.presetName,
+                  activePresetId: activePresetRef.current?.presetId ?? undefined,
+                  activePresetName: activePresetRef.current?.presetName,
                   availablePresetNames: availablePresets.map((preset) => preset.name),
                   availablePresets,
-                  lastActivatedPresetId: (pendingPickerPresetRef.current ?? activePresetRef.current)?.presetId ?? undefined,
+                  lastActivatedPresetId: activePresetRef.current?.presetId ?? undefined,
                 })
               : undefined;
             let managedAssistantText: string | undefined;
@@ -1800,7 +1891,7 @@ export function App() {
             const runtime = applyAssistantVoicePrefixToRuntimeResult({
               runtime: base,
               sessionId: input.sessionId,
-              activePreset: pendingPickerPresetRef.current ?? activePresetRef.current,
+              activePreset: activePresetRef.current,
               availablePresets,
               managedAssistantText,
             });
@@ -1824,15 +1915,19 @@ export function App() {
             runtime,
             sessionId: input.sessionId,
             selection: selectionContextRef.current,
-            presetId: normalizeDockPresetId(
-              (pendingPickerPresetRef.current ?? activePresetRef.current)?.presetId,
-            ),
+            presetId: normalizeDockPresetId(activePresetRef.current?.presetId),
           });
         },
       },
       delivery: desktopDelivery,
       allowDesktopDeliverySideEffects: isTauri(),
       autoStop: autoStopSilencePolicyRef.current,
+      prepareDeliveryTargetOnStop: async () => {
+        if (!isTauri() || userPreferencesRef.current.followFocusUntilDelivery) {
+          return;
+        }
+        stopDeliveryTargetRef.current = await captureTauriDesktopDeliveryTarget(invoke);
+      },
     });
 
     return createAppSessionControllerFacade(controller);
@@ -1879,7 +1974,9 @@ export function App() {
     bands: [0, 0, 0, 0, 0, 0, 0],
   });
   const [effectiveHotkeyLabel, setEffectiveHotkeyLabel] = useState(tauriGlobalHotkeyShortcut);
-  const [activePreset, setActivePreset] = useState<DockActivePreset | undefined>();
+  const [activePreset, setActivePreset] = useState<DockActivePreset | undefined>(
+    activePresetRef.current,
+  );
   const [resultHistoryEntries, setResultHistoryEntries] = useState<ResultHistoryEntry[]>([]);
   const [resultHistoryOpen, setResultHistoryOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
@@ -1889,6 +1986,24 @@ export function App() {
   const hostCommandHandlerRef = useRef<
     ((payload: ResolvedTauriHostCommandPayload) => void | Promise<void>) | undefined
   >(undefined);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
+    void loadSelectionPresetStore()
+      .then(() => {
+        const storedPresetId = activePresetRef.current?.presetId;
+        const presetId = normalizeDockPresetId(storedPresetId);
+        if (presetId) {
+          selectActivePreset(presetId);
+        } else if (storedPresetId) {
+          clearActivePreset();
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -2044,6 +2159,7 @@ export function App() {
 
   async function prepareDictationStartContext(options: { targetSnapshot?: TauriDesktopDeliveryTarget } = {}) {
     selectionContextRef.current = undefined;
+    stopDeliveryTargetRef.current = undefined;
     if (!isTauri()) {
       savedDeliveryTargetRef.current = undefined;
       return;
@@ -2204,7 +2320,6 @@ export function App() {
       return;
     }
 
-    pendingPickerPresetRef.current = undefined;
     queueDictationSoundCue("error");
     setCapture({
       state: session.error?.code === "capture-start-failed" ? "permission_needed" : "failed",
@@ -2272,12 +2387,11 @@ export function App() {
         summary,
       });
     } finally {
-      pendingPickerPresetRef.current = undefined;
+      selectionContextRef.current = undefined;
     }
   }
 
   async function cancelCapture() {
-    pendingPickerPresetRef.current = undefined;
     const session = await desktopSession.cancel();
     setDesktopRecoveryAction(session.recoveryAction);
     const result = getAppSessionCaptureResult(session);
@@ -2587,6 +2701,9 @@ export function App() {
     resultHistoryEntries,
     settingsPanelOpen,
     activePreset,
+    presetPickerMode: selectionContextRef.current?.selectedText?.trim()
+      ? "selection"
+      : "dictation",
     assistant: {
       open: Boolean(assistantShouldOpen && assistantRunId !== dismissedAssistantRunId),
       runId: assistantRunId,
@@ -2644,16 +2761,19 @@ export function App() {
 
     const pickerVisible = companionSnapshot.settings.open;
     const companionVisible = Boolean(companionSnapshot.recovery || companionSnapshot.history.open || companionSnapshot.assistant.open);
-    const syncPicker = invoke(pickerVisible ? "show_preset_picker" : "hide_preset_picker")
-      .then(() => {
-        if (!pickerVisible) {
-          return undefined;
-        }
-        const emitSnapshot = () => emitTo("preset-picker", dockCompanionStateEvent, companionSnapshot);
-        void window.setTimeout(() => void emitSnapshot().catch(() => undefined), 120);
-        void window.setTimeout(() => void emitSnapshot().catch(() => undefined), 350);
-        return emitSnapshot();
-      });
+    const emitPickerSnapshot = () => emitTo(
+      "preset-picker",
+      dockCompanionStateEvent,
+      companionSnapshot,
+    );
+    const syncPicker = pickerVisible
+      ? emitPickerSnapshot()
+        .then(() => invoke("show_preset_picker"))
+        .then(() => {
+          void window.setTimeout(() => void emitPickerSnapshot().catch(() => undefined), 120);
+          void window.setTimeout(() => void emitPickerSnapshot().catch(() => undefined), 350);
+        })
+      : invoke("hide_preset_picker");
     const syncCompanion = invoke(companionVisible ? "show_companion" : "hide_companion")
       .then(() =>
         companionVisible
@@ -2665,6 +2785,13 @@ export function App() {
       companionSyncKeyRef.current = undefined;
     });
   }, [companionSnapshot]);
+
+  async function clearResultHistory() {
+    if (isTauri()) {
+      await invoke("clear_result_history");
+    }
+    setResultHistoryEntries([]);
+  }
 
   async function loadResultHistory(options: { targetSnapshot?: TauriDesktopDeliveryTarget } = {}) {
     if (!isTauri()) {
@@ -2692,13 +2819,14 @@ export function App() {
     };
     activePresetRef.current = nextPreset;
     setActivePreset(nextPreset);
+    storeActivePreset(nextPreset);
   }
 
   function clearActivePreset() {
     activePresetRef.current = undefined;
-    pendingPickerPresetRef.current = undefined;
     selectionContextRef.current = undefined;
     setActivePreset(undefined);
+    storeActivePreset(undefined);
   }
 
   function closeCompanionSurfaces() {
@@ -2763,7 +2891,7 @@ export function App() {
       state: "idle",
       message: selectionContextRef.current?.selectedText?.trim()
         ? "Action picker captured selected text for a preset transform."
-        : "Action picker is ready. Choose a preset to start a voice transform for the current target.",
+        : "Action picker is ready. Choose a preset to keep active for future dictation.",
     });
     if (isTauri()) {
       window.setTimeout(() => {
@@ -2774,18 +2902,14 @@ export function App() {
       status: "idle",
       message: selectionContextRef.current?.selectedText?.trim()
         ? "Action picker captured selected text for a preset transform."
-        : "Action picker is ready. Choose a preset to start a voice transform for the current target.",
+        : "Action picker is ready. Choose a preset to keep active for future dictation.",
       summary: pipelineUi.summary,
     });
   }
 
   async function runPickerPreset(presetId: DockCompanionPresetId) {
+    await loadSelectionPresetStore().catch(() => undefined);
     recordPresetPickerMainDebug({ lastAction: "run_requested", presetId });
-    const pickerPreset: DockActivePreset = {
-      presetId,
-      presetName: presetDisplayName(presetId),
-      appKey: "global",
-    };
     setSettingsPanelOpen(false);
     setResultHistoryOpen(false);
     if (isTauri()) {
@@ -2793,19 +2917,25 @@ export function App() {
     }
 
     const selectedText = selectionContextRef.current?.selectedText?.trim();
+    const action = resolvePresetPickerAction(selectedText);
     recordPresetPickerMainDebug({
-      lastAction: selectedText ? "run_text_path" : "run_voice_path",
+      lastAction: action,
       presetId,
       selectedTextLength: selectedText?.length ?? 0,
     });
+    if (action === "activate_dictation_preset") {
+      selectActivePreset(presetId);
+      selectionContextRef.current = undefined;
+      const message = `${presetDisplayName(presetId)} is active for future dictation.`;
+      setCapture({ state: "idle", message });
+      setPipelineUi({ status: "idle", message, summary: pipelineUi.summary });
+      return;
+    }
     if (!selectedText) {
-      pendingPickerPresetRef.current = pickerPreset;
-      await startCapture({ keepCurrentContext: true });
       return;
     }
 
-    pendingPickerPresetRef.current = undefined;
-
+    clearActivePreset();
     const runId = `preset-picker-${Date.now()}`;
     const startedAt = Date.now();
     setPipelineUi({
@@ -2851,7 +2981,6 @@ export function App() {
       };
 
       if (!desktopDelivery) {
-        pendingPickerPresetRef.current = undefined;
         setPipelineUi({
           status: "done",
           message: "Preset transform is available. Desktop delivery is unavailable in this surface.",
@@ -2865,10 +2994,10 @@ export function App() {
         text: response.text,
         strategy: "paste_send",
         allowDesktopSideEffects: true,
+        targetAffinity: "saved",
       });
       const deliveredSummary = applyDeliveryEvidenceFallback(baseSummary, evidence);
 
-      pendingPickerPresetRef.current = undefined;
       setPipelineUi({
         status: evidence.status === "failed" ? "error" : "done",
         message:
@@ -2879,7 +3008,6 @@ export function App() {
         summary: deliveredSummary,
       });
     } catch (error) {
-      pendingPickerPresetRef.current = undefined;
       setPipelineUi({
         status: "error",
         message: error instanceof Error
@@ -3059,6 +3187,9 @@ export function App() {
       case "select_history_entry":
         selectHistoryEntry(payload.entryId);
         break;
+      case "clear_result_history":
+        void clearResultHistory();
+        break;
       case "close_companion":
         closeCompanionSurfaces();
         break;
@@ -3145,6 +3276,9 @@ export function App() {
       case "paste_last_safe":
         void pasteLastToForegroundTarget();
         break;
+      case "clear_preset":
+        clearActivePreset();
+        break;
     }
   }
 
@@ -3166,7 +3300,6 @@ export function App() {
       return;
     }
 
-    pendingPickerPresetRef.current = undefined;
     const result = getAppSessionCaptureResult(session);
     const summary = getAppSessionSummary(session);
 

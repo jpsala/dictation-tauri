@@ -49,10 +49,10 @@
         "label": "preset-picker",
         "title": "Preset Picker",
         "url": "index.html?surface=preset-picker",
-        "width": 420,
-        "height": 500,
-        "minWidth": 420,
-        "minHeight": 500,
+        "width": 380,
+        "height": 320,
+        "minWidth": 380,
+        "minHeight": 320,
         "resizable": false,
         "decorations": false,
         "transparent": false,
@@ -81,7 +81,30 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "connect-src": "'self' ipc: http://ipc.localhost",
+        "font-src": "'self' data:",
+        "img-src": "'self' data: blob:",
+        "media-src": "'self' data: blob:",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "frame-ancestors": "'none'"
+      },
+      "devCsp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "connect-src": "'self' ipc: http://ipc.localhost ws://127.0.0.1:1420",
+        "font-src": "'self' data:",
+        "img-src": "'self' data: blob:",
+        "media-src": "'self' data: blob:",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "frame-ancestors": "'none'"
+      }
     }
   },
   "bundle": {
