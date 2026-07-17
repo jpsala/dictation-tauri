@@ -43,6 +43,7 @@ const state = {
   selectedEntity: null,
   pendingAccountPolicy: null,
   pendingProfileMutation: null,
+  profileNotice: null,
   lastAdminViewRendered: null,
 }
 
@@ -498,14 +499,19 @@ async function deletePrompt(id) {
   state.status = `Prompt borrado: ${id}`
 }
 async function createProfileDraft(profileId) {
+  state.profileNotice = { tone: 'pending', message: 'Preparando cambios sin publicar…' }
+  renderMessages()
   await jsonFetch('/api/admin/profiles/drafts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId }) })
   state.profilePreview = null
   state.profilePreviewError = null
   state.profileTab = 'overview'
+  state.profileNotice = { tone: 'success', message: 'Cambios listos para editar.' }
   await loadAdmin('policies')
   state.status = `Draft creado: ${profileId}`
 }
 async function saveProfileDraft(form) {
+  state.profileNotice = { tone: 'pending', message: 'Guardando cambios…' }
+  renderMessages()
   const values = Object.fromEntries(new FormData(form).entries())
   const record = (state.adminData?.profileVersions || []).find((profile) => profile.profileId === values.profileId)
   if (!record?.draft) throw new Error('Draft no encontrado; recargá Profiles')
@@ -532,15 +538,19 @@ async function saveProfileDraft(form) {
   }
   await jsonFetch('/api/admin/profiles/drafts', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId: values.profileId, definition }) })
   state.profilePreview = null
+  state.profileNotice = { tone: 'success', message: 'Cambios guardados. Revisalos antes de publicar.' }
   await loadAdmin('policies')
   state.status = `Draft guardado: ${values.profileId}`
 }
 async function discardProfileDraft(profileId, draftVersion) {
+  state.profileNotice = { tone: 'pending', message: 'Descartando cambios…' }
+  renderMessages()
   const confirmation = `DISCARD ${profileId} v${draftVersion}`
   await jsonFetch('/api/admin/profiles/drafts', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId, expectedDraftVersion: draftVersion, confirmation }) })
   state.profilePreview = null
   state.profilePreviewError = null
   state.profileTab = 'overview'
+  state.profileNotice = { tone: 'success', message: 'Cambios descartados. La configuración publicada sigue igual.' }
   await loadAdmin('policies')
   state.status = `Cambios descartados: ${profileId}`
 }
@@ -1122,6 +1132,12 @@ function renderPublishedProfileSection(tab, selected, definition, data) {
   if (tab === 'controls') return renderProfileControlsSummary(definition)
   return `${renderProfileAssignments(selected)}${renderProfileAccess(selected)}${renderProfileRuntime(definition, data)}${renderProfileLimits(definition)}`
 }
+function renderProfileActionFeedback() {
+  const notice = state.profileNotice
+  if (!notice) return ''
+  return `<div class="profile-action-feedback" data-tone="${esc(notice.tone)}" role="status">${esc(notice.message)}</div>`
+}
+
 function renderProfileModeNotice(record) {
   if (record.draft) return `<section class="profile-mode-notice profile-mode-notice--draft"><div><strong>Cambios sin publicar</strong><span>Guardá los cambios cuando quieras. Las personas siguen usando la configuración actual hasta publicar.</span></div>${canEditProfiles() ? `<button class="button small danger" type="button" data-discard-profile-draft="${esc(record.profileId)}" data-draft-version="${esc(record.draft.version)}">Descartar cambios</button>` : ''}</section>`
   const message = canEditProfiles()
@@ -1141,7 +1157,7 @@ function renderProfilesPane(data) {
   const selected = definition ? { ...legacy, policyId: selectedId, policyLabel: definition.label, capabilities: definition.access?.capabilities || [] } : legacy
   const publishedSection = record?.draft ? '' : renderPublishedProfileSection(state.profileTab, selected, definition, data)
   const editAction = !record?.draft && canEditProfiles() ? `<button class="button primary" data-create-profile-draft="${esc(selectedId)}">Editar cambios</button>` : ''
-  return `<div class="configuration-pane profiles-pane"><div class="policy-layout"><div class="policy-column">${profiles.map((profile) => { const definition = profile.draft || profile.published; const status = profile.draft ? 'Cambios sin publicar' : 'Publicado'; return `<button class="policy-row ${profile.profileId === selectedId ? 'active' : ''}" data-policy-select="${esc(profile.profileId)}"><strong>${esc(definition?.label || profile.label || profile.profileId)}</strong><small>${esc(profile.profileId)} · ${esc(status)} v${esc(definition?.version || '-')} · ${(definition?.access?.capabilities || []).length} funciones</small></button>` }).join('') || '<div class="empty-state"><strong>No hay perfiles disponibles</strong><span>Reintentá la carga o revisá el contrato del Control Plane.</span></div>'}</div>${record && definition ? `<section class="policy-detail profile-detail"><div class="entity-card-head"><div><span class="eyebrow">${record.draft ? 'Cambios sin publicar' : 'Configuración publicada'}</span><h3>${esc(definition.label || selectedId)}</h3><small>${esc(selectedId)} · v${esc(definition.version)} · ${esc(definition.status)}</small></div><div class="button-row"><button class="button" data-chat-context="Explicame el perfil ${esc(selectedId)}, sus funciones, runtime y límites." data-chat-label="Explicar perfil ${esc(selectedId)}">Preguntar a Pi</button>${editAction}</div></div>${renderProfileEditorTabs()}${renderProfileModeNotice(record)}${renderProfileMutationOutcome(selectedId)}${record.draft ? renderProfileDraftEditor(record, data) : `<div class="profile-summary-grid ${state.profileTab === 'overview' ? '' : 'profile-summary-grid--single'}">${publishedSection}</div>`}${record.draft ? renderProfilePreview(record, selectedId) : ''}${!record.draft && state.profileTab === 'overview' ? `${renderProfileCloneForm(record, definition)}${renderPublishedRollbackControls(record, selectedId)}` : ''}</section>` : ''}</div></div>`
+  return `<div class="configuration-pane profiles-pane"><div class="policy-layout"><div class="policy-column">${profiles.map((profile) => { const definition = profile.draft || profile.published; const status = profile.draft ? 'Cambios sin publicar' : 'Publicado'; return `<button class="policy-row ${profile.profileId === selectedId ? 'active' : ''}" data-policy-select="${esc(profile.profileId)}"><strong>${esc(definition?.label || profile.label || profile.profileId)}</strong><small>${esc(profile.profileId)} · ${esc(status)} v${esc(definition?.version || '-')} · ${(definition?.access?.capabilities || []).length} funciones</small></button>` }).join('') || '<div class="empty-state"><strong>No hay perfiles disponibles</strong><span>Reintentá la carga o revisá el contrato del Control Plane.</span></div>'}</div>${record && definition ? `<section class="policy-detail profile-detail"><div class="entity-card-head"><div><span class="eyebrow">${record.draft ? 'Cambios sin publicar' : 'Configuración publicada'}</span><h3>${esc(definition.label || selectedId)}</h3><small>${esc(selectedId)} · v${esc(definition.version)} · ${esc(definition.status)}</small></div><div class="button-row"><button class="button" data-chat-context="Explicame el perfil ${esc(selectedId)}, sus funciones, runtime y límites." data-chat-label="Explicar perfil ${esc(selectedId)}">Preguntar a Pi</button>${editAction}</div></div>${renderProfileEditorTabs()}${renderProfileModeNotice(record)}${renderProfileActionFeedback()}${renderProfileMutationOutcome(selectedId)}${record.draft ? renderProfileDraftEditor(record, data) : `<div class="profile-summary-grid ${state.profileTab === 'overview' ? '' : 'profile-summary-grid--single'}">${publishedSection}</div>`}${record.draft ? renderProfilePreview(record, selectedId) : ''}${!record.draft && state.profileTab === 'overview' ? `${renderProfileCloneForm(record, definition)}${renderPublishedRollbackControls(record, selectedId)}` : ''}</section>` : ''}</div></div>`
 }
 function renderEnginesPane(data) { return `<div class="configuration-pane">${renderEngineCatalog(data)}</div>` }
 function renderPromptsPane(data) { return `<div class="configuration-pane">${renderPromptCatalog(data)}</div>` }
