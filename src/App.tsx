@@ -107,6 +107,8 @@ import { runAssistantChatWithHost, type HostAssistantChatMessage } from "./assis
 import { createAssistantQuickResponse, type AssistantQuickResponse } from "./assistant/quick-response";
 import { parseAssistantVoicePrefix } from "./assistant/voice-prefix";
 import { SettingsSurface } from "./settings/SettingsSurface";
+import { OnboardingSurface } from "./onboarding/OnboardingSurface";
+import { createAccountFirstFixtureController } from "./onboarding/account-first-flow";
 import { loadSelectionPresetStore } from "./settings/preset-store-control";
 import {
   createAutoStopSilencePolicy,
@@ -1086,13 +1088,13 @@ function createSyntheticDockVu(tick: number) {
   return { level, bands };
 }
 
-function getAppSurface(): "dock" | "companion" | "preset-picker" | "settings" {
+function getAppSurface(): "dock" | "companion" | "preset-picker" | "settings" | "onboarding" {
   if (typeof window === "undefined") {
     return "dock";
   }
 
   const surface = new URLSearchParams(window.location.search).get("surface");
-  if (surface === "companion" || surface === "preset-picker" || surface === "settings") {
+  if (surface === "companion" || surface === "preset-picker" || surface === "settings" || surface === "onboarding") {
     return surface;
   }
 
@@ -1771,6 +1773,18 @@ export function App() {
   }
   if (appSurface === "settings") {
     return <SettingsSurface />;
+  }
+  if (appSurface === "onboarding") {
+    return (
+      <OnboardingSurface
+        controller={createAccountFirstFixtureController({
+          callback: "signed_in",
+          link: "linked",
+          microphone: "granted",
+          shortcut: "recommended",
+        })}
+      />
+    );
   }
 
   const captureRuntime = useMemo(() => createCaptureGatewayRuntime(), []);

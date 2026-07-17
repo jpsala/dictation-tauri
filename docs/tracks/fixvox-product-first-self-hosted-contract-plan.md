@@ -276,8 +276,14 @@ Detener y reportar antes de continuar si:
 - VPS, secrets, Tunnel/DNS, deploy, export/import, canary y cutover.
 - Commit, push, publish o release.
 
+## Receipt — Batch 1 (2026-07-17)
+
+- Creado `specs/019-fixvox-self-hosted-control-plane/contracts/product-route-disposition.md` con los 73 fixture IDs exactamente una vez, 72 combinaciones method/path, ambos escenarios `/desktop/login` y el único scheduled boundary.
+- Mapeadas las ocho URLs Tauri construidas por el host y los prefijos downstream de `proxyAdmin(...)`; el browser `/api/admin/*` queda estable y separado del backend legacy.
+- Disposición final: **1 `canonical`**, **9 `redesign`**, **39 `temporary-compat`** y **24 `drop`**. Todos los aliases temporales tienen owner, reemplazo y retiro.
+- Validación mecánica: 73 fixture IDs únicos/exactos, 72 rutas, 1 scheduled, 8 paths Tauri y 26 prefijos `proxyAdmin(...)`; contract inventory 4/4, `git diff --check` y context audit sin errores.
+- Batch docs-only: sin cambios runtime/Tauri/Admin, DB, provider, producción, deploy, commit ni push. D-R1 queda completo; D-R2-D-R4 siguen abiertos.
+
 ## Próximo Batch
 
-**Batch 1 — Mapa Consumidor/Disposición**, perfil **Implementador** y motor manual staged. Es docs-only y no inicia código de producto.
-
-**Handoff exacto:** salir de la sesión actual, ejecutar `pi-menu -Preset implementer -Session new` en PowerShell y, dentro de la sesión nueva, elegir `/flow` → **Implementar un batch**. Revisar el prompt cargado y enviarlo; debe detenerse al terminar este batch.
+**Batch 2 — Contratos Canónicos Y Aliases**, perfil **Implementador de arquitectura/contrato** y motor manual staged. Debe crear `product-api.md` y `temporary-aliases.md` desde el mapa aprobado, todavía sin implementación.

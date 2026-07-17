@@ -95,10 +95,17 @@ cd cloud/fixvox-proxy; npx wrangler deploy --dry-run
 
 ### Product-first recalibration (2026-07-16)
 
-- [ ] D-R1 Build the 73-fixture/72-route consumer and disposition map (`canonical`, `redesign`, `temporary-compat`, `drop`) plus the scheduled boundary.
+- [x] D-R1 Build the 73-fixture/72-route consumer and disposition map (`canonical`, `redesign`, `temporary-compat`, `drop`) plus the scheduled boundary.
 - [ ] D-R2 Specify typed canonical contracts for desktop bootstrap/session, transcription, runtime actions and Admin-BFF domain calls; name every alias owner and retirement condition.
 - [ ] D-R3 Reconcile `spec.md`, `plan.md`, `contracts/http-api.md`, this task list and the closure track around canonical-flow gates rather than Worker equality.
 - [ ] D-R4 Review the product contract and migration slices before any runtime, Tauri or Admin implementation.
+
+### D-R1 receipt (2026-07-17)
+
+- `contracts/product-route-disposition.md` maps all 73 fixture IDs exactly once, reconciles 72 method/path pairs, preserves both `/desktop/login` scenarios, and records the single scheduled boundary.
+- Current Dictation Tauri endpoints and Control Room `proxyAdmin(...)` calls are mapped separately from Worker-only legacy routes. Result: 1 exact canonical route, 9 redesigns, 39 temporary compatibility routes, and 24 drops; every temporary route has an owner, replacement, and retirement condition.
+- Mechanical validation covered the exact fixture set, 72 routes, scheduled boundary, eight Tauri paths and 26 `proxyAdmin(...)` prefixes. Contract inventory passed 4/4; `git diff --check` and context audit passed without errors.
+- This batch changed docs only. It did not define Batch 2 schemas, modify runtime/client code, touch PostgreSQL/Cloudflare/production, or begin Checkpoint E.
 
 The original T022-T029 implementation items remain useful inputs but are suspended until D-R1-D-R4 determine whether each belongs to a canonical flow, migration alias or dropped legacy surface.
 

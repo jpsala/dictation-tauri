@@ -6,67 +6,34 @@ import { SettingsSurface } from "../../src/settings/SettingsSurface";
 import type { FixvoxCloudStatus } from "../../src/settings/fixvox-cloud-control";
 
 describe("SettingsSurface", () => {
-  it("renders a compact hotkeys scaffold with a host-owned hotkey editor", () => {
-    const html = renderToStaticMarkup(<SettingsSurface initialSection="hotkeys" />);
+  it("renders the eight-section Settings rail and keeps General limited to startup and dock", () => {
+    const hotkeys = renderToStaticMarkup(<SettingsSurface initialSection="hotkeys" />);
+    const general = renderToStaticMarkup(<SettingsSurface initialSection="general" />);
 
-    expect(html).toContain("Keyboard shortcuts");
-    expect(html).toContain("Fixvox");
-    expect(html).toContain("Desktop settings");
-    expect(html).toContain("Current policy");
-    expect(html).toContain("Settings");
-    expect(html).toContain("Essentials");
-    expect(html).toContain("Cloud");
-    expect(html).toContain("Dock");
-    expect(html).toContain("Delivery");
-    expect(html).toContain("Presets");
-    expect(html).toContain("Dictation key");
-    expect(html).toContain("Paste last");
-    expect(html).toContain("Quick Chat");
-    expect(html).toContain("Result history");
-    expect(html).toContain("Preset picker");
-    expect(html).toContain("Stop and submit");
-    expect(html).toContain("Assistant mode");
-    expect(html).toContain("Press Enter after paste");
-    expect(html).toContain("Cancel recording");
-    expect(html).toContain("9 keys");
-    expect(html).toContain("Shortcuts");
-    expect(html).toContain("Dictation key editor");
-    expect(html).toContain("Alt+Space");
-    expect(html).toContain("Check current shortcut");
-    expect(html).toContain("Click the field, then press the shortcut.");
-    expect(html).toContain("Click to edit");
-    expect(html).not.toContain("Use Alt+Space");
-    expect(html).not.toContain("Use Alt+3");
-    expect(html).not.toContain("Use Ctrl+Shift+F9");
-    expect(html).not.toContain("Save Alt+Space");
-    expect(html).not.toContain("Preview before saving");
-    expect(html).toContain("Capture");
-    expect(html).toContain("Check conflict");
-    expect(html).toContain("Swap");
-    expect(html).toContain("Rollback");
-    expect(html).toContain("Verify");
-    expect(html).toContain("save to local preference storage");
-    expect(html).not.toContain("Device activation");
-    expect(html).not.toContain("Enter invite code");
-    expect(html).not.toContain("Activate device");
-    expect(html).not.toContain("Refresh local status");
-    expect(html).not.toContain("Refresh policy");
-    expect(html).not.toContain("IDs redacted");
+    expect(hotkeys).toContain("Ajustes de escritorio");
+    expect(hotkeys).not.toContain('role="tablist"');
+    expect(hotkeys).not.toContain("Current policy");
+    for (const section of ["General", "Cuenta", "Dictado", "Atajos", "Presets", "Privacidad", "Ayuda", "Avanzado"]) {
+      expect(hotkeys).toContain(section);
+    }
+    expect(hotkeys).toContain("Tecla de dictado");
+    expect(hotkeys).toContain("Pegar el último resultado");
+    expect(hotkeys).toContain("9 atajos");
+    expect(hotkeys).toContain("Comprobar atajo");
+    expect(hotkeys).not.toContain("Device activation");
+    expect(hotkeys).not.toContain("Enter invite code");
+    expect(hotkeys).not.toContain("navigator.clipboard");
+    expect(hotkeys.toLowerCase()).not.toContain("raw transcript");
+    expect(hotkeys.toLowerCase()).not.toContain("selected text");
 
-    expect(html).not.toContain("Show dock on startup");
-    expect(html).not.toContain("Preset routing");
-    expect(html).not.toContain("Save changes");
-    expect(html).not.toContain("Record shortcut");
-    expect(html).not.toContain("Capture shortcut");
-    expect(html).not.toContain("navigator.clipboard");
-    expect(html).not.toContain("registerAll");
-    expect(html.toLowerCase()).not.toContain("dummy");
-    expect(html.toLowerCase()).not.toContain("spike-only");
-    expect(html.toLowerCase()).not.toContain("raw transcript");
-    expect(html.toLowerCase()).not.toContain("selected text");
+    expect(general).toContain("Inicio de la aplicación");
+    expect(general).toContain("Abrir Dictation al iniciar Windows");
+    expect(general).toContain("Mostrar el dock al iniciar");
+    expect(general).not.toContain("Atajos administrados por la aplicación.");
+    expect(general).not.toContain("role=\"tablist\"");
   });
 
-  it("renders Settings Cloud signed-out/basic UX without real auth", () => {
+  it("renders Cuenta signed-out UX without infrastructure detail", () => {
     const cloudStatus: FixvoxCloudStatus = {
       backendBaseUrl: "https://auth-fixvox.jpsala.dev",
       statePath: "C:/Users/JP/AppData/Roaming/dictation-tauri/fixvox-device-state.json",
@@ -77,28 +44,24 @@ describe("SettingsSurface", () => {
       redacted: true,
     };
 
-    const html = renderToStaticMarkup(<SettingsSurface initialSection="cloud" initialCloudStatus={cloudStatus} />);
+    const html = renderToStaticMarkup(<SettingsSurface initialSection="account" initialCloudStatus={cloudStatus} />);
 
-    expect(html).toContain("Fixvox Cloud");
-    expect(html).toContain("Signed out: basic mode only");
-    expect(html).toContain("Anonymous basic");
-    expect(html).toContain("Sign in to unlock");
-    expect(html).toContain("No user group");
-    expect(html).toContain("Basic anonymous");
-    expect(html).toContain("no managed dictation");
-    expect(html).toContain("managed dictation, postprocess, transforms, assistant actions, advanced settings and higher limits require Fixvox Cloud login");
-    expect(html).toContain("Browser sign-in is host-owned; Settings only receives redacted session status.");
-    expect(html).toContain("Start Fixvox Cloud sign in");
-    expect(html).toContain("Sign in with Google");
-    expect(html).toContain("Use your Fixvox account to unlock managed dictation");
-    expect(html).toContain("fixvox-device-state.json · host app data");
+    expect(html).toContain("Cuenta");
+    expect(html).toContain("Iniciá sesión para usar Dictation");
+    expect(html).toContain("Tu cuenta se vincula automáticamente a esta computadora.");
+    expect(html).toContain("Continuar con Google");
+    expect(html).toContain("El inicio de sesión se abre en el navegador y volvés a la aplicación al terminar.");
+    expect(html).not.toContain("Cloud");
+    expect(html).not.toContain("policy");
+    expect(html).not.toContain("invite code");
+    expect(html).not.toContain("fixvox-device-state.json");
     expect(html).not.toContain("user_1234567890abcdef");
     expect(html).not.toContain("dev_test_1234567890abcdef");
     expect(html).not.toContain("C:/Users/JP/AppData");
     expect(html).not.toContain("token");
   });
 
-  it("renders signed-in group/template/capabilities from simulated policy only", () => {
+  it("renders signed-in Cuenta summary from simulated redacted state", () => {
     const cloudStatus: FixvoxCloudStatus = {
       backendBaseUrl: "https://auth-fixvox.jpsala.dev",
       statePath: "redacted",
@@ -137,7 +100,7 @@ describe("SettingsSurface", () => {
 
     const html = renderToStaticMarkup(
       <SettingsSurface
-        initialSection="cloud"
+        initialSection="account"
         initialCloudStatus={cloudStatus}
         initialAuthSessionStatus={{
           status: "signed_in",
@@ -152,23 +115,21 @@ describe("SettingsSurface", () => {
       />,
     );
 
-    expect(html).toContain("Signed in policy active");
-    expect(html).toContain("Founders");
+    expect(html).toContain("Cuenta conectada");
     expect(html).toContain("Pro");
-    expect(html).toContain("managed dictation");
-    expect(html).toContain("postprocess");
-    expect(html).toContain("1500 min/month");
-    expect(html).toContain("host and cloud still enforce capabilities");
-    expect(html).toContain("Fixvox policy active");
-    expect(html).toContain("This device is linked to a redacted Fixvox account and policy capabilities are refreshed from Cloud");
-    expect(html).not.toContain("Signed in: device link pending");
+    expect(html).toContain("Tu cuenta y esta computadora están listas para dictar.");
+    expect(html).toContain("Plan Pro");
+    expect(html).not.toContain("Founders");
+    expect(html).not.toContain("managed dictation");
+    expect(html).not.toContain("postprocess");
+    expect(html).not.toContain("policy");
     expect(html).not.toContain("Capabilities remain basic until the host links this device");
     expect(html).not.toContain("user_1234567890abcdef");
     expect(html).not.toContain("device_id");
     expect(html).not.toContain("gsk_");
   });
 
-  it("hides preset navigation when the effective policy cannot run transforms", () => {
+  it("keeps Presets visible and explains unavailable capability", () => {
     const html = renderToStaticMarkup(<SettingsSurface
       initialSection="presets"
       initialCloudStatus={{
@@ -186,14 +147,15 @@ describe("SettingsSurface", () => {
       }}
     />);
 
-    expect(html).not.toContain("Preset prompt editor");
-    expect(html).not.toContain("Add preset");
-    expect(html).toContain("Essentials");
+    expect(html).toContain("Presets");
+    expect(html).toContain("Los presets no están disponibles para esta cuenta.");
+    expect(html).toContain("Presets");
+    expect(html).toContain("Agregar preset");
   });
 
-  it("shows the integrated Control Room only for admin settings capability", () => {
+  it("shows the Control Room entry only in Avanzado for admin capability", () => {
     const html = renderToStaticMarkup(<SettingsSurface
-      initialSection="admin"
+      initialSection="advanced"
       initialCloudStatus={{
         backendBaseUrl: "redacted",
         statePath: "redacted",
@@ -210,38 +172,62 @@ describe("SettingsSurface", () => {
       }}
     />);
 
-    expect(html).toContain("Control Room");
-    expect(html).toContain("Open Control Room");
+    expect(html).toContain("Avanzado");
+    expect(html).toContain("Abrir Control Room");
+    expect(html).toContain("Diagnóstico seguro");
     expect(html).not.toContain("ADMIN_API_KEY");
+
+    const nonAdminHtml = renderToStaticMarkup(<SettingsSurface initialSection="advanced" />);
+    expect(nonAdminHtml).not.toContain("Abrir Control Room");
+  });
+
+  it("renders Dictado, Privacidad and Ayuda without account or runtime internals", () => {
+    const dictation = renderToStaticMarkup(<SettingsSurface initialSection="dictation" />);
+    const privacy = renderToStaticMarkup(<SettingsSurface initialSection="privacy" />);
+    const help = renderToStaticMarkup(<SettingsSurface initialSection="help" />);
+
+    expect(dictation).toContain("Dictado");
+    expect(dictation).toContain("Detener después de un silencio");
+    expect(dictation).toContain("Silenciar salida al grabar");
+    expect(dictation).not.toContain("Cloud");
+    expect(dictation).not.toContain("policy");
+    expect(privacy).toContain("Privacidad");
+    expect(privacy).toContain("El historial se guarda sólo en esta computadora.");
+    expect(privacy).toContain("Borrar historial");
+    expect(privacy).not.toContain("raw transcript");
+    expect(help).toContain("Ayuda");
+    expect(help).toContain("Estado del servicio");
+    expect(help).toContain("Abrir diagnóstico seguro");
+    expect(help).not.toContain("provider");
   });
 
   it("renders local preset administration for starter prompt overrides", () => {
     const html = renderToStaticMarkup(<SettingsSurface initialSection="presets" />);
 
-    expect(html).toContain("Preset prompt editor");
-    expect(html).toContain("Edit starter prompts and add local custom presets used by Alt+Q");
+    expect(html).toContain("Presets");
+    expect(html).toContain("Editá los presets disponibles y agregá presets locales para Alt+Q");
     expect(html).toContain("Como yo (español)");
     expect(html).toContain("Corregir texto");
     expect(html).toContain("Fix Writing");
     expect(html).toContain("Like me (English)");
-    expect(html).toContain("Import Cloud defaults");
-    expect(html).toContain("Add preset");
-    expect(html).toContain("Name");
-    expect(html).toContain("Picker key");
-    expect(html).toContain("Enabled");
-    expect(html).toContain("Hotkey");
-    expect(html).toContain("Managed engine");
-    expect(html).toContain("Configured in Control Room");
+    expect(html).toContain("Importar valores disponibles");
+    expect(html).toContain("Agregar preset");
+    expect(html).toContain("Editar el preset seleccionado");
+    expect(html).toContain("Nombre");
+    expect(html).toContain("Tecla del selector");
+    expect(html).toContain("Atajo");
+    expect(html).not.toContain("Managed engine");
+    expect(html).not.toContain("Configured in Control Room");
     expect(html).not.toContain("Preset provider");
     expect(html).not.toContain("Preset model");
-    expect(html).toContain("No confirm");
-    expect(html).toContain("Duplicate");
-    expect(html).toContain("Save prompt");
-    expect(html).toContain("Reset starter");
-    expect(html).toContain("Starter locked");
-    expect(html).toContain("Local app data");
-    expect(html).toContain("No Cloud defaults");
-    expect(html).toContain("Alt+Q reads on next run");
+    expect(html).toContain("Sin confirmación");
+    expect(html).toContain("Duplicar");
+    expect(html).toContain("Guardar cambios");
+    expect(html).toContain("Restablecer incluido");
+    expect(html).toContain("Preset incluido");
+    expect(html).toContain("Datos locales de la aplicación");
+    expect(html).toContain("Sin valores para importar");
+    expect(html).toContain("Alt+Q se actualiza en el próximo uso");
     expect(html).not.toContain("raw transcript");
     expect(html).not.toContain("token");
   });
@@ -259,16 +245,17 @@ describe("SettingsSurface", () => {
     expect(source).toContain("handleShortcutCaptureKeyDown");
     expect(source).toContain("shortcutFromKeyboardEvent");
     expect(source).toContain("await applyCandidate(shortcut)");
-    expect(source).toContain("Press new shortcut…");
+    expect(source).toContain("Presioná el nuevo atajo…");
     expect(source).toContain("onClick={() => setSelectedSection(section.id)}");
     expect(source).not.toContain("disabled={!isActive}");
     expect(source).toContain("effectiveSection === \"hotkeys\"");
-    expect(source).toContain("effectiveSection === \"cloud\"");
+    expect(source).toContain("effectiveSection === \"account\"");
+    expect(source).toContain("effectiveSection === \"advanced\"");
     expect(source).toContain("effectiveSection === \"presets\"");
     expect(source).toContain("getTauriActionHotkeyConfig");
     expect(source).toContain("applyTauriActionHotkeyRegistration");
-    expect(source).toContain("essentialsTabs");
-    expect(source).toContain("role=\"tablist\"");
+    expect(source).not.toContain("essentialsTabs");
+    expect(source).not.toContain("role=\"tablist\"");
     expect(source).toContain("createSelectionTransformCustomPreset");
     expect(source).toContain("deleteSelectionTransformCustomPreset");
     expect(source).toContain("saveSelectionTransformPresetCustomization");
@@ -282,18 +269,18 @@ describe("SettingsSurface", () => {
     expect(source).toContain("setUserPreferences");
     expect(source).toContain("autoStopOnSilenceEnabled");
     expect(source).toContain("autoStopSilenceMs");
-    expect(source).toContain("Auto-stop after silence");
+    expect(source).toContain("Detener después de un silencio");
     expect(source).toContain("followFocusUntilDelivery");
-    expect(source).toContain("Follow focus until paste");
+    expect(source).toContain("followFocusUntilDelivery");
     expect(source).toContain("muteOutputDuringRecording");
-    expect(source).toContain("Mute output while recording");
+    expect(source).toContain("Silenciar salida al grabar");
     expect(source).toContain("dictationSoundCuesEnabled");
-    expect(source).toContain("Dictation sound cues");
+    expect(source).toContain("Sonidos de dictado");
     expect(source).toContain("getFixvoxAuthSessionStatus");
     expect(source).toContain("pollFixvoxCloudLogin");
     expect(source).toContain("pollCloudLoginStatus");
     expect(source).toContain("visibilitychange");
-    expect(source).toContain("activateFixvoxDevice");
+    expect(source).not.toContain("activateFixvoxDevice");
     expect(source).toContain("startFixvoxCloudLogin");
     expect(source).toContain("startCloudLogin");
     expect(source).not.toContain("Open the external browser to start Fixvox Cloud sign-in?");

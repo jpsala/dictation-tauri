@@ -15,23 +15,15 @@ import {
   type TauriHotkeyRegistrationPreview,
 } from "../desktop-control/tauri-host-control";
 import {
-  activateFixvoxDevice,
   deriveFixvoxAuthPolicyView,
   deriveFixvoxCloudHealth,
-  formatFixvoxStateLocation,
   getFixvoxAuthSessionStatus,
   getFixvoxCloudStatus,
   pollFixvoxCloudLogin,
-  refreshFixvoxPolicy,
-  registerFixvoxDevice,
   resolveSettingsAccess,
-  shouldConfirmFixvoxCloudOperation,
   startFixvoxCloudLogin,
-  summarizeFixvoxCloudProblem,
-  summarizeFixvoxPolicyCapabilities,
   type FixvoxAuthSessionStatus,
   type FixvoxCloudStatus,
-  type FixvoxCloudOperation,
 } from "./fixvox-cloud-control";
 import { formatHotkeyEditReason } from "./hotkey-edit-copy";
 import { nativeHotkeyEditContract } from "./hotkey-edit-contract";
@@ -65,27 +57,17 @@ import {
 import "./settings-heroui.css";
 
 const sections = [
-  { id: "general", label: "Settings", state: "Essentials", icon: "⚙" },
-  { id: "hotkeys", label: "Hotkeys", state: "Shortcuts", icon: "⌘" },
-  { id: "cloud", label: "Cloud", state: "Access", icon: "☁" },
-  { id: "dock", label: "Dock", state: "Workspace", icon: "◌" },
-  { id: "delivery", label: "Delivery", state: "Behavior", icon: "↵" },
-  { id: "presets", label: "Presets", state: "Actions", icon: "▣" },
-  { id: "admin", label: "Admin", state: "Control Room", icon: "◇" },
-  { id: "about", label: "About", state: "Version", icon: "i" },
+  { id: "general", label: "General", state: "Aplicación", icon: "⚙" },
+  { id: "account", label: "Cuenta", state: "Acceso", icon: "☁" },
+  { id: "dictation", label: "Dictado", state: "Audio y entrega", icon: "◌" },
+  { id: "hotkeys", label: "Atajos", state: "Teclado", icon: "⌘" },
+  { id: "presets", label: "Presets", state: "Acciones", icon: "▣" },
+  { id: "privacy", label: "Privacidad", state: "Datos locales", icon: "◐" },
+  { id: "help", label: "Ayuda", state: "Soporte", icon: "?" },
+  { id: "advanced", label: "Avanzado", state: "Diagnóstico", icon: "◇" },
 ] as const;
 
 type SettingsSectionId = (typeof sections)[number]["id"];
-
-type EssentialsTabId = "access" | "workspace" | "behavior" | "hotkeys" | "first-run";
-
-const essentialsTabs: Array<{ id: EssentialsTabId; label: string }> = [
-  { id: "access", label: "Access" },
-  { id: "workspace", label: "Workspace" },
-  { id: "behavior", label: "Behavior" },
-  { id: "hotkeys", label: "Hotkeys" },
-  { id: "first-run", label: "First run" },
-];
 
 type HotkeyRow = {
   id: string;
@@ -100,7 +82,7 @@ type EditorNotice = {
   message: string;
 };
 
-type BusyAction = "preview" | "apply" | FixvoxCloudOperation | "status" | "login" | "loginStatus" | "startup" | "preset" | "preferences" | "admin";
+type BusyAction = "preview" | "apply" | "status" | "login" | "loginStatus" | "startup" | "preset" | "preferences" | "history" | "admin";
 
 type CaptureState = "idle" | "recording";
 type ShortcutCaptureTarget = "dictation" | TauriActionHotkeyId;
@@ -144,15 +126,17 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     tone: "idle",
     message: "Local cloud status loads from host-owned app data.",
   });
+  const [privacyNotice, setPrivacyNotice] = useState<EditorNotice>({
+    tone: "idle",
+    message: "El historial se guarda localmente y podés borrarlo cuando quieras.",
+  });
   const [adminNotice, setAdminNotice] = useState<EditorNotice>({
     tone: "idle",
     message: "OAuth and admin credentials remain server-side in the existing Control Room.",
   });
   const [startupConfig, setStartupConfig] = useState<StartupLaunchConfig | undefined>();
   const [userPreferences, setUserPreferencesState] = useState<UserPreferences>(defaultUserPreferences);
-  const [inviteCode, setInviteCode] = useState("");
   const [selectedSection, setSelectedSection] = useState<SettingsSectionId>(initialSection);
-  const [essentialsTab, setEssentialsTab] = useState<EssentialsTabId>("workspace");
   const [presetItems, setPresetItems] = useState<SelectionTransformPresetAdminItem[]>(() =>
     listSelectionTransformPresetAdminItems(),
   );
@@ -176,10 +160,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     : tauriRuntime
       ? resolveSettingsAccess(undefined)
       : { canViewPresets: true, canEditPresets: true, canOpenAdmin: false };
-  const visibleSections = sections.filter((section) => (
-    (section.id !== "presets" || settingsAccess.canViewPresets)
-    && (section.id !== "admin" || settingsAccess.canOpenAdmin)
-  ));
+  const visibleSections = sections;
   const requestedSectionAllowed = visibleSections.some((section) => section.id === selectedSection);
   const effectiveSection = requestedSectionAllowed ? selectedSection : "general";
   const selectedSectionMeta = sections.find((section) => section.id === effectiveSection) ?? sections[0];
@@ -233,7 +214,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
   }, [cloudStatus, tauriRuntime]);
 
   useEffect(() => {
-    if (!tauriRuntime || effectiveSection !== "cloud") {
+    if (!tauriRuntime || effectiveSection !== "account") {
       return;
     }
 
@@ -268,7 +249,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
   }, [effectiveSection, settingsAccess.canViewPresets, tauriRuntime]);
 
   useEffect(() => {
-    if (!tauriRuntime || effectiveSection !== "cloud" || authSessionStatus?.status !== "pending") {
+    if (!tauriRuntime || effectiveSection !== "account" || authSessionStatus?.status !== "pending") {
       return;
     }
 
@@ -329,65 +310,65 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     () => [
       {
         id: "dictation-key",
-        label: "Dictation key",
+        label: "Tecla de dictado",
         value: dictationShortcut,
-        hint: "Hold or tap. Host-owned runtime binding.",
+        hint: "Mantenela o tocala para iniciar el dictado. La aplicación la administra.",
         mode: "host",
       },
       {
         id: "stop-submit",
-        label: "Stop and submit",
+        label: "Detener y entregar",
         value: "Alt+Shift+Space",
-        hint: "Advanced action for finishing capture and delivering immediately.",
+        hint: "Finaliza la captura y entrega el resultado.",
         mode: "fixed",
       },
       {
         id: "paste-last",
-        label: "Paste last",
+        label: "Pegar el último resultado",
         value: actionHotkeys.pasteLastSafe,
-        hint: "Safe paste path for the latest result. Host-owned action shortcut.",
+        hint: "Pega de forma segura el resultado más reciente. La aplicación administra el atajo.",
         mode: "host",
       },
       {
         id: "quick-chat",
-        label: "Quick Chat",
+        label: "Asistente rápido",
         value: "Alt+Shift+C",
-        hint: "Assistant chat surface. Planned until Quick Chat UI lands.",
+        hint: "Acción reservada para el asistente.",
         mode: "planned",
       },
       {
         id: "result-history",
-        label: "Result history",
+        label: "Historial de resultados",
         value: "Alt+Shift+Z",
-        hint: "Open recent results and paste-last recovery history.",
+        hint: "Abre los resultados recientes y la recuperación para pegar el último.",
         mode: "fixed",
       },
       {
         id: "preset-picker",
-        label: "Preset picker",
+        label: "Selector de presets",
         value: actionHotkeys.presetPicker,
-        hint: "Transforms the current selection or sets a persistent dictation preset. Host-owned action shortcut.",
+        hint: "Transforma la selección actual o elige un preset de dictado. La aplicación administra el atajo.",
         mode: "host",
       },
       {
         id: "assistant-mode",
-        label: "Assistant mode",
-        value: "Not set",
-        hint: "Planned toggle for assistant-mode dictation.",
+        label: "Modo asistente",
+        value: "Sin configurar",
+        hint: "Acción reservada para dictado asistido.",
         mode: "planned",
       },
       {
         id: "press-enter",
-        label: "Press Enter after paste",
-        value: "Not set",
-        hint: "Planned toggle for submit-after-delivery behavior.",
+        label: "Enviar después de pegar",
+        value: "Sin configurar",
+        hint: "Preferencia reservada para enviar después de entregar.",
         mode: "planned",
       },
       {
         id: "cancel-recording",
-        label: "Cancel recording",
+        label: "Cancelar grabación",
         value: "Escape",
-        hint: "Only armed during cancellable capture.",
+        hint: "Disponible sólo durante una captura que se puede cancelar.",
         mode: "fixed",
       },
     ],
@@ -425,35 +406,11 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
   const candidateChanged = editingShortcut !== dictationShortcut;
   const cloudHealth = deriveFixvoxCloudHealth(cloudStatus);
   const authPolicyView = deriveFixvoxAuthPolicyView(cloudStatus);
-  const cloudProblem = summarizeFixvoxCloudProblem(cloudStatus);
-  const cloudStateLocation = formatFixvoxStateLocation(cloudStatus?.statePath);
   const loginSessionStatus = authSessionStatus?.status ?? "signed_out";
   const loginPending = loginSessionStatus === "pending";
   const loginSignedIn = loginSessionStatus === "signed_in";
   const signedInPolicyActive = cloudStatus?.authPolicy?.accessMode === "signed_in";
-  const signedInDeviceLinkPending = loginSignedIn && !signedInPolicyActive;
-  const loginHeroTitle = signedInPolicyActive
-    ? "Fixvox policy active"
-    : loginSignedIn
-      ? "Google sign-in complete"
-      : loginPending
-        ? "Finish sign-in in your browser"
-        : "Sign in to unlock Fixvox Cloud";
-  const loginHeroDetail = signedInPolicyActive
-    ? "This device is linked to a redacted Fixvox account and policy capabilities are refreshed from Cloud."
-    : loginSignedIn
-      ? "Settings received redacted account status. Device link and policy refresh are the next host-owned step."
-      : loginPending
-        ? "After Google finishes, return here. Settings checks automatically and you can also check manually."
-        : "Use your Fixvox account to unlock managed dictation, postprocess, transforms, assistant actions and higher limits.";
-  const authStatusHeadline = signedInDeviceLinkPending ? "Signed in: device link pending" : authPolicyView.headline;
-  const authStatusDetail = signedInDeviceLinkPending
-    ? "Google sign-in completed. Capabilities remain basic until the host links this device and refreshes policy."
-    : authPolicyView.detail;
-  const authStatusAccessLabel = signedInDeviceLinkPending ? "Signed in" : authPolicyView.accessLabel;
-  const authStatusUserLabel = signedInDeviceLinkPending ? (authSessionStatus?.userRedacted ?? "user redacted") : authPolicyView.userLabel;
   const startupSummary = summarizeStartupLaunchConfig(startupConfig);
-  const startupStateLabel = startupConfig?.enabled ? "On" : "Off";
 
   async function previewCandidate(nextShortcut = editingShortcut) {
     setBusyAction("preview");
@@ -800,6 +757,22 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     }
   }
 
+  async function clearLocalHistory() {
+    if (!tauriRuntime || !window.confirm("¿Querés borrar el historial local de resultados?")) {
+      return;
+    }
+
+    setBusyAction("history");
+    try {
+      await invoke("clear_result_history");
+      setPrivacyNotice({ tone: "success", message: "El historial local se borró." });
+    } catch (error) {
+      setPrivacyNotice({ tone: "danger", message: `No pudimos borrar el historial: ${formatHotkeyEditReason(error)}` });
+    } finally {
+      setBusyAction(undefined);
+    }
+  }
+
   function refreshPresetItems(nextSelectedId = selectedPresetId) {
     const nextItems = listSelectionTransformPresetAdminItems();
     setPresetItems(nextItems);
@@ -994,62 +967,17 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     }
   }
 
-  async function runCloudOperation(operation: FixvoxCloudOperation) {
-    const code = inviteCode.trim();
-    if (operation === "activate" && !code) {
-      setCloudNotice({ tone: "warning", message: "Enter an invite code before activation." });
-      return;
-    }
-
-    if (!shouldConfirmFixvoxCloudOperation(operation, code)) {
-      setCloudNotice({ tone: "warning", message: "Cloud operation cancelled before contact." });
-      return;
-    }
-
-    const confirmed = window.confirm(
-      operation === "activate"
-        ? "Activate this Fixvox Tauri device against Fixvox Cloud using this invite code?"
-        : "Contact Fixvox Cloud now to update this device state?",
-    );
-    if (!confirmed) {
-      setCloudNotice({ tone: "idle", message: "Cloud operation cancelled." });
-      return;
-    }
-
-    setBusyAction(operation);
-    try {
-      const status = operation === "activate"
-        ? await activateFixvoxDevice(code)
-        : operation === "register"
-          ? await registerFixvoxDevice()
-          : await refreshFixvoxPolicy();
-      setCloudStatus(status);
-      const health = deriveFixvoxCloudHealth(status);
-      setCloudNotice({ tone: health.tone, message: health.detail });
-      if (operation === "activate") {
-        setInviteCode("");
-      }
-    } catch (error) {
-      setCloudNotice({
-        tone: "danger",
-        message: `Fixvox Cloud ${operation} failed: ${formatHotkeyEditReason(error)}`,
-      });
-    } finally {
-      setBusyAction(undefined);
-    }
-  }
 
   return (
-    <main className="settings-window-shell" aria-label="Dictation settings" data-theme="quiet-dark">
+    <main className="settings-window-shell" aria-label="Ajustes de Dictation">
       <aside className="settings-sidebar" aria-label="Settings sections">
         <div className="settings-brand-row">
           <div className="settings-brand-mark" aria-hidden="true">⚡</div>
           <div className="settings-brand-copy">
             <strong>Fixvox</strong>
-            <span>Desktop settings</span>
+            <span>Ajustes de escritorio</span>
           </div>
         </div>
-        <div className="settings-policy-line">Current policy: <strong>local</strong></div>
 
         <nav className="settings-nav-list">
           {visibleSections.map((section) => {
@@ -1076,7 +1004,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       <section className="settings-content" aria-labelledby={`settings-${effectiveSection}-title`}>
         <header className="settings-header">
           <div className="settings-title-block">
-            <p className="settings-path">Settings / {selectedSectionMeta.label}</p>
+            <p className="settings-path">Ajustes / {selectedSectionMeta.label}</p>
             <h1 id={`settings-${effectiveSection}-title`}>{settingsHeading}</h1>
             <p>{settingsSummary}</p>
           </div>
@@ -1084,230 +1012,110 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
         </header>
 
         {effectiveSection === "general" ? (
-        <section className="settings-panel settings-essentials-panel" aria-labelledby="settings-general-title">
+        <section className="settings-panel" aria-labelledby="settings-general-panel-title">
+          <div className="settings-panel-header">
+            <div><h2 id="settings-general-panel-title">Inicio de la aplicación</h2><p>Elegí qué ocurre cuando iniciás Windows.</p></div>
+          </div>
+          <div className="settings-hotkey-list">
+            <PreferenceToggle label="Abrir Dictation al iniciar Windows" detail={startupSummary} checked={startupConfig?.enabled === true} disabled={!tauriRuntime || busyAction === "startup" || !startupConfig?.supported} onClick={() => void toggleStartupLaunch(!startupConfig?.enabled)} />
+            <PreferenceToggle label="Mostrar el dock al iniciar" detail="La preferencia se guarda en esta computadora." checked={userPreferences.showDockOnStartup} disabled={!tauriRuntime || busyAction === "preferences"} onClick={() => void toggleUserPreference("showDockOnStartup")} />
+          </div>
+        </section>
+        ) : effectiveSection === "dictation" ? (
+        <section className="settings-panel" aria-labelledby="settings-dictation-controls-title">
           <div className="settings-panel-header">
             <div>
-              <h2 id="settings-general-title">Essentials</h2>
-              <p>Fixvox-style workspace for access, behavior, hotkeys and first-run controls.</p>
+              <h2 id="settings-dictation-controls-title">Dictado</h2>
+              <p>Elegí cómo se comporta Dictation mientras grabás y cuando entrega el resultado.</p>
             </div>
-            <span className="settings-panel-count">{essentialsTabs.length} tabs</span>
           </div>
-
-          <div className="settings-essentials-tabs" role="tablist" aria-label="Essentials sections">
-            {essentialsTabs.map((tab) => (
+          <div className="settings-hotkey-list" aria-label="Preferencias de dictado">
+            <PreferenceToggle
+              label="Detener después de un silencio"
+              detail={`Detiene el dictado después de ${userPreferences.autoStopSilenceMs} ms de silencio. Siempre podés detenerlo manualmente.`}
+              checked={userPreferences.autoStopOnSilenceEnabled}
+              disabled={!tauriRuntime || busyAction === "preferences"}
+              onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
+            />
+            <PreferenceToggle
+              label="Silenciar salida al grabar"
+              detail="Reduce el audio de otras aplicaciones durante la grabación y lo restaura al terminar."
+              checked={userPreferences.muteOutputDuringRecording}
+              disabled={!tauriRuntime || busyAction === "preferences"}
+              onClick={() => void toggleUserPreference("muteOutputDuringRecording")}
+            />
+            <PreferenceToggle
+              label="Sonidos de dictado"
+              detail="Reproduce avisos breves al iniciar, detener, completar o necesitar atención."
+              checked={userPreferences.dictationSoundCuesEnabled}
+              disabled={!tauriRuntime || busyAction === "preferences"}
+              onClick={() => void toggleUserPreference("dictationSoundCuesEnabled")}
+            />
+            <PreferenceToggle
+              label="Revisar antes de entregar"
+              detail="Abre una revisión antes de insertar el resultado cuando corresponde."
+              checked={userPreferences.reviewBeforeDelivery}
+              disabled={!tauriRuntime || busyAction === "preferences"}
+              onClick={() => void toggleUserPreference("reviewBeforeDelivery")}
+            />
+          </div>
+        </section>
+        ) : effectiveSection === "privacy" ? (
+        <section className="settings-panel" aria-labelledby="settings-privacy-title">
+          <div className="settings-panel-header">
+            <div>
+              <h2 id="settings-privacy-title">Privacidad</h2>
+              <p>Controlá los datos que Dictation conserva en esta computadora.</p>
+            </div>
+          </div>
+          <div className="settings-hotkey-list" aria-label="Privacidad y datos locales">
+            <div className="settings-hotkey-row">
+              <div className="settings-hotkey-copy">
+                <strong>Historial local</strong>
+                <span>El historial se guarda sólo en esta computadora. No se muestra su contenido en Ajustes.</span>
+              </div>
               <button
-                key={tab.id}
                 type="button"
-                role="tab"
-                aria-selected={essentialsTab === tab.id}
-                className="settings-essentials-tab"
-                onClick={() => setEssentialsTab(tab.id)}
+                className="settings-editor-button settings-editor-button-secondary"
+                disabled={!tauriRuntime || busyAction === "history"}
+                onClick={() => void clearLocalHistory()}
               >
-                {tab.label}
+                {busyAction === "history" ? "Borrando" : "Borrar historial"}
               </button>
-            ))}
+            </div>
           </div>
-
-          {essentialsTab === "access" ? (
-            <div className="settings-hotkey-list" role="tabpanel" aria-label="Access essentials">
-              <div className="settings-hotkey-row">
-                <div className="settings-hotkey-copy">
-                  <strong>Fixvox Cloud access</strong>
-                  <span>{authPolicyView.headline}. Open Cloud to sign in, repair device link or refresh policy.</span>
-                </div>
-                <button type="button" className="settings-editor-button settings-editor-button-secondary" onClick={() => setSelectedSection("cloud")}>
-                  Open Cloud
-                </button>
-              </div>
+          <div className="settings-hotkey-editor-feedback" data-tone={privacyNotice.tone} aria-live="polite">
+            <strong>{privacyNotice.message}</strong>
+          </div>
+        </section>
+        ) : effectiveSection === "help" ? (
+        <section className="settings-panel" aria-labelledby="settings-help-title">
+          <div className="settings-panel-header">
+            <div>
+              <h2 id="settings-help-title">Ayuda</h2>
+              <p>Consultá el estado general y abrí información segura si necesitás asistencia.</p>
             </div>
-          ) : essentialsTab === "workspace" ? (
-            <div className="settings-hotkey-list" role="tabpanel" aria-label="Workspace essentials">
-              <div className="settings-hotkey-row settings-toggle-row" data-health={startupConfig?.enabled ? "success" : undefined}>
-                <div className="settings-hotkey-copy">
-                  <strong>Open Fixvox when Windows starts</strong>
-                  <span>{startupSummary}</span>
-                </div>
-                <button
-                  type="button"
-                  className="settings-toggle"
-                  role="switch"
-                  aria-checked={startupConfig?.enabled === true}
-                  aria-label="Open Fixvox when Windows starts"
-                  disabled={!tauriRuntime || busyAction === "startup" || !startupConfig?.supported}
-                  onClick={() => void toggleStartupLaunch(!startupConfig?.enabled)}
-                >
-                  <span>{busyAction === "startup" ? "Saving" : startupStateLabel}</span>
-                </button>
+          </div>
+          <div className="settings-hotkey-list" aria-label="Ayuda y estado">
+            <div className="settings-hotkey-row" data-health={cloudHealth.tone}>
+              <div className="settings-hotkey-copy">
+                <strong>Estado del servicio</strong>
+                <span>{cloudHealth.badge === "Ready" ? "Dictation está listo para usar." : "Hay información disponible para ayudarte a continuar."}</span>
               </div>
-              <div className="settings-hotkey-row settings-toggle-row" data-health={userPreferences.showDockOnStartup ? "success" : undefined}>
-                <div className="settings-hotkey-copy">
-                  <strong>Show dock on startup</strong>
-                  <span>Persisted host preference. Tray Show/Hide can still override during the session.</span>
-                </div>
-                <button
-                  type="button"
-                  className="settings-toggle"
-                  role="switch"
-                  aria-checked={userPreferences.showDockOnStartup}
-                  aria-label="Show dock on startup"
-                  disabled={!tauriRuntime || busyAction === "preferences"}
-                  onClick={() => void toggleUserPreference("showDockOnStartup")}
-                >
-                  <span>{userPreferences.showDockOnStartup ? "On" : "Off"}</span>
-                </button>
-              </div>
+              <button type="button" className="settings-editor-button settings-editor-button-secondary" onClick={() => setSelectedSection("advanced")}>
+                Abrir diagnóstico seguro
+              </button>
             </div>
-          ) : essentialsTab === "behavior" ? (
-            <div className="settings-hotkey-list" role="tabpanel" aria-label="Behavior essentials">
-              <div className="settings-hotkey-row settings-toggle-row" data-health={userPreferences.reviewBeforeDelivery ? "success" : undefined}>
-                <div className="settings-hotkey-copy">
-                  <strong>Review before delivery</strong>
-                  <span>Persisted host preference for opening review before insertion when policy/user preference asks for it.</span>
-                </div>
-                <button
-                  type="button"
-                  className="settings-toggle"
-                  role="switch"
-                  aria-checked={userPreferences.reviewBeforeDelivery}
-                  aria-label="Review before delivery"
-                  disabled={!tauriRuntime || busyAction === "preferences"}
-                  onClick={() => void toggleUserPreference("reviewBeforeDelivery")}
-                >
-                  <span>{userPreferences.reviewBeforeDelivery ? "On" : "Off"}</span>
-                </button>
-              </div>
-<div className="settings-hotkey-row settings-toggle-row" data-health={userPreferences.pressEnterAfterPaste ? "success" : undefined}>
-<div className="settings-hotkey-copy">
-<strong>Press Enter after paste</strong>
-<span>Persisted Fixvox behavior control. Runtime still fails closed when delivery is uncertain.</span>
-</div>
-<button
-type="button"
-className="settings-toggle"
-role="switch"
-aria-checked={userPreferences.pressEnterAfterPaste}
-aria-label="Press Enter after paste"
-disabled={!tauriRuntime || busyAction === "preferences"}
-onClick={() => void toggleUserPreference("pressEnterAfterPaste")}
->
-<span>{userPreferences.pressEnterAfterPaste ? "On" : "Off"}</span>
-</button>
-</div>
-<div className="settings-hotkey-row settings-toggle-row" data-health={userPreferences.followFocusUntilDelivery ? "success" : undefined}>
-<div className="settings-hotkey-copy">
-<strong>Follow focus until paste</strong>
-<span>Off pastes into the window active when dictation stops. On keeps following focus until the result is ready.</span>
-</div>
-<button
- type="button"
- className="settings-toggle"
- role="switch"
- aria-checked={userPreferences.followFocusUntilDelivery}
- aria-label="Follow focus until paste"
- disabled={!tauriRuntime || busyAction === "preferences"}
- onClick={() => void toggleUserPreference("followFocusUntilDelivery")}
->
-<span>{userPreferences.followFocusUntilDelivery ? "On" : "Off"}</span>
-</button>
-</div>
-<div className="settings-hotkey-row settings-toggle-row" data-health={userPreferences.muteOutputDuringRecording ? "success" : undefined}>
-<div className="settings-hotkey-copy">
-<strong>Mute output while recording</strong>
-<span>Attempts to mute speaker output during capture and restore it after stop/cancel/error.</span>
-</div>
-<button
- type="button"
- className="settings-toggle"
- role="switch"
- aria-checked={userPreferences.muteOutputDuringRecording}
- aria-label="Mute output while recording"
- disabled={!tauriRuntime || busyAction === "preferences"}
- onClick={() => void toggleUserPreference("muteOutputDuringRecording")}
->
-<span>{userPreferences.muteOutputDuringRecording ? "On" : "Off"}</span>
-</button>
-</div>
-<div className="settings-hotkey-row settings-toggle-row" data-health={userPreferences.dictationSoundCuesEnabled ? "success" : undefined}>
-<div className="settings-hotkey-copy">
-<strong>Dictation sound cues</strong>
-<span>Optional non-blocking cues for start, stop, success, no-speech and error states.</span>
-</div>
-<button
- type="button"
- className="settings-toggle"
- role="switch"
- aria-checked={userPreferences.dictationSoundCuesEnabled}
- aria-label="Dictation sound cues"
- disabled={!tauriRuntime || busyAction === "preferences"}
- onClick={() => void toggleUserPreference("dictationSoundCuesEnabled")}
->
-<span>{userPreferences.dictationSoundCuesEnabled ? "On" : "Off"}</span>
-</button>
-</div>
-<div className="settings-hotkey-row settings-toggle-row" data-health={userPreferences.autoStopOnSilenceEnabled ? "success" : undefined}>
-<div className="settings-hotkey-copy">
-<strong>Auto-stop after silence</strong>
-<span>Stops recording after {userPreferences.autoStopSilenceMs} ms of silence. Manual stop remains available.</span>
-</div>
-<button
-type="button"
-className="settings-toggle"
-role="switch"
-aria-checked={userPreferences.autoStopOnSilenceEnabled}
-aria-label="Auto-stop after silence"
-disabled={!tauriRuntime || busyAction === "preferences"}
-onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
->
-<span>{userPreferences.autoStopOnSilenceEnabled ? "On" : "Off"}</span>
-</button>
-</div>
-            </div>
-          ) : essentialsTab === "hotkeys" ? (
-            <div className="settings-hotkey-list" role="tabpanel" aria-label="Hotkey essentials">
-              <div className="settings-hotkey-row">
-                <div className="settings-hotkey-copy">
-                  <strong>Dictation key</strong>
-                  <span>Current binding: {dictationShortcut}. Full shortcut editor lives in Hotkeys.</span>
-                </div>
-                <button type="button" className="settings-editor-button settings-editor-button-secondary" onClick={() => setSelectedSection("hotkeys")}>
-                  Open Hotkeys
-                </button>
-              </div>
-              <div className="settings-hotkey-row">
-                <div className="settings-hotkey-copy">
-                  <strong>Picker</strong>
-                  <span>{actionHotkeys.presetPicker} transforms the current selection or sets a persistent dictation preset.</span>
-                </div>
-                <div className="settings-hotkey-value"><kbd>{actionHotkeys.presetPicker}</kbd><small>host</small></div>
-              </div>
-            </div>
-          ) : (
-            <div className="settings-hotkey-list" role="tabpanel" aria-label="First run essentials">
-              <div className="settings-hotkey-row">
-                <div className="settings-hotkey-copy">
-                  <strong>Onboarding and identity</strong>
-                  <span>Planned first-run replay/reset controls. Kept here to match Fixvox Essentials layout.</span>
-                </div>
-                <div className="settings-hotkey-value"><kbd>Planned</kbd><small>first run</small></div>
-              </div>
-              <div className="settings-hotkey-row">
-                <div className="settings-hotkey-copy">
-                  <strong>Version</strong>
-                  <span>About/version details stay visible without exposing secrets or raw local paths.</span>
-                </div>
-                <div className="settings-hotkey-value"><kbd>Local</kbd><small>about</small></div>
-              </div>
-            </div>
-          )}
+          </div>
         </section>
         ) : effectiveSection === "hotkeys" ? (
         <section className="settings-panel" aria-labelledby="settings-current-bindings-title">
           <div className="settings-panel-header">
             <div>
-              <h2 id="settings-current-bindings-title">Shortcut editor</h2>
-              <p>Edit the primary dictation key and action shortcuts, host-owned.</p>
+              <h2 id="settings-current-bindings-title">Atajos</h2>
+              <p>Cambiá el atajo de dictado y los atajos de acciones desde la aplicación.</p>
             </div>
-            <span className="settings-panel-count">{hotkeys.length} keys</span>
+            <span className="settings-panel-count">{hotkeys.length} atajos</span>
           </div>
 
           <section className="settings-hotkey-editor" aria-labelledby="settings-hotkey-editor-title">
@@ -1317,11 +1125,11 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                   <h3 id="settings-hotkey-editor-title">{nativeHotkeyEditContract.heading}</h3>
                   <span>{nativeHotkeyEditContract.statusLabel}</span>
                 </div>
-                <p>{nativeHotkeyEditContract.summary} Click the field, then press the shortcut.</p>
+                <p>{nativeHotkeyEditContract.summary} Seleccioná el campo y presioná el nuevo atajo.</p>
               </div>
-              <div className="settings-hotkey-editor-state" aria-label="Hotkey edit state">
-                <span>Current <kbd>{dictationShortcut}</kbd></span>
-                <span>Candidate <kbd>{editingShortcut}</kbd></span>
+              <div className="settings-hotkey-editor-state" aria-label="Estado de edición del atajo">
+                <span>Actual <kbd>{dictationShortcut}</kbd></span>
+                <span>Nuevo <kbd>{editingShortcut}</kbd></span>
               </div>
             </div>
 
@@ -1332,13 +1140,13 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
               disabled={!tauriRuntime || Boolean(busyAction)}
               onClick={() => void startShortcutCapture()}
               onKeyDown={(event) => void handleShortcutCaptureKeyDown(event)}
-              aria-label={`Dictation key shortcut: ${editingShortcut}. Click, then press a new shortcut.`}
+              aria-label={`Atajo de dictado: ${editingShortcut}. Seleccionalo y presioná un nuevo atajo.`}
             >
-              <span>{captureState === "recording" && captureTarget === "dictation" ? "Press new shortcut…" : editingShortcut}</span>
-              <small>{captureState === "recording" && captureTarget === "dictation" ? "Esc cancels" : "Click to edit"}</small>
+              <span>{captureState === "recording" && captureTarget === "dictation" ? "Presioná el nuevo atajo…" : editingShortcut}</span>
+              <small>{captureState === "recording" && captureTarget === "dictation" ? "Esc cancela" : "Seleccionar para cambiar"}</small>
             </button>
 
-            <div className="settings-hotkey-editor-actions settings-action-hotkey-editors" aria-label="Action shortcut editors">
+            <div className="settings-hotkey-editor-actions settings-action-hotkey-editors" aria-label="Editores de atajos de acciones">
               <button
                 type="button"
                 className="settings-hotkey-recorder settings-hotkey-recorder-compact"
@@ -1346,10 +1154,10 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                 disabled={!tauriRuntime || Boolean(busyAction)}
                 onClick={() => void startShortcutCapture("preset_picker")}
                 onKeyDown={(event) => void handleShortcutCaptureKeyDown(event)}
-                aria-label={`Preset picker shortcut: ${actionHotkeys.presetPicker}. Click, then press a new shortcut.`}
+                aria-label={`Atajo del selector de presets: ${actionHotkeys.presetPicker}. Seleccionalo y presioná un nuevo atajo.`}
               >
-                <span>{captureState === "recording" && captureTarget === "preset_picker" ? "Press new shortcut…" : actionHotkeys.presetPicker}</span>
-                <small>Preset picker</small>
+                <span>{captureState === "recording" && captureTarget === "preset_picker" ? "Presioná el nuevo atajo…" : actionHotkeys.presetPicker}</span>
+                <small>Selector de presets</small>
               </button>
               <button
                 type="button"
@@ -1358,10 +1166,10 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                 disabled={!tauriRuntime || Boolean(busyAction)}
                 onClick={() => void startShortcutCapture("paste_last_safe")}
                 onKeyDown={(event) => void handleShortcutCaptureKeyDown(event)}
-                aria-label={`Paste last shortcut: ${actionHotkeys.pasteLastSafe}. Click, then press a new shortcut.`}
+                aria-label={`Atajo para pegar el último resultado: ${actionHotkeys.pasteLastSafe}. Seleccionalo y presioná un nuevo atajo.`}
               >
-                <span>{captureState === "recording" && captureTarget === "paste_last_safe" ? "Press new shortcut…" : actionHotkeys.pasteLastSafe}</span>
-                <small>Paste last</small>
+                <span>{captureState === "recording" && captureTarget === "paste_last_safe" ? "Presioná el nuevo atajo…" : actionHotkeys.pasteLastSafe}</span>
+                <small>Pegar el último</small>
               </button>
             </div>
 
@@ -1372,12 +1180,12 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                 disabled={!tauriRuntime || Boolean(busyAction) || captureState === "recording"}
                 onClick={() => void previewCandidate()}
               >
-                {busyAction === "preview" ? "Checking" : "Check current shortcut"}
+                {busyAction === "preview" ? "Comprobando" : "Comprobar atajo"}
               </button>
             </div>
 
             <div className="settings-hotkey-editor-feedback" data-tone={notice.tone}>
-              <span>{candidateChanged ? "Change staged" : "Current binding selected"}</span>
+              <span>{candidateChanged ? "Cambio preparado" : "Atajo actual seleccionado"}</span>
               {previewCopy ? <span>{previewCopy}</span> : null}
               {applyCopy ? <span>{applyCopy}</span> : null}
               {actionPreviewCopy ? <span>{actionPreviewCopy}</span> : null}
@@ -1393,8 +1201,8 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
           </section>
 
           <div className="settings-subsection-heading">
-            <strong>All bindings</strong>
-            <span>{hotkeys.length} shortcuts</span>
+            <strong>Todos los atajos</strong>
+            <span>{hotkeys.length} atajos</span>
           </div>
           <div className="settings-hotkey-list">
             {hotkeys.map((hotkey) => (
@@ -1406,8 +1214,8 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
         <section className="settings-panel settings-presets-panel" aria-labelledby="settings-presets-title">
           <div className="settings-panel-header">
             <div>
-              <h2 id="settings-presets-title">Preset prompt editor</h2>
-              <p>Edit starter prompts and add local custom presets used by Alt+Q.</p>
+              <h2 id="settings-presets-title">Presets</h2>
+              <p>Editá los presets disponibles y agregá presets locales para Alt+Q.</p>
             </div>
             <div className="settings-panel-header-actions">
               <button
@@ -1417,7 +1225,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                 onClick={() => void importCloudPresetDefaults()}
                 title={cloudPresetDefaults.length ? "Import preset defaults from the current redacted Cloud policy snapshot." : "No Cloud preset defaults found in the current policy snapshot."}
               >
-                {busyAction === "preset" ? "Importing" : "Import Cloud defaults"}
+                {busyAction === "preset" ? "Importando" : "Importar valores disponibles"}
               </button>
               <button
                 type="button"
@@ -1425,11 +1233,17 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                 disabled={Boolean(busyAction) || !settingsAccess.canEditPresets}
                 onClick={addCustomPreset}
               >
-                Add preset
+                Agregar preset
               </button>
               <span className="settings-panel-count">{presetItems.length} presets</span>
             </div>
           </div>
+
+          {!settingsAccess.canViewPresets ? (
+            <div className="settings-hotkey-editor-feedback" data-tone="warning" aria-live="polite">
+              <strong>Los presets no están disponibles para esta cuenta.</strong>
+            </div>
+          ) : null}
 
           <div className="settings-preset-admin-grid">
             <div className="settings-hotkey-list settings-preset-admin-list" aria-label="Preset list">
@@ -1453,39 +1267,37 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
               ))}
             </div>
 
-            <section className="settings-hotkey-editor settings-preset-editor" aria-labelledby="settings-preset-editor-title">
+            <details className="settings-preset-details">
+              <summary>Editar el preset seleccionado</summary>
+              <section className="settings-hotkey-editor settings-preset-editor" aria-labelledby="settings-preset-editor-title">
               <div className="settings-hotkey-editor-topline">
                 <div className="settings-hotkey-editor-copy">
                   <div className="settings-native-plan-heading">
                     <h3 id="settings-preset-editor-title">{selectedPreset?.name ?? "Preset"}</h3>
-                    <span>{selectedPreset?.isCustomized ? "Custom" : "Starter"}</span>
+                    <span>{selectedPreset?.isCustomized ? "Personalizado" : "Incluido"}</span>
                   </div>
-                  <p>{selectedPreset?.id ?? "No preset selected"} · picker key {selectedPreset?.pickerKey ?? "—"}</p>
-                </div>
-                <div className="settings-hotkey-editor-state" aria-label="Preset routing">
-                  <span>Managed engine</span>
-                  <span>Configured in Control Room</span>
+                  <p>Tecla del selector: {selectedPreset?.pickerKey ?? "—"}</p>
                 </div>
               </div>
 
               <div className="settings-preset-metadata-grid">
                 <label className="settings-preset-field">
-                  <span>Name</span>
+                  <span>Nombre</span>
                   <input
                     value={presetNameDraft}
                     disabled={!settingsAccess.canEditPresets}
                     onChange={(event) => setPresetNameDraft(event.target.value)}
-                    aria-label="Preset name"
+                    aria-label="Nombre del preset"
                   />
                 </label>
                 <label className="settings-preset-field settings-preset-field-short">
-                  <span>Picker key</span>
+                  <span>Tecla del selector</span>
                   <input
                     value={presetPickerKeyDraft}
                     maxLength={1}
                     disabled={!settingsAccess.canEditPresets}
                     onChange={(event) => setPresetPickerKeyDraft(event.target.value.toUpperCase().slice(0, 1))}
-                    aria-label="Preset picker key"
+                    aria-label="Tecla del selector del preset"
                   />
                 </label>
                 <button
@@ -1496,18 +1308,18 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                   disabled={!settingsAccess.canEditPresets}
                   onClick={() => setPresetEnabledDraft(!presetEnabledDraft)}
                 >
-                  <span>{presetEnabledDraft ? "Enabled" : "Disabled"}</span>
+                  <span className="sr-only">{presetEnabledDraft ? "Activado" : "Desactivado"}</span>
                 </button>
               </div>
 
               <div className="settings-preset-metadata-grid settings-preset-metadata-grid-secondary">
                 <label className="settings-preset-field">
-                  <span>Hotkey</span>
+                  <span>Atajo</span>
                   <input
                     value={presetHotkeyDraft}
                     disabled={!settingsAccess.canEditPresets}
                     onChange={(event) => setPresetHotkeyDraft(event.target.value)}
-                    aria-label="Preset hotkey"
+                    aria-label="Atajo del preset"
                     placeholder="Alt+T, N"
                   />
                 </label>
@@ -1522,7 +1334,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                   disabled={!settingsAccess.canEditPresets}
                   onClick={() => setPresetConfirmDraft(!presetConfirmDraft)}
                 >
-                  <span>{presetConfirmDraft ? "Confirm" : "No confirm"}</span>
+                  <span className="sr-only">{presetConfirmDraft ? "Pedir confirmación" : "Sin confirmación"}</span>
                 </button>
               </div>
 
@@ -1532,7 +1344,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                 disabled={!settingsAccess.canEditPresets}
                 onChange={(event) => setPresetDraft(event.target.value)}
                 spellCheck={false}
-                aria-label="Preset prompt body"
+                aria-label="Instrucción del preset"
               />
 
               <div className="settings-hotkey-editor-actions">
@@ -1542,7 +1354,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                   disabled={Boolean(busyAction) || !selectedPreset || !settingsAccess.canEditPresets}
                   onClick={duplicateSelectedPreset}
                 >
-                  Duplicate
+                  Duplicar
                 </button>
                 <button
                   type="button"
@@ -1551,7 +1363,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                   onClick={resetPresetDraft}
                   title={selectedPreset?.canDelete ? "Custom presets do not have a bundled starter to reset." : undefined}
                 >
-                  Reset starter
+                  Restablecer incluido
                 </button>
                 <button
                   type="button"
@@ -1560,7 +1372,7 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                   onClick={deleteSelectedPreset}
                   title={selectedPreset?.canDelete ? "Delete this local custom preset." : "Starter presets are locked. Add a custom preset to delete it later."}
                 >
-                  {selectedPreset?.canDelete ? "Delete preset" : "Starter locked"}
+                  {selectedPreset?.canDelete ? "Eliminar preset" : "Preset incluido"}
                 </button>
                 <button
                   type="button"
@@ -1568,223 +1380,146 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
                   disabled={Boolean(busyAction) || !selectedPreset || !presetDraftChanged || !settingsAccess.canEditPresets}
                   onClick={savePresetDraft}
                 >
-                  {busyAction === "preset" ? "Saving" : "Save prompt"}
+                  {busyAction === "preset" ? "Guardando" : "Guardar cambios"}
                 </button>
               </div>
 
               <div className="settings-hotkey-editor-feedback" data-tone={presetNotice.tone}>
-                <span>{presetDraftChanged ? "Unsaved changes" : "Saved prompt"}</span>
-                <span>Local app data</span>
-                <span>{cloudPresetDefaults.length ? `${cloudPresetDefaults.length} Cloud defaults` : "No Cloud defaults"}</span>
-                <span>Alt+Q reads on next run</span>
+                <span>{presetDraftChanged ? "Cambios sin guardar" : "Cambios guardados"}</span>
+                <span>Datos locales de la aplicación</span>
+                <span>{cloudPresetDefaults.length ? `${cloudPresetDefaults.length} valores disponibles` : "Sin valores para importar"}</span>
+                <span>Alt+Q se actualiza en el próximo uso</span>
                 <strong>{presetNotice.message}</strong>
               </div>
-            </section>
+              </section>
+            </details>
           </div>
         </section>
-        ) : effectiveSection === "admin" ? (
-        <section className="settings-panel settings-cloud-panel" aria-labelledby="settings-admin-title">
+        ) : effectiveSection === "account" ? (
+        <section className="settings-panel settings-cloud-panel" aria-labelledby="settings-account-title">
           <div className="settings-panel-header">
             <div>
-              <h2 id="settings-admin-title">Control Room</h2>
-              <p>Manage accounts, profiles, engines, prompts, budgets and groups through the existing authenticated admin surface.</p>
+              <h2 id="settings-account-title">Cuenta</h2>
+              <p>Administrá el acceso a Dictation en esta computadora.</p>
             </div>
-            <span className="settings-panel-count">Power admin</span>
+            <span className="settings-panel-count">{loginSignedIn && signedInPolicyActive ? "Conectada" : "Sin iniciar sesión"}</span>
           </div>
 
-          <div className="settings-hotkey-list" aria-label="Control Room access">
-            <div className="settings-hotkey-row">
-              <div className="settings-hotkey-copy">
-                <strong>Server-authoritative administration</strong>
-                <span>Settings opens the current Control Room without copying its CRUD or exposing admin credentials to this renderer.</span>
+          <div className="settings-hotkey-list" aria-label="Estado de cuenta">
+            {loginSignedIn && signedInPolicyActive ? (
+              <>
+                <div className="settings-hotkey-row" data-health="success">
+                  <div className="settings-hotkey-copy">
+                    <strong>Cuenta conectada</strong>
+                    <span>Tu cuenta y esta computadora están listas para dictar.</span>
+                  </div>
+                  <div className="settings-hotkey-value"><kbd>Lista</kbd><small>cuenta protegida</small></div>
+                </div>
+                <div className="settings-hotkey-row">
+                  <div className="settings-hotkey-copy">
+                    <strong>Plan {authPolicyView.templateLabel}</strong>
+                    <span>Los límites y funciones disponibles se aplican automáticamente.</span>
+                  </div>
+                  <div className="settings-hotkey-value"><kbd>{authPolicyView.limitsLabel}</kbd><small>actual</small></div>
+                </div>
+              </>
+            ) : (
+              <div className="settings-hotkey-row" data-health="warning">
+                <div className="settings-hotkey-copy">
+                  <strong>Iniciá sesión para usar Dictation</strong>
+                  <span>Tu cuenta se vincula automáticamente a esta computadora.</span>
+                </div>
+                <div className="settings-hotkey-value"><kbd>Pendiente</kbd><small>cuenta</small></div>
               </div>
-              <button
-                type="button"
-                className="settings-editor-button settings-editor-button-primary"
-                disabled={!tauriRuntime || busyAction === "admin"}
-                onClick={() => void openAdminControlRoom()}
-              >
-                {busyAction === "admin" ? "Opening" : "Open Control Room"}
-              </button>
-            </div>
+            )}
           </div>
 
-          <div className="settings-hotkey-editor-feedback" data-tone={adminNotice.tone}>
-            <span>OAuth server-side</span>
-            <span>No admin secret in app</span>
-            <strong>{adminNotice.message}</strong>
-          </div>
-        </section>
-        ) : effectiveSection === "cloud" ? (
-        <section className="settings-panel settings-cloud-panel" aria-labelledby="settings-cloud-title">
-          <div className="settings-panel-header">
-            <div>
-              <h2 id="settings-cloud-title">Fixvox Cloud</h2>
-              <p>Device, activation, policy/preflight and managed runtime.</p>
-            </div>
-            <span className="settings-panel-count">{cloudHealth.badge}</span>
-          </div>
-
-          <div className="settings-hotkey-list" aria-label="Fixvox Cloud status">
-            <div className="settings-hotkey-row" data-health={loginSignedIn ? "success" : authPolicyView.tone}>
-              <div className="settings-hotkey-copy">
-                <strong>{authStatusHeadline}</strong>
-                <span>{authStatusDetail}</span>
-              </div>
-              <div className="settings-hotkey-value" aria-label="Fixvox Cloud auth status">
-                <kbd>{authStatusAccessLabel}</kbd>
-                <small>{authStatusUserLabel}</small>
-              </div>
-            </div>
-            <div className="settings-hotkey-row" data-health={cloudHealth.tone}>
-              <div className="settings-hotkey-copy">
-                <strong>{cloudHealth.headline}</strong>
-                <span>{cloudHealth.detail}</span>
-              </div>
-              <div className="settings-hotkey-value" aria-label="Fixvox Cloud device status">
-                <kbd>{cloudHealth.activationLabel}</kbd>
-                <small>{cloudStatus?.deviceIdRedacted ?? cloudStatus?.installIdRedacted ?? "local"}</small>
-              </div>
-            </div>
-            <div className="settings-hotkey-row">
-              <div className="settings-hotkey-copy">
-                <strong>Policy group</strong>
-                <span>{authPolicyView.groupLabel}</span>
-              </div>
-              <div className="settings-hotkey-value" aria-label="Fixvox Cloud policy group">
-                <kbd>{authPolicyView.templateLabel}</kbd>
-                <small>{authPolicyView.accessLabel}</small>
-              </div>
-            </div>
-            <div className="settings-hotkey-row">
-              <div className="settings-hotkey-copy">
-                <strong>Capabilities</strong>
-                <span>{authPolicyView.capabilityLabel}</span>
-              </div>
-              <div className="settings-hotkey-value" aria-label="Fixvox Cloud capabilities">
-                <kbd>{cloudHealth.managedLabel}</kbd>
-                <small>{cloudStatus?.capabilities?.canSeeAdvancedSettings ? "advanced" : "basic"}</small>
-              </div>
-            </div>
-            <div className="settings-hotkey-row">
-              <div className="settings-hotkey-copy">
-                <strong>Policy snapshot</strong>
-                <span>{summarizeFixvoxPolicyCapabilities(cloudStatus)}</span>
-              </div>
-              <div className="settings-hotkey-value" aria-label="Fixvox Cloud policy status">
-                <kbd>{cloudHealth.policyLabel}</kbd>
-                <small>{cloudStatus?.policySnapshot?.trust ?? "pending"}</small>
-              </div>
-            </div>
-            <div className="settings-hotkey-row">
-              <div className="settings-hotkey-copy">
-                <strong>Next step</strong>
-                <span>{cloudHealth.nextAction}</span>
-              </div>
-              <div className="settings-hotkey-value" aria-label="Fixvox Cloud next step">
-                <kbd>{cloudProblem}</kbd>
-                <small>{cloudStatus?.policySnapshot?.stale ? "stale" : "checked"}</small>
-              </div>
-            </div>
-          </div>
-
-          <section className="settings-hotkey-editor" aria-labelledby="settings-cloud-activation-title">
+          <section className="settings-hotkey-editor" aria-labelledby="settings-account-action-title">
             <div className="settings-hotkey-editor-topline">
               <div className="settings-hotkey-editor-copy">
                 <div className="settings-native-plan-heading">
-                  <h3 id="settings-cloud-activation-title">Fixvox Cloud sign in</h3>
-                  <span>Host-owned</span>
+                  <h3 id="settings-account-action-title">Acceso seguro</h3>
+                  <span>Cuenta</span>
                 </div>
-                <p>Sign-in opens your browser directly. Settings never receives secrets and only displays redacted session status.</p>
-              </div>
-              <div className="settings-hotkey-editor-state" aria-label="Fixvox Cloud auth action">
-                <span>{authPolicyView.limitsLabel}</span>
-                <span>{authSessionStatus ? `Session ${authSessionStatus.status}` : authPolicyView.actionHint}</span>
-                {authSessionStatus?.userRedacted ? <span>{authStatusUserLabel}</span> : null}
-                {authSessionStatus?.sessionIdRedacted ? <span>{authSessionStatus.sessionIdRedacted}</span> : null}
+                <p>El inicio de sesión se abre en el navegador y volvés a la aplicación al terminar.</p>
               </div>
             </div>
-
-            <div className="settings-cloud-login-hero" data-status={loginSessionStatus}>
-              <div className="settings-cloud-login-hero-copy">
-                <span>Fixvox account</span>
-                <strong>{loginHeroTitle}</strong>
-                <small>{loginHeroDetail}</small>
-              </div>
-              <div className="settings-cloud-login-hero-actions">
+            <div className="settings-hotkey-editor-actions">
+              <button
+                type="button"
+                className="settings-editor-button settings-editor-button-primary"
+                disabled={!tauriRuntime || Boolean(busyAction)}
+                onClick={() => void startCloudLogin()}
+              >
+                {busyAction === "login" ? "Abriendo…" : loginSignedIn ? "Iniciar sesión de nuevo" : "Continuar con Google"}
+              </button>
+              {loginPending || loginSignedIn ? (
                 <button
                   type="button"
-                  className="settings-cloud-login-primary"
+                  className="settings-editor-button settings-editor-button-secondary"
                   disabled={!tauriRuntime || Boolean(busyAction)}
-                  onClick={() => void startCloudLogin()}
-                  aria-label="Start Fixvox Cloud sign in"
+                  onClick={() => void pollCloudLoginStatus()}
                 >
-                  {busyAction === "login" ? "Opening browser…" : loginSignedIn ? "Sign in again" : "Sign in with Google"}
+                  {busyAction === "loginStatus" ? "Comprobando" : "Comprobar estado"}
                 </button>
-                {loginPending || loginSignedIn ? (
-                  <button
-                    type="button"
-                    className="settings-editor-button settings-editor-button-secondary settings-cloud-login-status-button"
-                    disabled={!tauriRuntime || Boolean(busyAction)}
-                    onClick={() => void pollCloudLoginStatus()}
-                  >
-                    {busyAction === "loginStatus" ? "Checking" : "Check sign-in status"}
-                  </button>
-                ) : null}
-              </div>
+              ) : null}
             </div>
-
-            <input
-              className="settings-hotkey-recorder settings-cloud-invite-input"
-              value={inviteCode}
-              onChange={(event) => setInviteCode(event.target.value)}
-              placeholder="Enter invite code"
-              aria-label="Fixvox Cloud invite code"
-              disabled={!tauriRuntime || Boolean(busyAction)}
-            />
-
-            <div className="settings-hotkey-editor-actions">
+            <div className="settings-hotkey-editor-feedback" data-tone={cloudNotice.tone} aria-live="polite">
+              <strong>{cloudNotice.message}</strong>
+            </div>
+          </section>
+        </section>
+        ) : effectiveSection === "advanced" ? (
+        <section className="settings-panel settings-cloud-panel" aria-labelledby="settings-advanced-title">
+          <div className="settings-panel-header">
+            <div>
+              <h2 id="settings-advanced-title">Avanzado</h2>
+              <p>Diagnóstico reducido para resolver problemas sin mostrar datos sensibles.</p>
+            </div>
+            <span className="settings-panel-count">Diagnóstico</span>
+          </div>
+          <div className="settings-hotkey-list" aria-label="Diagnóstico seguro">
+            <div className="settings-hotkey-row" data-health={cloudHealth.tone}>
+              <div className="settings-hotkey-copy">
+                <strong>Diagnóstico seguro</strong>
+                <span>{cloudHealth.detail}</span>
+              </div>
+              <div className="settings-hotkey-value"><kbd>{cloudHealth.badge}</kbd><small>redactado</small></div>
+            </div>
+            <div className="settings-hotkey-row">
+              <div className="settings-hotkey-copy">
+                <strong>Estado del servicio</strong>
+                <span>Podés actualizar el estado antes de pedir ayuda.</span>
+              </div>
               <button
                 type="button"
                 className="settings-editor-button settings-editor-button-secondary"
                 disabled={!tauriRuntime || Boolean(busyAction)}
                 onClick={() => void loadCloudStatus()}
               >
-                {busyAction === "status" ? "Reading" : "Refresh local status"}
-              </button>
-              <button
-                type="button"
-                className="settings-editor-button settings-editor-button-secondary"
-                disabled={!tauriRuntime || Boolean(busyAction)}
-                onClick={() => void (signedInDeviceLinkPending ? pollCloudLoginStatus() : runCloudOperation("register"))}
-              >
-                {busyAction === "register" ? "Repairing" : signedInDeviceLinkPending ? "Link signed-in device" : "Repair device link"}
-              </button>
-              <button
-                type="button"
-                className="settings-editor-button settings-editor-button-secondary"
-                disabled={!tauriRuntime || Boolean(busyAction)}
-                onClick={() => void runCloudOperation("refresh")}
-              >
-                {busyAction === "refresh" ? "Refreshing" : "Refresh policy"}
-              </button>
-              <button
-                type="button"
-                className="settings-editor-button settings-editor-button-primary"
-                disabled={!tauriRuntime || Boolean(busyAction) || !inviteCode.trim()}
-                onClick={() => void runCloudOperation("activate")}
-              >
-                {busyAction === "activate" ? "Activating" : "Activate device"}
+                {busyAction === "status" ? "Actualizando" : "Actualizar estado"}
               </button>
             </div>
-
-            <div className="settings-hotkey-editor-feedback" data-tone={cloudNotice.tone}>
-              <span>IDs redacted</span>
-              <span>{authSessionStatus?.sessionPath ?? cloudStateLocation}</span>
-              <span>{authSessionStatus?.secretsPresent ? "session secrets host-owned" : cloudProblem}</span>
-              <strong>{cloudNotice.message}</strong>
-            </div>
-          </section>
+            {settingsAccess.canOpenAdmin ? (
+              <div className="settings-hotkey-row">
+                <div className="settings-hotkey-copy">
+                  <strong>Control Room</strong>
+                  <span>Administración separada para personas autorizadas.</span>
+                </div>
+                <button
+                  type="button"
+                  className="settings-editor-button settings-editor-button-primary"
+                  disabled={!tauriRuntime || busyAction === "admin"}
+                  onClick={() => void openAdminControlRoom()}
+                >
+                  {busyAction === "admin" ? "Abriendo" : "Abrir Control Room"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <div className="settings-hotkey-editor-feedback" data-tone={adminNotice.tone} aria-live="polite">
+            <strong>{adminNotice.message}</strong>
+          </div>
         </section>
         ) : (
         <section className="settings-panel settings-planned-panel" aria-labelledby={`settings-${effectiveSection}-planned-title`}>
@@ -1807,44 +1542,63 @@ onClick={() => void toggleUserPreference("autoStopOnSilenceEnabled")}
 
 function sectionHeading(sectionId: SettingsSectionId): string {
   switch (sectionId) {
-    case "hotkeys":
-      return "Keyboard shortcuts";
-    case "cloud":
-      return "Fixvox Cloud";
-    case "general":
-      return "Settings";
-    case "dock":
-      return "Dock";
-    case "delivery":
-      return "Delivery";
-    case "presets":
-      return "Presets";
-    case "admin":
-      return "Control Room";
-    case "about":
-      return "About";
+    case "general": return "General";
+    case "account": return "Cuenta";
+    case "dictation": return "Dictado";
+    case "hotkeys": return "Atajos";
+    case "presets": return "Presets";
+    case "privacy": return "Privacidad";
+    case "help": return "Ayuda";
+    case "advanced": return "Avanzado";
   }
 }
 
 function sectionSummary(sectionId: SettingsSectionId): string {
   switch (sectionId) {
-    case "hotkeys":
-      return "Host-owned runtime bindings.";
-    case "cloud":
-      return "Device, activation, policy/preflight and managed runtime.";
-    case "general":
-      return "Essentials for access, workspace, behavior, hotkeys and first run.";
-    case "dock":
-      return "Dock behavior remains controlled by the native shell until this section gets real controls.";
-    case "delivery":
-      return "Insertion, copy fallback and observer settings are planned, not editable from Settings yet.";
-    case "presets":
-      return "Assistant and transform presets stay in the companion flow until this surface is designed.";
-    case "admin":
-      return "Authenticated administration for accounts, profiles, engines, prompts, budgets and groups.";
-    case "about":
-      return "Build, diagnostics and support metadata are planned for a later compact panel.";
+    case "general": return "Preferencias de inicio y del dock.";
+    case "account": return "Tu acceso y plan, sin detalles técnicos.";
+    case "dictation": return "Audio, autocierre y entrega del dictado.";
+    case "hotkeys": return "Atajos administrados por la aplicación.";
+    case "presets": return "Acciones disponibles para tu cuenta.";
+    case "privacy": return "Historial y datos guardados en esta computadora.";
+    case "help": return "Estado del servicio y ayuda para continuar.";
+    case "advanced": return "Diagnóstico reducido y acceso de operador autorizado.";
   }
+}
+
+function PreferenceToggle({
+  label,
+  detail,
+  checked,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  detail: string;
+  checked: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div className="settings-hotkey-row settings-toggle-row" data-health={checked ? "success" : undefined}>
+      <div className="settings-hotkey-copy">
+        <strong>{label}</strong>
+        <span>{detail}</span>
+      </div>
+      <div className="settings-toggle-control">
+        <span className="settings-toggle-status">{checked ? "Activado" : "Desactivado"}</span>
+        <button
+          type="button"
+          className="settings-toggle"
+          role="switch"
+          aria-checked={checked}
+          aria-label={label}
+          disabled={disabled}
+          onClick={onClick}
+        />
+      </div>
+    </div>
+  );
 }
 
 function shortcutFromKeyboardEvent(event: KeyboardEvent): string | undefined {

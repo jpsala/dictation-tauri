@@ -180,9 +180,27 @@ Alcance:
 
 Proximo paso: harden de captura/replace en browsers/Electron, especialmente minimizar efectos visibles de clipboard y sumar smoke real redacted del caso `hola amigo` -> instruccion `en ingles`.
 
+### 2026-07-17 - Cuenta obligatoria y Control Room separado
+
+Estado: accepted; supersedes la decisión de modo anónimo visible del 2026-06-29
+
+Decision: Fixvox Tauri exige una cuenta antes del primer dictado. Google es el mecanismo inicial de alta/login; el host completa el handoff, crea o vincula la cuenta, enlaza el dispositivo y materializa policy/capabilities sin exponer tokens ni IDs al renderer. Control Room queda como producto web separado para operadores autorizados, no como parte de Settings ordinario. La UX visible es Spanish-first y mueve device/policy/runtime/preflight a diagnóstico avanzado redacted.
+
+Motivo: la prueba en una PC nueva demostró que el modelo híbrido actual no es estándar ni autoexplicativo: el usuario puede intentar dictar y recibir `requires a registered device id`, mientras Settings mezcla login, Cloud, activation, repair y policy. Una entrada account-first permite un onboarding conocido, una única identidad portable y recovery explícito. Separar Control Room evita mezclar tareas de usuario con entidades y autoridad administrativas.
+
+Alcance:
+
+- Primer uso objetivo: bienvenida → Google → account/device link automático → micrófono → atajo → `Listo para dictar`.
+- Settings muestra Cuenta, plan/límites comprensibles, dispositivos y logout; la infraestructura queda en Avanzado.
+- Control Room conserva Google admin, RBAC, recent-auth, preview, broker server-side y audit.
+- El soporte backend anónimo no se elimina en esta decisión; queda como compatibilidad/rollback hasta un retiro contractual separado.
+- OAuth real, deploy, producción, release y cambios de schema siguen requiriendo gates independientes.
+
+Plan: `docs/tracks/standard-product-ux-redesign-plan.md`.
+
 ### 2026-06-29 - Login cloud para capacidades mas alla de lo basico
 
-Estado: accepted
+Estado: superseded for visible product UX by 2026-07-17; retained as implementation history
 
 Decision: Fixvox Tauri mantiene un modo anonimo/basic de baja friccion con `installId` local, pero cualquier capacidad mas alla de lo basico debe requerir login contra Fixvox Cloud. La autenticacion objetivo usa email magic link como base y Google/GitHub OAuth como proveedores convenientes. El device se vincula al usuario autenticado y recibe una policy snapshot con grupo/template/capabilities/limits administrables desde la nube.
 

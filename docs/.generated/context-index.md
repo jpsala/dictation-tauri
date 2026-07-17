@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-17T12:29:58.554Z
+Generated: 2026-07-17T16:57:13.770Z
 
 ## Topics
 
@@ -55,6 +55,15 @@ Generated: 2026-07-17T12:29:58.554Z
 - stable: [Profile Composer Phase 3: preview, RBAC and safe publish](../tracks/profile-composer-phase-3-rbac-publish-plan.md)
 - active: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md)
 - active: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md)
+- active: [Standard Product UX Redesign Plan](../tracks/standard-product-ux-redesign-plan.md)
+- complete: [Acceptance Matrix](../tracks/standard-product-ux-redesign/acceptance-matrix.md)
+- complete: [Control Room Wireframes](../tracks/standard-product-ux-redesign/control-room-wireframes.md)
+- complete: [Copy And Error Contract](../tracks/standard-product-ux-redesign/copy-and-error-contract.md)
+- complete: [First-Run State Machine](../tracks/standard-product-ux-redesign/first-run-state-machine.md)
+- complete: [First-Run Wireflows](../tracks/standard-product-ux-redesign/first-run-wireflows.md)
+- complete: [Information Architecture And Navigation](../tracks/standard-product-ux-redesign/information-architecture.md)
+- complete: [Settings Wireframes](../tracks/standard-product-ux-redesign/settings-wireframes.md)
+- complete: [Surface Boundaries](../tracks/standard-product-ux-redesign/surface-boundaries.md)
 
 ## Specs
 

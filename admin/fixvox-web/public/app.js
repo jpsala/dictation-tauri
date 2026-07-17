@@ -4,6 +4,16 @@ function setHtml(node, html) {
   node.replaceChildren(document.createRange().createContextualFragment(String(html ?? '')))
 }
 const app = $('#app')
+
+const CONTROL_ROOM_AREAS = {
+  people: { label: 'Personas', description: 'Cuentas, equipos vinculados y acceso efectivo.', dataTab: 'accounts', renderer: 'accounts', icon: 'accounts' },
+  access: { label: 'Planes y acceso', description: 'Roles, acceso operativo y asignaciones autorizadas.', dataTab: 'settings', renderer: 'settings', icon: 'policies' },
+  behavior: { label: 'Comportamiento', description: 'Dictado, presets y comportamiento de producto.', dataTab: 'policies', renderer: 'policies', configurationTab: 'presets', icon: 'policies' },
+  usage: { label: 'Uso', description: 'Consumo, límites y señales operativas redacted.', dataTab: 'usage', renderer: 'usage', icon: 'usage' },
+  system: { label: 'Sistema avanzado', description: 'Motores, instrucciones y configuración técnica protegida.', dataTab: 'policies', renderer: 'policies', configurationTab: 'engines', icon: 'devices' },
+  audit: { label: 'Auditoría', description: 'Historial read-only de mutaciones y evidencia redacted.', dataTab: 'audit', renderer: 'audit', icon: 'dashboard' },
+}
+
 const state = {
   health: null,
   status: 'Listo',
@@ -11,7 +21,7 @@ const state = {
   tools: new Map(),
   uiRequests: new Map(),
   dataTab: 'accounts',
-  activeView: 'chat',
+  activeView: 'people',
   selectedPolicyId: 'pro',
   configurationTab: 'profiles',
   profileTab: 'overview',
@@ -32,6 +42,7 @@ const state = {
   showAllTools: false,
   selectedEntity: null,
   pendingAccountPolicy: null,
+  pendingProfileMutation: null,
   lastAdminViewRendered: null,
 }
 
@@ -91,7 +102,7 @@ function promptWithUiContext(text) {
   return `${text}\n\n[Fixvox Admin UI context]\n${JSON.stringify(currentUiContext(), null, 2)}`
 }
 function entityKindForView(view) {
-  return { accounts: 'account', devices: 'device', usage: 'usage' }[view] || null
+  return { people: 'account', accounts: 'account', devices: 'device', usage: 'usage' }[view] || null
 }
 function clearCrossViewEntitySelection(view) {
   const expected = entityKindForView(view)
@@ -245,7 +256,13 @@ async function readSse(body, onEvent) {
     buffer = chunks.pop() || ''
     for (const chunk of chunks) {
       const line = chunk.split('\n').find((item) => item.startsWith('data: '))
-      if (line) onEvent(JSON.parse(line.slice(6)))
+      if (line) {
+        try {
+          onEvent(JSON.parse(line.slice(6)))
+        } catch {
+          // Ignore malformed SSE payloads; the stream may continue with valid events.
+        }
+      }
     }
     if (done) break
   }
@@ -315,11 +332,12 @@ async function respondUiRequest(id, response) {
 }
 async function loadAdmin(tab = state.dataTab) {
   state.dataTab = tab
-  const endpoints = { accounts: '/api/admin/accounts?limit=50', devices: '/api/admin/devices?limit=50', policies: '/api/admin/policies', usage: '/api/admin/usage', settings: '/api/admin/roles' }
+  const endpoints = { accounts: '/api/admin/accounts?limit=50', devices: '/api/admin/devices?limit=50', policies: '/api/admin/policies', usage: '/api/admin/usage', settings: '/api/admin/roles', audit: '/api/admin/audit' }
   try {
     state.adminData = await jsonFetch(endpoints[tab])
     if (tab === 'accounts') state.accountsData = state.adminData
     if (tab === 'devices') state.devicesData = state.adminData
+    if (tab === 'audit') state.audit = state.adminData
     if (tab === 'policies' || tab === 'settings') {
       state.rbac = await jsonFetch('/api/admin/rbac').catch(() => ({ ok: false, role: null }))
       state.audit = await jsonFetch('/api/admin/audit').catch(() => ({ records: [] }))
@@ -518,17 +536,13 @@ async function saveProfileDraft(form) {
   state.status = `Draft guardado: ${values.profileId}`
 }
 async function discardProfileDraft(profileId, draftVersion) {
-  const expected = `DISCARD ${profileId} v${draftVersion}`
-  const confirmation = prompt(`Descartar el draft no cambia la versión publicada.\nEscribí ${expected} para confirmar.`)
-  if (confirmation === null) return
-  if (confirmation !== expected) throw new Error(`Confirmación exacta requerida: ${expected}`)
-  if (!confirmProductionMutation(`discard profile draft ${profileId} v${draftVersion}`)) return
+  const confirmation = `DISCARD ${profileId} v${draftVersion}`
   await jsonFetch('/api/admin/profiles/drafts', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId, expectedDraftVersion: draftVersion, confirmation }) })
   state.profilePreview = null
   state.profilePreviewError = null
   state.profileTab = 'overview'
   await loadAdmin('policies')
-  state.status = `Draft descartado: ${profileId} v${draftVersion}`
+  state.status = `Cambios descartados: ${profileId}`
 }
 async function cloneProfileDraft(form) {
   const values = Object.fromEntries(new FormData(form).entries())
@@ -564,13 +578,13 @@ function auditForProfileMutation(action, profileId) {
 }
 async function publishProfile(profileId, form) {
   const preview = state.profilePreview
-  if (!preview || preview.profileId !== profileId) throw new Error('Primero cargá el preview del draft.')
+  if (!preview || preview.profileId !== profileId) throw new Error('Primero revisá los cambios.')
   const confirmation = String(form.querySelector('[name="confirmation"]')?.value || '').trim()
   const expected = `PUBLISH ${profileId} v${preview.draftVersion}`
   if (confirmation !== expected) throw new Error(`Confirmación exacta requerida: ${expected}`)
-  if (!confirmProductionMutation(`publish profile ${profileId} v${preview.draftVersion}`)) return
   const result = await jsonFetch('/api/admin/profiles/publish', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId, expectedActiveVersion: preview.activeVersion, expectedDraftVersion: preview.draftVersion, confirmation }) })
   state.profilePreview = null
+  state.pendingProfileMutation = null
   state.lastProfileMutation = { action: 'publish', profileId, resultingVersion: result.published?.version ?? null, result: 'success', accountsRefreshed: false }
   await loadAdmin('policies')
   await refreshEffectiveProfilesAfterProfileMutation()
@@ -588,9 +602,9 @@ async function rollbackProfile(profileId, form) {
   const confirmation = String(form.querySelector('[name="confirmation"]')?.value || '').trim()
   const expected = `ROLLBACK ${profileId} to v${version}`
   if (confirmation !== expected) throw new Error(`Confirmación exacta requerida: ${expected}`)
-  if (!confirmProductionMutation(`rollback profile ${profileId} to v${version}`)) return
   const result = await jsonFetch('/api/admin/profiles/rollback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId, version, expectedActiveVersion: activeVersion, confirmation }) })
   state.profilePreview = null
+  state.pendingProfileMutation = null
   state.lastProfileMutation = { action: 'rollback', profileId, version, resultingVersion: result.published?.version ?? null, result: 'success', accountsRefreshed: false }
   await loadAdmin('policies')
   await refreshEffectiveProfilesAfterProfileMutation()
@@ -690,10 +704,8 @@ function newIcon() {
 }
 function renderSidebar() {
   const sidebar = $('#sidebar'); if (!sidebar) return
-  const nav = [
-    ['Overview', 'dashboard'], ['Chat', 'chat'], ['Users', 'accounts'], ['System', 'devices'], ['Configuration', 'policies'], ['Usage', 'usage'], ['Settings', 'settings'],
-  ]
-  setHtml(sidebar, `<div class="drawer-brand"><div><strong>Fixvox</strong><span>Operación y usuarios</span></div></div><div class="drawer-list">${nav.map(([label, key]) => `<button class="drawer-item ${key === state.activeView ? 'selected' : ''}" data-nav="${key}" title="${label}"><span class="drawer-icon">${navIcon(key)}</span><span class="drawer-text">${label}</span></button>`).join('')}</div><div class="drawer-user"><div>${esc(state.env?.user?.name || state.env?.user?.emailRedacted || 'Admin')}</div><small>${esc(state.env?.user?.emailRedacted || state.env?.environment || '')}</small><a href="/logout">Salir</a></div>`)
+  const nav = Object.entries(CONTROL_ROOM_AREAS)
+  setHtml(sidebar, `<div class="drawer-brand"><div><strong>Fixvox</strong><span>Control Room</span></div></div><div class="drawer-list">${nav.map(([key, area]) => `<button class="drawer-item ${key === state.activeView ? 'selected' : ''}" data-nav="${key}" title="${area.label}" ${key === state.activeView ? 'aria-current="page"' : ''}><span class="drawer-icon">${navIcon(area.icon)}</span><span class="drawer-text">${area.label}</span></button>`).join('')}</div><div class="drawer-user"><div>${esc(state.env?.user?.name || state.env?.user?.emailRedacted || 'Admin')}</div><small>${esc(state.env?.user?.emailRedacted || state.env?.environment || '')}</small><a href="/logout">Salir</a></div>`)
 }
 function navIcon(key) {
   const icons = {
@@ -712,21 +724,11 @@ function renderHeader() {
   const header = $('#topbar'); if (!header) return
   const health = state.health
   const envName = state.env?.environment || 'unknown'
+  const area = CONTROL_ROOM_AREAS[state.activeView]
   const title = viewTitle(state.activeView)
-  const description = state.activeView === 'chat'
-    ? 'Consola agéntica dentro de Fixvox.'
-    : state.activeView === 'accounts'
-      ? 'Usuarios, policies y dispositivos vinculados.'
-      : state.activeView === 'devices'
-        ? 'Instalaciones, estado y policy efectiva.'
-        : state.activeView === 'policies'
-          ? 'Perfiles, runtime y comportamiento administrados por separado.'
-          : state.activeView === 'usage'
-            ? 'Consumo, quota y señales de costo.'
-            : state.activeView === 'settings'
-              ? 'OAuth reciente, roles y acceso operativo.'
-              : 'Control room operativo de Fixvox.'
-  setHtml(header, `<div><div class="title-line"><span class="title-icon" aria-hidden="true">${state.activeView === 'chat' ? chatIcon() : navIcon(state.activeView)}</span><div><h1>${esc(title)}</h1><p>${esc(description)}</p></div></div></div><div class="chips"><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `Pi ${esc(health.piVersion || '')}` : 'Pi no listo'}</span><span class="chip ${state.running ? 'primary' : ''}">${esc(statusLabel(state.status))}</span><span class="chip ${state.env?.production ? 'prod' : 'local'}">${esc(envName)}</span></div>`)
+  const description = area?.description || (state.activeView === 'chat' ? 'Asistencia contextual para la entidad seleccionada.' : 'Control Room operativo de Fixvox.')
+  const icon = state.activeView === 'chat' ? chatIcon() : navIcon(area?.icon || state.activeView)
+  setHtml(header, `<div><div class="title-line"><span class="title-icon" aria-hidden="true">${icon}</span><div><h1>${esc(title)}</h1><p>${esc(description)}</p></div></div></div><div class="chips"><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `Pi ${esc(health.piVersion || '')}` : 'Pi no listo'}</span><span class="chip ${state.running ? 'primary' : ''}">${esc(statusLabel(state.status))}</span><span class="chip ${state.env?.production ? 'prod' : 'local'}">${esc(envName)}</span></div>`)
   const cwd = $('#cwd-label')
   if (cwd) setHtml(cwd, state.activeView === 'chat' && health?.ok ? `cwd: <code>${esc(shortPath(health.cwd))}</code> · ${esc(health.process || '')}` : '')
 }
@@ -782,7 +784,7 @@ function renderMessages() {
   }
 }
 function viewTitle(view) {
-  return { chat: 'Chat', dashboard: 'Overview', accounts: 'Users', devices: 'System', policies: 'Configuration', usage: 'Usage', settings: 'Settings', account: 'Mi cuenta' }[view] || 'Fixvox Admin'
+  return CONTROL_ROOM_AREAS[view]?.label || { chat: 'Pi', dashboard: 'Control Room', accounts: 'Personas', devices: 'Equipos', policies: 'Configuración', usage: 'Uso', settings: 'Acceso', account: 'Mi cuenta' }[view] || 'Control Room'
 }
 function messageBubble(message) {
   const role = message.role === 'user' ? (state.env?.user?.name || 'Vos') : message.role === 'system' ? 'Sistema' : 'agente'
@@ -836,8 +838,9 @@ function toolCard(tool) {
 }
 
 function currentAdminData(view = state.activeView) {
-  if (view === state.dataTab) return state.adminData
-  if (view === 'accounts') return state.accountsData
+  const area = CONTROL_ROOM_AREAS[view]
+  if (view === state.dataTab || area?.dataTab === state.dataTab) return state.adminData
+  if (view === 'accounts' || view === 'people') return state.accountsData
   if (view === 'devices') return state.devicesData
   return null
 }
@@ -850,14 +853,17 @@ function policyRowsFromData(data) {
 function renderAdminWorkbench(view) {
   if (view === 'dashboard') return renderDashboardWorkbench()
   if (view === 'account') return renderAccountWorkbench()
+  const area = CONTROL_ROOM_AREAS[view]
+  const renderer = area?.renderer || view
   const data = currentAdminData(view)
   if (!data) return `<div class="admin-workbench loading"><strong>Cargando ${esc(viewTitle(view))}…</strong></div>`
   if (data.ok === false) return `<div class="alert warning"><strong>No se pudo cargar ${esc(viewTitle(view))}</strong><br>${esc(data.error || 'Error desconocido')}</div>`
-  if (view === 'accounts') return renderAccountsWorkbench(data)
-  if (view === 'devices') return renderDevicesWorkbench(data)
-  if (view === 'policies') return renderConfigurationWorkbench(data)
-  if (view === 'usage') return renderUsageWorkbench(data)
-  if (view === 'settings') return renderSettingsWorkbench()
+  if (renderer === 'accounts') return renderAccountsWorkbench(data)
+  if (renderer === 'devices') return renderDevicesWorkbench(data)
+  if (renderer === 'policies') return renderConfigurationWorkbench(data)
+  if (renderer === 'usage') return renderUsageWorkbench(data)
+  if (renderer === 'settings') return renderSettingsWorkbench()
+  if (renderer === 'audit') return renderAuditWorkbench(data)
   return `<pre class="data-pre">${esc(pretty(data))}</pre>`
 }
 function renderDashboardWorkbench() {
@@ -1036,8 +1042,8 @@ function renderProfileDraftEditor(record, data) {
   if (!draft) return ''
   const tab = state.profileTab
   const content = tab === 'overview' ? `<label><span>Nombre</span><input name="label" value="${esc(draft.label)}" required></label>` : tab === 'access' ? renderProfileAccessEditor(draft) : tab === 'runtime' ? renderProfileRuntimeEditor(draft, data) : tab === 'limits' ? renderProfileLimitsEditor(draft, data) : renderProfileControlsEditor(draft)
-  const titles = { overview: 'Resumen del draft', access: 'Acceso del profile', runtime: 'Runtime del profile', limits: 'Límites del profile', controls: 'Controles y defaults' }
-  return `<form class="profile-draft-editor" data-save-profile-draft data-profile-draft-tab="${esc(tab)}"><input type="hidden" name="profileId" value="${esc(record.profileId)}"><div class="panel-head"><div><span class="eyebrow">Draft durable v${esc(draft.version)}</span><h4>${esc(titles[tab])}</h4><p>Guardar persiste en Worker pero no cambia la versión publicada.</p></div><button class="button small primary" type="submit">Guardar draft</button></div>${content}</form>`
+  const titles = { overview: 'Resumen', access: 'Acceso', runtime: 'Runtime', limits: 'Límites', controls: 'Controles y valores iniciales' }
+  return `<form class="profile-draft-editor" data-save-profile-draft data-profile-draft-tab="${esc(tab)}"><input type="hidden" name="profileId" value="${esc(record.profileId)}"><div class="panel-head"><div><span class="eyebrow">Cambios sin publicar</span><h4>${esc(titles[tab])}</h4><p>Guardar conserva los cambios para revisarlos antes de publicar.</p></div><button class="button small primary" type="submit">Guardar cambios</button></div>${content}</form>`
 }
 function renderProfileCloneForm(record, definition) {
   return `<details class="profile-clone"><summary>Clonar como draft</summary><form data-clone-profile><input type="hidden" name="profileId" value="${esc(record.profileId)}"><label><span>ID nuevo</span><input name="draftProfileId" value="${esc(`${record.profileId}-copy`)}" required></label><label><span>Nombre</span><input name="label" value="${esc(`Copia de ${definition.label}`)}" required></label><button class="button small" type="submit">Crear clon</button></form></details>`
@@ -1053,17 +1059,25 @@ function canEditProfiles() { return ['editor', 'publisher', 'owner'].includes(st
 function canPublishProfiles() { return ['publisher', 'owner'].includes(state.rbac?.role) }
 function renderProfileMutationControls(record, profileId, preview) {
   if (!canPublishProfiles()) return '<p class="muted">Publicación y rollback requieren rol publisher u owner.</p>'
-  if (!preview) return '<p class="muted">Cargá el preview para habilitar una mutación segura.</p>'
+  if (!preview) return '<p class="muted">Revisá los cambios antes de publicarlos.</p>'
   const history = Array.isArray(record.history) ? record.history : []
   const rollbackOptions = history.filter((version) => version.version !== preview.activeVersion)
-  return `<section class="profile-mutation-panel"><div class="panel-head"><div><span class="eyebrow">Safe publish</span><h4>Confirmación server-side</h4><p>El servidor vuelve a comprobar OAuth reciente, RBAC y versiones esperadas.</p></div><span class="chip primary">${esc(state.rbac.role)}</span></div><form data-publish-profile="${esc(profileId)}" class="profile-confirm-form"><label><span>Escribí ${esc(`PUBLISH ${profileId} v${preview.draftVersion}`)}</span><input name="confirmation" autocomplete="off" placeholder="PUBLISH ${esc(profileId)} v${preview.draftVersion}" required></label><button class="button small primary" type="submit">Publish v${esc(preview.draftVersion)}</button></form>${rollbackOptions.length ? `<form data-rollback-profile="${esc(profileId)}" class="profile-confirm-form"><label><span>Rollback target</span><select name="version">${rollbackOptions.map((version) => `<option value="${esc(version.version)}">v${esc(version.version)} · ${esc(version.label || profileId)}</option>`).join('')}</select></label><label><span>Escribí la confirmación</span><input name="confirmation" autocomplete="off" placeholder="ROLLBACK ${esc(profileId)} to v…" required></label><button class="button small" type="submit">Rollback</button></form>` : ''}</section>`
+  const pending = state.pendingProfileMutation?.profileId === profileId ? state.pendingProfileMutation : null
+  const confirmationPanel = pending
+    ? `<section class="profile-inline-confirmation"><div><strong>${pending.kind === 'publish' ? '¿Publicar estos cambios?' : '¿Restaurar esta versión?'}</strong><span>${pending.kind === 'publish' ? 'Las personas usarán esta configuración después de publicar.' : `La versión seleccionada volverá a estar activa.`}</span></div><div class="button-row"><button class="button" type="button" data-cancel-profile-mutation>Cancelar</button><form ${pending.kind === 'publish' ? `data-publish-profile="${esc(profileId)}"` : `data-rollback-profile="${esc(profileId)}"`}><input type="hidden" name="confirmation" value="${esc(pending.kind === 'publish' ? `PUBLISH ${profileId} v${preview.draftVersion}` : `ROLLBACK ${profileId} to v${pending.version}`)}">${pending.kind === 'rollback' ? `<input type="hidden" name="version" value="${esc(pending.version)}">` : ''}<button class="button primary" type="submit">${pending.kind === 'publish' ? 'Confirmar publicación' : 'Confirmar restauración'}</button></form></div></section>`
+    : `<div class="button-row"><form data-request-profile-publish="${esc(profileId)}"><button class="button small primary" type="submit">Publicar cambios</button></form>${rollbackOptions.length ? `<form data-request-profile-rollback="${esc(profileId)}" class="profile-confirm-form"><label><span>Versión para restaurar</span><select name="version">${rollbackOptions.map((version) => `<option value="${esc(version.version)}">v${esc(version.version)} · ${esc(version.label || profileId)}</option>`).join('')}</select></label><button class="button small" type="submit">Restaurar versión</button></form>` : ''}</div>`
+  return `<section class="profile-mutation-panel"><div class="panel-head"><div><span class="eyebrow">Listo para publicar</span><h4>Revisión completada</h4><p>El servidor vuelve a comprobar permisos, sesión reciente y la versión revisada.</p></div><span class="chip primary">${esc(state.rbac.role)}</span></div>${confirmationPanel}</section>`
 }
 function renderPublishedRollbackControls(record, profileId) {
   if (!record?.published || !canPublishProfiles()) return ''
   const activeVersion = record.published.version
   const options = (record.history || []).filter((version) => version.version !== activeVersion)
   if (!options.length) return ''
-  return `<section class="profile-mutation-panel"><div class="panel-head"><div><span class="eyebrow">Safe rollback</span><h4>Historia inmutable</h4><p>Rollback crea una nueva versión; nunca reescribe la historia.</p></div><span class="chip primary">${esc(state.rbac.role)}</span></div><form data-rollback-profile="${esc(profileId)}" class="profile-confirm-form"><label><span>Rollback target</span><select name="version">${options.map((version) => `<option value="${esc(version.version)}">v${esc(version.version)} · ${esc(version.label || profileId)}</option>`).join('')}</select></label><label><span>Escribí la confirmación</span><input name="confirmation" autocomplete="off" placeholder="ROLLBACK ${esc(profileId)} to v…" required></label><button class="button small" type="submit">Rollback</button></form></section>`
+  const pending = state.pendingProfileMutation?.kind === 'rollback' && state.pendingProfileMutation.profileId === profileId ? state.pendingProfileMutation : null
+  const action = pending
+    ? `<section class="profile-inline-confirmation"><div><strong>¿Restaurar esta versión?</strong><span>La versión seleccionada volverá a estar activa para las personas asignadas.</span></div><div class="button-row"><button class="button" type="button" data-cancel-profile-mutation>Cancelar</button><form data-rollback-profile="${esc(profileId)}"><input type="hidden" name="version" value="${esc(pending.version)}"><input type="hidden" name="confirmation" value="${esc(`ROLLBACK ${profileId} to v${pending.version}`)}"><button class="button primary" type="submit">Confirmar restauración</button></form></div></section>`
+    : `<form data-request-profile-rollback="${esc(profileId)}" class="profile-confirm-form"><label><span>Versión para restaurar</span><select name="version">${options.map((version) => `<option value="${esc(version.version)}">v${esc(version.version)} · ${esc(version.label || profileId)}</option>`).join('')}</select></label><button class="button small" type="submit">Restaurar versión</button></form>`
+  return `<section class="profile-mutation-panel"><div class="panel-head"><div><span class="eyebrow">Historial</span><h4>Restaurar una versión</h4><p>La restauración crea una nueva versión y conserva la historia.</p></div><span class="chip primary">${esc(state.rbac.role)}</span></div>${action}</section>`
 }
 function renderProfileMutationOutcome(profileId) {
   const mutation = state.lastProfileMutation
@@ -1090,6 +1104,11 @@ function renderSettingsWorkbench() {
   const auditRecords = Array.isArray(state.audit?.records) ? state.audit.records.slice(-8).reverse() : []
   return `<div class="admin-workbench settings-workbench"><div class="workbench-head"><div><span class="eyebrow">Settings / Access</span><h2>Role bindings</h2><p>Google OAuth identifica al operador; RBAC server-side decide la autoridad. Las respuestas solo muestran emails redacted.</p></div><span class="chip ${owner ? 'ok' : 'warn'}">${esc(role)}</span></div><section class="settings-role-panel"><div class="panel-head"><div><h3>Bindings actuales</h3><p>${bindings.length} identidades · el último owner no puede eliminarse ni degradarse.</p></div></div><div class="role-binding-list">${bindings.map((binding) => `<article class="role-binding-row"><strong>${esc(binding.emailRedacted)}</strong><span class="chip ${binding.role === 'owner' ? 'primary' : ''}">${esc(binding.role)}</span></article>`).join('') || '<p class="muted">No hay bindings visibles.</p>'}</div></section><section class="settings-role-panel audit-panel"><div class="panel-head"><div><h3>Audit reciente</h3><p>Publish y rollback quedan registrados con actor redacted y versiones.</p></div></div>${auditRecords.length ? `<div class="audit-list">${auditRecords.map((record) => `<article class="audit-row"><strong>${esc(record.action)} · ${esc(record.profileId)}</strong><span>v${esc(record.sourceVersion ?? '—')} → v${esc(record.targetVersion ?? '—')}</span><small>${esc(record.result)} · ${esc(formatDateTime(record.timestamp))}</small></article>`).join('')}</div>` : '<p class="muted">Sin mutaciones auditadas.</p>'}</section>${owner ? `<section class="settings-role-panel"><div class="panel-head"><div><h3>Administrar acceso</h3><p>Escribí el email Google verificado del operador. El Worker persiste solo el principal hasheado.</p></div></div><form data-save-role class="role-form"><label><span>Email Google</span><input name="subjectEmail" type="email" autocomplete="off" required placeholder="operator@example.com"></label><label><span>Rol</span><select name="role"><option value="viewer">viewer</option><option value="editor">editor</option><option value="publisher">publisher</option><option value="owner">owner</option></select></label><button class="button small primary" type="submit">Guardar rol</button></form><form data-remove-role class="role-form"><label><span>Remover binding</span><input name="subjectEmail" type="email" autocomplete="off" required placeholder="operator@example.com"></label><button class="button small danger" type="submit">Remover</button></form></section>` : '<section class="alert warning"><strong>Solo owner gestiona roles.</strong><p>Podés consultar bindings redacted, pero no mutarlos.</p></section>'}</div>`
 }
+function renderAuditWorkbench(data) {
+  const records = Array.isArray(data.records) ? [...data.records].reverse() : []
+  return `<div class="admin-workbench settings-workbench"><div class="workbench-head"><div><span class="eyebrow">Auditoría</span><h2>Historial de cambios</h2><p>Las mutaciones aprobadas quedan registradas con evidencia redacted.</p></div></div>${records.length ? `<div class="audit-list">${records.map((record) => `<article class="audit-row"><strong>${esc(record.action)} · ${esc(record.profileId)}</strong><span>v${esc(record.sourceVersion ?? '—')} → v${esc(record.targetVersion ?? '—')}</span><small>${esc(record.result)} · ${esc(formatDateTime(record.timestamp))}</small></article>`).join('')}</div>` : '<p class="muted">No hay mutaciones auditadas para mostrar.</p>'}</div>`
+}
+
 function renderProfileControlsSummary(definition) {
   const defaults = definition?.defaults || {}
   const controls = definition?.userControls || {}
@@ -1104,11 +1123,11 @@ function renderPublishedProfileSection(tab, selected, definition, data) {
   return `${renderProfileAssignments(selected)}${renderProfileAccess(selected)}${renderProfileRuntime(definition, data)}${renderProfileLimits(definition)}`
 }
 function renderProfileModeNotice(record) {
-  if (record.draft) return `<section class="profile-mode-notice profile-mode-notice--draft"><div><strong>Editando draft v${esc(record.draft.version)}</strong><span>Guardar una sección persiste el borrador, pero no cambia lo que usan los usuarios hasta publicar.</span></div>${canEditProfiles() ? `<button class="button small danger" type="button" data-discard-profile-draft="${esc(record.profileId)}" data-draft-version="${esc(record.draft.version)}">Descartar draft</button>` : ''}</section>`
+  if (record.draft) return `<section class="profile-mode-notice profile-mode-notice--draft"><div><strong>Cambios sin publicar</strong><span>Guardá los cambios cuando quieras. Las personas siguen usando la configuración actual hasta publicar.</span></div>${canEditProfiles() ? `<button class="button small danger" type="button" data-discard-profile-draft="${esc(record.profileId)}" data-draft-version="${esc(record.draft.version)}">Descartar cambios</button>` : ''}</section>`
   const message = canEditProfiles()
-    ? 'Las pestañas muestran la configuración activa en modo lectura. Elegí Editar profile para crear un draft seguro sin afectar usuarios.'
-    : 'Las pestañas muestran la configuración activa en modo lectura. Tu rol no permite crear drafts.'
-  return `<section class="profile-mode-notice"><strong>Versión publicada, solo lectura</strong><span>${esc(message)}</span></section>`
+    ? 'Esta es la configuración actual. Elegí Editar profile para preparar cambios sin afectar a las personas usuarias.'
+    : 'Esta es la configuración actual. Tu rol no permite preparar cambios.'
+  return `<section class="profile-mode-notice"><strong>Configuración publicada</strong><span>${esc(message)}</span></section>`
 }
 function renderProfilesPane(data) {
   const profileOptions = Array.isArray(data.profileOptions) ? data.profileOptions : policyRowsFromData(data)
@@ -1121,22 +1140,30 @@ function renderProfilesPane(data) {
   const definition = record?.draft || record?.published
   const selected = definition ? { ...legacy, policyId: selectedId, policyLabel: definition.label, capabilities: definition.access?.capabilities || [] } : legacy
   const publishedSection = record?.draft ? '' : renderPublishedProfileSection(state.profileTab, selected, definition, data)
-  const editAction = !record?.draft && canEditProfiles() ? `<button class="button primary" data-create-profile-draft="${esc(selectedId)}">Editar profile</button>` : ''
-  return `<div class="configuration-pane profiles-pane"><div class="policy-layout"><div class="policy-column">${profiles.map((profile) => { const definition = profile.draft || profile.published; const status = profile.draft ? 'Draft' : 'Published'; return `<button class="policy-row ${profile.profileId === selectedId ? 'active' : ''}" data-policy-select="${esc(profile.profileId)}"><strong>${esc(definition?.label || profile.label || profile.profileId)}</strong><small>${esc(profile.profileId)} · ${esc(status)} v${esc(definition?.version || '-')} · ${(definition?.access?.capabilities || []).length} funciones</small></button>` }).join('') || '<div class="empty-state"><strong>No hay perfiles disponibles</strong><span>Reintentá la carga o revisá el contrato del Control Plane.</span></div>'}</div>${record && definition ? `<section class="policy-detail profile-detail"><div class="entity-card-head"><div><span class="eyebrow">${record.draft ? 'Draft editable' : 'Versión publicada'}</span><h3>${esc(definition.label || selectedId)}</h3><small>${esc(selectedId)} · v${esc(definition.version)} · ${esc(definition.status)}</small></div><div class="button-row"><button class="button" data-chat-context="Explicame el perfil ${esc(selectedId)}, sus funciones, runtime y límites." data-chat-label="Explicar perfil ${esc(selectedId)}">Preguntar a Pi</button>${editAction}</div></div>${renderProfileEditorTabs()}${renderProfileModeNotice(record)}${renderProfileMutationOutcome(selectedId)}${record.draft ? renderProfileDraftEditor(record, data) : `<div class="profile-summary-grid ${state.profileTab === 'overview' ? '' : 'profile-summary-grid--single'}">${publishedSection}</div>`}${record.draft ? renderProfilePreview(record, selectedId) : ''}${!record.draft && state.profileTab === 'overview' ? `${renderProfileCloneForm(record, definition)}${renderPublishedRollbackControls(record, selectedId)}` : ''}</section>` : ''}</div></div>`
+  const editAction = !record?.draft && canEditProfiles() ? `<button class="button primary" data-create-profile-draft="${esc(selectedId)}">Editar cambios</button>` : ''
+  return `<div class="configuration-pane profiles-pane"><div class="policy-layout"><div class="policy-column">${profiles.map((profile) => { const definition = profile.draft || profile.published; const status = profile.draft ? 'Cambios sin publicar' : 'Publicado'; return `<button class="policy-row ${profile.profileId === selectedId ? 'active' : ''}" data-policy-select="${esc(profile.profileId)}"><strong>${esc(definition?.label || profile.label || profile.profileId)}</strong><small>${esc(profile.profileId)} · ${esc(status)} v${esc(definition?.version || '-')} · ${(definition?.access?.capabilities || []).length} funciones</small></button>` }).join('') || '<div class="empty-state"><strong>No hay perfiles disponibles</strong><span>Reintentá la carga o revisá el contrato del Control Plane.</span></div>'}</div>${record && definition ? `<section class="policy-detail profile-detail"><div class="entity-card-head"><div><span class="eyebrow">${record.draft ? 'Cambios sin publicar' : 'Configuración publicada'}</span><h3>${esc(definition.label || selectedId)}</h3><small>${esc(selectedId)} · v${esc(definition.version)} · ${esc(definition.status)}</small></div><div class="button-row"><button class="button" data-chat-context="Explicame el perfil ${esc(selectedId)}, sus funciones, runtime y límites." data-chat-label="Explicar perfil ${esc(selectedId)}">Preguntar a Pi</button>${editAction}</div></div>${renderProfileEditorTabs()}${renderProfileModeNotice(record)}${renderProfileMutationOutcome(selectedId)}${record.draft ? renderProfileDraftEditor(record, data) : `<div class="profile-summary-grid ${state.profileTab === 'overview' ? '' : 'profile-summary-grid--single'}">${publishedSection}</div>`}${record.draft ? renderProfilePreview(record, selectedId) : ''}${!record.draft && state.profileTab === 'overview' ? `${renderProfileCloneForm(record, definition)}${renderPublishedRollbackControls(record, selectedId)}` : ''}</section>` : ''}</div></div>`
 }
 function renderEnginesPane(data) { return `<div class="configuration-pane">${renderEngineCatalog(data)}</div>` }
 function renderPromptsPane(data) { return `<div class="configuration-pane">${renderPromptCatalog(data)}</div>` }
 function renderPresetsPane(data) { return `<div class="configuration-pane">${renderSelectionPresetDefaults(data)}</div>` }
 function renderConfigurationWorkbench(data) {
-  const tabs = [['profiles', 'Profiles'], ['engines', 'Engines'], ['prompts', 'Prompts'], ['presets', 'Presets']]
+  const area = CONTROL_ROOM_AREAS[state.activeView]
+  const allTabs = [['profiles', 'Perfiles'], ['engines', 'Motores'], ['prompts', 'Instrucciones'], ['presets', 'Presets']]
+  const tabs = state.activeView === 'behavior'
+    ? [['presets', 'Presets']]
+    : state.activeView === 'system'
+      ? [['engines', 'Motores'], ['prompts', 'Instrucciones'], ['profiles', 'Perfiles']]
+      : allTabs
   const panes = {
     profiles: renderProfilesPane,
     engines: renderEnginesPane,
     prompts: renderPromptsPane,
     presets: renderPresetsPane,
   }
-  const pane = panes[state.configurationTab] || renderProfilesPane
-  return `<div class="admin-workbench configuration-workbench"><div class="workbench-head"><div><span class="eyebrow">Configuration</span><h2>Configuración</h2><p>Cada recurso tiene su propio inventario. Profiles compone acceso, runtime y límites sin mezclar los catálogos.</p></div></div><nav class="configuration-tabs" aria-label="Configuration">${tabs.map(([id, label]) => `<button class="configuration-tab ${state.configurationTab === id ? 'active' : ''}" data-configuration-tab="${id}" ${state.configurationTab === id ? 'aria-current="page"' : ''}>${label}</button>`).join('')}</nav>${pane(data)}</div>`
+  const activeTab = tabs.some(([id]) => id === state.configurationTab) ? state.configurationTab : tabs[0][0]
+  const pane = panes[activeTab] || renderProfilesPane
+  const showTabs = tabs.length > 1
+  return `<div class="admin-workbench configuration-workbench"><div class="workbench-head"><div><span class="eyebrow">${esc(area?.label || 'Configuración')}</span><h2>${esc(area?.label || 'Configuración')}</h2><p>${esc(area?.description || 'Configuración protegida del producto.')}</p></div></div>${showTabs ? `<nav class="configuration-tabs" aria-label="Secciones de ${esc(area?.label || 'Configuración')}">${tabs.map(([id, label]) => `<button class="configuration-tab ${activeTab === id ? 'active' : ''}" data-configuration-tab="${id}" ${activeTab === id ? 'aria-current="page"' : ''}>${label}</button>`).join('')}</nav>` : ''}${pane(data)}</div>`
 }
 function usageDimensionRows(map) {
   return Object.values(map || {}).sort((a, b) => (Number(b.totalCostUsd || 0) - Number(a.totalCostUsd || 0)) || (Number(b.requestCount || 0) - Number(a.requestCount || 0))).slice(0, 8)
@@ -1191,8 +1218,16 @@ function renderAdminData() {
 function wireDynamicEvents() {
   document.querySelectorAll('[data-nav]').forEach((button) => button.onclick = () => {
     const key = button.dataset.nav
+    const area = CONTROL_ROOM_AREAS[key]
+    if (area) {
+      state.activeView = key
+      if (area.configurationTab) state.configurationTab = area.configurationTab
+      clearCrossViewEntitySelection(key)
+      loadAdmin(area.dataTab).catch(alertError)
+      renderAll()
+      return
+    }
     if (key === 'chat') { state.activeView = 'chat'; renderAll(); return }
-    if (['accounts','devices','policies','usage','settings'].includes(key)) { state.activeView = key; clearCrossViewEntitySelection(key); loadAdmin(key).catch(alertError); renderAll(); return }
     state.activeView = key
     renderAll()
   })
@@ -1206,6 +1241,20 @@ function wireDynamicEvents() {
   document.querySelectorAll('[data-discard-profile-draft]').forEach((button) => button.onclick = () => discardProfileDraft(button.dataset.discardProfileDraft, Number(button.dataset.draftVersion)).catch(alertError))
   document.querySelectorAll('[data-clone-profile]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); cloneProfileDraft(form).catch(alertError) })
   document.querySelectorAll('[data-profile-preview]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); loadProfilePreview(form.dataset.profilePreview, form).catch(alertError) })
+  document.querySelectorAll('[data-request-profile-publish]').forEach((form) => form.onsubmit = (event) => {
+    event.preventDefault()
+    state.pendingProfileMutation = { kind: 'publish', profileId: form.dataset.requestProfilePublish }
+    renderMessages(); wireDynamicEvents()
+  })
+  document.querySelectorAll('[data-request-profile-rollback]').forEach((form) => form.onsubmit = (event) => {
+    event.preventDefault()
+    state.pendingProfileMutation = { kind: 'rollback', profileId: form.dataset.requestProfileRollback, version: Number(new FormData(form).get('version')) }
+    renderMessages(); wireDynamicEvents()
+  })
+  document.querySelectorAll('[data-cancel-profile-mutation]').forEach((button) => button.onclick = () => {
+    state.pendingProfileMutation = null
+    renderMessages(); wireDynamicEvents()
+  })
   document.querySelectorAll('[data-publish-profile]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); publishProfile(form.dataset.publishProfile, form).catch(alertError) })
   document.querySelectorAll('[data-rollback-profile]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); rollbackProfile(form.dataset.rollbackProfile, form).catch(alertError) })
   document.querySelectorAll('[data-save-role]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); saveRoleBinding(form).catch(alertError) })

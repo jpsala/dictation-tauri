@@ -1,0 +1,45 @@
+.onboarding-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 22px;
+  background: oklch(1 0 0);
+  color: oklch(0.21 0.018 235);
+}
+
+.onboarding-panel {
+  width: min(100%, 440px);
+  border: 1px solid oklch(0.86 0.012 235);
+  border-radius: 8px;
+  background: oklch(0.995 0 0);
+  padding: 32px;
+}
+
+.onboarding-panel h1 {
+  margin: 0 0 10px;
+  color: oklch(0.21 0.018 235);
+  font-size: 1.375rem;
+  line-height: 1.2;
+}
+
+.onboarding-panel p:not(.onboarding-step) {
+  margin: 0;
+  color: oklch(0.45 0.02 235);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.onboarding-step {
+  margin: 0 0 8px;
+  color: oklch(0.39 0.11 205);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.onboarding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}

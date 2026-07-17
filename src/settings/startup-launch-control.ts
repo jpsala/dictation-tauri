@@ -27,16 +27,16 @@ export async function setStartupLaunchEnabled(enabled: boolean): Promise<Startup
 
 export function summarizeStartupLaunchConfig(config: StartupLaunchConfig | undefined): string {
   if (!config) {
-    return "Open Settings inside Fixvox to manage Windows startup.";
+    return "Abrí Ajustes en Dictation para administrar el inicio de Windows.";
   }
   if (!config.supported) {
-    return "Windows startup launch is only available in the Windows desktop app.";
+    return "El inicio automático está disponible sólo en la aplicación de Windows.";
   }
   if (config.enabled) {
-    return "Fixvox will open automatically when Windows starts.";
+    return "Dictation se abrirá automáticamente cuando inicie Windows.";
   }
   if (config.reason === "registered_other_command") {
-    return "A different Fixvox startup target exists; turn this on to repair it for this install.";
+    return "Hay una configuración de inicio anterior. Activá esta opción para usarla con esta instalación.";
   }
-  return "Keep Fixvox available after reboot by opening it when Windows starts.";
+  return "Abrí Dictation al iniciar Windows para tenerlo disponible después de reiniciar.";
 }

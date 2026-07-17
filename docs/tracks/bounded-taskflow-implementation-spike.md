@@ -1,7 +1,7 @@
 ---
 status: active
 started: 2026-07-15
-updated: 2026-07-16
+updated: 2026-07-17
 priority: high
 owner: Pi
 related:
@@ -12,8 +12,11 @@ related:
 topic: bounded-taskflow-implementation-spike
 source_refs:
   - .pi/taskflows/dictation-bounded-implementation-spike.json
+  - .pi/taskflows/dictation-bounded-plan-implement-spike.json
   - cloud/fixvox-api/src/postgres/bootstrap-builtin-engine-prompt-catalog.ts
   - cloud/fixvox-api/tests/builtin-catalog-bootstrap.integration.test.ts
+  - specs/019-fixvox-self-hosted-control-plane/contracts/product-route-disposition.md
+  - tests/cloud-contract/product-route-disposition.test.ts
 ---
 
 # Bounded Taskflow Implementation Spike
@@ -86,7 +89,63 @@ La revisión de conformidad de Checkpoint D demostró que el target actual ya ex
 
 Decisión operativa: **no ejecutar el FlowIR R2 dentro del cierre de Checkpoint D**. El foco pasa a `docs/tracks/fixvox-self-hosted-checkpoint-d-closure-plan.md`, Batch 1, en perfil Implementador. Después de restablecer gates verdes, este spike debe revisarse por separado para archivarlo como inconcluso o re-scoparlo sobre un sublote nuevo; cualquiera de las dos acciones requiere una decisión explícita y no desbloquea Taskflow automáticamente.
 
-## Diseño
+## Rescope V2 — Planificador + Implementador Acotado (2026-07-17)
+
+JP eligió re-scopear el piloto sin ejecutarlo. El FlowIR R2 original se conserva sin cambios como evidencia histórica; no se sobrescribe ni se reanuda.
+
+### Target limpio
+
+El nuevo sublote crea únicamente `tests/cloud-contract/product-route-disposition.test.ts`, un gate durable para el mapa D-R1 ya aprobado. Codifica mecánicamente la validación temporal usada al cerrar Batch 1:
+
+- 73 fixture IDs exactos y únicos;
+- 72 combinaciones method/path normalizadas;
+- ambos escenarios `/desktop/login`;
+- un scheduled boundary;
+- todos los paths Tauri construidos con `join_url` para `/v1`, `/v2` o `/desktop`;
+- todos los prefijos `/admin/` estáticos enviados a `proxyAdmin(...)`;
+- owner, reemplazo y retiro no vacíos para cada `temporary-compat`.
+
+No se usa Batch 2 como piloto porque diseñar contratos canónicos requiere juicio arquitectónico y aprobación humana, no sólo checks determinísticos.
+
+### Flow preparado
+
+- Nombre: `dictation-bounded-plan-implement-spike`
+- Archivo: `.pi/taskflows/dictation-bounded-plan-implement-spike.json`
+- FlowIR: `ir:22e51921382eaa06db7a9dfa9a7b70aa9e63031e3473363bfae83da950664b20`
+- Fases: `baseline → plan → implement → {verify, scope-check} → quality-gate → receipt`
+- Planner: read-only, salida JSON con contrato y un retry de formato.
+- Writer: `executor-code`, ownership exclusivo del test nuevo.
+- Reviewer: sólo si los scripts no auto-pasan; máximo una reparación.
+- Presupuesto: 250.000 tokens observados.
+- Estado: **prepared-not-run**. Search de library recomendó copiar/generalizar el flow original (score 0,55). Verify final PASS, compile PASS, 7 fases, 0 errores.
+- Warning intencional: `quality-gate` es la única ruta al receipt; al agotar la reparación debe fallar cerrado, no producir bypass ni falso cierre.
+
+### Autonomy Contract V2
+
+**Objetivo:** probar el relay planner → implementador → verificación sobre un test útil, pequeño y todavía inexistente.
+
+**Scope:** un único archivo nuevo, fuentes read-only del inventario, Tauri y Control Room, y estado temporal propio del flow.
+
+**Presupuesto:** máximo 250.000 tokens; un planner, un executor por intento, reviewer sólo ante fallo y máximo una reparación.
+
+**Checkpoints:** fingerprint inicial, plan JSON, writer único, contract tests, `git diff --check`, scope hash, gate y receipt.
+
+**Verificación:**
+
+```powershell
+bun test tests/cloud-contract/contract-fixtures.test.ts tests/cloud-contract/product-route-disposition.test.ts
+git diff --check -- tests/cloud-contract/product-route-disposition.test.ts
+```
+
+**Stop condition:** target ya existente al iniciar, edición fuera de ownership, dependencia/package script, cambio de fixture/doc/runtime, efecto externo, presupuesto agotado o una reparación fallida.
+
+**Efectos locales permitidos durante una futura ejecución:** crear el test nuevo, leer fuentes locales, ejecutar los dos checks y crear/eliminar el hash temporal bajo `%TEMP%`.
+
+**Efectos prohibidos:** editar archivos existentes; dependencias, installs, package scripts, runtime/Tauri/Admin/product docs; DB/provider/red/OAuth/producción/deploy; secrets/datos reales; commit/push; run/resume de cualquier otro flow.
+
+La ejecución requiere una aprobación explícita separada de este autonomy contract. Esta sesión sólo diseñó, guardó, verificó y compiló el flow; no inició agentes, scripts del DAG ni mutaciones del target.
+
+## Diseño Histórico V1
 
 ### Writer único
 

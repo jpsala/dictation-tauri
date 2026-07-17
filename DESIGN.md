@@ -41,9 +41,9 @@ typography:
     letterSpacing: "0"
   label:
     fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-    fontSize: "0.78rem"
+    fontSize: "0.8125rem"
     fontWeight: 700
-    lineHeight: 1.25
+    lineHeight: 1.35
     letterSpacing: "0"
 rounded:
   sm: "4px"
@@ -94,6 +94,8 @@ The system uses a pure white canvas, cool technical neutrals, and a small amount
 - State-first surfaces for listening, transcribing, delivering, completion, failure, and cancellation.
 - Restrained color, with primary color used for current action and active state only.
 - Familiar product controls: buttons, chips, panels, tabs, menus, and settings patterns.
+- Account-first onboarding: one contextual primary action per state; identity, infrastructure, and recovery details stay redacted.
+- Separate products for separate jobs: Settings serves desktop users; Control Room is a capability-gated browser surface for operators.
 - Accessible by default: visible focus, high contrast, reduced motion support, and text that fits narrow windows.
 
 ## 2. Colors
@@ -144,11 +146,13 @@ The palette is restrained: pure white and cool neutral surfaces carry most of th
 - **Headline** (680, 1.375rem, 1.2): Use for panel headings and durable surface titles.
 - **Title** (650, 1rem, 1.3): Use for controls, grouped settings, status modules, and card headings.
 - **Body** (400, 1rem, 1.55): Use for explanations and recovery copy. Keep prose at 65-75ch.
-- **Label** (700, 0.78rem, 1.25): Use for short control labels, status metadata, and field labels. Uppercase is allowed only for short technical labels.
+- **Label** (700, 0.8125rem, 1.35): Use for short control labels, status metadata, and field labels. Uppercase is allowed only for short technical labels.
 
 ### Named Rules
 
 **The Product Scale Rule.** Do not use fluid viewport-scaled type in app surfaces. Product UI uses fixed rem steps so controls remain predictable.
+
+**The Functional Text Floor.** Functional text is never smaller than 13 px and uses line-height of at least 1.35. Status, error, and permission information must remain legible in compact Tauri windows.
 
 ## 4. Elevation
 
@@ -195,8 +199,10 @@ Components should look familiar and task-oriented. Build states before decoratio
 
 ### Navigation
 
-- **Style:** Compact tabs or segmented controls for modes. Settings should use predictable sidebar or tab navigation once it exists.
+- **Style:** Compact tabs or segmented controls for modes. Settings uses predictable navigation for General, Cuenta, Dictado, Atajos, Presets, Privacidad, Ayuda, and Avanzado.
 - **States:** Active navigation uses text weight and a small state marker. Avoid full-width saturated active backgrounds.
+- **Account-first:** First-run states show one primary action, human recovery copy, and no raw identity, device, policy, route, provider, or error detail. Diagnostics are opt-in and redacted.
+- **Operator separation:** Control Room is an authenticated browser surface for Personas, Planes y acceso, Comportamiento, Uso, Sistema avanzado, and Auditoría. It is not embedded in ordinary Settings; Settings only exposes a capability-gated entry.
 - **Mobile / Narrow Windows:** Collapse labels only when icon meaning is obvious and tooltips remain available.
 
 ### Voice Dock / Status Surface
@@ -211,7 +217,7 @@ Components should look familiar and task-oriented. Build states before decoratio
 
 ## 6. Do's and Don'ts
 
-### Do:
+### Do
 
 - **Do** make the current dictation state visible in text, not just color.
 - **Do** keep the main surface compact enough for desktop overlay use.
@@ -220,7 +226,7 @@ Components should look familiar and task-oriented. Build states before decoratio
 - **Do** include focus-visible treatment and reduced-motion behavior in every durable UI surface.
 - **Do** distinguish "paste sent", "copy fallback", and "delivery observed" when those states exist.
 
-### Don't:
+### Don't
 
 - **Don't** use generic AI SaaS landing-page aesthetics.
 - **Don't** use dark purple or blue gradient AI tool chrome in product windows; the dock may use a restrained dark/translucent utility-overlay treatment when adapting Fixvox ergonomics.

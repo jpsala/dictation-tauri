@@ -8,7 +8,9 @@ product
 
 Initial user: JP as a developer and power user building a desktop dictation tool with repeatable checks before manual voice testing.
 
-Later users: people who need to dictate and insert text from the desktop with low friction, clear feedback, and no silent loss when delivery is uncertain.
+Later users: people who need to dictate and insert text from the desktop with low friction, clear feedback, and no silent loss when delivery is uncertain. A new installation begins account-first: the person signs in with Google, the host links the device automatically, then they configure microphone and shortcut before dictating.
+
+Operators are a distinct audience. They use the browser-based Control Room to manage people, access, product behavior, usage, and guarded system configuration; it is not ordinary desktop Settings.
 
 The core context is an active desktop workflow: the user is in another app, triggers dictation, speaks, watches a compact status surface, and receives text through insertion or copy fallback.
 
@@ -53,6 +55,12 @@ The voice is direct and factual. Prefer concrete labels such as "Listening", "Tr
 
 5. Durable UI follows documented product intent.
    App shell, voice dock, preview, recovery, settings, and onboarding should not become durable until they fit this product context and DESIGN.md.
+
+6. Account-first, infrastructure-last.
+   Normal onboarding guides a person through sign-in, automatic device linking, microphone, shortcut, and ready state with one contextual primary action. It never exposes identifiers, policies, routes, provider details, or repair internals; those belong in redacted Advanced diagnostics.
+
+7. User settings and operator control are separate jobs.
+   Settings configures the desktop app and account. Control Room is a capability-gated browser product for operators and preserves RBAC, recent-auth, preview, audit, and fail-closed behavior.
 
 ## Accessibility & Inclusion
 
