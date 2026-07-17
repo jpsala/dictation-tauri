@@ -2,7 +2,7 @@
 
 Router operativo corto; detalle durable vive en topics, decisions, specs o tracks.
 
-Última actualización: 2026-07-16.
+Última actualización: 2026-07-17.
 
 ## Lectura Rápida
 
@@ -33,7 +33,7 @@ Router operativo corto; detalle durable vive en topics, decisions, specs o track
 - Spec `019-fixvox-self-hosted-control-plane`: Checkpoints A-C (T001-T021) completos provider-free/local; PostgreSQL 18 `fixvox_test`, schema v4 y repositorios base siguen verdes. Checkpoint D sigue incompleto. JP eligió **producto primero**: los 73 fixtures HTTP/72 rutas únicas + 1 scheduled son evidencia histórica, no contrato objetivo; API, Bun, Tauri y Admin pueden migrar coordinadamente. Mantener privacidad/redacción, auth fail-closed, cuota autoritativa inmediatamente antes de una única llamada provider, audit y cero persistencia raw. Compatibilidad sólo como alias temporal con consumidor y retiro; Discord/Telegram, Admin embebido, benchmark, recipe-policy legacy y fetch APIs internas quedan fuera por defecto. Batch 1 sigue Green (TypeScript, bootstrap 6/6, PostgreSQL 12/12, migraciones y contract inventory 4/4 dos veces; `fixvox_test`, `cloudflare-authority`, revisión `0`, sin lock filtrado). Próximo: D-R1 mapa consumidor/disposición y propuesta contractual; no avanzar a E. Plan canónico: `docs/tracks/fixvox-product-first-self-hosted-contract-plan.md`; el closure plan anterior queda superseded como evidencia histórica. Cloudflare sigue authority y no hubo VPS, provider real, producción, deploy, import ni secreto.
 - Spike `dictation-bounded-implementation-spike`: run 1 sigue fail-closed con 0 agentes/tokens/mutaciones, pero el FlowIR R2 queda bloqueado por gates no determinísticos y porque su target ya contiene implementación previa. No ejecutarlo dentro del cierre D; después del Batch 1 se decide por separado si archivarlo como inconcluso o re-scoparlo con autorización explícita. `/flow` continúa sólo como helper de recomendación/prompt revisable. Detalle: `docs/tracks/bounded-taskflow-implementation-spike.md`.
 - Usage/quota Admin B0-B4 cerró local/provider-free. B0: `USAGE_COUNTERS` conserva siete contadores diarios sanitizados por device implícito, sin writes KV ni cambio de respuesta y fail-open vía `waitUntil`; implementación Green pero observación Lean Loop Red por el dry-run con descarga temporal no autorizada que JP aceptó. B1-B4: endpoint `/admin/usage/summary` extendido aditivamente con proyección bounded/redacted por account/device (STT, LLM, failures, prewarm y remaining quota), UI Admin con estados empty/unavailable/blocked y tests Green; no agrega writers/providers. B5 smoke real sigue gated. Receipts en `docs/tracks/fixvox-registered-users-opportunities.md`.
-- Installer Windows unsigned `0.1.0` publicado como prerelease; falta smoke físico en otra PC.
+- Installer Windows unsigned `0.1.0` publicado como prerelease `fixvox-tauri-v0.1.0-20260717122820` desde source `1c8a4f9d8ced1a3d8a1f5294ddfae15fef5ac8da`; installer + checksum verificados por redescarga con SHA256 `3a388bdc17e82ff31bb74c467a7a1383896f97b6bc733fcc09ea8605269de02c`. Falta smoke físico en otra PC.
 - Lulu es prefijo dentro de captura, no wake word. Flujo seguro `AssistantIntentResult` -> `AssistantSurface` -> `PipelineUiResult`; Smart Agent mínimo de presets existe, sin tool loop rico.
 
 ## Guardrails
