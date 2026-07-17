@@ -1169,12 +1169,14 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/admin/devices') return sendJson(res, 200, await proxyAdmin(`/admin/control-plane/devices?limit=${encodeURIComponent(url.searchParams.get('limit') || '20')}`))
     if (url.pathname === '/api/admin/devices/policy' && req.method === 'POST') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/devices/policy', 'POST', JSON.parse(await readBody(req) || '{}')))
     if (url.pathname === '/api/admin/policies') {
-      const [policyPayload, accountPayload, pricingPayload] = await Promise.all([
+      const [policyPayload, accountPayload, pricingPayload, profilePayload] = await Promise.all([
         proxyAdmin('/admin/control-plane/policy'),
         proxyAdmin('/admin/control-plane/accounts?limit=1').catch(() => ({})),
         proxyAdmin('/admin/pricing').catch(() => ({})),
+        proxyAdmin('/admin/control-plane/profiles').catch(() => null),
       ])
-      return sendJson(res, 200, { ...policyPayload, variantOptions: accountPayload.variantOptions || policyPayload.variantOptions || [], availableSegments: accountPayload.availableSegments || policyPayload.availableSegments || [], engineOptions: policyPayload.engineOptions || accountPayload.engineOptions || [], promptOptions: policyPayload.promptOptions || accountPayload.promptOptions || [], pricing: pricingPayload.pricing || [], pricingWatchlist: pricingPayload.watchlist || null, policyVariants: policyPayload.policyVariants || {}, policyEngines: policyPayload.policyEngines || {}, policyBudgets: policyPayload.policyBudgets || accountPayload.policyBudgets || {} })
+      const profileVersions = Array.isArray(profilePayload?.profiles) ? profilePayload.profiles : []
+      return sendJson(res, 200, { ...policyPayload, profileVersions, profileVersionsUnavailable: profilePayload === null, variantOptions: accountPayload.variantOptions || policyPayload.variantOptions || [], availableSegments: accountPayload.availableSegments || policyPayload.availableSegments || [], engineOptions: policyPayload.engineOptions || accountPayload.engineOptions || [], promptOptions: policyPayload.promptOptions || accountPayload.promptOptions || [], pricing: pricingPayload.pricing || [], pricingWatchlist: pricingPayload.watchlist || null, policyVariants: policyPayload.policyVariants || {}, policyEngines: policyPayload.policyEngines || {}, policyBudgets: policyPayload.policyBudgets || accountPayload.policyBudgets || {} })
     }
     if (url.pathname === '/api/admin/usage') return sendJson(res, 200, await proxyAdmin('/admin/usage/summary'))
     return sendJson(res, 404, { error: { message: 'Not found' } })
