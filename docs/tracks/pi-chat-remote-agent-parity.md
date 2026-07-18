@@ -270,4 +270,13 @@ Provisioning ejecutado con autorización exacta:
 - Backup/receipt: `/home/jpsal/.local/state/fixvox-release-provision/20260718-034947/`; GitHub key ID guardado.
 - Mirror Dictation está clean pero stale (`5400a16` vs remote `df021fc`), por lo que fast-forward guard devuelve false y cualquier push queda bloqueado como corresponde.
 
-Pendiente: commit/push de fixes de known_hosts/safe.directory. Gate independiente para sync durable del mirror, habilitar dos services + Admin tools y smoke status/diff solamente. Otro gate posterior para primer commit/push; deploy Admin requiere otro approval separado.
+Enable read-only ejecutado con autorización exacta:
+
+- Primer sync run `20260718-102224` PASS. Primer enable run `20260718-102245` abortó fail-closed al detectar la key existente desde usuario sin traverse; services/feature quedaron disabled.
+- Fix idempotente `d50d583` usa `sudo test -f`; retry enable run `20260718-102358` PASS, services/sockets 0660 activos y Admin feature release=1.
+- Status remoto inicialmente reveló mirror stale tras el fix. `792c0da` hace status con fetch real y detiene/reinicia release broker durante swaps.
+- Sync final `20260718-102611`: Dictation mirror `792c0da`, clean y hash idéntico a remote; Constelaciones `02a4b1e`.
+- Read-only smoke como `fixvox-agent`: status main/clean/fastForward true, diff 0; RPC offline cargó release tools explícitas con no-builtins.
+- No mutation: local==remote, tree clean, journal vacío, Admin helper no invocado. Health y tres services activos.
+
+Siguiente gate independiente: primer commit controlado sobre un archivo fixture permitido + confirm owner, seguido por push typed. Deploy Admin queda para un gate posterior aun si commit/push pasa.
