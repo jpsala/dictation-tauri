@@ -104,6 +104,7 @@ pub fn run() {
             result_history::list_result_history_entries,
             result_history::clear_result_history,
             settings_window::show_settings_window,
+            settings_window::show_account_setup_window,
             settings_window::show_admin_control_room,
             startup_launch::get_startup_launch_config,
             startup_launch::set_startup_launch_enabled,

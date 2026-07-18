@@ -14,16 +14,7 @@ pub fn configure_settings_window<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-pub fn show_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    eprintln!("[dictation-tauri][settings] show requested");
-    let window = if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
-        eprintln!("[dictation-tauri][settings] reusing configured window");
-        window
-    } else {
-        create_fresh_settings_window(app)
-            .map_err(|error| format!("settings window unavailable: {error}"))?
-    };
-
+fn show_existing_settings_window<R: Runtime>(window: WebviewWindow<R>) -> Result<(), String> {
     window
         .show()
         .map_err(|error| format!("settings window show failed: {error}"))?;
@@ -36,8 +27,48 @@ pub fn show_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<()
         .set_focus()
         .map_err(|error| format!("settings window focus failed: {error}"))?;
     eprintln!("[dictation-tauri][settings] focus ok");
-
     Ok(())
+}
+
+fn poll_for_value<T>(
+    attempts: usize,
+    mut lookup: impl FnMut() -> Option<T>,
+    mut wait: impl FnMut(),
+) -> Option<T> {
+    for attempt in 0..attempts {
+        if let Some(value) = lookup() {
+            return Some(value);
+        }
+        if attempt + 1 < attempts {
+            wait();
+        }
+    }
+    None
+}
+
+pub fn show_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    eprintln!("[dictation-tauri][settings] show requested");
+    let window = if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
+        eprintln!("[dictation-tauri][settings] reusing configured window");
+        window
+    } else {
+        create_fresh_settings_window(app)
+            .map_err(|error| format!("settings window unavailable: {error}"))?
+    };
+
+    show_existing_settings_window(window)
+}
+
+pub fn show_account_setup_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    eprintln!("[dictation-tauri][settings] account setup show requested");
+    let window = poll_for_value(
+        50,
+        || app.get_webview_window(SETTINGS_WINDOW_LABEL),
+        || std::thread::sleep(std::time::Duration::from_millis(50)),
+    )
+    .ok_or_else(|| "account setup window unavailable (settings_startup_timeout)".to_string())?;
+    eprintln!("[dictation-tauri][settings] account setup reusing configured window");
+    show_existing_settings_window(window)
 }
 
 pub fn show_admin_control_room_for_app<R: Runtime>(_app: &AppHandle<R>) -> Result<(), String> {
@@ -100,6 +131,50 @@ pub fn show_settings_window(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn show_account_setup_window(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || show_account_setup_window_for_app(&app))
+        .await
+        .map_err(|_| {
+            "account setup window unavailable (settings_startup_join_failed)".to_string()
+        })?
+}
+
+#[tauri::command]
 pub fn show_admin_control_room(app: AppHandle) -> Result<(), String> {
     show_admin_control_room_for_app(&app)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::poll_for_value;
+
+    #[test]
+    fn account_setup_poll_reuses_a_configured_window_when_it_appears() {
+        let mut attempts = 0;
+        let found = poll_for_value(
+            4,
+            || {
+                attempts += 1;
+                (attempts == 3).then_some("settings")
+            },
+            || {},
+        );
+        assert_eq!(found, Some("settings"));
+        assert_eq!(attempts, 3);
+    }
+
+    #[test]
+    fn account_setup_poll_times_out_without_creating_a_fallback() {
+        let mut attempts = 0;
+        let found: Option<&str> = poll_for_value(
+            3,
+            || {
+                attempts += 1;
+                None
+            },
+            || {},
+        );
+        assert_eq!(found, None);
+        assert_eq!(attempts, 3);
+    }
 }

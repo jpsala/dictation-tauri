@@ -51,7 +51,7 @@ describe("Tauri account readiness gate", () => {
           redacted: true,
         };
       }
-      if (command === "hide_dock" || command === "show_settings_window") {
+      if (command === "hide_dock" || command === "show_account_setup_window") {
         return null;
       }
       throw new Error(`unexpected command ${command}`);
@@ -62,31 +62,8 @@ describe("Tauri account readiness gate", () => {
       "get_fixvox_setup_readiness",
       "get_fixvox_cloud_status",
       "hide_dock",
-      "show_settings_window",
+      "show_account_setup_window",
     ]);
-  });
-
-  it("retries Settings once when packaged startup races the configured window", async () => {
-    let settingsAttempts = 0;
-    const invoke = vi.fn(async (command: string) => {
-      if (command === "get_fixvox_setup_readiness") {
-        return { schemaVersion: 1, phase: "welcome", ready: false, redacted: true };
-      }
-      if (command === "get_fixvox_cloud_status" || command === "hide_dock") {
-        return null;
-      }
-      if (command === "show_settings_window") {
-        settingsAttempts += 1;
-        if (settingsAttempts === 1) {
-          throw new Error("configured window is still starting");
-        }
-        return null;
-      }
-      throw new Error(`unexpected command ${command}`);
-    });
-
-    await expect(ensureTauriDictationReadiness(invoke)).resolves.toBe(false);
-    expect(settingsAttempts).toBe(2);
   });
 
   it("guards the central capture boundary before creating a desktop session", () => {
