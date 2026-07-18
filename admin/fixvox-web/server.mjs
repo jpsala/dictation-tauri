@@ -149,6 +149,7 @@ class PiRpcProcess {
     if (!child) return
     child.kill('SIGTERM')
     this.process = null
+    for (const handler of this.eventHandlers) handler({ type: 'agent_settled', reason: 'stopped' })
   }
   async prompt(message, onEvent) {
     await this.ensureStarted()
@@ -1152,6 +1153,7 @@ const server = http.createServer(async (req, res) => {
       if (MOCK_MODE) return sendJson(res, 200, mockCommand(command))
       if (command?.type === 'stop') {
         await pi.stop()
+        piAccess.cancelAll()
         return sendJson(res, 200, { ok: true })
       }
       return sendJson(res, 200, { ok: true, response: await pi.send(command) })

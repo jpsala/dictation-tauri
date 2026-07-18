@@ -12,6 +12,8 @@ test('Pi Chat serializes prompts and does not leak raw session identity', () => 
   assert.throws(() => access.beginPrompt(b), (error) => error.status === 409)
   access.endPrompt(a)
   assert.doesNotThrow(() => access.beginPrompt(b))
+  access.cancelAll()
+  assert.doesNotThrow(() => access.beginPrompt(a))
 })
 
 test('confirmation is session-bound, expiring and one-time', () => {

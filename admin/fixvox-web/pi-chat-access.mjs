@@ -17,6 +17,11 @@ export class PiChatAccessCoordinator {
     if (this.activeSession === sessionKey) this.activeSession = null
   }
 
+  cancelAll() {
+    this.activeSession = null
+    this.pending.clear()
+  }
+
   registerConfirmation(event, sessionKey) {
     if (event?.type !== 'extension_ui_request' || event?.method !== 'confirm' || !event.id) return
     const operationHash = crypto.createHash('sha256').update(JSON.stringify(event.params || event.message || event.id)).digest('hex')
