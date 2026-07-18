@@ -206,7 +206,7 @@ Rollout ejecutado con autorización exacta:
 
 ## Batch 4 — Grep/Find/Ls Read-only
 
-**Estado: local/provider-free listo; rollout pendiente.**
+**Estado: DONE en producción.**
 
 - `find` y `ls` usan factories Pi con operations delegadas al workspace broker; el provider user no toca filesystem directo.
 - `grep` es custom tool brokered. Broker ejecuta `/usr/bin/rg` sin shell, regex Rust sin backtracking, timeout 10 s, output 1 MiB, archivos 1 MiB, máximo 200 matches y líneas truncadas a 500 chars.
@@ -217,4 +217,11 @@ Rollout ejecutado con autorización exacta:
 - Verificación Linux provider-free en `/tmp`: 9/9 PASS con `/usr/bin/rg`; socket broker, path normalization y runtime Node Linux ejercitados sin tocar producción.
 - Args activos quedan explícitos: `read,bash,edit,write,grep,find,ls,constelaciones_future_appointments`; `--no-builtin-tools` se conserva.
 
-Gate pendiente: commit/push y rollout runtime-only mediante `pi-remote-agent-rollout.ps1 -ConfirmProduction`; sin mirror sync ni credenciales.
+Rollout runtime-only ejecutado con autorización exacta:
+
+- Source: `67b0643`; run `20260718-030745`; `sync=0`.
+- Bundle SHA256, runtime backup, service restart, sockets/isolation/health: PASS.
+- Mirrors no cambiaron: dictation sigue `5400a16`; OAuth, credenciales y feature flag no cambiaron (`feature=1`).
+- Smoke broker como `fixvox-agent`: ls/find/grep PASS y traversal glob bloqueado.
+- Smoke RPC Linux offline: args explícitos incluyen grep/find/ls, `--no-builtin-tools` presente y `get_state` PASS.
+- Rollback/receipt: `/home/jpsal/.local/state/fixvox-agent-rollouts/20260718-030745/`.
