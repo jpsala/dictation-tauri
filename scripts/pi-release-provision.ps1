@@ -76,7 +76,8 @@ if [[ $register == 1 ]]; then
   if [[ ! -f $key ]]; then sudo -u fixvox-release ssh-keygen -q -t ed25519 -N '' -C fixvox-release-dictation -f "$key"; fi
   title=fixvox-release-dictation
   existing=$(gh api repos/jpsala/dictation-tauri/keys --jq ".[] | select(.title == \"$title\") | .id" | head -1)
-  if [[ -z $existing ]]; then public=$(sudo cat "$key.pub"); gh api -X POST repos/jpsala/dictation-tauri/keys -f title="$title" -f key="$public" -F read_only=false >/dev/null; fi
+  if [[ -z $existing ]]; then public=$(sudo cat "$key.pub"); existing=$(gh api -X POST repos/jpsala/dictation-tauri/keys -f title="$title" -f key="$public" -F read_only=false --jq .id); fi
+  printf '%s\n' "$existing" > "$backup/github-deploy-key-id"
   sudo tee /etc/fixvox-release/ssh_config >/dev/null <<CFG
 Host github.com
   HostName github.com
