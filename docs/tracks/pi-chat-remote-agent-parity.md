@@ -181,7 +181,7 @@ Límites de paridad vigentes: mirrors shallow/stale; no grep/find/ls autónomos,
 
 ## Batch 3 — Rollout Y Sync Durable
 
-**Estado: local/provider-free listo; producción aún no ejecutada.**
+**Estado: DONE en producción.**
 
 - `scripts/pi-remote-agent-rollout.ps1` es dry-run por default; toda mutación requiere `-ConfirmProduction` y mirror refresh además requiere `-SyncMirrors`.
 - Manifest exacto, tarball único, SHA256 local/remoto, retries bounded, stage y cleanup.
@@ -192,4 +192,14 @@ Límites de paridad vigentes: mirrors shallow/stale; no grep/find/ls autónomos,
 - OAuth/auth no se copia, archiva ni imprime. El único acceso a `auth.json` es un `test -r` negativo ejecutado como workspace user.
 - Validación local: PowerShell parse PASS, Bash syntax PASS, dry-run `-SyncMirrors` PASS sin side effects y tests estáticos provider-free PASS.
 
-Gate pendiente: commit/push y autorización exacta separada antes de ejecutar `-ConfirmProduction -SyncMirrors`.
+Rollout ejecutado con autorización exacta:
+
+- Commit fuente: `5400a16`.
+- Run: `20260718-025551`; comando `-ConfirmProduction -SyncMirrors`.
+- Bundle remoto SHA256 OK; clones shallow desde origins canónicos OK; dirty/secret gates pasaron.
+- Mirrors promovidos: dictation-tauri `5400a16`, Constelaciones `02a4b1e`; ambos clean.
+- Receipt/backup: `/home/jpsal/.local/state/fixvox-agent-rollouts/20260718-025551/`.
+- Mirrors previos preservados en `/var/lib/fixvox-workspace/rollout-backups/20260718-025551/`.
+- Admin + dos brokers active; sockets 0660; feature flag preservado en `1`; health público OK.
+- Direct provider→workspace y workspace→OAuth siguen bloqueados; broker read post-swap PASS.
+- Stage y bundle temporales eliminados. No OAuth copy, nuevas credenciales, push ni deploy de producto.
