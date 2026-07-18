@@ -140,7 +140,7 @@ Stop inmediato ante secretos, checks rojos, diff no atribuible, health fallido, 
 - Installer unsigned final: SHA256 `8f6ecbb1453eda2856b5ee254a853cc9dc91ed3a270ec999cb3ed3a2937754c8`, 29.584.764 bytes.
 - Upgrade local: exit `0`; exe instalado SHA256 `11e715b650932fbd42837b9ef6c21fa41ac0838c636e40e13c1a7636718df1b6`.
 - Smoke instalado final: PASS en `artifacts/release/packaged-clean-smoke/20260717-234700-rollout-installed-pass/report.json`; dock oculto, Settings abierto, install ID local sin device/policy, cero provider/login/clipboard y proceso propio detenido.
-- Deploy Worker: **FAILED antes de mutar**. Wrangler rechazó el token configurado con Cloudflare `10000 Authentication error` / `9109 Invalid access token`.
+- Deploy Worker: **FAILED antes de mutar**. Wrangler rechazó el token heredado por el proceso Pi con Cloudflare `10000 Authentication error` / `9109 Invalid access token`. Tras confirmación de JP se reintentó y falló igual. Diagnóstico redacted: `CLOUDFLARE_API_TOKEN` existe sólo en el environment del proceso actual, no en User/Machine; al retirarlo únicamente en un child process, Wrangler confirmó que el entorno no interactivo no dispone de otra credencial. No se imprimió ni persistió el token.
 - Health público posterior: `200`, `ok: true`, servicio `fixvox-proxy`; la versión productiva previa permanece activa.
 - Admin VPS: no intentado.
 - Prerelease desktop: no publicada.
