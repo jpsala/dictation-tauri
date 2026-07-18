@@ -98,5 +98,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (!socketPath) throw new Error('PI_CHAT_WORKSPACE_BROKER_SOCKET is required.')
   const server = createWorkspaceBroker({ roots: remoteAgentRoots(process.env.PI_CHAT_WORKSPACE_ROOTS) })
   await fs.rm(socketPath, { force: true })
-  server.listen(socketPath, () => process.stdout.write('workspace broker ready\n'))
+  server.listen(socketPath, async () => {
+    await fs.chmod(socketPath, 0o660)
+    process.stdout.write('workspace broker ready\n')
+  })
 }
