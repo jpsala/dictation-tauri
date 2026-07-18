@@ -391,6 +391,18 @@ test('Control Room keeps Pi Chat as a visible primary navigation area', async ()
   assert.ok(appSource.indexOf("if (key === 'chat')") < appSource.indexOf('const area = CONTROL_ROOM_AREAS[key]', appSource.indexOf('function wireDynamicEvents')))
 })
 
+test('Pi Chat renders only assistant messages and waits until the RPC run settles', async () => {
+  const appSource = await fs.readFile(new URL('./public/app.js', import.meta.url), 'utf8')
+  const serverSource = await fs.readFile(new URL('./server.mjs', import.meta.url), 'utf8')
+  const handler = appSource.slice(appSource.indexOf('function handlePiEvent'), appSource.indexOf('function handleUiRequest'))
+  const promptBridge = serverSource.slice(serverSource.indexOf('async prompt(message, onEvent)'), serverSource.indexOf('subscribe(handler)'))
+
+  assert.match(appSource, /value\.role\s*&&\s*value\.role\s*!==\s*'assistant'/)
+  assert.match(handler, /event\.message\?\.role\s*===\s*'assistant'/)
+  assert.doesNotMatch(promptBridge, /event\.type\s*===\s*'agent_end'\)\s*finish/)
+  assert.match(promptBridge, /event\.type\s*===\s*'agent_settled'\)\s*finish/)
+})
+
 test('Pi Chat narrow layout stacks activity without horizontal overflow', async () => {
   const styles = await fs.readFile(new URL('./public/styles.css', import.meta.url), 'utf8')
   const finalResponsiveRule = styles.lastIndexOf('@media (max-width: 1180px)')

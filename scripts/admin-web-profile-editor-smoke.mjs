@@ -40,6 +40,11 @@ try {
   await piChat.click()
   assert.equal(await page.getByRole('heading', { name: 'Pi Chat', exact: true }).isVisible(), true)
   assert.equal(await page.locator('#composer').isVisible(), true)
+  await page.locator('#prompt').fill('FIXVOX_USER_MESSAGE_ONLY_EVENT')
+  await page.locator('#send-button').click()
+  await page.waitForFunction(() => document.querySelector('.message-row.assistant:last-of-type .markdown-lite')?.textContent?.includes('Pi terminó sin texto visible'))
+  const assistantText = await page.locator('.message-row.assistant .markdown-lite').last().innerText()
+  assert.doesNotMatch(assistantText, /FIXVOX_USER_MESSAGE_ONLY_EVENT|Fixvox Admin UI context/)
   await page.setViewportSize({ width: 871, height: 625 })
   const narrowLayout = await page.evaluate(() => {
     const drawer = document.querySelector('.admin-drawer')?.getBoundingClientRect()

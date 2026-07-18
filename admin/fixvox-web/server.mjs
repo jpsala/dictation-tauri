@@ -126,7 +126,7 @@ class PiRpcProcess {
       let settled = false
       const unsubscribe = this.subscribe((event) => {
         onEvent(event)
-        if (event.type === 'agent_end') finish()
+        if (event.type === 'agent_settled') finish()
         const update = event.assistantMessageEvent
         if (event.type === 'message_update' && update?.type === 'error') finish(new Error(update.error || update.reason || 'Pi error'))
       })
@@ -917,6 +917,11 @@ async function mockPrompt(message, send) {
   send({ type: 'tool_execution_start', toolCallId: toolId, toolName: 'fixvox.local_ui_probe', extensionPath: 'mock/local' })
   await new Promise((resolve) => setTimeout(resolve, 120))
   send({ type: 'tool_execution_end', toolCallId: toolId, toolName: 'fixvox.local_ui_probe', result: { ok: true, checked: ['sidebar', 'chat', 'composer', 'activity'] } })
+  if (message.includes('FIXVOX_USER_MESSAGE_ONLY_EVENT')) {
+    send({ type: 'message_end', message: { role: 'user', content: message } })
+    send({ type: 'agent_end', messages: [{ role: 'user', content: message }] })
+    return
+  }
   if (message.includes('FIXVOX_FINAL_MESSAGE_EVENT')) {
     send({ type: 'message_end', message: { role: 'assistant', content: 'FIXVOX_FINAL_MESSAGE_OK' } })
     send({ type: 'agent_end' })

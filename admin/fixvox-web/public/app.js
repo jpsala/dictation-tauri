@@ -124,6 +124,7 @@ function uiContextSummary() {
 function extractAssistantText(value) {
   if (!value) return ''
   if (typeof value === 'string') return value
+  if (value.role && value.role !== 'assistant') return ''
   if (typeof value.content === 'string') return value.content
   if (typeof value.text === 'string') return value.text
   if (Array.isArray(value.content)) return value.content.map((part) => extractAssistantText(part)).join('')
@@ -300,12 +301,12 @@ function handlePiEvent(event, assistantId) {
   if (event.type === 'auto_retry_start') { state.status = `Reintentando (${event.attempt || 1})`; renderHeader(); return }
   if (event.type === 'queue_update') { state.status = 'Cola Pi actualizada'; renderHeader(); return }
   if (event.type === 'message_end' || event.type === 'turn_end') {
-    const finalText = extractAssistantText(event.message) || extractLastAssistantText(event.messages)
+    const finalText = event.message?.role === 'assistant' ? extractAssistantText(event.message) : extractLastAssistantText(event.messages)
     if (finalText.trim()) setMessage(assistantId, finalText)
     return
   }
   if (event.type === 'agent_end') {
-    const finalText = extractAssistantText(event.message) || extractAssistantText(event.assistantMessage) || extractAssistantText(event.result) || extractLastAssistantText(event.messages)
+    const finalText = extractAssistantText(event.assistantMessage) || extractAssistantText(event.result) || extractLastAssistantText(event.messages)
     if (finalText.trim()) setMessage(assistantId, finalText)
     return
   }
