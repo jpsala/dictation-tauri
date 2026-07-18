@@ -31,6 +31,7 @@ $remoteStage = "/tmp/fixvox-admin-deploy-$runId"
 $remoteBackup = "$backupRoot/$runId.tar.gz"
 $localBundle = Join-Path ([IO.Path]::GetTempPath()) "fixvox-admin-deploy-$runId.tar.gz"
 $remoteBundle = "/tmp/fixvox-admin-deploy-$runId.tar.gz"
+$windowsTar = Join-Path $env:SystemRoot 'System32/tar.exe'
 
 function Invoke-Checked {
   param(
@@ -86,7 +87,7 @@ foreach ($file in $files) {
 
 $replacementStarted = $false
 try {
-  Invoke-Checked -FilePath 'tar' -ArgumentList (@('-czf', $localBundle, '-C', $adminRoot) + $files)
+  Invoke-Checked -FilePath $windowsTar -ArgumentList (@('-czf', $localBundle, '-C', $adminRoot) + $files)
   $bundleHash = Get-Sha256 $localBundle
   Invoke-Remote "mkdir -p '$backupRoot'; rm -rf '$remoteStage' '$remoteBundle'; mkdir -p '$remoteStage'; tar -czf '$remoteBackup' -C '$remoteRoot' ."
   Send-BundleWithRetry $localBundle "${remoteHost}:$remoteBundle"
