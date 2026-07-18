@@ -6,6 +6,7 @@ function setHtml(node, html) {
 const app = $('#app')
 
 const CONTROL_ROOM_AREAS = {
+  chat: { label: 'Pi Chat', description: 'Asistencia contextual para operar Fixvox de forma segura.', renderer: 'chat', icon: 'chat' },
   people: { label: 'Personas', description: 'Cuentas, equipos vinculados y acceso efectivo.', dataTab: 'accounts', renderer: 'accounts', icon: 'accounts' },
   access: { label: 'Planes y acceso', description: 'Roles, acceso operativo y asignaciones autorizadas.', dataTab: 'settings', renderer: 'settings', icon: 'policies' },
   behavior: { label: 'Comportamiento', description: 'Dictado, presets y comportamiento de producto.', dataTab: 'policies', renderer: 'policies', configurationTab: 'presets', icon: 'policies' },
@@ -1153,6 +1154,7 @@ function renderAdminData() {
 function wireDynamicEvents() {
   document.querySelectorAll('[data-nav]').forEach((button) => button.onclick = () => {
     const key = button.dataset.nav
+    if (key === 'chat') { state.activeView = 'chat'; renderAll(); return }
     const area = CONTROL_ROOM_AREAS[key]
     if (area) {
       state.activeView = key
@@ -1162,7 +1164,6 @@ function wireDynamicEvents() {
       renderAll()
       return
     }
-    if (key === 'chat') { state.activeView = 'chat'; renderAll(); return }
     state.activeView = key
     renderAll()
   })

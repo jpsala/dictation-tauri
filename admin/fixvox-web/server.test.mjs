@@ -384,3 +384,9 @@ test('usage endpoint and workbench expose only redacted bounded operational metr
   assert.match(appSource, /quotaStatus/)
   assert.match(appSource, /cobertura parcial/)
 })
+
+test('Control Room keeps Pi Chat as a visible primary navigation area', async () => {
+  const appSource = await fs.readFile(new URL('./public/app.js', import.meta.url), 'utf8')
+  assert.match(appSource, /chat:\s*\{\s*label:\s*'Pi Chat'/)
+  assert.ok(appSource.indexOf("if (key === 'chat')") < appSource.indexOf('const area = CONTROL_ROOM_AREAS[key]', appSource.indexOf('function wireDynamicEvents')))
+})
