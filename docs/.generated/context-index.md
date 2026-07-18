@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-18T02:56:07.639Z
+Generated: 2026-07-18T03:05:11.425Z
 
 ## Topics
 
@@ -40,7 +40,7 @@ Generated: 2026-07-18T02:56:07.639Z
 - archived: [Prompt Para Proxima Sesion Archivado](../tracks/archive/next-session-prompt-2026-06-20.md)
 - archived: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md)
 - active: [Bounded Taskflow Implementation Spike](../tracks/bounded-taskflow-implementation-spike.md)
-- active: [Clean Install Readiness And Account UX](../tracks/clean-install-readiness-and-account-ux.md)
+- complete: [Clean Install Readiness And Account UX](../tracks/clean-install-readiness-and-account-ux.md)
 - active: [Fixvox Admin Configuration Hub](../tracks/fixvox-admin-configuration-hub.md)
 - stable: [Fixvox Admin Profile Composer](../tracks/fixvox-admin-profile-composer.md)
 - active: [Fixvox Admin Web + Pi Chat](../tracks/fixvox-admin-web-pi-chat.md)

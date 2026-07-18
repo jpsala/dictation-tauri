@@ -1,5 +1,5 @@
 ---
-status: active
+status: complete
 started: 2026-07-18
 updated: 2026-07-18
 priority: high
@@ -20,7 +20,7 @@ source_refs:
 
 ## Estado
 
-**Rollout bloqueado en el deploy Worker por credencial Cloudflare inválida.** Código, push, installer, upgrade y smoke local están completos; Admin VPS y prerelease no se intentaron después del stop fail-closed.
+**Implementación y rollout completo (`DONE`).** Código/push, installer, upgrade/smoke local, Worker Cloudflare, Admin VPS y prerelease quedaron verificados. Login/link y provider/dictado no formaron parte del rollout.
 
 El dogfood de instalación limpia mostró tres fallos del flujo normal:
 
@@ -103,7 +103,7 @@ El log confirma `hide_dock` y `show_settings_window`; el proceso propio quedó d
 
 ## Riesgos
 
-- El installer y la instalación local actual todavía contienen el build anterior; no declarar el fix disponible allí hasta rebuild + upgrade autorizados.
+- El installer es unsigned; conservar SmartScreen/otra-PC como gate separado antes de ampliar distribución.
 - Setup readiness host-owned aún no modela de forma real micrófono/atajo. Este corte usa account/device/capability como gate efectivo de dictado y no simula esos pasos.
 - El polling de readiness es local/redacted; no debe convertirse en un loop de network/provider.
 - No reintroducir fixture controllers en el default Tauri route.
@@ -140,11 +140,13 @@ Stop inmediato ante secretos, checks rojos, diff no atribuible, health fallido, 
 - Installer unsigned final: SHA256 `8f6ecbb1453eda2856b5ee254a853cc9dc91ed3a270ec999cb3ed3a2937754c8`, 29.584.764 bytes.
 - Upgrade local: exit `0`; exe instalado SHA256 `11e715b650932fbd42837b9ef6c21fa41ac0838c636e40e13c1a7636718df1b6`.
 - Smoke instalado final: PASS en `artifacts/release/packaged-clean-smoke/20260717-234700-rollout-installed-pass/report.json`; dock oculto, Settings abierto, install ID local sin device/policy, cero provider/login/clipboard y proceso propio detenido.
-- Deploy Worker: **FAILED antes de mutar**. Wrangler rechazó el token heredado por el proceso Pi con Cloudflare `10000 Authentication error` / `9109 Invalid access token`. Tras confirmación de JP se reintentó y falló igual. Diagnóstico redacted: `CLOUDFLARE_API_TOKEN` existe sólo en el environment del proceso actual, no en User/Machine; al retirarlo únicamente en un child process, Wrangler confirmó que el entorno no interactivo no dispone de otra credencial. No se imprimió ni persistió el token.
-- Health público posterior: `200`, `ok: true`, servicio `fixvox-proxy`; la versión productiva previa permanece activa.
-- Admin VPS: no intentado.
-- Prerelease desktop: no publicada.
+- Deploy Worker: los intentos iniciales fallaron antes de mutar por un token process-scoped inválido. Siguiendo `C:/dev/infra/docs/runbooks/cloudflare-operations.md`, el deploy final usó `FIXVOX_APP_CLOUDFLARE_API_TOKEN` desde `C:/dev/infra/.env`, mapeado sólo al child Wrangler y sin imprimir/persistir el valor.
+- Worker activo: `df416730-61b8-4222-ab5f-282879251db9`; health público posterior `200`, `ok: true`, servicio `fixvox-proxy`.
+- Admin VPS: deploy PASS con backup `/home/jpsal/.local/state/fixvox-admin-backups/20260718-000036.tar.gz`; health local del servicio y `https://fixvox.jpsala.dev/healthz` respondieron OK. Browser normal mostró la pantalla pública de login; no se inició sesión.
+- Prerelease desktop: `fixvox-tauri-v0.1.0-20260718000133`, assets finales `Fixvox-Tauri-Setup.exe` y `.sha256.txt`. La primera subida conservó por error el nombre source del archivo; se corrigió antes del cierre eliminando sólo ese asset y subiendo el nombre canónico.
+- Redescarga final SHA256: `8f6ecbb1453eda2856b5ee254a853cc9dc91ed3a270ec999cb3ed3a2937754c8`, idéntico al local y al checksum publicado.
+- Release: `https://github.com/jpsala/fixvox-releases/releases/tag/fixvox-tauri-v0.1.0-20260718000133`.
 
 ## Siguiente Acción
 
-Restaurar o autorizar una credencial Cloudflare válida para Workers y reanudar desde deploy Worker. No reejecutar build/upgrade/smoke salvo cambio de HEAD. Tras Worker health verde: Admin VPS y prerelease desktop, serialmente. Mantener login/link y provider como gates posteriores separados.
+No hay batch activa. Login/link real, provider/dictado, smoke en otra PC o promoción de canal requieren gates nuevos y separados.
