@@ -13,7 +13,7 @@ test('rollout defaults to dry-run and gates every remote mutation', () => {
 })
 
 test('rollout uses exact manifest, one verified bundle, bounded retry and cleanup', () => {
-  for (const file of ['pi-remote-agent-extension.mjs', 'pi-workspace-broker.mjs', 'constelaciones-read-broker.mjs', 'run-isolated-pi.sh', 'fixvox-workspace-broker.service', 'fixvox-constelaciones-read-broker.service']) {
+  for (const file of ['pi-remote-agent-extension.mjs', 'pi-workspace-broker.mjs', 'constelaciones-read-broker.mjs', 'pi-release-broker.mjs', 'pi-release-broker-client.mjs', 'pi-release-git-runner.mjs', 'pi-release-service.mjs', 'run-isolated-pi.sh', 'fixvox-workspace-broker.service', 'fixvox-constelaciones-read-broker.service']) {
     assert.ok(rollout.includes(file))
   }
   assert.match(rollout, /Get-Sha256/)

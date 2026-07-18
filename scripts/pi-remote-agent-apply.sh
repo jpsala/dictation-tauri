@@ -16,6 +16,10 @@ RUNTIME_FILES=(
   pi-workspace-broker.mjs
   constelaciones-read-adapter.mjs
   constelaciones-read-broker.mjs
+  pi-release-broker.mjs
+  pi-release-broker-client.mjs
+  pi-release-git-runner.mjs
+  pi-release-service.mjs
 )
 REPOS=(dictation-tauri constelaciones)
 SWAPPED=()

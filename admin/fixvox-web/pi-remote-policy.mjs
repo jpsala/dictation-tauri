@@ -20,6 +20,7 @@ const PROTECTED_PATH_PARTS = [
   /\.(?:sqlite|sqlite3|db)$/i,
 ]
 const SECRET_DISCOVERY_COMMAND = /(?:^|[;&|()\s])(?:env|printenv|set|export\s+-p|compgen\s+-e)(?:$|[;&|()\s])|\/proc\/(?:self|\$?\w+|\d+)\/environ|\.env(?:\s|$)|\.ssh(?:\/|\s|$)|credential|secret/i
+const RELEASE_BYPASS_COMMAND = /\bgit\b[^\n;&|]{0,200}\b(?:commit|push|tag)\b|(?:^|[;&|()\s])(?:systemctl|docker|wrangler|scp|ssh)(?:$|[;&|()\s])|(?:admin-web-deploy|cloud-deploy|release-windows)/i
 
 function canonical(value) {
   return path.resolve(String(value || ''))
@@ -60,6 +61,8 @@ export function buildRemoteAgentEnv(source, options = {}) {
   if (Array.isArray(options.roots)) env.PI_CHAT_AGENT_ROOTS = options.roots.map(canonical).join(path.delimiter)
   if (options.constelacionesSocket) env.PI_CHAT_CONSTELACIONES_SOCKET = canonical(options.constelacionesSocket)
   if (options.workspaceBrokerSocket) env.PI_CHAT_WORKSPACE_BROKER_SOCKET = canonical(options.workspaceBrokerSocket)
+  if (options.releaseBrokerSocket) env.PI_CHAT_RELEASE_BROKER_SOCKET = canonical(options.releaseBrokerSocket)
+  if (options.releaseBrokerEnabled) env.PI_CHAT_RELEASE_BROKER_ENABLED = '1'
   env.PI_CHAT_REMOTE_AGENT = '1'
   return env
 }
@@ -67,6 +70,8 @@ export function buildRemoteAgentEnv(source, options = {}) {
 export function remoteAgentArgs(options = {}) {
   const extensionPath = canonical(options.extensionPath)
   const sessionDir = canonical(options.sessionDir)
+  const tools = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls', 'constelaciones_future_appointments']
+  if (options.releaseBrokerEnabled) tools.push('release_git_status', 'release_git_diff', 'release_git_commit', 'release_git_push', 'release_deploy')
   return [
     '--mode', 'rpc',
     '--no-approve',
@@ -75,7 +80,7 @@ export function remoteAgentArgs(options = {}) {
     '--no-prompt-templates',
     '--no-context-files',
     '--no-builtin-tools',
-    '--tools', 'read,bash,edit,write,grep,find,ls,constelaciones_future_appointments',
+    '--tools', tools.join(','),
     '--extension', extensionPath,
     '--session-dir', sessionDir,
     '--name', 'fixvox-admin-remote-agent',
@@ -126,6 +131,13 @@ export function classifyRemoteToolCall(toolName, input, options = {}) {
   const name = String(toolName || '')
   const payload = input && typeof input === 'object' ? input : {}
 
+  if (name.startsWith('release_')) {
+    const enabled = ['release_git_status', 'release_git_diff', 'release_git_commit', 'release_git_push', 'release_deploy']
+    return enabled.includes(name)
+      ? { decision: 'allow', category: 'release_broker', scope: name }
+      : { decision: 'deny', category: 'unknown_release_tool', reason: 'Unknown release operation.' }
+  }
+
   if (name === 'constelaciones_future_appointments') {
     return { decision: 'allow', category: 'domain_read', scope: 'constelaciones/future-appointments' }
   }
@@ -157,6 +169,9 @@ export function classifyRemoteToolCall(toolName, input, options = {}) {
     if (!command) return { decision: 'deny', category: 'empty_command', reason: 'Empty shell command.' }
     if (SECRET_DISCOVERY_COMMAND.test(command)) {
       return { decision: 'deny', category: 'secret_discovery', reason: 'Credential and secret discovery is blocked.' }
+    }
+    if (RELEASE_BYPASS_COMMAND.test(command)) {
+      return { decision: 'deny', category: 'release_bypass', reason: 'Git mutation and deployment commands require the dedicated release broker.' }
     }
     const firstCommand = command.match(/[A-Za-z0-9_.:/-]+/)?.[0] || 'shell command'
     return { decision: 'confirm', category: 'bash', summary: `Ejecutar comando: ${firstCommand}`, detail: command.slice(0, 800) }

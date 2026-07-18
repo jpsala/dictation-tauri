@@ -21,7 +21,11 @@ $runtimeFiles = @(
   'pi-workspace-broker-client.mjs',
   'pi-workspace-broker.mjs',
   'constelaciones-read-adapter.mjs',
-  'constelaciones-read-broker.mjs'
+  'constelaciones-read-broker.mjs',
+  'pi-release-broker.mjs',
+  'pi-release-broker-client.mjs',
+  'pi-release-git-runner.mjs',
+  'pi-release-service.mjs'
 )
 $publicFiles = @('public/app.js', 'public/styles.css')
 $files = @($runtimeFiles + $publicFiles)
@@ -93,10 +97,10 @@ try {
   $bundleHash = Get-Sha256 $localBundle
   Invoke-Remote "mkdir -p '$backupRoot'; rm -rf '$remoteStage' '$remoteBundle'; mkdir -p '$remoteStage'; tar -czf '$remoteBackup' -C '$remoteRoot' ."
   Send-BundleWithRetry $localBundle "${remoteHost}:$remoteBundle"
-  Invoke-Remote "echo '$bundleHash  $remoteBundle' | sha256sum -c -; tar -xzf '$remoteBundle' -C '$remoteStage'; node --check '$remoteStage/server.mjs'; node --check '$remoteStage/pi-chat-access.mjs'; node --check '$remoteStage/pi-remote-policy.mjs'; node --check '$remoteStage/pi-remote-agent-core.mjs'; node --check '$remoteStage/pi-remote-agent-extension.mjs'; node --check '$remoteStage/pi-workspace-broker-client.mjs'; node --check '$remoteStage/pi-workspace-broker.mjs'; node --check '$remoteStage/constelaciones-read-adapter.mjs'; node --check '$remoteStage/constelaciones-read-broker.mjs'; node --check '$remoteStage/public/app.js'"
+  Invoke-Remote "echo '$bundleHash  $remoteBundle' | sha256sum -c -; tar -xzf '$remoteBundle' -C '$remoteStage'; node --check '$remoteStage/server.mjs'; node --check '$remoteStage/pi-chat-access.mjs'; node --check '$remoteStage/pi-remote-policy.mjs'; node --check '$remoteStage/pi-remote-agent-core.mjs'; node --check '$remoteStage/pi-remote-agent-extension.mjs'; node --check '$remoteStage/pi-workspace-broker-client.mjs'; node --check '$remoteStage/pi-workspace-broker.mjs'; node --check '$remoteStage/constelaciones-read-adapter.mjs'; node --check '$remoteStage/constelaciones-read-broker.mjs'; node --check '$remoteStage/pi-release-broker.mjs'; node --check '$remoteStage/pi-release-broker-client.mjs'; node --check '$remoteStage/pi-release-git-runner.mjs'; node --check '$remoteStage/pi-release-service.mjs'; node --check '$remoteStage/public/app.js'"
 
   $replacementStarted = $true
-  Invoke-Remote "cp '$remoteStage/server.mjs' '$remoteRoot/server.mjs'; cp '$remoteStage/pi-chat-access.mjs' '$remoteRoot/pi-chat-access.mjs'; cp '$remoteStage/pi-remote-policy.mjs' '$remoteRoot/pi-remote-policy.mjs'; cp '$remoteStage/pi-remote-agent-core.mjs' '$remoteRoot/pi-remote-agent-core.mjs'; cp '$remoteStage/pi-remote-agent-extension.mjs' '$remoteRoot/pi-remote-agent-extension.mjs'; cp '$remoteStage/pi-workspace-broker-client.mjs' '$remoteRoot/pi-workspace-broker-client.mjs'; cp '$remoteStage/pi-workspace-broker.mjs' '$remoteRoot/pi-workspace-broker.mjs'; cp '$remoteStage/constelaciones-read-adapter.mjs' '$remoteRoot/constelaciones-read-adapter.mjs'; cp '$remoteStage/constelaciones-read-broker.mjs' '$remoteRoot/constelaciones-read-broker.mjs'; cp '$remoteStage/public/app.js' '$remoteRoot/public/app.js'; cp '$remoteStage/public/styles.css' '$remoteRoot/public/styles.css'; systemctl --user restart fixvox-admin-web.service"
+  Invoke-Remote "cp '$remoteStage/server.mjs' '$remoteRoot/server.mjs'; cp '$remoteStage/pi-chat-access.mjs' '$remoteRoot/pi-chat-access.mjs'; cp '$remoteStage/pi-remote-policy.mjs' '$remoteRoot/pi-remote-policy.mjs'; cp '$remoteStage/pi-remote-agent-core.mjs' '$remoteRoot/pi-remote-agent-core.mjs'; cp '$remoteStage/pi-remote-agent-extension.mjs' '$remoteRoot/pi-remote-agent-extension.mjs'; cp '$remoteStage/pi-workspace-broker-client.mjs' '$remoteRoot/pi-workspace-broker-client.mjs'; cp '$remoteStage/pi-workspace-broker.mjs' '$remoteRoot/pi-workspace-broker.mjs'; cp '$remoteStage/constelaciones-read-adapter.mjs' '$remoteRoot/constelaciones-read-adapter.mjs'; cp '$remoteStage/constelaciones-read-broker.mjs' '$remoteRoot/constelaciones-read-broker.mjs'; cp '$remoteStage/pi-release-broker.mjs' '$remoteRoot/pi-release-broker.mjs'; cp '$remoteStage/pi-release-broker-client.mjs' '$remoteRoot/pi-release-broker-client.mjs'; cp '$remoteStage/pi-release-git-runner.mjs' '$remoteRoot/pi-release-git-runner.mjs'; cp '$remoteStage/pi-release-service.mjs' '$remoteRoot/pi-release-service.mjs'; cp '$remoteStage/public/app.js' '$remoteRoot/public/app.js'; cp '$remoteStage/public/styles.css' '$remoteRoot/public/styles.css'; systemctl --user restart fixvox-admin-web.service"
   Wait-ForAdminReadiness
   Invoke-Remote "rm -rf '$remoteStage'"
   Write-Host "Admin deploy complete. Backup: $remoteBackup" -ForegroundColor Green

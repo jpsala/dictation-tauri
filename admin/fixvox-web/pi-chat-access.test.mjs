@@ -29,4 +29,8 @@ test('confirmation is session-bound, expiring and one-time', () => {
   access.registerConfirmation(event, 'owner-a')
   now = 1200
   assert.throws(() => access.consumeConfirmation('confirm-1', 'owner-a'), (error) => error.status === 403)
+  const inputEvent = { type: 'extension_ui_request', method: 'input', id: 'typed-release', params: { message: 'PUSH app/main abc' } }
+  now = 1300
+  access.registerConfirmation(inputEvent, 'owner-a')
+  assert.throws(() => access.consumeConfirmation('typed-release', 'owner-b'), (error) => error.status === 403)
 })

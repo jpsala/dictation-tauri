@@ -43,6 +43,9 @@ test('remote agent child env is allowlisted and excludes credential-shaped names
   assert.equal(env.SSH_AUTH_SOCK, undefined)
   assert.equal(containsSensitiveEnvName(env), false)
   assert.doesNotMatch(JSON.stringify(env), /admin-sensitive|web-sensitive|oauth-sensitive|provider-sensitive/)
+  const releaseEnv = buildRemoteAgentEnv({}, { releaseBrokerEnabled: true, releaseBrokerSocket: '/run/fixvox-agent/release.sock' })
+  assert.equal(releaseEnv.PI_CHAT_RELEASE_BROKER_ENABLED, '1')
+  assert.match(releaseEnv.PI_CHAT_RELEASE_BROKER_SOCKET, /release\.sock$/)
 })
 
 test('remote runtime disables inherited resources and trusts no project implicitly', () => {
@@ -61,6 +64,8 @@ test('remote runtime disables inherited resources and trusts no project implicit
   assert.match(joined, /--no-builtin-tools/)
   assert.match(joined, /--tools read,bash,edit,write,grep,find,ls,constelaciones_future_appointments/)
   assert.doesNotMatch(joined, /(?:^|\s)--approve(?:\s|$)/)
+  const releaseArgs = remoteAgentArgs({ extensionPath: '/srv/policy.mjs', sessionDir: '/srv/sessions', releaseBrokerEnabled: true }).join(' ')
+  assert.match(releaseArgs, /release_git_status,release_git_diff,release_git_commit,release_git_push,release_deploy/)
 })
 
 test('read policy allows approved repos and denies roots, secrets, stores and sessions', () => {
@@ -98,14 +103,19 @@ test('writes and shell require approval while secret discovery stays uncondition
   const write = classifyRemoteToolCall('write', { path: 'src/new.ts', content: 'safe' }, { cwd, roots })
   const edit = classifyRemoteToolCall('edit', { path: `${roots[1]}/src/app.ts` }, { cwd, roots })
   const git = classifyRemoteToolCall('bash', { command: 'git status --short' }, { cwd, roots })
-  const deploy = classifyRemoteToolCall('bash', { command: 'systemctl --user restart app' }, { cwd, roots })
+  const systemCommand = classifyRemoteToolCall('bash', { command: 'systemctl --user restart app' }, { cwd, roots })
   const secret = classifyRemoteToolCall('bash', { command: 'cat ~/.ssh/id_ed25519' }, { cwd, roots })
+  const push = classifyRemoteToolCall('bash', { command: 'git -C . push origin main' }, { cwd, roots })
+  const deployCommand = classifyRemoteToolCall('bash', { command: 'npm run admin-web-deploy' }, { cwd, roots })
 
   assert.equal(write.decision, 'confirm')
   assert.equal(edit.decision, 'confirm')
   assert.equal(git.decision, 'confirm')
-  assert.equal(deploy.decision, 'confirm')
+  assert.equal(systemCommand.category, 'release_bypass')
   assert.equal(secret.decision, 'deny')
+  assert.equal(push.category, 'release_bypass')
+  assert.equal(deployCommand.category, 'release_bypass')
+  assert.equal(classifyRemoteToolCall('release_git_push', {}, { cwd, roots }).category, 'release_broker')
   assert.equal(classifyRemoteToolCall('unknown', {}, { cwd, roots }).decision, 'deny')
 })
 
@@ -197,7 +207,11 @@ test('remote policy extension gates tool calls before execution through RPC UI',
   assert.match(extension, /createFindTool/)
   assert.match(extension, /createLsTool/)
   assert.match(extension, /name: 'grep'/)
-  for (const file of ['pi-chat-access.mjs', 'pi-remote-policy.mjs', 'pi-remote-agent-core.mjs', 'pi-remote-agent-extension.mjs', 'pi-workspace-broker-client.mjs', 'pi-workspace-broker.mjs', 'constelaciones-read-adapter.mjs', 'constelaciones-read-broker.mjs']) {
+  assert.match(extension, /PI_CHAT_RELEASE_BROKER_ENABLED === '1'/)
+  assert.match(extension, /name: 'release_git_commit'/)
+  assert.match(extension, /name, label: operation === 'git_push'/)
+  assert.match(extension, /ctx\.ui\.input/)
+  for (const file of ['pi-chat-access.mjs', 'pi-remote-policy.mjs', 'pi-remote-agent-core.mjs', 'pi-remote-agent-extension.mjs', 'pi-workspace-broker-client.mjs', 'pi-workspace-broker.mjs', 'constelaciones-read-adapter.mjs', 'constelaciones-read-broker.mjs', 'pi-release-broker.mjs', 'pi-release-broker-client.mjs', 'pi-release-git-runner.mjs', 'pi-release-service.mjs']) {
     assert.ok(deploy.includes(file))
   }
   assert.match(deploy, /Send-BundleWithRetry/)

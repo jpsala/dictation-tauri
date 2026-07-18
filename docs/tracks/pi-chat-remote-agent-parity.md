@@ -225,3 +225,26 @@ Rollout runtime-only ejecutado con autorización exacta:
 - Smoke broker como `fixvox-agent`: ls/find/grep PASS y traversal glob bloqueado.
 - Smoke RPC Linux offline: args explícitos incluyen grep/find/ls, `--no-builtin-tools` presente y `get_state` PASS.
 - Rollback/receipt: `/home/jpsal/.local/state/fixvox-agent-rollouts/20260718-030745/`.
+
+## Batch 5 — Git/Deploy Específico
+
+**Estado: foundation local/provider-free; producción deshabilitada.**
+
+Arquitectura:
+
+- Broker separado `pi-release-broker.mjs`; no reutiliza bash del workspace. Git commit/push/tag, systemctl, Docker, Wrangler, SSH/SCP y deploy scripts quedan bloqueados explícitamente en bash normal.
+- Operaciones tipadas: status/diff read-only, commit, push y deploy por recipe ID. Caller no puede enviar paths, remotes, flags, env ni shell fragments.
+- Config root-owned de repos/branch/remote/allowed paths y recipes exactas; `release-recipes.example.json` mantiene deploy deshabilitado.
+- Runner usa argv sin shell, env allowlist y Git prompt off. Commit sólo allowed paths y sin hooks; push verifica branch/remote, fetch, fast-forward, source hash y remote hash final.
+- Deploy ejecuta binarios/args exactos de recipe, health exacto y rollback exacto; sólo el hash ya pusheado puede desplegarse.
+- Prepare genera nonce, operation hash, source hash, target, TTL y frase exacta. Commit usa owner confirm; push/deploy requieren input exacto. RPC UI request queda session-bound, recent-owner, TTL y one-time en Admin.
+- Journal conserva sólo timestamp, operation/repo/target, operation+source hashes y result; nunca diff, command, prompt, identity ni credentials.
+- Feature y tools se registran sólo con `PI_CHAT_RELEASE_BROKER_ENABLED=1`; default/producción permanece `0`.
+
+Validación local:
+
+- Fake broker: forged/stale/reused confirmation, branch/remote, sensitive untracked, non-fast-forward, source drift, exact pushed hash, serialization, failed health+rollback y redacted journal.
+- Git runner real sobre repos temporales: exact remote, allowlisted commit, diff, fast-forward push y remote hash PASS; deploy/health failure ejecuta rollback exacto.
+- Policy tests prueban bypass de `git -C ... push`, systemctl y deploy script; release tools sólo aparecen en args/env cuando feature enabled.
+
+Pendiente antes de cualquier rollout: commit/push de foundation y gate separado para provisionar `fixvox-release`, deploy key repo-specific, socket/service/config root-owned. Otro gate independiente para primer commit/push/deploy smoke. No credenciales fueron creadas ni leídas.

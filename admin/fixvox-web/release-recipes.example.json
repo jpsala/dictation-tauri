@@ -1,0 +1,28 @@
+{
+  "repositories": {
+    "dictation-tauri": {
+      "id": "dictation-tauri",
+      "path": "/var/lib/fixvox-workspace/repos/dictation-tauri",
+      "home": "/var/lib/fixvox-release",
+      "branch": "main",
+      "remoteName": "origin",
+      "remoteUrl": "REPLACE_WITH_EXACT_REPOSITORY_REMOTE",
+      "gitSshCommand": "/usr/bin/ssh -F /etc/fixvox-release/ssh_config -o BatchMode=yes",
+      "allowedPaths": ["admin/fixvox-web", "scripts", "docs"]
+    }
+  },
+  "recipes": {
+    "fixvox-admin-vps": {
+      "id": "fixvox-admin-vps",
+      "enabled": false,
+      "repoId": "dictation-tauri",
+      "target": "fixvox-admin-vps",
+      "cwd": "/var/lib/fixvox-workspace/repos/dictation-tauri",
+      "home": "/var/lib/fixvox-release",
+      "rollbackId": "admin-backup",
+      "deploy": { "file": "/opt/fixvox-release/bin/deploy-admin", "args": [], "timeoutMs": 300000 },
+      "health": { "file": "/usr/bin/curl", "args": ["-fsS", "http://127.0.0.1:8787/healthz"], "timeoutMs": 30000 },
+      "rollback": { "file": "/opt/fixvox-release/bin/rollback-admin", "args": [], "timeoutMs": 300000 }
+    }
+  }
+}

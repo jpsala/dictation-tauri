@@ -25,6 +25,8 @@ const REMOTE_AGENT_SESSION_DIR = path.resolve(process.env.PI_CHAT_AGENT_SESSION_
 const REMOTE_AGENT_AUDIT_PATH = path.resolve(process.env.PI_CHAT_AGENT_AUDIT_PATH || path.join(REMOTE_AGENT_HOME, 'audit', 'operations.jsonl'))
 const REMOTE_AGENT_CONSTELACIONES_SOCKET = path.resolve(process.env.PI_CHAT_CONSTELACIONES_SOCKET || path.join(REMOTE_AGENT_HOME, 'run', 'constelaciones-read.sock'))
 const REMOTE_AGENT_WORKSPACE_SOCKET = path.resolve(process.env.PI_CHAT_WORKSPACE_BROKER_SOCKET || path.join(REMOTE_AGENT_HOME, 'run', 'workspace-broker.sock'))
+const REMOTE_AGENT_RELEASE_ENABLED = process.env.PI_CHAT_RELEASE_BROKER_ENABLED === '1'
+const REMOTE_AGENT_RELEASE_SOCKET = path.resolve(process.env.PI_CHAT_RELEASE_BROKER_SOCKET || path.join(REMOTE_AGENT_HOME, 'run', 'release-broker.sock'))
 const REMOTE_AGENT_ROOTS = remoteAgentRoots(process.env.PI_CHAT_AGENT_ROOTS, repoRoot)
 const REMOTE_AGENT_EXTENSION = path.resolve(process.env.PI_CHAT_AGENT_EXTENSION || path.join(__dirname, 'pi-remote-agent-extension.mjs'))
 const ADMIN_BASE_URL = (process.env.FIXVOX_ADMIN_BASE_URL || 'https://auth-fixvox.jpsala.dev').replace(/\/+$/g, '')
@@ -57,6 +59,8 @@ function piProcessEnv() {
       roots: REMOTE_AGENT_ROOTS,
       constelacionesSocket: REMOTE_AGENT_CONSTELACIONES_SOCKET,
       workspaceBrokerSocket: REMOTE_AGENT_WORKSPACE_SOCKET,
+      releaseBrokerSocket: REMOTE_AGENT_RELEASE_SOCKET,
+      releaseBrokerEnabled: REMOTE_AGENT_RELEASE_ENABLED,
     })
   }
   const env = { ...process.env }
@@ -69,6 +73,7 @@ function piRuntimeArgs() {
   return remoteAgentArgs({
     extensionPath: REMOTE_AGENT_EXTENSION,
     sessionDir: REMOTE_AGENT_SESSION_DIR,
+    releaseBrokerEnabled: REMOTE_AGENT_RELEASE_ENABLED,
   })
 }
 
