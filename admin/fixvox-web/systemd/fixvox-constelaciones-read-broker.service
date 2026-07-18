@@ -9,6 +9,7 @@ Group=fixvox-agent-broker
 RuntimeDirectory=fixvox-agent
 RuntimeDirectoryMode=0770
 RuntimeDirectoryPreserve=yes
+Environment=TZ=America/Argentina/Buenos_Aires
 Environment=PI_CHAT_CONSTELACIONES_SOCKET=/run/fixvox-agent/constelaciones-read.sock
 Environment=CONSTELACIONES_READ_DB=/var/lib/docker/volumes/i103nz67zizmtz5m2rt5k9e3-constelaciones-data/_data/constelaciones.sqlite
 ExecStart=/usr/bin/node /opt/fixvox-agent/runtime/constelaciones-read-broker.mjs

@@ -3,6 +3,15 @@ import fs from 'node:fs/promises'
 import http from 'node:http'
 import { DatabaseSync } from 'node:sqlite'
 
+const BUSINESS_TIME_ZONE = 'America/Argentina/Buenos_Aires'
+
+function localSqlTime(date) {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: BUSINESS_TIME_ZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(date).replace(' ', 'T')
+}
+
 export function createConstelacionesReadBroker({ dbPath, now = () => new Date() }) {
   return http.createServer((request, response) => {
     try {
@@ -26,7 +35,7 @@ export function createConstelacionesReadBroker({ dbPath, now = () => new Date() 
             AND a.status NOT IN ('cancelled', 'canceled')
           ORDER BY a.starts_at
           LIMIT 100
-        `).all(from.toISOString(), to.toISOString())
+        `).all(localSqlTime(from), localSqlTime(to))
       } finally { db.close() }
       response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
       response.end(JSON.stringify({ ok: true, partial: false, rows }))
