@@ -173,6 +173,8 @@ Security follow-up antes de reactivar tras el primer smoke:
 - `pi-chat-access.mjs` exige prompt/health/command sólo para owner Google; token legacy, viewer y editor reciben 403.
 - Cada prompt queda serializado globalmente; una segunda sesión recibe 409 y no comparte stream/results.
 - Cada `confirm` queda ligado a hash de sesión, operation hash y TTL 65 s; consume una sola vez. Forged, stale, reused o cross-session reciben 403. Approval además exige OAuth reciente.
-- Tests cubren owner boundary, viewer/editor/token denial, concurrency, expiry, one-time y cross-session. El rollout se reactiva sólo después de deploy y live smokes nuevos.
+- Tests cubren owner boundary, viewer/editor/token denial, concurrency, expiry, one-time y cross-session. `stop` ahora emite settled y libera lock/pending para evitar un 409 permanente tras abortar.
+- Cierre desplegado con backup Admin `20260718-024234.tar.gz`; OAuth owner fue autorizado explícitamente. Owner health 200 y turno futuro usó el tool correcto, sin error, con `agent_settled`. Feature reactivado en `1`; token fallback sigue 403 para rutas Pi.
+- El write approve/cancel live pre-RBAC ya había probado side effects; post-RBAC el boundary/TTL/one-time/cross-session está cubierto en harness determinista. Los prompts Browser de write no eligieron tool de forma estable, por lo que no se fuerza una mutación adicional para “hacer pasar” el smoke.
 
 Límites de paridad vigentes: mirrors shallow/stale; no grep/find/ls autónomos, sync controlado, credenciales git/deploy ni browser relay. Éste es un sandbox VPS seguro, no acceso equivalente a la sesión Pi local.
