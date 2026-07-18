@@ -149,7 +149,9 @@ Stop inmediato ante secretos, checks rojos, diff no atribuible, health fallido, 
 
 ## Follow-up Admin 2026-07-18
 
-El review post-rollout detectó que Pi Chat seguía implementado y accesible desde acciones contextuales, pero había quedado fuera de `CONTROL_ROOM_AREAS` durante el rediseño, por lo que el sidebar no generaba su entrada. Se restauró `Pi Chat` como área primaria en `36daed2`, se movió el branch del click antes del lookup administrativo para no llamar `loadAdmin(undefined)`, y se agregó cobertura en server test + smoke visual del editor. Tests Admin 13/13 y smoke local PASS. Deploy Admin PASS con backup `/home/jpsal/.local/state/fixvox-admin-backups/20260718-005602.tar.gz`; servicio activo, healthz OK y Browser confirmó que `/assets/app.js` productivo contiene el nav y handler correctos. La sesión Browser seguía en login y no se inició OAuth.
+El review post-rollout detectó que Pi Chat seguía implementado y accesible desde acciones contextuales, pero había quedado fuera de `CONTROL_ROOM_AREAS` durante el rediseño, por lo que el sidebar no generaba su entrada. Se restauró `Pi Chat` como área primaria en `36daed2`, se movió el branch del click antes del lookup administrativo para no llamar `loadAdmin(undefined)`, y se agregó cobertura en server test + smoke visual del editor.
+
+Screenshots reales posteriores mostraron una segunda regresión: a `871px`, una regla desktop `.pi-grid` declarada después del media query volvía a forzar chat + actividad en dos columnas, generaba overflow horizontal, ocultaba el sidebar por scroll y dejaba código sin wrap. `e7c59eb` agrega el override responsive al final del cascade, fuerza `min-width: 0`, apila Actividad debajo del chat y envuelve bloques de código sólo en viewport angosto. Tests Admin 14/14, profile smoke y screenshot headless `871×625` pasaron con `scrollWidth === clientWidth`, drawer visible y actividad apilada. Deploy Admin PASS con backup `/home/jpsal/.local/state/fixvox-admin-backups/20260718-010830.tar.gz`; servicio activo, healthz OK y Browser confirmó el CSS productivo final. La sesión Browser seguía en login y no se inició OAuth.
 
 ## Siguiente Acción
 
