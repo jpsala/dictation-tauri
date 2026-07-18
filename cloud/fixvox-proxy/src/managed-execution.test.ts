@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { persistRequestEvent, type KvNamespaceLike } from "./admin-store";
-import { assignControlPlaneAdminAccountBudget, assignControlPlaneAdminAccountGroups, assignControlPlaneAdminAccountPolicy, createControlPlaneAdminGroup, createControlPlaneAdminProfileDraft, publishControlPlaneAdminProfile, registerDevice, saveControlPlaneAdminProfileDraft, type ProfileDefinition } from "./control-plane-store";
+import { assignControlPlaneAdminAccountBudget, assignControlPlaneAdminAccountGroups, assignControlPlaneAdminAccountPolicy, createControlPlaneAdminGroup, createControlPlaneAdminProfileDraft, listControlPlaneAdminAudit, listControlPlaneAdminProfiles, publishControlPlaneAdminProfile, registerDevice, saveControlPlaneAdminProfileDraft, type ProfileDefinition } from "./control-plane-store";
 import { putRuntimePolicy } from "./runtime-policy-store";
 
 mock.module("cloudflare:workers", () => ({
@@ -894,6 +894,47 @@ describe("control-plane admin devices", () => {
       {} as ExecutionContext,
     );
     expect(deniedRollback.status).toBe(403);
+  });
+
+  test("applies a candidate only with publish credentials and preserves legacy drafts when the lock is unavailable", async () => {
+    const store = new MemoryKv();
+    const env = { ...createEnv(store), ADMIN_VIEW_API_KEY: "test-view-key", ADMIN_EDIT_API_KEY: "test-editor-key" };
+    const legacy = await createControlPlaneAdminProfileDraft(store, { profileId: "pro" });
+    if (!legacy.published || !legacy.draft) throw new Error("expected pro versions");
+    const payload = {
+      profileId: "pro",
+      expectedActiveVersion: legacy.published.version,
+      definition: {
+        ...legacy.draft,
+        label: "Pro direct apply",
+        runtime: {
+          ...legacy.draft.runtime,
+          postprocess: { engineId: "postprocess-openrouter-premium", promptId: "postProcessBase" },
+        },
+      },
+      confirmation: "APPLY pro v1",
+    };
+    const request = (authorization: string) => new Request(
+      "https://example.com/admin/control-plane/profiles/apply",
+      { method: "POST", headers: { Authorization: authorization, "Content-Type": "application/json" }, body: JSON.stringify(payload) },
+    );
+
+    expect((await worker.fetch(request("Bearer test-view-key"), env as never, {} as ExecutionContext)).status).toBe(403);
+    expect((await worker.fetch(request("Bearer test-editor-key"), env as never, {} as ExecutionContext)).status).toBe(403);
+
+    const beforeProfile = await store.get("control:profiles:v1");
+    const beforeAudit = await store.get("control:admin-audit:v1");
+    expect((await worker.fetch(request("Bearer test-publish-key"), { ...env, CONTROL_PLANE_PUBLISH_LOCKS: undefined } as never, {} as ExecutionContext)).status).toBe(503);
+    expect(await store.get("control:profiles:v1")).toBe(beforeProfile);
+    expect(await store.get("control:admin-audit:v1")).toBe(beforeAudit);
+    expect((await listControlPlaneAdminProfiles(store)).profiles.find((profile) => profile.profileId === "pro")?.draft?.version).toBe(legacy.draft.version);
+
+    const applied = await worker.fetch(request("Bearer test-publish-key"), env as never, {} as ExecutionContext);
+    expect(applied.status).toBe(200);
+    expect(await applied.json()).toMatchObject({ published: { version: 2, label: "Pro direct apply" }, draft: null });
+    expect((await listControlPlaneAdminAudit(store)).records).toEqual([
+      expect.objectContaining({ action: "apply", profileId: "pro", actor: "worker-publish-credential", resultingVersion: 2 }),
+    ]);
   });
 
   test("discards an exact profile draft with edit credentials and preserves the publication", async () => {

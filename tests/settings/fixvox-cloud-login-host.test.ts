@@ -1,3 +1,4 @@
+// @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { pollFixvoxCloudLogin, startFixvoxCloudLogin } from "../../src/settings/fixvox-cloud-control";
@@ -37,7 +38,9 @@ describe("Fixvox Cloud host-owned login start", () => {
     expect(rendererSource).toContain("get_fixvox_auth_session_status");
     expect(rendererSource).toContain("poll_fixvox_cloud_login");
     expect(rendererSource).toContain("verificationUrlRedacted");
-    expect(settingsSurfaceSource).toContain("this device is linked and policy capabilities were refreshed");
+    expect(settingsSurfaceSource).toContain("Cuenta conectada. Esta computadora ya está lista para dictar.");
+    expect(settingsSurfaceSource).toContain("Esta pantalla se actualizará automáticamente");
+    expect(settingsSurfaceSource).not.toContain("Comprobar estado");
     expect(rendererSource).not.toContain("sessionSecret");
     expect(rendererSource).not.toContain("refreshSecret");
     expect(rendererSource).not.toContain("localStorage");

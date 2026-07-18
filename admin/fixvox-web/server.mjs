@@ -304,6 +304,40 @@ function adminCredential(required) {
   return candidates.find((candidate) => String(candidate || '').trim()) || ''
 }
 
+function adminPublishCredential() {
+  const credential = String(process.env.ADMIN_PUBLISH_API_KEY || '').trim()
+  if (!credential) throw Object.assign(new Error('Profile apply service unavailable.'), { status: 503, code: 'profile_apply_unavailable' })
+  return credential
+}
+
+function profileApplyError(error) {
+  const status = Number(error?.status) || 500
+  const upstreamCode = error?.payload?.error?.code
+  if (status === 409 && upstreamCode === 'profile_version_stale') {
+    return { status: 409, body: { ok: false, error: { code: 'profile_version_stale', message: 'La versión del perfil cambió. Recargá y revisá los cambios.' } } }
+  }
+  if (status >= 500 || error?.code === 'profile_apply_unavailable') {
+    return { status: 503, body: { ok: false, error: { code: 'profile_apply_unavailable', message: 'No se pudieron aplicar los cambios. Intentá nuevamente.' } } }
+  }
+  return { status: 400, body: { ok: false, error: { code: 'profile_apply_rejected', message: 'No se pudieron validar los cambios del perfil.' } } }
+}
+
+function publishedProfileProjection(profiles) {
+  return (Array.isArray(profiles) ? profiles : [])
+    .filter((profile) => profile?.published)
+    .map(({ draft, ...profile }) => profile)
+}
+
+function legacyDraftInventory(profiles) {
+  return (Array.isArray(profiles) ? profiles : [])
+    .filter((profile) => profile?.draft)
+    .map((profile) => ({
+      profileId: profile.profileId,
+      draftVersion: profile.draft.version,
+      basedOnVersion: profile.draft.basedOnVersion ?? null,
+    }))
+}
+
 async function proxyAdmin(pathname, method = 'GET', body, credential = adminCredential(method === 'GET' ? 'view' : 'edit')) {
   const headers = { Authorization: `Bearer ${credential}` }
   if (body !== undefined) headers['content-type'] = 'application/json'
@@ -1094,6 +1128,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === '/api/admin/profiles/drafts' && (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE')) await requireGoogleRole(req, ['editor', 'publisher', 'owner'])
     if (url.pathname === '/api/admin/profiles/preview' && req.method === 'GET') await requireGoogleRole(req, ['viewer', 'editor', 'publisher', 'owner'])
+    if (url.pathname === '/api/admin/profiles/legacy-drafts' && req.method === 'GET') await requireGoogleRole(req, ['viewer', 'editor', 'publisher', 'owner'])
+    if (MOCK_MODE && url.pathname === '/api/admin/profiles/legacy-drafts' && req.method === 'GET') return sendJson(res, 200, { drafts: legacyDraftInventory(mockPolicies().profileVersions) })
+    if (MOCK_MODE && url.pathname === '/api/admin/policies') return sendJson(res, 200, { ...mockPolicies(), profileVersions: publishedProfileProjection(mockPolicies().profileVersions) })
     if (MOCK_MODE && url.pathname === '/api/admin/profiles/drafts' && req.method === 'POST') return sendJson(res, 200, mockCreateProfileDraft(JSON.parse(await readBody(req) || '{}')))
     if (MOCK_MODE && url.pathname === '/api/admin/profiles/drafts' && req.method === 'PUT') return sendJson(res, 200, mockSaveProfileDraft(JSON.parse(await readBody(req) || '{}')))
     if (MOCK_MODE && url.pathname === '/api/admin/profiles/drafts' && req.method === 'DELETE') return sendJson(res, 200, mockDiscardProfileDraft(JSON.parse(await readBody(req) || '{}')))
@@ -1127,6 +1164,10 @@ const server = http.createServer(async (req, res) => {
     if (MOCK_MODE && url.pathname === '/api/admin/prompts/delete' && req.method === 'POST') return sendJson(res, 200, mockDeletePrompt(JSON.parse(await readBody(req) || '{}')))
     if (MOCK_MODE && url.pathname.startsWith('/api/admin/')) { const mocked = mockAdmin(url.pathname); if (mocked) return sendJson(res, 200, mocked) }
     if (url.pathname === '/api/admin/profiles/drafts' && (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE')) return sendJson(res, 200, await proxyAdmin('/admin/control-plane/profiles/drafts', req.method, JSON.parse(await readBody(req) || '{}')))
+    if (url.pathname === '/api/admin/profiles/legacy-drafts' && req.method === 'GET') {
+      const payload = await proxyAdmin('/admin/control-plane/profiles')
+      return sendJson(res, 200, { drafts: legacyDraftInventory(payload?.profiles) })
+    }
     if (url.pathname === '/api/admin/profiles/preview' && req.method === 'GET') {
       const query = new URLSearchParams()
       for (const key of ['profileId', 'accountHandle', 'deviceId']) {
@@ -1134,6 +1175,23 @@ const server = http.createServer(async (req, res) => {
         if (value) query.set(key, value)
       }
       return sendJson(res, 200, await proxyAdmin(`/admin/control-plane/profiles/preview?${query}`))
+    }
+    if (url.pathname === '/api/admin/profiles/apply' && req.method === 'POST') {
+      const principal = await requireRecentGoogleRole(req, ['publisher', 'owner'])
+      try {
+        const { actor, actorKey, ...applyPayload } = JSON.parse(await readBody(req) || '{}')
+        const brokeredBody = { ...applyPayload, actorKey: rbacPrincipalKeyForEmail(principal.email) }
+        const payload = await proxyAdmin(
+          '/admin/control-plane/profiles/apply',
+          'POST',
+          brokeredBody,
+          adminPublishCredential(),
+        )
+        return sendJson(res, 200, payload)
+      } catch (error) {
+        const mapped = profileApplyError(error)
+        return sendJson(res, mapped.status, mapped.body)
+      }
     }
     if ((url.pathname === '/api/admin/profiles/publish' || url.pathname === '/api/admin/profiles/rollback') && req.method === 'POST') {
       const principal = await requireRecentGoogleRole(req, ['publisher', 'owner'])
@@ -1175,7 +1233,7 @@ const server = http.createServer(async (req, res) => {
         proxyAdmin('/admin/pricing').catch(() => ({})),
         proxyAdmin('/admin/control-plane/profiles').catch(() => null),
       ])
-      const profileVersions = Array.isArray(profilePayload?.profiles) ? profilePayload.profiles : []
+      const profileVersions = publishedProfileProjection(profilePayload?.profiles)
       return sendJson(res, 200, { ...policyPayload, profileVersions, profileVersionsUnavailable: profilePayload === null, variantOptions: accountPayload.variantOptions || policyPayload.variantOptions || [], availableSegments: accountPayload.availableSegments || policyPayload.availableSegments || [], engineOptions: policyPayload.engineOptions || accountPayload.engineOptions || [], promptOptions: policyPayload.promptOptions || accountPayload.promptOptions || [], pricing: pricingPayload.pricing || [], pricingWatchlist: pricingPayload.watchlist || null, policyVariants: policyPayload.policyVariants || {}, policyEngines: policyPayload.policyEngines || {}, policyBudgets: policyPayload.policyBudgets || accountPayload.policyBudgets || {} })
     }
     if (url.pathname === '/api/admin/usage') return sendJson(res, 200, await proxyAdmin('/admin/usage/summary'))

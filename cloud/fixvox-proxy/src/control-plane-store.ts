@@ -584,7 +584,7 @@ export type ControlPlaneAdminProfileAuditInput = {
 
 export type ControlPlaneAdminAuditRecord = {
   actor: string;
-  action: "publish" | "rollback";
+  action: "apply" | "publish" | "rollback";
   profileId: string;
   sourceVersion: number | null;
   targetVersion: number;
@@ -598,6 +598,13 @@ export type ControlPlaneAdminAuditList = {
   schemaVersion: 1;
   records: ControlPlaneAdminAuditRecord[];
   projection?: { authorityRevision: number };
+};
+
+export type ControlPlaneAdminProfileApplyPayload = ControlPlaneAdminProfileAuditInput & {
+  profileId?: string | null;
+  expectedActiveVersion?: number | null;
+  definition?: unknown;
+  confirmation?: string | null;
 };
 
 export type ControlPlaneAdminProfilePublishPayload = ControlPlaneAdminProfileAuditInput & {
@@ -2721,6 +2728,45 @@ export async function listControlPlaneAdminAudit(store: KvNamespaceLike): Promis
     schemaVersion: 1,
     records: existing.records.map((record) => cloneJsonRecord(record)),
   };
+}
+
+export async function applyControlPlaneAdminProfile(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminProfileApplyPayload,
+): Promise<ControlPlaneAdminProfileRecord> {
+  const profileId = sanitizeVariantId(payload.profileId);
+  if (!profileId) throw new Error("profileId is required");
+  const versionStore = await readProfileVersionStore(store);
+  const entry = versionStore.profiles[profileId];
+  if (!entry) throw new Error("profile not found");
+  const sourceVersion = entry.activeVersion;
+  if (!matchesExpectedProfileVersion(payload.expectedActiveVersion, sourceVersion)) {
+    throw new ControlPlaneAdminProfileStaleError();
+  }
+  if (payload.confirmation !== `APPLY ${profileId} v${sourceVersion}`) throw new Error("invalid apply confirmation");
+  const nextVersion = entry.history.length ? Math.max(...entry.history.map((version) => version.version)) + 1 : 1;
+  const published = await normalizeProfileDefinition(store, payload.definition, {
+    profileId,
+    version: nextVersion,
+    status: "published",
+    ...(sourceVersion === null ? {} : { basedOnVersion: sourceVersion }),
+  });
+  entry.history = [...entry.history, published];
+  entry.activeVersion = nextVersion;
+  entry.draft = null;
+  await writeProfileVersionStore(store, versionStore);
+  await appendControlPlaneAdminAudit(store, {
+    actor: normalizeAuditActor(payload.actorKey),
+    action: "apply",
+    profileId,
+    sourceVersion,
+    targetVersion: nextVersion,
+    resultingVersion: nextVersion,
+    requestedVersion: null,
+    timestamp: new Date().toISOString(),
+    result: "success",
+  });
+  return profileRecord(versionStore, profileId) as ControlPlaneAdminProfileRecord;
 }
 
 export async function publishControlPlaneAdminProfile(

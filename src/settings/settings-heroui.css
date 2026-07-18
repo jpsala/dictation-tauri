@@ -110,7 +110,7 @@
 .settings-title-block { display: grid; gap: 5px; min-width: 0; }
 .settings-path { margin: 0; color: var(--settings-muted); font-size: 0.8125rem; font-weight: 650; line-height: 1.35; }
 .settings-header h1, .settings-panel h2, .settings-hotkey-editor h3, .settings-header p, .settings-panel p { margin: 0; }
-.settings-header h1 { font-size: 1.375rem; font-weight: 680; line-height: 1.2; text-wrap: balance; }
+.settings-header h1 { color: var(--settings-text); font-size: 1.375rem; font-weight: 680; line-height: 1.2; text-wrap: balance; }
 .settings-title-block > p:last-child, .settings-panel-header p, .settings-hotkey-copy span, .settings-hotkey-editor-copy p, .settings-readonly-note { color: var(--settings-muted); font-size: 0.8125rem; line-height: 1.35; }
 .settings-status-badge, .settings-panel-count {
   flex: 0 0 auto;
@@ -228,6 +228,8 @@
 .settings-hotkey-editor-feedback strong { color: var(--settings-text); font-weight: 650; }
 .settings-hotkey-editor-feedback[data-tone="warning"] strong { color: oklch(0.48 0.11 70); }
 .settings-hotkey-editor-feedback[data-tone="danger"] strong { color: oklch(0.45 0.15 25); }
+.settings-status-check-control { display: grid; justify-items: end; gap: 4px; }
+.settings-status-check-control small { color: var(--settings-muted); font-size: 0.8125rem; line-height: 1.35; }
 
 .settings-preset-admin-grid { display: grid; gap: 12px; align-items: start; }
 .settings-preset-details {
@@ -307,3 +309,21 @@
 @media (prefers-reduced-motion: reduce) {
   .settings-window-shell *, .settings-window-shell *::before, .settings-window-shell *::after { transition-duration: 0.001ms !important; animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
 }
+
+/* Shared product token aliases: keep Settings in the same visual family as onboarding and Control Room. */
+.settings-window-shell {
+  --product-bg: var(--settings-bg);
+  --product-surface: var(--settings-panel);
+  --product-surface-soft: var(--settings-panel-soft);
+  --product-ink: var(--settings-text);
+  --product-muted: var(--settings-muted);
+  --product-border: var(--settings-line);
+  --product-accent: var(--settings-accent);
+  --product-accent-deep: var(--settings-accent-deep);
+  --product-focus: var(--settings-focus);
+}
+
+.settings-path { letter-spacing: 0; text-transform: none; }
+.settings-panel + .settings-panel { margin-top: 14px; }
+.settings-panel :is(input, textarea, select) { font-size: 0.8125rem; line-height: 1.35; }
+.settings-panel :is(input, textarea, select):focus-visible { border-color: var(--product-accent); box-shadow: 0 0 0 3px var(--product-focus); outline: 0; }

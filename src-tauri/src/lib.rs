@@ -62,6 +62,7 @@ pub fn run() {
             runtime_transcription::transform_selected_text,
             runtime_transcription::run_assistant_chat,
             fixvox_cloud::get_fixvox_cloud_status,
+            fixvox_cloud::get_fixvox_setup_readiness,
             fixvox_cloud::get_fixvox_auth_session_status,
             fixvox_cloud::poll_fixvox_cloud_login,
             fixvox_cloud::register_fixvox_device,

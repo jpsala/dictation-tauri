@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { FakeCaptureGateway } from "./capture/fake-gateway";
 import type { CaptureGateway } from "./capture/gateway";
 import { NativeTauriCaptureGateway } from "./capture/native-tauri-gateway";
@@ -109,6 +110,11 @@ import { parseAssistantVoicePrefix } from "./assistant/voice-prefix";
 import { SettingsSurface } from "./settings/SettingsSurface";
 import { OnboardingSurface } from "./onboarding/OnboardingSurface";
 import { createAccountFirstFixtureController } from "./onboarding/account-first-flow";
+import { SetupReadinessRouter } from "./onboarding/SetupReadinessRouter";
+import {
+  ensureTauriDictationReadiness,
+  TauriAccountGate,
+} from "./onboarding/tauri-account-gate";
 import { loadSelectionPresetStore } from "./settings/preset-store-control";
 import {
   createAutoStopSilencePolicy,
@@ -601,8 +607,12 @@ export function getRuntimeRecoveryAction(
     }
 
     if (summary.error?.phase === "transcribing") {
+      const failure = classifyTranscriptionFailure(summary.error.message);
+      if (failure === "setup-error" && isAccountSetupFailure(summary.error.message)) {
+        return accountSetupRecoveryAction(clipAvailable);
+      }
       return deriveRuntimeRecoveryAction({
-        status: classifyTranscriptionFailure(summary.error.message),
+        status: failure,
         clipAvailable,
         transcriptAvailable,
       });
@@ -829,6 +839,20 @@ function resolvePresetPickerChord(chordKey: string | null | undefined): DockComp
   })?.id;
 }
 
+function accountSetupRecoveryAction(clipAvailable = false): DesktopRecoveryAction & RuntimeRecoveryAction {
+  return {
+    kind: "inspect_setup",
+    label: "Completar configuración",
+    reason: "Conectá tu cuenta antes de volver a dictar.",
+    clipAvailable,
+  };
+}
+
+function isAccountSetupFailure(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return normalized.includes("registered device") || normalized.includes("device id");
+}
+
 function classifyTranscriptionFailure(
   message: string,
 ): "setup-error" | "provider-error" | "empty" | "unusable" {
@@ -846,7 +870,9 @@ function classifyTranscriptionFailure(
     normalized.includes("setup") ||
     normalized.includes("not configured") ||
     normalized.includes("missing") ||
-    normalized.includes("unavailable")
+    normalized.includes("unavailable") ||
+    normalized.includes("registered device") ||
+    normalized.includes("device id")
   ) {
     return "setup-error";
   }
@@ -1099,6 +1125,14 @@ function getAppSurface(): "dock" | "companion" | "preset-picker" | "settings" | 
   }
 
   return window.location.hash === "#settings" ? "settings" : "dock";
+}
+
+function exitOnboarding() {
+  if (isTauri()) {
+    void getCurrentWindow().close();
+    return;
+  }
+  window.close();
 }
 
 type CompanionSurfaceViewProps = {
@@ -1766,27 +1800,7 @@ function CompanionSurface({ surface }: { surface: "companion" | "preset-picker" 
   );
 }
 
-export function App() {
-  const appSurface = getAppSurface();
-  if (appSurface === "companion" || appSurface === "preset-picker") {
-    return <CompanionSurface surface={appSurface} />;
-  }
-  if (appSurface === "settings") {
-    return <SettingsSurface />;
-  }
-  if (appSurface === "onboarding") {
-    return (
-      <OnboardingSurface
-        controller={createAccountFirstFixtureController({
-          callback: "signed_in",
-          link: "linked",
-          microphone: "granted",
-          shortcut: "recommended",
-        })}
-      />
-    );
-  }
-
+export function DockSurface() {
   const captureRuntime = useMemo(() => createCaptureGatewayRuntime(), []);
   const hostRuntime = useMemo(
     () =>
@@ -2307,6 +2321,19 @@ export function App() {
   }
 
   async function startCapture(options: { keepCurrentContext?: boolean } = {}) {
+    if (isTauri() && !(await ensureTauriDictationReadiness(invoke))) {
+      setDesktopRecoveryAction(accountSetupRecoveryAction());
+      setPipelineUi({
+        status: "idle",
+        message: "Completá la configuración de tu cuenta antes de dictar.",
+      });
+      setCapture({
+        state: "idle",
+        message: "Abrimos Cuenta para continuar la configuración.",
+      });
+      return;
+    }
+
     if (!options.keepCurrentContext) {
       setResultHistoryOpen(false);
       setSettingsPanelOpen(false);
@@ -2395,9 +2422,16 @@ export function App() {
       }
 
       queueDictationSoundCue("error");
+      const failureMessage = session.error?.message ?? summary?.error?.message ?? "Captured run failed.";
+      const setupFailure = isAccountSetupFailure(failureMessage);
+      if (setupFailure) {
+        setDesktopRecoveryAction(accountSetupRecoveryAction(Boolean(summary?.capture?.artifact)));
+      }
       setPipelineUi({
         status: "error",
-        message: session.error?.message ?? summary?.error?.message ?? "Captured run failed.",
+        message: setupFailure
+          ? "Completá la configuración de tu cuenta antes de dictar."
+          : failureMessage,
         summary,
       });
     } finally {
@@ -3837,4 +3871,36 @@ export function App() {
       </section>
     </main>
   );
+}
+
+export function App() {
+  const appSurface = getAppSurface();
+  if (appSurface === "companion" || appSurface === "preset-picker") {
+    return <CompanionSurface surface={appSurface} />;
+  }
+  if (appSurface === "settings") {
+    return <SettingsSurface />;
+  }
+  if (appSurface === "onboarding") {
+    if (isTauri()) {
+      return <SetupReadinessRouter invoke={invoke} renderReady={() => <DockSurface />} onExit={exitOnboarding} />;
+    }
+    return (
+      <OnboardingSurface
+        controller={createAccountFirstFixtureController({
+          callback: "signed_in",
+          link: "linked",
+          microphone: "granted",
+          shortcut: "recommended",
+        })}
+        onExit={exitOnboarding}
+      />
+    );
+  }
+
+  if (isTauri()) {
+    return <TauriAccountGate invoke={invoke} renderReady={() => <DockSurface />} />;
+  }
+
+  return <DockSurface />;
 }

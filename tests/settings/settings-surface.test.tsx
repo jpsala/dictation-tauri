@@ -49,8 +49,9 @@ describe("SettingsSurface", () => {
     expect(html).toContain("Cuenta");
     expect(html).toContain("Iniciá sesión para usar Dictation");
     expect(html).toContain("Tu cuenta se vincula automáticamente a esta computadora.");
+    expect(html).toContain("Conectá tu cuenta");
     expect(html).toContain("Continuar con Google");
-    expect(html).toContain("El inicio de sesión se abre en el navegador y volvés a la aplicación al terminar.");
+    expect(html).toContain("Se abrirá Google en tu navegador. Cuando termines, volvé a Fixvox para continuar con la configuración.");
     expect(html).not.toContain("Cloud");
     expect(html).not.toContain("policy");
     expect(html).not.toContain("invite code");
@@ -59,6 +60,39 @@ describe("SettingsSurface", () => {
     expect(html).not.toContain("dev_test_1234567890abcdef");
     expect(html).not.toContain("C:/Users/JP/AppData");
     expect(html).not.toContain("token");
+    expect(html).not.toContain("Comprobar estado");
+    expect(html).not.toContain("registered device");
+    expect(html).not.toContain("managed dictation");
+  });
+
+  it("shows automatic pending-login progress without a redundant status button", () => {
+    const html = renderToStaticMarkup(
+      <SettingsSurface
+        initialSection="account"
+        initialCloudStatus={{
+          backendBaseUrl: "redacted",
+          statePath: "redacted",
+          installIdPresent: true,
+          deviceRegistered: false,
+          lastRegisterOk: false,
+          redacted: true,
+        }}
+        initialAuthSessionStatus={{
+          status: "pending",
+          secretsPresent: false,
+          sessionPath: "redacted",
+          redacted: true,
+        }}
+      />,
+    );
+
+    expect(html).toContain("Completá el inicio de sesión");
+    expect(html).toContain("Esperando confirmación…");
+    expect(html).toContain("Esta pantalla se actualizará automáticamente cuando vuelvas.");
+    expect(html).not.toContain("Comprobar estado");
+    expect(html).not.toContain("Continuar con Google");
+    expect(html).not.toContain("invite code");
+    expect(html).not.toContain("Fixvox Cloud");
   });
 
   it("renders signed-in Cuenta summary from simulated redacted state", () => {
@@ -175,6 +209,9 @@ describe("SettingsSurface", () => {
     expect(html).toContain("Avanzado");
     expect(html).toContain("Abrir Control Room");
     expect(html).toContain("Diagnóstico seguro");
+    expect(html).toContain("Volver a comprobar");
+    expect(html).toContain("Todavía no comprobado");
+    expect(html).not.toContain("Actualizar estado");
     expect(html).not.toContain("ADMIN_API_KEY");
 
     const nonAdminHtml = renderToStaticMarkup(<SettingsSurface initialSection="advanced" />);

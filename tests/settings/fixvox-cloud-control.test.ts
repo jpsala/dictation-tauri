@@ -90,10 +90,10 @@ describe("Fixvox cloud settings contract", () => {
     expect(summarizeFixvoxPolicyCapabilities(status)).toBe("managed STT · basic settings · debug hidden · fresh");
     expect(deriveFixvoxCloudHealth(status)).toMatchObject({
       tone: "success",
-      badge: "Ready",
-      activationLabel: "Linked",
+      badge: "Listo",
+      activationLabel: "Conectada",
       policyLabel: "Alpha Basic",
-      managedLabel: "Managed ready",
+      managedLabel: "Listo",
     });
     expect(formatFixvoxStateLocation(status.statePath)).toBe("fixvox-device-state.json · host app data");
   });
@@ -165,12 +165,12 @@ describe("Fixvox cloud settings contract", () => {
       redacted: true,
     };
 
-    expect(deriveFixvoxCloudHealth(undefined)).toMatchObject({ tone: "warning", badge: "Open in Tauri" });
+    expect(deriveFixvoxCloudHealth(undefined)).toMatchObject({ tone: "warning", badge: "No disponible" });
     expect(deriveFixvoxCloudHealth(failed)).toMatchObject({
       tone: "danger",
-      badge: "Needs attention",
-      managedLabel: "Managed cached",
-      nextAction: "Retry Refresh policy; if it repeats, check network or invite/account state.",
+      badge: "Requiere atención",
+      managedLabel: "Disponible con datos guardados",
+      nextAction: "Volvé a comprobar. Si continúa, revisá la conexión.",
     });
     expect(summarizeFixvoxCloudProblem(failed)).toBe("cloudflare_1010: request blocked");
     expect(JSON.stringify(deriveFixvoxCloudHealth(failed))).not.toContain("dev_test_1234567890abcdef");

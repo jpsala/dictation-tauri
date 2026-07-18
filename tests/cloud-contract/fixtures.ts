@@ -1,7 +1,7 @@
 export type ContractArea = "health" | "admin" | "auth" | "device" | "execution" | "provider" | "telemetry" | "support" | "internal";
 export type ContractSource = "worker.fetch" | "usage-counter.fetch";
 export type ContractShape = "json-object" | "json-array" | "html" | "text" | "empty" | "sse";
-export type ContractSetup = "none" | "device" | "admin-populated" | "profile-draft" | "profile-publish" | "profile-rollback";
+export type ContractSetup = "none" | "device" | "admin-populated" | "profile-apply" | "profile-draft" | "profile-publish" | "profile-rollback";
 export type AdminCapability = "view" | "edit" | "publish";
 
 export type ContractFixture = {
@@ -273,6 +273,23 @@ export const HTTP_CONTRACT_FIXTURES: readonly ContractFixture[] = [
     adminCapability: "edit",
     request: adminJsonRequest({ profileId: "pro" }),
     response: jsonResponse(200, ["profileId", "draft"]),
+  },
+  {
+    id: "admin-profile-apply",
+    area: "admin",
+    source: "worker.fetch",
+    method: "POST",
+    path: "/admin/control-plane/profiles/apply",
+    adminCapability: "publish",
+    setup: "profile-apply",
+    request: adminJsonRequest({
+      profileId: "pro",
+      expectedActiveVersion: 1,
+      definition: { label: "Fixture profile apply" },
+      confirmation: "APPLY pro v1",
+    }),
+    response: jsonResponse(200, ["profileId", "label", "published", "draft", "history"]),
+    notes: "Runs against a fresh in-memory profile snapshot prepared by the fixture harness only.",
   },
   {
     id: "admin-profile-publish",

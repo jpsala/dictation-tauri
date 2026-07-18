@@ -6,11 +6,13 @@ import {
   CONTROL_PLANE_PROFILE_PROJECTION_COMMIT_KEY,
   CONTROL_PLANE_PROFILE_VERSION_STORE_KEY,
   ControlPlaneAdminProfileStaleError,
+  applyControlPlaneAdminProfile,
   createControlPlaneAdminProfileDraft,
   discardControlPlaneAdminProfileDraft,
   publishControlPlaneAdminProfile,
   rollbackControlPlaneAdminProfile,
   saveControlPlaneAdminProfileDraft,
+  type ControlPlaneAdminProfileApplyPayload,
   type ControlPlaneAdminProfileDiscardPayload,
   type ControlPlaneAdminProfileDraftPayload,
   type ControlPlaneAdminProfilePublishPayload,
@@ -33,7 +35,7 @@ type ProfileMutationEnv = {
   PROFILE_MUTATION_TEST_HOOK?: (boundary: ControlPlaneProfileMutationBoundary) => Promise<void>;
 };
 
-export type ControlPlaneProfileMutationAction = "create-draft" | "save-draft" | "discard-draft" | "publish" | "rollback";
+export type ControlPlaneProfileMutationAction = "apply-profile" | "create-draft" | "save-draft" | "discard-draft" | "publish" | "rollback";
 
 export type ControlPlaneProfileMutationEnvelope = {
   action: ControlPlaneProfileMutationAction;
@@ -101,7 +103,7 @@ function errorResponse(error: unknown, fallbackStatus?: number): Response {
 }
 
 function isMutationAction(value: unknown): value is ControlPlaneProfileMutationAction {
-  return value === "create-draft" || value === "save-draft" || value === "discard-draft" || value === "publish" || value === "rollback";
+  return value === "apply-profile" || value === "create-draft" || value === "save-draft" || value === "discard-draft" || value === "publish" || value === "rollback";
 }
 
 function stableJson(value: unknown): string {
@@ -401,6 +403,8 @@ export class ControlPlanePublishDurableObject extends DurableObject<ProfileMutat
     payload: unknown,
   ): Promise<unknown> {
     switch (action) {
+      case "apply-profile":
+        return applyControlPlaneAdminProfile(store, payload as ControlPlaneAdminProfileApplyPayload);
       case "create-draft":
         return createControlPlaneAdminProfileDraft(store, payload as ControlPlaneAdminProfileDraftPayload);
       case "save-draft":

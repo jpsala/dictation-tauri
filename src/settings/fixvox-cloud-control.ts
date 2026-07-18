@@ -63,6 +63,12 @@ export type SettingsAccess = {
   canOpenAdmin: boolean;
 };
 
+export function isFixvoxAccountReady(status: FixvoxCloudStatus | undefined): boolean {
+  return status?.deviceRegistered === true &&
+    status.authPolicy?.accessMode === "signed_in" &&
+    status.capabilities?.canUseManagedTranscription === true;
+}
+
 export function resolveSettingsAccess(status: FixvoxCloudStatus | undefined): SettingsAccess {
   const auth = status?.authPolicy;
   const capabilities = new Set<FixvoxProductCapability>(
@@ -216,95 +222,95 @@ export function deriveFixvoxCloudHealth(status: FixvoxCloudStatus | undefined): 
   if (!status) {
     return {
       tone: "warning",
-      badge: "Open in Tauri",
-      headline: "Host status unavailable",
-      detail: "Open Settings inside the Tauri app to read device, activation and policy state.",
-      activationLabel: "Unknown",
-      policyLabel: "Pending",
-      managedLabel: "Unknown",
-      nextAction: "Open the native app, then run Refresh local status.",
+      badge: "No disponible",
+      headline: "No pudimos leer el diagnóstico local",
+      detail: "Abrí estos ajustes desde la aplicación para volver a comprobar el estado.",
+      activationLabel: "Desconocido",
+      policyLabel: "Pendiente",
+      managedLabel: "Desconocido",
+      nextAction: "Volvé a comprobar desde la aplicación.",
     };
   }
 
   if (!status.installIdPresent) {
     return {
       tone: "warning",
-      badge: "Local setup",
-      headline: "Install identity missing",
-      detail: "The host will create a local install identity before cloud activation or policy refresh.",
-      activationLabel: "Needs local ID",
-      policyLabel: "Pending",
-      managedLabel: "Blocked",
-      nextAction: "Run Refresh local status or Repair device link.",
+      badge: "Configuración pendiente",
+      headline: "La configuración inicial todavía no comenzó",
+      detail: "Cerrá y volvé a abrir la aplicación para continuar.",
+      activationLabel: "Pendiente",
+      policyLabel: "Pendiente",
+      managedLabel: "Bloqueado",
+      nextAction: "Volvé a abrir la aplicación.",
     };
   }
 
   if (!status.deviceRegistered) {
     return {
       tone: "warning",
-      badge: "Activation needed",
-      headline: "Device is not activated",
-      detail: "Enter an invite code to link this install with Fixvox Cloud before managed dictation.",
-      activationLabel: "Not activated",
-      policyLabel: "Pending",
-      managedLabel: "Blocked",
-      nextAction: "Paste an invite code and choose Activate device.",
+      badge: "Cuenta pendiente",
+      headline: "Falta conectar tu cuenta",
+      detail: "Iniciá sesión con Google para terminar de configurar esta computadora.",
+      activationLabel: "Pendiente",
+      policyLabel: "Pendiente",
+      managedLabel: "Bloqueado",
+      nextAction: "Abrí Cuenta y continuá con Google.",
     };
   }
 
   const errorCode = status.policySnapshot?.error?.code ?? status.lastRegisterErrorCode;
   const stale = Boolean(status.policySnapshot?.stale);
   const managed = Boolean(status.capabilities?.canUseManagedTranscription);
-  const policyLabel = status.policyLabel ?? status.policySnapshot?.policyLabel ?? "Policy pending";
+  const policyLabel = status.policyLabel ?? status.policySnapshot?.policyLabel ?? "Pendiente";
 
   if (errorCode) {
     return {
       tone: "danger",
-      badge: "Needs attention",
-      headline: "Cloud refresh failed",
-      detail: summarizeFixvoxCloudProblem(status),
-      activationLabel: "Linked",
+      badge: "Requiere atención",
+      headline: "No pudimos actualizar el acceso",
+      detail: "La última comprobación no terminó correctamente.",
+      activationLabel: "Conectada",
       policyLabel,
-      managedLabel: managed ? "Managed cached" : "Blocked",
-      nextAction: "Retry Refresh policy; if it repeats, check network or invite/account state.",
+      managedLabel: managed ? "Disponible con datos guardados" : "Bloqueado",
+      nextAction: "Volvé a comprobar. Si continúa, revisá la conexión.",
     };
   }
 
   if (stale) {
     return {
       tone: "warning",
-      badge: "Policy stale",
-      headline: "Policy snapshot is stale",
-      detail: "The device is linked, but the cached policy should be refreshed before release validation.",
-      activationLabel: "Linked",
+      badge: "Datos desactualizados",
+      headline: "Conviene volver a comprobar el acceso",
+      detail: "La cuenta está conectada, pero el diagnóstico local puede estar desactualizado.",
+      activationLabel: "Conectada",
       policyLabel,
-      managedLabel: managed ? "Managed cached" : "Blocked",
-      nextAction: "Choose Refresh policy before the next dictation smoke.",
+      managedLabel: managed ? "Disponible con datos guardados" : "Bloqueado",
+      nextAction: "Volvé a comprobar antes del próximo dictado.",
     };
   }
 
   if (!managed) {
     return {
       tone: "danger",
-      badge: "Managed blocked",
-      headline: "Managed transcription is blocked",
-      detail: "The current policy does not allow managed transcription; the app must not silently fall back to BYOK.",
-      activationLabel: "Linked",
+      badge: "Dictado no disponible",
+      headline: "Esta cuenta todavía no puede dictar",
+      detail: "Volvé a comprobar el acceso o consultá con la persona que administra tu cuenta.",
+      activationLabel: "Conectada",
       policyLabel,
-      managedLabel: "Blocked",
-      nextAction: "Refresh policy or activate a plan that allows managed transcription.",
+      managedLabel: "Bloqueado",
+      nextAction: "Volvé a comprobar el acceso.",
     };
   }
 
   return {
     tone: "success",
-    badge: "Ready",
-    headline: "Ready for managed dictation",
-    detail: summarizeFixvoxCloudStatus(status),
-    activationLabel: "Linked",
+    badge: "Listo",
+    headline: "Todo listo para dictar",
+    detail: "La cuenta y esta computadora están preparadas.",
+    activationLabel: "Conectada",
     policyLabel,
-    managedLabel: "Managed ready",
-    nextAction: "Dictate normally; use Refresh policy only when account or quota changes.",
+    managedLabel: "Listo",
+    nextAction: "Podés dictar normalmente.",
   };
 }
 

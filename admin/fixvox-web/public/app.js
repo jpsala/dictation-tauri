@@ -25,9 +25,9 @@ const state = {
   selectedPolicyId: 'pro',
   configurationTab: 'profiles',
   profileTab: 'overview',
-  profilePreview: null,
-  profilePreviewError: null,
-  profilePreviewLoading: false,
+  profileEditor: null,
+  profileReview: false,
+  profileApplying: false,
   rbac: null,
   audit: null,
   lastProfileMutation: null,
@@ -160,7 +160,12 @@ function setMessage(id, content) {
 async function jsonFetch(url, options = {}) {
   const response = await fetch(url, options)
   const payload = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(payload?.error || payload?.error?.message || 'Request failed')
+  if (!response.ok) {
+    const error = new Error(payload?.error?.message || payload?.error || 'Request failed')
+    error.code = payload?.error?.code
+    error.status = response.status
+    throw error
+  }
   return payload
 }
 async function sendCommand(command) {
@@ -498,130 +503,71 @@ async function deletePrompt(id) {
   await loadAdmin('policies')
   state.status = `Prompt borrado: ${id}`
 }
-async function createProfileDraft(profileId) {
-  state.profileNotice = { tone: 'pending', message: 'Preparando cambios sin publicar…' }
-  renderMessages()
-  await jsonFetch('/api/admin/profiles/drafts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId }) })
-  state.profilePreview = null
-  state.profilePreviewError = null
-  state.profileTab = 'overview'
-  state.profileNotice = { tone: 'success', message: 'Cambios listos para editar.' }
-  await loadAdmin('policies')
-  state.status = `Draft creado: ${profileId}`
+function profileDefinitionForApply(definition) {
+  const { version, status, basedOnVersion, ...candidate } = structuredClone(definition || {})
+  return candidate
 }
-async function saveProfileDraft(form) {
-  state.profileNotice = { tone: 'pending', message: 'Guardando cambios…' }
-  renderMessages()
-  const values = Object.fromEntries(new FormData(form).entries())
-  const record = (state.adminData?.profileVersions || []).find((profile) => profile.profileId === values.profileId)
-  if (!record?.draft) throw new Error('Draft no encontrado; recargá Profiles')
-  const tab = form.dataset.profileDraftTab
-  const definition = structuredClone(record.draft)
-  if (tab === 'overview') definition.label = values.label
-  if (tab === 'access') definition.access = { capabilities: [...new FormData(form).getAll('capability')] }
+function publishedProfileRecords(data = state.adminData) {
+  return (data?.profileVersions || []).filter((profile) => profile?.published)
+}
+function activeProfileRecord(profileId) { return publishedProfileRecords().find((profile) => profile.profileId === profileId) || null }
+function startProfileEdit(profileId) {
+  const record = activeProfileRecord(profileId)
+  if (!record?.published) throw new Error('No hay una versión publicada para editar.')
+  state.profileEditor = { profileId, expectedActiveVersion: record.published.version, original: profileDefinitionForApply(record.published), candidate: profileDefinitionForApply(record.published), dirty: false }
+  state.profileReview = false
+  state.profileNotice = { tone: 'success', message: 'Editando cambios sólo en esta ventana. Actualizar la página los descarta.' }
+  renderMessages(); wireDynamicEvents()
+}
+function cancelProfileEdit() {
+  state.profileEditor = null; state.profileReview = false; state.pendingProfileMutation = null
+  state.profileNotice = { tone: 'success', message: 'Se descartaron los cambios locales. La configuración publicada no cambió.' }
+  renderMessages(); wireDynamicEvents()
+}
+function updateProfileCandidate(form) {
+  const editor = state.profileEditor
+  if (!editor) return
+  const values = Object.fromEntries(new FormData(form).entries()), candidate = structuredClone(editor.candidate), tab = form.dataset.profileEditorTab
+  if (tab === 'overview') candidate.label = values.label
+  if (tab === 'access') candidate.access = { capabilities: [...new FormData(form).getAll('capability')] }
   if (tab === 'runtime') {
     const operation = (kind) => ({ engineId: values[`${kind}EngineId`], ...(values[`${kind}PromptId`] ? { promptId: values[`${kind}PromptId`] } : {}) })
-    definition.runtime = { transcription: operation('transcription'), postprocess: operation('postprocess'), selectionTransform: operation('selectionTransform') }
+    candidate.runtime = { transcription: operation('transcription'), postprocess: operation('postprocess'), selectionTransform: operation('selectionTransform') }
   }
   if (tab === 'limits') {
     const amount = (key) => values[key] === '' ? undefined : Number(values[key])
-    definition.limits = { mode: values.limitMode, ...(amount('dailyUsd') === undefined ? {} : { dailyUsd: amount('dailyUsd') }), ...(amount('monthlyUsd') === undefined ? {} : { monthlyUsd: amount('monthlyUsd') }), ...(values.quotaProfile ? { quotaProfile: values.quotaProfile } : {}) }
+    candidate.limits = { mode: values.limitMode, ...(amount('dailyUsd') === undefined ? {} : { dailyUsd: amount('dailyUsd') }), ...(amount('monthlyUsd') === undefined ? {} : { monthlyUsd: amount('monthlyUsd') }), ...(values.quotaProfile ? { quotaProfile: values.quotaProfile } : {}) }
   }
   if (tab === 'controls') {
-    definition.userControls = Object.fromEntries([...form.querySelectorAll('[data-profile-control]')].map((input) => [input.dataset.profileControl, input.value]))
-    definition.defaults = Object.fromEntries([...form.querySelectorAll('[data-profile-default]')].flatMap((input) => {
-      if (input.value === '') return []
-      const type = input.dataset.defaultType
-      const value = type === 'boolean' ? input.value === 'true' : type === 'number' ? Number(input.value) : input.value
-      return [[input.dataset.profileDefault, value]]
-    }))
+    candidate.userControls = Object.fromEntries([...form.querySelectorAll('[data-profile-control]')].map((input) => [input.dataset.profileControl, input.value]))
+    candidate.defaults = Object.fromEntries([...form.querySelectorAll('[data-profile-default]')].flatMap((input) => input.value === '' ? [] : [[input.dataset.profileDefault, input.dataset.defaultType === 'boolean' ? input.value === 'true' : input.dataset.defaultType === 'number' ? Number(input.value) : input.value]]))
   }
-  await jsonFetch('/api/admin/profiles/drafts', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId: values.profileId, definition }) })
-  state.profilePreview = null
-  state.profileNotice = { tone: 'success', message: 'Cambios guardados. Revisalos antes de publicar.' }
-  await loadAdmin('policies')
-  state.status = `Draft guardado: ${values.profileId}`
+  editor.candidate = candidate; editor.dirty = JSON.stringify(editor.original) !== JSON.stringify(candidate); state.profileReview = false
 }
-async function discardProfileDraft(profileId, draftVersion) {
-  state.profileNotice = { tone: 'pending', message: 'Descartando cambios…' }
-  renderMessages()
-  const confirmation = `DISCARD ${profileId} v${draftVersion}`
-  await jsonFetch('/api/admin/profiles/drafts', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId, expectedDraftVersion: draftVersion, confirmation }) })
-  state.profilePreview = null
-  state.profilePreviewError = null
-  state.profileTab = 'overview'
-  state.profileNotice = { tone: 'success', message: 'Cambios descartados. La configuración publicada sigue igual.' }
-  await loadAdmin('policies')
-  state.status = `Cambios descartados: ${profileId}`
+function profileDiff(before, after, path = '') {
+  const keys = new Set([...Object.keys(before || {}), ...Object.keys(after || {})])
+  return [...keys].flatMap((key) => { const nextPath = path ? `${path}.${key}` : key, left = before?.[key], right = after?.[key]; if (left && right && typeof left === 'object' && typeof right === 'object' && !Array.isArray(left) && !Array.isArray(right)) return profileDiff(left, right, nextPath); return JSON.stringify(left) === JSON.stringify(right) ? [] : [{ path: nextPath, before: left, after: right }] })
 }
-async function cloneProfileDraft(form) {
-  const values = Object.fromEntries(new FormData(form).entries())
-  const draftProfileId = String(values.draftProfileId || '').trim()
-  if (!draftProfileId) throw new Error('Indicá un ID para el profile clonado')
-  await jsonFetch('/api/admin/profiles/drafts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId: values.profileId, draftProfileId, label: values.label }) })
-  state.selectedPolicyId = draftProfileId
-  state.profileTab = 'overview'
-  state.profilePreview = null
-  await loadAdmin('policies')
-  state.status = `Draft clonado: ${draftProfileId}`
+async function applyProfileChanges(profileId) {
+  const editor = state.profileEditor
+  if (!editor || editor.profileId !== profileId || !editor.dirty) throw new Error('No hay cambios locales para aplicar.')
+  state.profileApplying = true; state.profileNotice = { tone: 'pending', message: 'Aplicando una única versión atómica…' }; renderMessages(); wireDynamicEvents()
+  try {
+    const result = await jsonFetch('/api/admin/profiles/apply', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId, expectedActiveVersion: editor.expectedActiveVersion, definition: editor.candidate, confirmation: `APPLY ${profileId} v${editor.expectedActiveVersion}` }) })
+    state.lastProfileMutation = { action: 'apply', profileId, resultingVersion: result.published?.version ?? result.profile?.published?.version ?? null, result: 'success', accountsRefreshed: false }
+    state.profileEditor = null; state.profileReview = false; state.pendingProfileMutation = null
+    await loadAdmin('policies'); await refreshEffectiveProfilesAfterProfileMutation()
+    state.lastProfileMutation = { ...state.lastProfileMutation, accountsRefreshed: true, audit: auditForProfileMutation('apply', profileId) }
+    state.profileNotice = { tone: 'success', message: 'Cambios aplicados como una nueva versión publicada.' }; state.status = `Profile aplicado: ${profileId}`; renderAll()
+  } catch (error) {
+    state.pendingProfileMutation = null
+    if (error.code === 'profile_version_stale') { state.profileEditor = null; state.profileReview = false; await loadAdmin('policies'); state.profileNotice = { tone: 'error', message: 'La versión cambió. Se recargó la autoridad; revisá los cambios nuevamente.' } }
+    else state.profileNotice = { tone: 'error', message: error.message || 'No se pudieron aplicar los cambios.' }
+    renderMessages(); wireDynamicEvents()
+  } finally { state.profileApplying = false }
 }
-async function loadProfilePreview(profileId, form = null) {
-  state.profilePreviewLoading = true
-  state.profilePreview = null
-  state.profilePreviewError = null
-  renderMessages(); wireDynamicEvents()
-  const values = form ? Object.fromEntries(new FormData(form).entries()) : {}
-  const query = new URLSearchParams({ profileId })
-  if (values.accountHandle) query.set('accountHandle', values.accountHandle)
-  if (values.deviceId) query.set('deviceId', values.deviceId)
-  const previewEndpoint = '/api/admin/profiles/preview'
-  try { state.profilePreview = await jsonFetch(`${previewEndpoint}?${query}`) }
-  catch (error) { state.profilePreviewError = error.message; throw error }
-  finally { state.profilePreviewLoading = false; renderMessages(); wireDynamicEvents() }
-}
-async function refreshEffectiveProfilesAfterProfileMutation() {
-  state.accountsData = await jsonFetch('/api/admin/accounts?limit=50')
-  return state.accountsData
-}
-function auditForProfileMutation(action, profileId) {
-  return [...(state.audit?.records || [])].reverse().find((record) => record.action === action && record.profileId === profileId && record.result === 'success') || null
-}
-async function publishProfile(profileId, form) {
-  const preview = state.profilePreview
-  if (!preview || preview.profileId !== profileId) throw new Error('Primero revisá los cambios.')
-  const confirmation = String(form.querySelector('[name="confirmation"]')?.value || '').trim()
-  const expected = `PUBLISH ${profileId} v${preview.draftVersion}`
-  if (confirmation !== expected) throw new Error(`Confirmación exacta requerida: ${expected}`)
-  const result = await jsonFetch('/api/admin/profiles/publish', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId, expectedActiveVersion: preview.activeVersion, expectedDraftVersion: preview.draftVersion, confirmation }) })
-  state.profilePreview = null
-  state.pendingProfileMutation = null
-  state.lastProfileMutation = { action: 'publish', profileId, resultingVersion: result.published?.version ?? null, result: 'success', accountsRefreshed: false }
-  await loadAdmin('policies')
-  await refreshEffectiveProfilesAfterProfileMutation()
-  state.lastProfileMutation = { ...state.lastProfileMutation, accountsRefreshed: true, audit: auditForProfileMutation('publish', profileId) }
-  state.status = `Profile publicado: ${profileId}`
-  renderAll()
-}
-async function rollbackProfile(profileId, form) {
-  const preview = state.profilePreview?.profileId === profileId ? state.profilePreview : null
-  const record = (state.adminData?.profileVersions || []).find((profile) => profile.profileId === profileId)
-  const activeVersion = preview?.activeVersion ?? record?.published?.version ?? null
-  const version = Number(form.querySelector('[name="version"]')?.value)
-  if (!activeVersion) throw new Error('No hay una versión activa para rollback.')
-  if (!Number.isInteger(version) || version < 1) throw new Error('Elegí una versión histórica.')
-  const confirmation = String(form.querySelector('[name="confirmation"]')?.value || '').trim()
-  const expected = `ROLLBACK ${profileId} to v${version}`
-  if (confirmation !== expected) throw new Error(`Confirmación exacta requerida: ${expected}`)
-  const result = await jsonFetch('/api/admin/profiles/rollback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId, version, expectedActiveVersion: activeVersion, confirmation }) })
-  state.profilePreview = null
-  state.pendingProfileMutation = null
-  state.lastProfileMutation = { action: 'rollback', profileId, version, resultingVersion: result.published?.version ?? null, result: 'success', accountsRefreshed: false }
-  await loadAdmin('policies')
-  await refreshEffectiveProfilesAfterProfileMutation()
-  state.lastProfileMutation = { ...state.lastProfileMutation, accountsRefreshed: true, audit: auditForProfileMutation('rollback', profileId) }
-  state.status = `Profile rollback: ${profileId} → v${version}`
-  renderAll()
-}
+async function refreshEffectiveProfilesAfterProfileMutation() { state.accountsData = await jsonFetch('/api/admin/accounts?limit=50'); return state.accountsData }
+function auditForProfileMutation(action, profileId) { return [...(state.audit?.records || [])].reverse().find((record) => record.action === action && record.profileId === profileId && record.result === 'success') || null }
 async function saveRoleBinding(form) {
   const body = Object.fromEntries(new FormData(form).entries())
   await jsonFetch('/api/admin/roles', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ subjectEmail: body.subjectEmail, role: body.role }) })
@@ -753,7 +699,8 @@ function renderMessages() {
   const subtitle = $('#main-subtitle')
   const composer = $('#composer')
   const grid = document.querySelector('.pi-grid')
-  if (grid) grid.classList.toggle('admin-wide', ['accounts', 'policies', 'settings'].includes(state.activeView))
+  const renderer = CONTROL_ROOM_AREAS[state.activeView]?.renderer || state.activeView
+  if (grid) grid.classList.toggle('admin-wide', ['accounts', 'policies', 'settings'].includes(renderer))
   if (state.activeView !== 'chat') {
     const shouldKeepScroll = state.lastAdminViewRendered === state.activeView
     const previousScrollTop = shouldKeepScroll ? box.scrollTop : 0
@@ -1020,7 +967,7 @@ function renderProfileRuntime(definition, data) {
 }
 function renderProfileLimits(definition) {
   const limits = definition?.limits || {}
-  return `<section class="profile-summary-card"><h4>Límites</h4><p>Budget y cuota base de la versión publicada o del draft visible.</p><dl><div><dt>Diario</dt><dd>${limits.dailyUsd == null ? 'Heredado' : formatUsd(limits.dailyUsd)}</dd></div><div><dt>Mensual</dt><dd>${limits.monthlyUsd == null ? 'Heredado' : formatUsd(limits.monthlyUsd)}</dd></div><div><dt>Modo</dt><dd>${esc(limits.mode || 'Heredado')}</dd></div><div><dt>Cuota</dt><dd>${esc(limits.quotaProfile || 'Heredada')}</dd></div></dl></section>`
+  return `<section class="profile-summary-card"><h4>Límites</h4><p>Budget y cuota base de la versión publicada.</p><dl><div><dt>Diario</dt><dd>${limits.dailyUsd == null ? 'Heredado' : formatUsd(limits.dailyUsd)}</dd></div><div><dt>Mensual</dt><dd>${limits.monthlyUsd == null ? 'Heredado' : formatUsd(limits.monthlyUsd)}</dd></div><div><dt>Modo</dt><dd>${esc(limits.mode || 'Heredado')}</dd></div><div><dt>Cuota</dt><dd>${esc(limits.quotaProfile || 'Heredada')}</dd></div></dl></section>`
 }
 const PROFILE_EDITOR_TABS = [['overview', 'Resumen'], ['access', 'Acceso'], ['runtime', 'Runtime'], ['limits', 'Límites'], ['controls', 'Controles']]
 const PROFILE_CAPABILITY_GROUPS = [['Dictado', ['dictation', 'managed_stt', 'postprocess']], ['Selección', ['selection_transform', 'translate']], ['Assistant', ['assistant_actions', 'managed_llm']], ['Administración', ['custom_prompts', 'advanced_settings', 'debug_tools', 'admin_settings']]]
@@ -1048,15 +995,17 @@ function renderProfileControlsEditor(draft) {
   return `<div class="profile-controls-editor">${PROFILE_USER_SETTINGS.map((setting) => { const value = draft.defaults?.[setting]; const type = typeof value === 'boolean' ? 'boolean' : typeof value === 'number' ? 'number' : 'string'; const defaultInput = type === 'boolean' ? `<select data-profile-default="${esc(setting)}" data-default-type="boolean"><option value="">Sin default</option><option value="true" ${value === true ? 'selected' : ''}>true</option><option value="false" ${value === false ? 'selected' : ''}>false</option></select>` : `<input data-profile-default="${esc(setting)}" data-default-type="${type}" type="${type === 'number' ? 'number' : 'text'}" value="${esc(value ?? '')}" placeholder="Sin default">`; return `<fieldset class="profile-control-row"><legend>${esc(profileSettingLabel(setting))}</legend><label><span>Visibilidad</span><select data-profile-control="${esc(setting)}" name="control:${esc(setting)}"><option value="hidden" ${draft.userControls?.[setting] === 'hidden' ? 'selected' : ''}>Oculto</option><option value="visible-locked" ${draft.userControls?.[setting] === 'visible-locked' ? 'selected' : ''}>Visible, bloqueado</option><option value="editable" ${draft.userControls?.[setting] === 'editable' ? 'selected' : ''}>Editable</option></select></label><label><span>Default</span>${defaultInput}</label></fieldset>` }).join('')}</div>`
 }
 function renderProfileDraftEditor(record, data) {
-  const draft = record?.draft
-  if (!draft) return ''
-  const tab = state.profileTab
-  const content = tab === 'overview' ? `<label><span>Nombre</span><input name="label" value="${esc(draft.label)}" required></label>` : tab === 'access' ? renderProfileAccessEditor(draft) : tab === 'runtime' ? renderProfileRuntimeEditor(draft, data) : tab === 'limits' ? renderProfileLimitsEditor(draft, data) : renderProfileControlsEditor(draft)
-  const titles = { overview: 'Resumen', access: 'Acceso', runtime: 'Runtime', limits: 'Límites', controls: 'Controles y valores iniciales' }
-  return `<form class="profile-draft-editor" data-save-profile-draft data-profile-draft-tab="${esc(tab)}"><input type="hidden" name="profileId" value="${esc(record.profileId)}"><div class="panel-head"><div><span class="eyebrow">Cambios sin publicar</span><h4>${esc(titles[tab])}</h4><p>Guardar conserva los cambios para revisarlos antes de publicar.</p></div><button class="button small primary" type="submit">Guardar cambios</button></div>${content}</form>`
-}
-function renderProfileCloneForm(record, definition) {
-  return `<details class="profile-clone"><summary>Clonar como draft</summary><form data-clone-profile><input type="hidden" name="profileId" value="${esc(record.profileId)}"><label><span>ID nuevo</span><input name="draftProfileId" value="${esc(`${record.profileId}-copy`)}" required></label><label><span>Nombre</span><input name="label" value="${esc(`Copia de ${definition.label}`)}" required></label><button class="button small" type="submit">Crear clon</button></form></details>`
+  const editor = state.profileEditor
+  if (!editor || editor.profileId !== record.profileId) return ''
+  const candidate = editor.candidate, tab = state.profileTab
+  const content = tab === 'overview' ? `<label><span>Nombre</span><input name="label" value="${esc(candidate.label)}" required></label>` : tab === 'access' ? renderProfileAccessEditor(candidate) : tab === 'runtime' ? renderProfileRuntimeEditor(candidate, data) : tab === 'limits' ? renderProfileLimitsEditor(candidate, data) : renderProfileControlsEditor(candidate)
+  const diff = state.profileReview ? profileDiff(editor.original, candidate) : []
+  const impact = { acceso: 0, runtime: 0, límites: 0, controles: 0, general: 0 }
+  for (const item of diff) impact[item.path.startsWith('access.') ? 'acceso' : item.path.startsWith('runtime.') ? 'runtime' : item.path.startsWith('limits.') ? 'límites' : item.path.startsWith('userControls.') || item.path.startsWith('defaults.') ? 'controles' : 'general'] += 1
+  const review = state.profileReview ? `<section class="profile-review" aria-live="polite"><div class="panel-head"><div><span class="eyebrow">Revisar cambios</span><h4>${diff.length} cambio${diff.length === 1 ? '' : 's'} local${diff.length === 1 ? '' : 'es'}</h4><p>La revisión no envía requests. Aplicar crea una única versión atómica.</p></div></div><div class="profile-review-impact">${Object.entries(impact).filter(([, n]) => n).map(([label, n]) => `<span>${esc(label)}: ${n}</span>`).join('') || '<span>Sin impacto</span>'}</div>${diff.length ? `<div class="profile-diff"><table><thead><tr><th>Campo</th><th>Antes</th><th>Después</th></tr></thead><tbody>${diff.map((item) => `<tr><td><code>${esc(item.path)}</code></td><td><pre>${esc(previewValue(item.before))}</pre></td><td><pre>${esc(previewValue(item.after))}</pre></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No hay cambios para aplicar.</p>'}</section>` : ''
+  const pending = state.pendingProfileMutation?.kind === 'apply' && state.pendingProfileMutation.profileId === editor.profileId
+  const actions = !canPublishProfiles() ? '<p class="muted">Tu rol permite revisar cambios locales, pero aplicar requiere publisher u owner.</p>' : pending ? `<section class="profile-inline-confirmation"><div><strong>¿Aplicar estos cambios?</strong><span>Se creará una nueva versión publicada y un audit. No hay borrador intermedio.</span></div><div class="button-row"><button class="button" type="button" data-cancel-profile-mutation>Cancelar</button><button class="button primary" type="button" data-confirm-profile-apply ${state.profileApplying ? 'disabled' : ''}>${state.profileApplying ? 'Aplicando…' : 'Confirmar y aplicar'}</button></div></section>` : `<div class="button-row"><button class="button small" type="button" data-review-profile ${editor.dirty ? '' : 'disabled'}>Revisar cambios</button>${state.profileReview && editor.dirty ? '<button class="button small primary" type="button" data-request-profile-apply>Aplicar cambios</button>' : ''}</div>`
+  return `<section class="profile-local-editor"><div class="panel-head"><div><span class="eyebrow">Edición local</span><h4>${esc(['Resumen', 'Acceso', 'Runtime', 'Límites', 'Controles'][PROFILE_EDITOR_TABS.findIndex(([id]) => id === tab)] || 'Perfil')}</h4><p>Los cambios viven sólo en esta ventana hasta Aplicar.</p></div><button class="button small" type="button" data-cancel-profile-edit>Cancelar edición</button></div><form data-profile-editor data-profile-editor-tab="${esc(tab)}">${content}</form>${review}${actions}</section>`
 }
 function previewValue(value) {
   if (value === undefined || value === null) return '—'
@@ -1067,17 +1016,6 @@ function previewRoutingLabel(routing) {
 }
 function canEditProfiles() { return ['editor', 'publisher', 'owner'].includes(state.rbac?.role) }
 function canPublishProfiles() { return ['publisher', 'owner'].includes(state.rbac?.role) }
-function renderProfileMutationControls(record, profileId, preview) {
-  if (!canPublishProfiles()) return '<p class="muted">Publicación y rollback requieren rol publisher u owner.</p>'
-  if (!preview) return '<p class="muted">Revisá los cambios antes de publicarlos.</p>'
-  const history = Array.isArray(record.history) ? record.history : []
-  const rollbackOptions = history.filter((version) => version.version !== preview.activeVersion)
-  const pending = state.pendingProfileMutation?.profileId === profileId ? state.pendingProfileMutation : null
-  const confirmationPanel = pending
-    ? `<section class="profile-inline-confirmation"><div><strong>${pending.kind === 'publish' ? '¿Publicar estos cambios?' : '¿Restaurar esta versión?'}</strong><span>${pending.kind === 'publish' ? 'Las personas usarán esta configuración después de publicar.' : `La versión seleccionada volverá a estar activa.`}</span></div><div class="button-row"><button class="button" type="button" data-cancel-profile-mutation>Cancelar</button><form ${pending.kind === 'publish' ? `data-publish-profile="${esc(profileId)}"` : `data-rollback-profile="${esc(profileId)}"`}><input type="hidden" name="confirmation" value="${esc(pending.kind === 'publish' ? `PUBLISH ${profileId} v${preview.draftVersion}` : `ROLLBACK ${profileId} to v${pending.version}`)}">${pending.kind === 'rollback' ? `<input type="hidden" name="version" value="${esc(pending.version)}">` : ''}<button class="button primary" type="submit">${pending.kind === 'publish' ? 'Confirmar publicación' : 'Confirmar restauración'}</button></form></div></section>`
-    : `<div class="button-row"><form data-request-profile-publish="${esc(profileId)}"><button class="button small primary" type="submit">Publicar cambios</button></form>${rollbackOptions.length ? `<form data-request-profile-rollback="${esc(profileId)}" class="profile-confirm-form"><label><span>Versión para restaurar</span><select name="version">${rollbackOptions.map((version) => `<option value="${esc(version.version)}">v${esc(version.version)} · ${esc(version.label || profileId)}</option>`).join('')}</select></label><button class="button small" type="submit">Restaurar versión</button></form>` : ''}</div>`
-  return `<section class="profile-mutation-panel"><div class="panel-head"><div><span class="eyebrow">Listo para publicar</span><h4>Revisión completada</h4><p>El servidor vuelve a comprobar permisos, sesión reciente y la versión revisada.</p></div><span class="chip primary">${esc(state.rbac.role)}</span></div>${confirmationPanel}</section>`
-}
 function renderPublishedRollbackControls(record, profileId) {
   if (!record?.published || !canPublishProfiles()) return ''
   const activeVersion = record.published.version
@@ -1093,18 +1031,8 @@ function renderProfileMutationOutcome(profileId) {
   const mutation = state.lastProfileMutation
   if (!mutation || mutation.profileId !== profileId) return ''
   const audit = mutation.audit
-  const action = mutation.action === 'rollback' ? `Rollback a v${mutation.version}` : 'Publish'
+  const action = mutation.action === 'rollback' ? `Rollback a v${mutation.version}` : mutation.action === 'apply' ? 'Cambios aplicados' : 'Publish'
   return `<section class="profile-mutation-outcome" data-profile-outcome><strong>${esc(action)} completado</strong><span>Versión resultante: v${esc(mutation.resultingVersion ?? '—')} · resultado: ${esc(mutation.result)}</span><small>${mutation.accountsRefreshed ? 'Accounts/effective profiles refrescados.' : 'Refrescando Accounts/effective profiles…'} ${audit ? 'Audit registrado.' : 'Audit pendiente de lectura.'}</small></section>`
-}
-function renderProfilePreview(record, profileId) {
-  if (state.profilePreviewLoading) return '<section class="profile-preview"><strong>Cargando preview…</strong><p class="muted">No se escriben versiones ni se llaman providers.</p></section>'
-  if (state.profilePreviewError) return `<section class="profile-preview alert warning"><strong>No se pudo cargar el preview</strong><p>${esc(state.profilePreviewError)}</p></section>`
-  const preview = state.profilePreview?.profileId === profileId ? state.profilePreview : null
-  if (!preview) return `<section class="profile-preview profile-preview-empty"><div><span class="eyebrow">Preview</span><h4>Sin mutación todavía</h4><p>Compará el draft contra la versión activa antes de publicar.</p></div><form data-profile-preview="${esc(profileId)}" class="profile-preview-targets"><label><span>Account handle opcional</span><input name="accountHandle" placeholder="acc_…"></label><label><span>Device ID opcional</span><input name="deviceId" placeholder="dev_…"></label><button class="button small" type="submit">Preview draft</button></form></section>`
-  const impact = preview.impact || {}
-  const target = preview.selectedTarget || {}
-  const diff = Array.isArray(preview.diff) ? preview.diff : []
-  return `<section class="profile-preview"><div class="panel-head"><div><span class="eyebrow">Preview listo</span><h4>v${esc(preview.activeVersion ?? '—')} → draft v${esc(preview.draftVersion)}</h4><p>Diff tipado, impacto de assignments y routing del target seleccionado.</p></div><span class="chip ok">read-only</span></div><div class="preview-impact-grid"><article><strong>${esc(impact.accounts ?? 0)}</strong><span>accounts</span></article><article><strong>${esc(impact.devices ?? 0)}</strong><span>devices</span></article><article><strong>${esc(impact.groups ?? 0)}</strong><span>groups</span></article><article><strong>${esc(preview.pricing?.availability || 'unknown')}</strong><span>pricing</span></article></div><div class="profile-preview-target"><strong>Target seleccionado</strong><span>${esc(target.accountHandle || 'sin account')} · ${esc(target.deviceId || 'sin device')} · ${esc(target.policySource || 'sin resolución')}</span>${target.routing ? `<small>Routing draft: ${esc(previewRoutingLabel(target.routing))}</small>` : ''}</div>${preview.warnings?.length ? `<div class="alert warning"><strong>Warnings de dependencia</strong><ul>${preview.warnings.map((warning) => `<li>${esc(warning)}</li>`).join('')}</ul></div>` : ''}<div class="profile-diff"><div class="panel-head"><div><span class="eyebrow">Typed diff</span><h4>${diff.length} cambios</h4></div></div>${diff.length ? `<table><thead><tr><th>Sección</th><th>Path</th><th>Antes</th><th>Después</th></tr></thead><tbody>${diff.map((item) => `<tr><td>${esc(item.section)}</td><td><code>${esc(item.path)}</code></td><td><pre>${esc(previewValue(item.before))}</pre></td><td><pre>${esc(previewValue(item.after))}</pre></td></tr>`).join('')}</tbody></table>` : '<p class="muted">El draft no cambia la versión activa.</p>'}</div><form data-profile-preview="${esc(profileId)}" class="profile-preview-targets compact"><label><span>Account handle</span><input name="accountHandle" value="${esc(target.accountHandle || '')}" placeholder="sin target"></label><label><span>Device ID</span><input name="deviceId" value="${esc(target.deviceId || '')}" placeholder="sin target"></label><button class="button small" type="submit">Actualizar target</button></form>${renderProfileMutationControls(record, profileId, preview)}</section>`
 }
 function renderSettingsWorkbench() {
   const data = state.adminData || {}
@@ -1138,26 +1066,17 @@ function renderProfileActionFeedback() {
   return `<div class="profile-action-feedback" data-tone="${esc(notice.tone)}" role="status">${esc(notice.message)}</div>`
 }
 
-function renderProfileModeNotice(record) {
-  if (record.draft) return `<section class="profile-mode-notice profile-mode-notice--draft"><div><strong>Cambios sin publicar</strong><span>Guardá los cambios cuando quieras. Las personas siguen usando la configuración actual hasta publicar.</span></div>${canEditProfiles() ? `<button class="button small danger" type="button" data-discard-profile-draft="${esc(record.profileId)}" data-draft-version="${esc(record.draft.version)}">Descartar cambios</button>` : ''}</section>`
-  const message = canEditProfiles()
-    ? 'Esta es la configuración actual. Elegí Editar profile para preparar cambios sin afectar a las personas usuarias.'
-    : 'Esta es la configuración actual. Tu rol no permite preparar cambios.'
-  return `<section class="profile-mode-notice"><strong>Configuración publicada</strong><span>${esc(message)}</span></section>`
-}
 function renderProfilesPane(data) {
   const profileOptions = Array.isArray(data.profileOptions) ? data.profileOptions : policyRowsFromData(data)
-  const profileVersions = Array.isArray(data.profileVersions) ? data.profileVersions : []
-  const profiles = profileVersions.length ? profileVersions : profileOptions.map((profile) => ({ profileId: profile.policyId || profile.id, label: profile.policyLabel || profile.label, published: null, draft: null, history: [] }))
+  const profileVersions = publishedProfileRecords(data)
+  const profiles = profileVersions.length ? profileVersions : profileOptions.map((profile) => ({ profileId: profile.policyId || profile.id, label: profile.policyLabel || profile.label, published: null, history: [] }))
   const record = profiles.find((profile) => profile.profileId === state.selectedPolicyId) || profiles[0]
   if (record && !profiles.some((profile) => profile.profileId === state.selectedPolicyId)) state.selectedPolicyId = record.profileId
-  const selectedId = record?.profileId
+  const selectedId = record?.profileId, definition = record?.published, editor = state.profileEditor?.profileId === selectedId ? state.profileEditor : null
   const legacy = profileOptions.find((profile) => (profile.policyId || profile.id) === selectedId) || {}
-  const definition = record?.draft || record?.published
   const selected = definition ? { ...legacy, policyId: selectedId, policyLabel: definition.label, capabilities: definition.access?.capabilities || [] } : legacy
-  const publishedSection = record?.draft ? '' : renderPublishedProfileSection(state.profileTab, selected, definition, data)
-  const editAction = !record?.draft && canEditProfiles() ? `<button class="button primary" data-create-profile-draft="${esc(selectedId)}">Editar cambios</button>` : ''
-  return `<div class="configuration-pane profiles-pane"><div class="policy-layout"><div class="policy-column">${profiles.map((profile) => { const definition = profile.draft || profile.published; const status = profile.draft ? 'Cambios sin publicar' : 'Publicado'; return `<button class="policy-row ${profile.profileId === selectedId ? 'active' : ''}" data-policy-select="${esc(profile.profileId)}"><strong>${esc(definition?.label || profile.label || profile.profileId)}</strong><small>${esc(profile.profileId)} · ${esc(status)} v${esc(definition?.version || '-')} · ${(definition?.access?.capabilities || []).length} funciones</small></button>` }).join('') || '<div class="empty-state"><strong>No hay perfiles disponibles</strong><span>Reintentá la carga o revisá el contrato del Control Plane.</span></div>'}</div>${record && definition ? `<section class="policy-detail profile-detail"><div class="entity-card-head"><div><span class="eyebrow">${record.draft ? 'Cambios sin publicar' : 'Configuración publicada'}</span><h3>${esc(definition.label || selectedId)}</h3><small>${esc(selectedId)} · v${esc(definition.version)} · ${esc(definition.status)}</small></div><div class="button-row"><button class="button" data-chat-context="Explicame el perfil ${esc(selectedId)}, sus funciones, runtime y límites." data-chat-label="Explicar perfil ${esc(selectedId)}">Preguntar a Pi</button>${editAction}</div></div>${renderProfileEditorTabs()}${renderProfileModeNotice(record)}${renderProfileActionFeedback()}${renderProfileMutationOutcome(selectedId)}${record.draft ? renderProfileDraftEditor(record, data) : `<div class="profile-summary-grid ${state.profileTab === 'overview' ? '' : 'profile-summary-grid--single'}">${publishedSection}</div>`}${record.draft ? renderProfilePreview(record, selectedId) : ''}${!record.draft && state.profileTab === 'overview' ? `${renderProfileCloneForm(record, definition)}${renderPublishedRollbackControls(record, selectedId)}` : ''}</section>` : ''}</div></div>`
+  const editAction = !editor && canEditProfiles() ? `<button class="button primary" type="button" data-edit-profile="${esc(selectedId)}">Editar cambios</button>` : ''
+  return `<div class="configuration-pane profiles-pane"><div class="policy-layout"><div class="policy-column">${profiles.map((profile) => { const published = profile.published; return `<button class="policy-row ${profile.profileId === selectedId ? 'active' : ''}" data-policy-select="${esc(profile.profileId)}"><strong>${esc(published?.label || profile.label || profile.profileId)}</strong><small>${esc(profile.profileId)} · Publicado v${esc(published?.version || '-')} · ${(published?.access?.capabilities || []).length} funciones</small></button>` }).join('') || '<div class="empty-state"><strong>No hay perfiles disponibles</strong><span>Reintentá la carga o revisá el contrato del Control Plane.</span></div>'}</div>${record && definition ? `<section class="policy-detail profile-detail"><div class="entity-card-head"><div><span class="eyebrow">${editor ? 'Edición local' : 'Configuración publicada'}</span><h3>${esc(editor?.candidate.label || definition.label || selectedId)}</h3><small>${esc(selectedId)} · v${esc(editor?.expectedActiveVersion || definition.version)}${editor?.dirty ? ' · cambios locales' : ''}</small></div><div class="button-row"><button class="button" data-chat-context="Explicame el perfil ${esc(selectedId)}, sus funciones, runtime y límites." data-chat-label="Explicar perfil ${esc(selectedId)}">Preguntar a Pi</button>${editAction}</div></div>${editor ? `${renderProfileEditorTabs()}<section class="profile-mode-notice"><div><strong>Cambios sólo en esta ventana</strong><span>Actualizar o cancelar descarta los cambios locales. No se enviará nada hasta Aplicar.</span></div></section>${renderProfileActionFeedback()}${renderProfileDraftEditor(record, data)}` : `<div class="profile-summary-grid ${state.profileTab === 'overview' ? '' : 'profile-summary-grid--single'}">${renderPublishedProfileSection(state.profileTab, selected, definition, data)}</div>${renderProfileActionFeedback()}${renderProfileMutationOutcome(selectedId)}${renderPublishedRollbackControls(record, selectedId)}`}</section>` : ''}</div></div>`
 }
 function renderEnginesPane(data) { return `<div class="configuration-pane">${renderEngineCatalog(data)}</div>` }
 function renderPromptsPane(data) { return `<div class="configuration-pane">${renderPromptCatalog(data)}</div>` }
@@ -1250,18 +1169,22 @@ function wireDynamicEvents() {
   document.querySelectorAll('[data-tab]').forEach((button) => button.onclick = () => { state.dataTab = button.dataset.tab; loadAdmin(button.dataset.tab).catch(alertError) })
   document.querySelectorAll('[data-open-view]').forEach((button) => button.onclick = () => { state.activeView = button.dataset.openView; loadAdmin(button.dataset.openView).catch(alertError); renderAll() })
   document.querySelectorAll('[data-configuration-tab]').forEach((button) => button.onclick = () => { state.configurationTab = button.dataset.configurationTab; renderMessages(); wireDynamicEvents() })
-  document.querySelectorAll('[data-policy-select]').forEach((button) => button.onclick = () => { state.selectedPolicyId = button.dataset.policySelect; state.profileTab = 'overview'; state.profilePreview = null; state.profilePreviewError = null; renderMessages(); wireDynamicEvents() })
+  document.querySelectorAll('[data-policy-select]').forEach((button) => button.onclick = () => { state.selectedPolicyId = button.dataset.policySelect; state.profileTab = 'overview'; state.profileEditor = null; state.profileReview = false; renderMessages(); wireDynamicEvents() })
   document.querySelectorAll('[data-profile-tab]').forEach((button) => button.onclick = () => { state.profileTab = button.dataset.profileTab; renderMessages(); wireDynamicEvents() })
-  document.querySelectorAll('[data-create-profile-draft]').forEach((button) => button.onclick = () => createProfileDraft(button.dataset.createProfileDraft).catch(alertError))
-  document.querySelectorAll('[data-save-profile-draft]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); saveProfileDraft(form).catch(alertError) })
-  document.querySelectorAll('[data-discard-profile-draft]').forEach((button) => button.onclick = () => discardProfileDraft(button.dataset.discardProfileDraft, Number(button.dataset.draftVersion)).catch(alertError))
-  document.querySelectorAll('[data-clone-profile]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); cloneProfileDraft(form).catch(alertError) })
-  document.querySelectorAll('[data-profile-preview]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); loadProfilePreview(form.dataset.profilePreview, form).catch(alertError) })
-  document.querySelectorAll('[data-request-profile-publish]').forEach((form) => form.onsubmit = (event) => {
-    event.preventDefault()
-    state.pendingProfileMutation = { kind: 'publish', profileId: form.dataset.requestProfilePublish }
-    renderMessages(); wireDynamicEvents()
+  document.querySelectorAll('[data-edit-profile]').forEach((button) => button.onclick = () => startProfileEdit(button.dataset.editProfile))
+  document.querySelectorAll('[data-cancel-profile-edit]').forEach((button) => button.onclick = cancelProfileEdit)
+  document.querySelectorAll('[data-profile-editor]').forEach((form) => {
+    const sync = () => {
+      updateProfileCandidate(form)
+      const review = document.querySelector('[data-review-profile]')
+      if (review) review.disabled = !state.profileEditor?.dirty
+    }
+    form.oninput = sync
+    form.onchange = sync
   })
+  document.querySelectorAll('[data-review-profile]').forEach((button) => button.onclick = () => { state.profileReview = true; renderMessages(); wireDynamicEvents() })
+  document.querySelectorAll('[data-request-profile-apply]').forEach((button) => button.onclick = () => { state.pendingProfileMutation = { kind: 'apply', profileId: state.profileEditor?.profileId }; renderMessages(); wireDynamicEvents() })
+  document.querySelectorAll('[data-confirm-profile-apply]').forEach((button) => button.onclick = () => applyProfileChanges(state.profileEditor?.profileId).catch(() => {}))
   document.querySelectorAll('[data-request-profile-rollback]').forEach((form) => form.onsubmit = (event) => {
     event.preventDefault()
     state.pendingProfileMutation = { kind: 'rollback', profileId: form.dataset.requestProfileRollback, version: Number(new FormData(form).get('version')) }
@@ -1271,7 +1194,6 @@ function wireDynamicEvents() {
     state.pendingProfileMutation = null
     renderMessages(); wireDynamicEvents()
   })
-  document.querySelectorAll('[data-publish-profile]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); publishProfile(form.dataset.publishProfile, form).catch(alertError) })
   document.querySelectorAll('[data-rollback-profile]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); rollbackProfile(form.dataset.rollbackProfile, form).catch(alertError) })
   document.querySelectorAll('[data-save-role]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); saveRoleBinding(form).catch(alertError) })
   document.querySelectorAll('[data-remove-role]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); removeRoleBinding(form).catch(alertError) })

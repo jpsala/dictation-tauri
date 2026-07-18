@@ -2,13 +2,14 @@
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { CompanionSurfaceView, resolvePresetPickerAction } from "../../src/App";
+import { CompanionSurfaceView, getRuntimeRecoveryAction, resolvePresetPickerAction } from "../../src/App";
 import {
   createDockCompanionSnapshot,
   type DockCompanionCommandPayload,
 } from "../../src/voice-dock";
 import { createVoiceDockState } from "../../src/voice-dock/visual-semantics";
 import type { DesktopDictationSession } from "../../src/desktop-control/types";
+import type { SimulatedRunSummary } from "../../src/pipeline/types";
 
 function session(input: Partial<DesktopDictationSession>): DesktopDictationSession {
   return {
@@ -20,6 +21,25 @@ function session(input: Partial<DesktopDictationSession>): DesktopDictationSessi
 }
 
 describe("dock companion view", () => {
+  it("turns account setup failures into Spanish configuration recovery", () => {
+    const action = getRuntimeRecoveryAction({
+      runId: "setup-failure",
+      terminalState: "error",
+      capture: { artifact: undefined },
+      error: {
+        phase: "transcribing",
+        message: "Managed Fixvox transcription requires a registered device id.",
+      },
+    } as SimulatedRunSummary);
+
+    expect(action).toMatchObject({
+      kind: "inspect_setup",
+      label: "Completar configuración",
+      reason: "Conectá tu cuenta antes de volver a dictar.",
+    });
+    expect(JSON.stringify(action)).not.toMatch(/device id|managed|provider|record again/i);
+  });
+
   it("renders recovery actions without exposing transcript text", () => {
     const snapshot = createDockCompanionSnapshot({
       voiceDockState: createVoiceDockState(
@@ -105,10 +125,13 @@ describe("dock companion view", () => {
 
   it("activates and restores a persistent dictation preset without starting capture", () => {
     const source = readFileSync("src/App.tsx", "utf8");
-    const appFlow = source.slice(source.indexOf("export function App"));
-    const transcribeFlow = appFlow.slice(
-      appFlow.indexOf("async transcribe"),
-      appFlow.indexOf("const base = await baseRuntime.transcribe"),
+    const dockSurface = source.slice(
+      source.indexOf("export function DockSurface"),
+      source.indexOf("export function App"),
+    );
+    const transcribeFlow = dockSurface.slice(
+      dockSurface.indexOf("async transcribe"),
+      dockSurface.indexOf("const base = await runtimeForRoute.transcribe"),
     );
     const storedPresetFlow = source.slice(
       source.indexOf("function readStoredActivePreset"),

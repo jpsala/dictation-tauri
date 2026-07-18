@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { OnboardingSurface } from "../../src/onboarding/OnboardingSurface";
+import { createSecondaryAction, OnboardingSurface } from "../../src/onboarding/OnboardingSurface";
 import {
   createAccountFirstFixtureController,
   type AccountFirstFixture,
@@ -39,6 +39,19 @@ describe("provider-free account-first onboarding", () => {
     expect(html).not.toMatch(/deviceId|installId|policy|token|provider/i);
   });
 
+  it("routes Salir from Welcome through the supplied safe exit without mutating setup", async () => {
+    const controller = createAccountFirstFixtureController(happyPathFixture);
+    let exits = 0;
+
+    await createSecondaryAction("welcome", controller, () => {
+      exits += 1;
+    })();
+
+    expect(exits).toBe(1);
+    expect(controller.snapshot()).toEqual({ phase: "welcome" });
+    expect(controller.requests).toEqual([]);
+  });
+
   it("keeps auto-link idempotent and gives a human recovery state for a binding conflict", async () => {
     const controller = createAccountFirstFixtureController({
       ...happyPathFixture,
@@ -53,14 +66,63 @@ describe("provider-free account-first onboarding", () => {
     expect(await controller.useAnotherAccount()).toEqual({ phase: "welcome" });
   });
 
-  it("fails closed on an invalid callback and returns to a safe sign-in recovery", async () => {
+  it("covers cancellation, expiry, and offline handoff recovery without leaking callback details", async () => {
+    for (const [callback, expected] of [
+      ["cancelled", "oauth_cancelled"],
+      ["expired", "oauth_expired"],
+      ["offline", "offline"],
+    ] as const) {
+      const controller = createAccountFirstFixtureController({ ...happyPathFixture, callback });
+      await controller.continueWithGoogle();
+      expect(await controller.confirmBrowserSignIn()).toEqual({ phase: expected });
+      expect(await controller.retry()).toEqual({ phase: "oauth_handoff" });
+      expect(controller.requests).toEqual([]);
+    }
+  });
+
+  it("cancels an in-progress handoff to the same redacted recovery state", async () => {
+    const controller = createAccountFirstFixtureController(happyPathFixture);
+    await controller.continueWithGoogle();
+    expect(await controller.cancelBrowserSignIn()).toEqual({ phase: "oauth_cancelled" });
+    expect(await controller.goBack()).toEqual({ phase: "welcome" });
+  });
+
+  it("resumes a host-owned redacted setup phase through checking after restart", async () => {
     const controller = createAccountFirstFixtureController({
       ...happyPathFixture,
-      callback: "expired",
+      resumePhase: "shortcut_setup",
     });
 
+    expect(controller.snapshot()).toEqual({ phase: "checking" });
+    expect(await controller.completeStartupCheck()).toEqual({ phase: "shortcut_setup" });
+    expect(JSON.stringify(controller.snapshot())).not.toMatch(/token|google|subject|deviceId|installId|policy/i);
+  });
+
+  it("maps authorization, policy, and temporary service outcomes to redacted recovery", async () => {
+    for (const [link, expected] of [
+      ["not_authorized", "account_not_authorized"],
+      ["policy_unavailable", "policy_unavailable"],
+      ["service_unavailable", "service_unavailable"],
+    ] as const) {
+      const controller = createAccountFirstFixtureController({ ...happyPathFixture, link });
+      await controller.continueWithGoogle();
+      await controller.confirmBrowserSignIn();
+      expect(await controller.completeAutomaticLink()).toEqual({ phase: expected });
+      if (expected !== "account_not_authorized") {
+        expect(await controller.retry()).toEqual({ phase: "account_linking" });
+      } else {
+        expect(await controller.useAnotherAccount()).toEqual({ phase: "welcome" });
+      }
+    }
+  });
+
+  it("keeps setup incomplete after microphone denial and never reaches ready", async () => {
+    const controller = createAccountFirstFixtureController({ ...happyPathFixture, microphone: "denied" });
     await controller.continueWithGoogle();
-    expect(await controller.confirmBrowserSignIn()).toEqual({ phase: "oauth_expired" });
-    expect(await controller.retry()).toEqual({ phase: "oauth_handoff" });
+    await controller.confirmBrowserSignIn();
+    await controller.completeAutomaticLink();
+    expect(await controller.grantMicrophone()).toEqual({ phase: "microphone_denied" });
+    expect(await controller.openMicrophonePermissions()).toEqual({ phase: "microphone_setup" });
+    expect(controller.snapshot()).not.toEqual({ phase: "ready" });
   });
 });

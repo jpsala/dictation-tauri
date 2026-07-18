@@ -49,7 +49,7 @@ import {
   type ExecutionPreflightPayload,
 } from "./control-plane-store";
 import { buildControlPlaneAdminPage } from "./control-plane-admin-page";
-import type { ControlPlanePublishDurableObject } from "./control-plane-publish-lock";
+import type { ControlPlaneProfileMutationAction, ControlPlanePublishDurableObject } from "./control-plane-publish-lock";
 import { getUsageAdminProjection } from "./usage-admin";
 import {
   createWorkerAuthSessionStore,
@@ -535,7 +535,9 @@ export default {
         return buildAdminPreflightResponse(request);
       }
 
-      const profilePublishMutation = url.pathname === "/admin/control-plane/profiles/publish" || url.pathname === "/admin/control-plane/profiles/rollback";
+      const profilePublishMutation = url.pathname === "/admin/control-plane/profiles/apply"
+        || url.pathname === "/admin/control-plane/profiles/publish"
+        || url.pathname === "/admin/control-plane/profiles/rollback";
       const requiredCapability: AdminCapability = profilePublishMutation ? "publish" : request.method === "GET" ? "view" : "edit";
       const authError = authorizeAdminRequest(request, env, requiredCapability);
       if (authError) {
@@ -687,6 +689,14 @@ export default {
         try {
           const action = request.method === "POST" ? "create-draft" : request.method === "PUT" ? "save-draft" : "discard-draft";
           return withAdminCors(request, await dispatchProfileMutation(env, action, payload));
+        } catch {
+          return withAdminCors(request, json({ error: { code: "profile_mutation_unavailable", message: "Profile mutation lock is unavailable." } }, 503));
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/profiles/apply") {
+        try {
+          return withAdminCors(request, await dispatchProfileMutation(env, "apply-profile", await request.json()));
         } catch {
           return withAdminCors(request, json({ error: { code: "profile_mutation_unavailable", message: "Profile mutation lock is unavailable." } }, 503));
         }
@@ -2020,7 +2030,7 @@ function profileProjectionUnavailableResponse(): Response {
 
 async function dispatchProfileMutation(
   env: Env,
-  action: "create-draft" | "save-draft" | "discard-draft" | "publish" | "rollback",
+  action: ControlPlaneProfileMutationAction,
   payload: unknown,
 ): Promise<Response> {
   if (!env.CONTROL_PLANE_PUBLISH_LOCKS) {

@@ -208,16 +208,17 @@ const ADMIN_TOKENS: Record<NonNullable<ContractFixture["adminCapability"]>, stri
   publish: "fixture-admin-publish-key",
 };
 
-function requestForFixture(fixture: ContractFixture): Request {
+function requestForFixture(fixture: ContractFixture, preparedBody?: unknown): Request {
   const headers = new Headers(fixture.request.headers ?? {});
   const contentType = fixture.request.contentType;
+  const requestBody = preparedBody ?? fixture.request.body;
   const body = fixture.request.bodyFactory
     ? fixture.request.bodyFactory()
-    : fixture.request.body === undefined
+    : requestBody === undefined
       ? undefined
       : fixture.request.bodyKind === "text"
-        ? String(fixture.request.body)
-        : JSON.stringify(fixture.request.body);
+        ? String(requestBody)
+        : JSON.stringify(requestBody);
 
   if (contentType && !fixture.request.bodyFactory) {
     headers.set("Content-Type", contentType);
@@ -266,7 +267,7 @@ async function seedPopulatedAdmin(store: MemoryKv): Promise<void> {
   await createControlPlaneAdminProfileDraft(store, { profileId: "pro" });
 }
 
-async function prepareFixture(fixture: ContractFixture, env: ReturnType<typeof createEnv>, ctx: WaitContext, store: MemoryKv): Promise<void> {
+async function prepareFixture(fixture: ContractFixture, env: ReturnType<typeof createEnv>, ctx: WaitContext, store: MemoryKv): Promise<unknown | undefined> {
   if (fixture.setup === "admin-populated") await seedPopulatedAdmin(store);
   if (fixture.setup === "device") {
     await registerDevice(store, {
@@ -279,7 +280,7 @@ async function prepareFixture(fixture: ContractFixture, env: ReturnType<typeof c
     });
   }
 
-  if (fixture.setup !== "profile-draft" && fixture.setup !== "profile-publish" && fixture.setup !== "profile-rollback") return;
+  if (fixture.setup !== "profile-apply" && fixture.setup !== "profile-draft" && fixture.setup !== "profile-publish" && fixture.setup !== "profile-rollback") return;
 
   const draftResponse = await invokeWorker("/admin/control-plane/profiles/drafts", "POST", { profileId: "pro" }, ADMIN_TOKENS.edit, env, ctx);
   if (!draftResponse.ok) throw new Error(`${fixture.id}: profile setup draft failed (${draftResponse.status})`);
@@ -288,6 +289,13 @@ async function prepareFixture(fixture: ContractFixture, env: ReturnType<typeof c
   const draft = profile?.draft;
   const activeVersion = profile?.published?.version ?? null;
   if (!draft || activeVersion === null) throw new Error(`${fixture.id}: profile setup did not create a draft over a published version`);
+
+  if (fixture.setup === "profile-apply") {
+    return {
+      ...(fixture.request.body as Record<string, unknown>),
+      definition: { ...draft, label: "Fixture profile apply" },
+    };
+  }
 
   if (fixture.setup === "profile-draft") return;
 
@@ -360,15 +368,15 @@ async function invokeContractFixture(fixture: ContractFixture): Promise<{
   const store = new MemoryKv();
   const env = createEnv(store);
   const ctx = createContext();
-  await prepareFixture(fixture, env, ctx, store);
+  const preparedBody = await prepareFixture(fixture, env, ctx, store);
 
   const calls: Array<{ url: string; method: string }> = [];
   const previousFetch = globalThis.fetch;
   globalThis.fetch = createMockProviderFetch(calls);
   try {
     const response = fixture.source === "worker.fetch"
-      ? await worker.fetch(requestForFixture(fixture), env as never, ctx as never)
-      : await new UsageCounterDurableObject(new MemoryDurableObjectState() as never, env as never).fetch(requestForFixture(fixture));
+      ? await worker.fetch(requestForFixture(fixture, preparedBody), env as never, ctx as never)
+      : await new UsageCounterDurableObject(new MemoryDurableObjectState() as never, env as never).fetch(requestForFixture(fixture, preparedBody));
     const normalized = await normalizeResponse(response);
     await Promise.all(ctx.waitUntilTasks);
     assertNormalizedContract(fixture, normalized);

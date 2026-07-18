@@ -7,6 +7,7 @@ import {
   assignControlPlaneAdminDevicePolicy,
   DeviceBindingConflictError,
   assignControlPlaneAdminSelectionPresetDefaults,
+  applyControlPlaneAdminProfile,
   createControlPlaneAdminProfileDraft,
   discardControlPlaneAdminProfileDraft,
   deleteControlPlaneAdminEngine,
@@ -1163,6 +1164,65 @@ describe("profile composer preview", () => {
     });
     expect(publishedAfter?.engines.selected?.id).toBe(publishedBefore?.engines.selected?.id);
     expect(publishedAfter?.engines.selected?.id).toBe("postprocess-groq-gpt-oss-120b");
+  });
+});
+
+describe("direct profile apply", () => {
+  test("normalizes a candidate, appends one audit, and removes a legacy draft only on success", async () => {
+    const kv = createKvStore();
+    const legacy = await createControlPlaneAdminProfileDraft(kv.store, { profileId: "pro" });
+    if (!legacy.published || !legacy.draft) throw new Error("expected pro versions");
+    const candidate = {
+      ...legacy.published,
+      label: "Pro direct apply",
+      runtime: {
+        ...legacy.published.runtime,
+        postprocess: { engineId: "postprocess-openrouter-premium", promptId: "postProcessBase" },
+      },
+    };
+
+    kv.puts.length = 0;
+    const applied = await applyControlPlaneAdminProfile(kv.store, {
+      profileId: "pro",
+      expectedActiveVersion: legacy.published.version,
+      definition: candidate,
+      confirmation: "APPLY pro v1",
+      actorKey: "arp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    });
+
+    expect(kv.puts).toEqual(["control:profiles:v1", "control:admin-audit:v1"]);
+    expect(applied).toMatchObject({ published: { version: 2, status: "published", label: "Pro direct apply", basedOnVersion: 1 }, draft: null });
+    expect(applied.history.map((version) => version.version)).toEqual([1, 2]);
+    expect((await listControlPlaneAdminAudit(kv.store)).records).toEqual([
+      expect.objectContaining({ action: "apply", profileId: "pro", sourceVersion: 1, targetVersion: 2, resultingVersion: 2 }),
+    ]);
+  });
+
+  test("rejects stale or invalid candidates before any profile, audit, or legacy-draft write", async () => {
+    const kv = createKvStore();
+    const legacy = await createControlPlaneAdminProfileDraft(kv.store, { profileId: "pro" });
+    if (!legacy.published || !legacy.draft) throw new Error("expected pro versions");
+    const beforeProfile = kv.read("control:profiles:v1");
+    const beforeAudit = kv.read("control:admin-audit:v1");
+    kv.puts.length = 0;
+
+    await expect(applyControlPlaneAdminProfile(kv.store, {
+      profileId: "pro",
+      expectedActiveVersion: 99,
+      definition: legacy.published,
+      confirmation: "APPLY pro v99",
+    })).rejects.toBeInstanceOf(ControlPlaneAdminProfileStaleError);
+    await expect(applyControlPlaneAdminProfile(kv.store, {
+      profileId: "pro",
+      expectedActiveVersion: legacy.published.version,
+      definition: { ...legacy.published, runtime: { ...legacy.published.runtime, postprocess: { engineId: "missing", promptId: "postProcessBase" } } },
+      confirmation: "APPLY pro v1",
+    })).rejects.toThrow("unknown postprocess engine");
+
+    expect(kv.puts).toEqual([]);
+    expect(kv.read("control:profiles:v1")).toBe(beforeProfile);
+    expect(kv.read("control:admin-audit:v1")).toBe(beforeAudit);
+    expect((await listControlPlaneAdminProfiles(kv.store)).profiles.find((profile) => profile.profileId === "pro")?.draft?.version).toBe(legacy.draft.version);
   });
 });
 

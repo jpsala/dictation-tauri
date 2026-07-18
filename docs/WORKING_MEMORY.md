@@ -2,7 +2,7 @@
 
 Router operativo corto; detalle durable vive en topics, decisions, specs o tracks.
 
-Última actualización: 2026-07-17.
+Última actualización: 2026-07-18.
 
 ## Lectura Rápida
 
@@ -70,8 +70,8 @@ Smokes físicos/live requieren confirmación: hotkeys, audio mute/cues, auto-sto
 
 ## Foco Único De Ejecución
 
-- **Plan:** `docs/tracks/standard-product-ux-redesign-plan.md`.
-- **Estado:** Batches 1–3 completos. **Batch 4 — Settings Simplification está en curso y bloqueado por calidad visual; no se considera completo.** El primer corte provider-free migró navegación/copy y produjo checks focales verdes (175/175 y build), pero la captura real mostró estructura incorrecta: rail/tema incoherentes, `General` duplicado con tabs internos que mezclaban secciones y switches solapados. Se retiró el tablist de General e inició el rediseño correcto; todavía faltan CSS coherente, tests actualizados y smoke Tauri completo. Archivos: `src/settings/SettingsSurface.tsx`, `src/settings/settings-heroui.css`, `src/settings/startup-launch-control.ts`, `tests/settings/settings-surface.test.tsx`.
-- **Próximo batch/corte:** completar **Batch 4**: superficie clara compacta, General sólo inicio/dock, switches con estado externo al track, ocho secciones estables y captura Tauri 720×480 sin clipping. No iniciar Batch 5.
-- **Perfil recomendado:** **Implementador**, motor manual staged y un único owner.
-- **Gate:** Batch 4 no autoriza OAuth real, provider, schema, producción, deploy, release, commit ni push. Debe conservar la frontera Settings/Control Room, ocultar infraestructura fuera de Avanzado y no reanudar D-R2 sin reconciliación API explícita; no usar Taskflow.
+- **Plan:** `docs/tracks/clean-install-readiness-and-account-ux.md`.
+- **Estado:** implementación local completa. Clean Tauri sin cuenta oculta el dock y abre Cuenta; `startCapture()` corta antes de captura/provider; recovery de device setup usa `Completar configuración`; Cuenta elimina invite/Cloud/managed y polling manual; Avanzado muestra timestamp y resultado tras `Volver a comprobar`. Checks: focales 264/264, suite 478/478, build, visual 8/8 y smoke Tauri aislado verdes. Evidencia: `artifacts/clean-install-account-ux/20260717-232500/`.
+- **Próximo batch/corte:** **rollout completo autorizado por JP**, serial: audit/secret scan/checks → stage explícito → commit/push `main` → build desde HEAD + upgrade/smoke local → deploy Worker + health → deploy Admin VPS + readiness/rollback → prerelease desktop + checksum/redescarga. Stop ante secretos, checks rojos, health/rollback/hash inválidos. No incluye login/link ni provider/dictado.
+- **Perfil recomendado:** **Implementador**, manual staged y un único owner.
+- **Gate:** rebuild/install, login/link, provider/dictado, publicación, commit y push son autorizaciones separadas. Preservar host-owned readiness, cero captura antes de ready, copy Spanish-first, cero IDs/tokens/policy en UI normal y cambios ajenos del working tree.

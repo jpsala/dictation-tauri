@@ -11,6 +11,7 @@ pub(crate) const PREFERRED_FIXVOX_BACKEND_URL: &str = "https://auth-fixvox.jpsal
 pub(crate) const STALE_FIXVOX_BACKEND_URL: &str = "https://fixvox-api.jpsala.dev";
 pub(crate) const FIXVOX_TAURI_USER_AGENT: &str =
     concat!("fixvox-tauri/", env!("CARGO_PKG_VERSION"));
+const FIXVOX_SETUP_READINESS_SCHEMA_VERSION: u8 = 1;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct FixvoxCloudConfig {
@@ -83,6 +84,22 @@ pub(crate) struct FixvoxAuthSessionState {
     pub(crate) refresh_secret: Option<String>,
     pub(crate) issued_at: String,
     pub(crate) expires_at: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FixvoxSetupReadinessState {
+    schema_version: u8,
+    phase: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FixvoxSetupReadiness {
+    pub(crate) schema_version: u8,
+    pub(crate) phase: String,
+    pub(crate) ready: bool,
+    pub(crate) redacted: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -803,6 +820,12 @@ pub(crate) fn resolve_auth_session_state_path(
     Ok(resolve_fixvox_app_data_dir(env_lookup)?.join("fixvox-auth-session.v1.json"))
 }
 
+fn resolve_setup_readiness_path(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<PathBuf, FixvoxCloudError> {
+    Ok(resolve_fixvox_app_data_dir(env_lookup)?.join("fixvox-setup-readiness.v1.json"))
+}
+
 pub(crate) fn build_device_state_from_register(
     config: &FixvoxCloudRuntimeConfig,
     snapshot: &DeviceRegisterSnapshot,
@@ -1483,6 +1506,141 @@ pub(crate) fn read_auth_session_state(
     })
 }
 
+fn is_valid_setup_phase(phase: &str) -> bool {
+    matches!(
+        phase,
+        "welcome"
+            | "oauth_handoff"
+            | "account_linking"
+            | "microphone_setup"
+            | "shortcut_setup"
+            | "ready"
+            | "offline"
+            | "oauth_cancelled"
+            | "oauth_expired"
+            | "account_not_authorized"
+            | "binding_conflict"
+            | "policy_unavailable"
+            | "microphone_denied"
+            | "service_unavailable"
+    )
+}
+
+fn persist_setup_readiness_state(
+    path: &Path,
+    state: &FixvoxSetupReadinessState,
+) -> Result<(), FixvoxCloudError> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|_| {
+            error(
+                "FIXVOX_SETUP_STATE_WRITE_FAILED",
+                "Setup state could not be saved.",
+            )
+        })?;
+    }
+    let body = serde_json::to_string(state).map_err(|_| {
+        error(
+            "FIXVOX_SETUP_STATE_SERIALIZE_FAILED",
+            "Setup state could not be saved.",
+        )
+    })?;
+    std::fs::write(path, body).map_err(|_| {
+        error(
+            "FIXVOX_SETUP_STATE_WRITE_FAILED",
+            "Setup state could not be saved.",
+        )
+    })
+}
+
+fn read_setup_readiness_state(
+    path: &Path,
+) -> Result<Option<FixvoxSetupReadinessState>, FixvoxCloudError> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let body = std::fs::read_to_string(path).map_err(|_| {
+        error(
+            "FIXVOX_SETUP_STATE_READ_FAILED",
+            "Setup state could not be read.",
+        )
+    })?;
+    serde_json::from_str(&body).map(Some).map_err(|_| {
+        error(
+            "FIXVOX_SETUP_STATE_INVALID",
+            "Setup state could not be restored.",
+        )
+    })
+}
+
+fn has_signed_in_local_context(
+    device_state: Option<&FixvoxDeviceState>,
+    auth_session: Option<&FixvoxAuthSessionState>,
+) -> bool {
+    device_state
+        .and_then(|state| state.device_id.as_ref().map(|value| (state, value)))
+        .map(|(state, device_id)| {
+            !device_id.trim().is_empty()
+                && state.last_register_ok
+                && state
+                    .auth_policy
+                    .as_ref()
+                    .map(|policy| policy.access_mode == "signed_in")
+                    .unwrap_or(false)
+        })
+        .unwrap_or(false)
+        && auth_session
+            .map(|session| session.status == "signed_in")
+            .unwrap_or(false)
+}
+
+fn build_setup_readiness(phase: &str) -> FixvoxSetupReadiness {
+    FixvoxSetupReadiness {
+        schema_version: FIXVOX_SETUP_READINESS_SCHEMA_VERSION,
+        phase: phase.to_string(),
+        ready: phase == "ready",
+        redacted: true,
+    }
+}
+
+pub(crate) fn get_fixvox_setup_readiness_with_env(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<FixvoxSetupReadiness, FixvoxCloudError> {
+    let path = resolve_setup_readiness_path(env_lookup)?;
+    let device_state = read_device_state(&resolve_device_state_path(env_lookup)?)
+        .ok()
+        .flatten();
+    let auth_session = read_auth_session_state(&resolve_auth_session_state_path(env_lookup)?)
+        .ok()
+        .flatten();
+    let has_signed_in_context =
+        has_signed_in_local_context(device_state.as_ref(), auth_session.as_ref());
+
+    let phase = match read_setup_readiness_state(&path) {
+        Ok(Some(state))
+            if state.schema_version == FIXVOX_SETUP_READINESS_SCHEMA_VERSION
+                && is_valid_setup_phase(&state.phase) =>
+        {
+            if state.phase == "ready" && !has_signed_in_context {
+                "service_unavailable".to_string()
+            } else {
+                state.phase
+            }
+        }
+        Ok(Some(_)) | Err(_) => "service_unavailable".to_string(),
+        Ok(None) if has_signed_in_context => "ready".to_string(),
+        Ok(None) => "welcome".to_string(),
+    };
+
+    persist_setup_readiness_state(
+        &path,
+        &FixvoxSetupReadinessState {
+            schema_version: FIXVOX_SETUP_READINESS_SCHEMA_VERSION,
+            phase: phase.clone(),
+        },
+    )?;
+    Ok(build_setup_readiness(&phase))
+}
+
 pub(crate) fn get_fixvox_auth_session_status_with_env(
     env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
 ) -> Result<FixvoxAuthSessionStatus, FixvoxCloudError> {
@@ -1662,6 +1820,11 @@ pub(crate) fn policy_allows_admin_settings() -> bool {
 #[tauri::command]
 pub fn get_fixvox_cloud_status() -> Result<FixvoxCloudStatus, FixvoxCloudError> {
     get_fixvox_cloud_status_with_env(&read_env_value)
+}
+
+#[tauri::command]
+pub fn get_fixvox_setup_readiness() -> Result<FixvoxSetupReadiness, FixvoxCloudError> {
+    get_fixvox_setup_readiness_with_env(&read_env_value)
 }
 
 #[tauri::command]
@@ -2870,6 +3033,144 @@ mod tests {
         assert!(!serialized.contains("user_sensitive_1234567890"));
         assert!(!serialized.contains("fxv_session_sensitive_1234567890"));
         assert!(!serialized.contains("fxv_state_sensitive_1234567890"));
+    }
+
+    fn setup_test_root(label: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "dictation-tauri-setup-readiness-{label}-{}-{}",
+            std::process::id(),
+            current_unix_timestamp()
+        ));
+        std::fs::create_dir_all(&root).expect("setup test root");
+        root
+    }
+
+    fn setup_env(root: PathBuf) -> impl Fn(&str) -> Option<String> + Sync {
+        move |key| (key == "APPDATA").then(|| root.to_string_lossy().to_string())
+    }
+
+    #[test]
+    fn setup_readiness_persists_welcome_for_a_clean_install() {
+        let root = setup_test_root("clean");
+        let env = setup_env(root.clone());
+
+        let readiness = get_fixvox_setup_readiness_with_env(&env).expect("clean install readiness");
+        let persisted =
+            read_setup_readiness_state(&resolve_setup_readiness_path(&env).expect("setup path"))
+                .expect("persisted setup state")
+                .expect("setup state exists");
+
+        assert_eq!(readiness, build_setup_readiness("welcome"));
+        assert_eq!(persisted.phase, "welcome");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn setup_readiness_restores_a_persisted_phase() {
+        let root = setup_test_root("resume");
+        let env = setup_env(root.clone());
+        let path = resolve_setup_readiness_path(&env).expect("setup path");
+        persist_setup_readiness_state(
+            &path,
+            &FixvoxSetupReadinessState {
+                schema_version: FIXVOX_SETUP_READINESS_SCHEMA_VERSION,
+                phase: "shortcut_setup".to_string(),
+            },
+        )
+        .expect("persist phase");
+
+        assert_eq!(
+            get_fixvox_setup_readiness_with_env(&env).expect("resumed readiness"),
+            build_setup_readiness("shortcut_setup")
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn setup_readiness_migrates_legacy_signed_in_context_to_ready() {
+        let root = setup_test_root("legacy");
+        let env = setup_env(root.clone());
+        let device_path = resolve_device_state_path(&env).expect("device path");
+        let auth_path = resolve_auth_session_state_path(&env).expect("auth path");
+        persist_device_state(
+            &device_path,
+            &FixvoxDeviceState {
+                install_id: "install_sensitive".to_string(),
+                device_id: Some("device_sensitive".to_string()),
+                last_register_ok: true,
+                last_register_error_code: None,
+                last_register_error_message: None,
+                policy_id: None,
+                policy_label: None,
+                transport_policy: None,
+                policy_snapshot: None,
+                auth_policy: Some(FixvoxAuthPolicyStatus {
+                    access_mode: "signed_in".to_string(),
+                    user_redacted: None,
+                    group_label: None,
+                    policy_template_id: None,
+                    policy_template_label: None,
+                    capabilities: vec![],
+                    limits: None,
+                    redacted: true,
+                }),
+            },
+        )
+        .expect("legacy device state");
+        persist_auth_session_state(
+            &auth_path,
+            &FixvoxAuthSessionState {
+                status: "signed_in".to_string(),
+                flow: "desktop_login".to_string(),
+                session_id: "session_sensitive".to_string(),
+                state_nonce: "nonce_sensitive".to_string(),
+                user_id: None,
+                user_email: None,
+                session_secret: Some("secret".to_string()),
+                refresh_secret: None,
+                issued_at: "0".to_string(),
+                expires_at: None,
+            },
+        )
+        .expect("legacy auth state");
+
+        assert_eq!(
+            get_fixvox_setup_readiness_with_env(&env).expect("legacy readiness"),
+            build_setup_readiness("ready")
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn stale_ready_and_corrupt_state_fail_closed_without_leaking_content() {
+        let root = setup_test_root("closed");
+        let env = setup_env(root.clone());
+        let path = resolve_setup_readiness_path(&env).expect("setup path");
+        persist_setup_readiness_state(
+            &path,
+            &FixvoxSetupReadinessState {
+                schema_version: FIXVOX_SETUP_READINESS_SCHEMA_VERSION,
+                phase: "ready".to_string(),
+            },
+        )
+        .expect("persist stale ready");
+        assert_eq!(
+            get_fixvox_setup_readiness_with_env(&env).expect("stale readiness"),
+            build_setup_readiness("service_unavailable")
+        );
+
+        std::fs::write(&path, "raw-token-and-device-sensitive").expect("corrupt setup state");
+        let serialized = serde_json::to_string(
+            &get_fixvox_setup_readiness_with_env(&env).expect("corrupt readiness"),
+        )
+        .expect("serialize projection");
+        assert_eq!(
+            serialized,
+            r#"{"schemaVersion":1,"phase":"service_unavailable","ready":false,"redacted":true}"#
+        );
+        assert!(!serialized.contains("token"));
+        assert!(!serialized.contains("device"));
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

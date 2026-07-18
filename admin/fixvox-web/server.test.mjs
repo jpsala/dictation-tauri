@@ -118,6 +118,12 @@ test('Profile Composer drafts require an editor role before the broker', async (
     })
     assert.equal(response.status, 200)
     const created = await response.json()
+    const inventory = await fetch(`${baseUrl}/api/admin/profiles/legacy-drafts`)
+    assert.equal(inventory.status, 200)
+    assert.deepEqual(await inventory.json(), { drafts: [{ profileId: 'pro', draftVersion: created.draft.version, basedOnVersion: 1 }] })
+    const policies = await fetch(`${baseUrl}/api/admin/policies`)
+    const policyPayload = await policies.json()
+    assert.equal(policyPayload.profileVersions.find((profile) => profile.profileId === 'pro').draft, undefined)
     const discard = await fetch(`${baseUrl}/api/admin/profiles/drafts`, {
       method: 'DELETE',
       headers: { 'content-type': 'application/json' },
@@ -237,6 +243,122 @@ test('privileged broker keeps the publish credential server-side and overwrites 
       assert.match(forwarded.actorKey, /^arp_[a-f0-9]{64}$/)
       assert.notEqual(forwarded.actorKey, 'attacker')
       assert.doesNotMatch(JSON.stringify(await response.json()), /publish-secret/)
+    })
+  } finally {
+    stub.close()
+    await once(stub, 'close')
+  }
+})
+
+test('profile apply BFF enforces recent publisher RBAC before the broker', async () => {
+  let requests = 0
+  const stub = http.createServer((_request, response) => {
+    requests += 1
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ ok: true }))
+  })
+  await new Promise((resolve) => stub.listen(18988, '127.0.0.1', resolve))
+  try {
+    for (const role of ['viewer', 'editor']) {
+      await withServer({
+        FIXVOX_ADMIN_BASE_URL: 'http://127.0.0.1:18988',
+        ADMIN_PUBLISH_API_KEY: 'publish-secret',
+        FIXVOX_ADMIN_MOCK_EMAIL: `${role}@example.com`,
+        FIXVOX_ADMIN_MOCK_ROLE: role,
+      }, async () => {
+        const response = await fetch(`${baseUrl}/api/admin/profiles/apply`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ profileId: 'pro' }),
+        })
+        assert.equal(response.status, 403)
+      })
+    }
+    assert.equal(requests, 0)
+    await withServer({
+      FIXVOX_ADMIN_BASE_URL: 'http://127.0.0.1:18988',
+      ADMIN_PUBLISH_API_KEY: 'publish-secret',
+      FIXVOX_ADMIN_MOCK_AUTHENTICATED_AT: String(Date.now() - 11 * 60 * 1000),
+    }, async () => {
+      const response = await fetch(`${baseUrl}/api/admin/profiles/apply`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ profileId: 'pro' }),
+      })
+      assert.equal(response.status, 403)
+    })
+    assert.equal(requests, 0)
+  } finally {
+    stub.close()
+    await once(stub, 'close')
+  }
+})
+
+test('profile apply BFF overwrites browser actor and redacts broker failures', async () => {
+  let authorization = ''
+  let forwardedPath = ''
+  let forwardedBody = ''
+  const stub = http.createServer((request, response) => {
+    authorization = request.headers.authorization || ''
+    forwardedPath = request.url || ''
+    let body = ''
+    request.on('data', (chunk) => { body += chunk.toString() })
+    request.on('end', () => {
+      forwardedBody = body
+      let payload
+      try {
+        payload = JSON.parse(body)
+      } catch {
+        response.writeHead(400, { 'content-type': 'application/json' })
+        return response.end(JSON.stringify({ error: { code: 'invalid_payload' } }))
+      }
+      if (payload.expectedActiveVersion === 99) {
+        response.writeHead(409, { 'content-type': 'application/json' })
+        return response.end(JSON.stringify({ error: { code: 'profile_version_stale', message: 'raw stale detail' } }))
+      }
+      if (payload.expectedActiveVersion === 98) {
+        response.writeHead(503, { 'content-type': 'application/json' })
+        return response.end(JSON.stringify({ error: { code: 'profile_mutation_unavailable', message: 'publish-secret raw failure' } }))
+      }
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ ok: true, published: { version: 2 }, audit: { result: 'success' } }))
+    })
+  })
+  await new Promise((resolve) => stub.listen(18988, '127.0.0.1', resolve))
+  try {
+    for (const role of ['publisher', 'owner']) {
+      await withServer({
+        FIXVOX_ADMIN_BASE_URL: 'http://127.0.0.1:18988',
+        ADMIN_PUBLISH_API_KEY: 'publish-secret',
+        FIXVOX_ADMIN_MOCK_EMAIL: `${role}@example.com`,
+        FIXVOX_ADMIN_MOCK_ROLE: role,
+      }, async () => {
+        const response = await fetch(`${baseUrl}/api/admin/profiles/apply`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ profileId: 'pro', expectedActiveVersion: 1, definition: {}, confirmation: 'APPLY pro v1', actor: 'attacker', actorKey: 'attacker' }),
+        })
+        assert.equal(response.status, 200)
+        assert.equal(authorization, 'Bearer publish-secret')
+        assert.equal(forwardedPath, '/admin/control-plane/profiles/apply')
+        const forwarded = JSON.parse(forwardedBody)
+        assert.match(forwarded.actorKey, /^arp_[a-f0-9]{64}$/)
+        assert.equal(forwarded.actor, undefined)
+        assert.notEqual(forwarded.actorKey, 'attacker')
+        assert.doesNotMatch(JSON.stringify(await response.json()), /publish-secret|attacker/)
+      })
+    }
+    await withServer({ FIXVOX_ADMIN_BASE_URL: 'http://127.0.0.1:18988', ADMIN_PUBLISH_API_KEY: 'publish-secret' }, async () => {
+      const stale = await fetch(`${baseUrl}/api/admin/profiles/apply`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId: 'pro', expectedActiveVersion: 99 }),
+      })
+      assert.equal(stale.status, 409)
+      assert.deepEqual(await stale.json(), { ok: false, error: { code: 'profile_version_stale', message: 'La versión del perfil cambió. Recargá y revisá los cambios.' } })
+      const transient = await fetch(`${baseUrl}/api/admin/profiles/apply`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId: 'pro', expectedActiveVersion: 98 }),
+      })
+      assert.equal(transient.status, 503)
+      assert.deepEqual(await transient.json(), { ok: false, error: { code: 'profile_apply_unavailable', message: 'No se pudieron aplicar los cambios. Intentá nuevamente.' } })
     })
   } finally {
     stub.close()

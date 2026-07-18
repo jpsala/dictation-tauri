@@ -215,6 +215,21 @@ Components should look familiar and task-oriented. Build states before decoratio
 - **Delivering:** Show delivery target/confidence only when known and useful.
 - **Failed / Uncertain:** Use Warning or Failure state with retry, copy fallback, or recovery companion. Do not claim paste observation without a verified observer.
 
+### Shared Visual System Catalog
+
+Auth, Settings and Control Room use the same semantic token roles: `--product-bg`, `--product-surface`, `--product-surface-soft`, `--product-ink`, `--product-muted`, `--product-border`, `--product-accent`, `--product-accent-deep` and `--product-focus`. Implementations may retain scoped aliases, but their values and roles must remain aligned.
+
+| Pattern | Contract |
+| --- | --- |
+| Primary action | One warm Burnt Signal action per task surface; 6px radius; visible focus ring. |
+| Secondary action | Quiet raised surface with Calibration Line border; it never competes with the primary action. |
+| Inputs and selects | 13px minimum functional text, 1.35 minimum line-height, 6px radius and the shared focus ring. |
+| Notice / empty / error | Flat bordered region with one clear next action; no nested card stack or decorative gradient. |
+| Navigation | Text weight plus a small accent marker or soft tint; no saturated full-width selection slab. |
+| Surface hierarchy | Canvas → one task panel → compact grouped rows. Avoid a card inside a card unless it is a focused editor or recovery boundary. |
+
+The dock remains a utility-overlay exception. It can use its restrained dark/translucent treatment and dense state controls, while preserving the same functional text floor, focus treatment and reduced-motion behavior.
+
 ## 6. Do's and Don'ts
 
 ### Do

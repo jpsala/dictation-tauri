@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-17T16:57:13.770Z
+Generated: 2026-07-18T02:24:02.304Z
 
 ## Topics
 
@@ -40,6 +40,7 @@ Generated: 2026-07-17T16:57:13.770Z
 - archived: [Prompt Para Proxima Sesion Archivado](../tracks/archive/next-session-prompt-2026-06-20.md)
 - archived: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md)
 - active: [Bounded Taskflow Implementation Spike](../tracks/bounded-taskflow-implementation-spike.md)
+- active: [Clean Install Readiness And Account UX](../tracks/clean-install-readiness-and-account-ux.md)
 - active: [Fixvox Admin Configuration Hub](../tracks/fixvox-admin-configuration-hub.md)
 - stable: [Fixvox Admin Profile Composer](../tracks/fixvox-admin-profile-composer.md)
 - active: [Fixvox Admin Web + Pi Chat](../tracks/fixvox-admin-web-pi-chat.md)
@@ -55,6 +56,7 @@ Generated: 2026-07-17T16:57:13.770Z
 - stable: [Profile Composer Phase 3: preview, RBAC and safe publish](../tracks/profile-composer-phase-3-rbac-publish-plan.md)
 - active: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md)
 - active: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md)
+- active: [Standard Product UX — External Operation Gate Plan](../tracks/standard-product-ux-external-operation-gate-plan.md)
 - active: [Standard Product UX Redesign Plan](../tracks/standard-product-ux-redesign-plan.md)
 - complete: [Acceptance Matrix](../tracks/standard-product-ux-redesign/acceptance-matrix.md)
 - complete: [Control Room Wireframes](../tracks/standard-product-ux-redesign/control-room-wireframes.md)

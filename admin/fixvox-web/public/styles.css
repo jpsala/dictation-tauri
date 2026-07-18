@@ -18,3 +18,55 @@
 .profile-action-feedback[data-tone="pending"] { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }
 .profile-action-feedback[data-tone="success"] { border-color: #86efac; background: #f0fdf4; color: #166534; }
 .profile-action-feedback[data-tone="error"] { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; }
+
+/* Batch 5C: profile changes remain renderer-local until one confirmed apply. */
+.profile-local-editor, .profile-review { border-top: 1px solid #e0e4ec; display: grid; gap: 14px; padding-top: 16px; }
+.profile-local-editor form { display: grid; gap: 14px; }
+.profile-local-editor form > label { display: grid; gap: 6px; }
+.profile-local-editor label > span, .profile-local-editor legend { color: #344054; font-size: 13px; font-weight: 700; }
+.profile-local-editor input, .profile-local-editor select { background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; color: #172033; font: inherit; min-height: 36px; padding: 0 10px; width: 100%; }
+.profile-local-editor input:focus-visible, .profile-local-editor select:focus-visible, .profile-local-editor button:focus-visible { border-color: #c65f43; box-shadow: 0 0 0 3px #c65f4333; outline: 0; }
+.profile-review { background: #f8fafc; border: 1px solid #d8e2ef; border-radius: 10px; padding: 14px; }
+.profile-review-impact { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+.profile-review-impact span { background: #fff; border: 1px solid #d8e2ef; border-radius: 999px; color: #344054; font-weight: 700; padding: 4px 8px; }
+.profile-review .profile-diff pre, .profile-review .profile-diff table { font-size: 13px; line-height: 1.4; }
+@media (prefers-reduced-motion: reduce) { .profile-local-editor *, .profile-review * { scroll-behavior: auto; transition: none !important; } }
+
+/* Batch 6: shared product tokens and a task-first Control Room surface. */
+:root {
+  --product-bg: #ffffff;
+  --product-surface: #ffffff;
+  --product-surface-soft: #f6f8fb;
+  --product-ink: #172033;
+  --product-muted: #526078;
+  --product-border: #d8e0eb;
+  --product-accent: #c65f43;
+  --product-accent-deep: #99432d;
+  --product-focus: rgb(198 95 67 / 28%);
+}
+
+body, .admin-layout { background: var(--product-bg); color: var(--product-ink); }
+.login { background: var(--product-bg); }
+.login-card, .pi-header, .entity-card, .policy-detail, .accounts-table-card, .account-detail, .activity-section {
+  border-color: var(--product-border);
+  border-radius: 8px;
+  box-shadow: none;
+}
+.login-card h1, .pi-header h1, .workbench-head h2 { color: var(--product-ink); }
+.login-card h1 { font-size: 1.375rem; line-height: 1.2; }
+.google-login, .button.primary, .composer-icon.primary, .policy-option.active {
+  background: var(--product-accent);
+  border-color: var(--product-accent);
+}
+.google-login:hover, .button.primary:hover, .composer-icon.primary:hover { background: var(--product-accent-deep); border-color: var(--product-accent-deep); }
+.drawer-item:hover, .drawer-item.selected { background: rgb(198 95 67 / 10%); color: var(--product-accent-deep); }
+.drawer-item.selected .drawer-icon, .configuration-tab.active, .policy-row.active { color: var(--product-accent-deep); }
+.configuration-tab.active { border-bottom-color: var(--product-accent); }
+.entity-card.selected, .accounts-table tbody tr.selected { background: rgb(198 95 67 / 8%); box-shadow: inset 3px 0 0 var(--product-accent); }
+.chip, .policy-badge, .source-chip, .segment-chip, .panel-count { border-radius: 4px; }
+.eyebrow { color: var(--product-muted); font-size: 0.8125rem; letter-spacing: 0; text-transform: none; }
+.workbench-head p, .entity-meta, .profile-summary-card > p, .profile-preview p { color: var(--product-muted); font-size: 0.8125rem; line-height: 1.35; }
+.button, .data-tab, .configuration-tab, .profile-editor-tab, .policy-option { min-height: 36px; line-height: 1.35; }
+:is(a, button, input, select, textarea):focus-visible { outline: 3px solid var(--product-focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; scroll-behavior: auto !important; transition-duration: 0.001ms !important; } }
+@media (max-width: 760px) { .login-card { padding: 24px; } .admin-main { padding: 16px; } }

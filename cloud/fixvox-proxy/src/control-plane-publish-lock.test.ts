@@ -4,8 +4,6 @@ import {
   createControlPlaneAdminProfileDraft,
   listControlPlaneAdminAudit,
   listControlPlaneAdminProfiles,
-  publishControlPlaneAdminProfile,
-  rollbackControlPlaneAdminProfile,
   type ProfileDefinition,
 } from "./control-plane-store";
 import type { KvNamespaceLike } from "./admin-store";
@@ -116,7 +114,7 @@ function createLock(
 
 async function mutate(
   lock: InstanceType<typeof ControlPlanePublishDurableObject>,
-  action: "create-draft" | "save-draft" | "discard-draft" | "publish" | "rollback",
+  action: "apply-profile" | "create-draft" | "save-draft" | "discard-draft" | "publish" | "rollback",
   payload: Record<string, unknown>,
 ): Promise<Response> {
   return lock.fetch(new Request("https://profile-lock/mutate", {
@@ -153,6 +151,66 @@ describe("control-plane profile mutation lock", () => {
     expect(profile?.published?.version).toBe(1);
     expect(profile?.history.map((version) => version.version)).toEqual([1]);
     expect((await listControlPlaneAdminAudit(store)).records).toEqual([]);
+  });
+
+  test("applies a candidate once and replays the exact request without a second version or audit", async () => {
+    const store = new MemoryKv();
+    const source = (await listControlPlaneAdminProfiles(store)).profiles.find((item) => item.profileId === "pro")?.published;
+    if (!source) throw new Error("expected published pro profile");
+    const lock = createLock(store);
+    const payload = {
+      profileId: "pro",
+      expectedActiveVersion: 1,
+      definition: {
+        ...source,
+        label: "Pro applied",
+        runtime: {
+          ...source.runtime,
+          postprocess: { engineId: "postprocess-openrouter-premium", promptId: "postProcessBase" },
+        },
+      },
+      confirmation: "APPLY pro v1",
+    };
+
+    const [first, second] = await Promise.all([
+      mutate(lock, "apply-profile", payload),
+      mutate(lock, "apply-profile", payload),
+    ]);
+
+    expect([first.status, second.status]).toEqual([200, 200]);
+    expect([first.headers.get("x-fixvox-idempotent-replay"), second.headers.get("x-fixvox-idempotent-replay")]).toContain("true");
+    const profile = (await listControlPlaneAdminProfiles(store)).profiles.find((item) => item.profileId === "pro");
+    expect(profile).toMatchObject({ published: { version: 2, label: "Pro applied" }, draft: null });
+    expect(profile?.history.map((version) => version.version)).toEqual([1, 2]);
+    expect((await listControlPlaneAdminAudit(store)).records).toEqual([
+      expect.objectContaining({ action: "apply", profileId: "pro", sourceVersion: 1, resultingVersion: 2 }),
+    ]);
+  });
+
+  test("fails closed after an interrupted apply, then recovers one version and audit on retry", async () => {
+    const store = new MemoryKv();
+    await prepareDraft(store, "pro");
+    const source = (await listControlPlaneAdminProfiles(store)).profiles.find((item) => item.profileId === "pro")?.published;
+    if (!source) throw new Error("expected published pro profile");
+    const storage = new MemoryDurableObjectStorage();
+    const payload = {
+      profileId: "pro",
+      expectedActiveVersion: 1,
+      definition: { ...source, label: "Pro recovered apply" },
+      confirmation: "APPLY pro v1",
+    };
+
+    expect((await mutate(createLock(store, storage, "after-profile-projection"), "apply-profile", payload)).status).toBe(503);
+    await expect(listControlPlaneAdminProfiles(store)).rejects.toThrow("projection");
+
+    const retry = await mutate(createLock(store, storage), "apply-profile", payload);
+    expect(retry.status).toBe(200);
+    const profile = (await listControlPlaneAdminProfiles(store)).profiles.find((item) => item.profileId === "pro");
+    expect(profile).toMatchObject({ published: { version: 2, label: "Pro recovered apply" }, draft: null });
+    expect(profile?.history.map((version) => version.version)).toEqual([1, 2]);
+    expect((await listControlPlaneAdminAudit(store)).records).toEqual([
+      expect.objectContaining({ action: "apply", resultingVersion: 2 }),
+    ]);
   });
 
   test("serializes concurrent publishers and idempotently replays an exact duplicate", async () => {

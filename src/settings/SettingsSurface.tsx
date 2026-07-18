@@ -19,6 +19,7 @@ import {
   deriveFixvoxCloudHealth,
   getFixvoxAuthSessionStatus,
   getFixvoxCloudStatus,
+  isFixvoxAccountReady,
   pollFixvoxCloudLogin,
   resolveSettingsAccess,
   startFixvoxCloudLogin,
@@ -124,15 +125,20 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
   const [authSessionStatus, setAuthSessionStatus] = useState<FixvoxAuthSessionStatus | undefined>(initialAuthSessionStatus);
   const [cloudNotice, setCloudNotice] = useState<EditorNotice>({
     tone: "idle",
-    message: "Local cloud status loads from host-owned app data.",
+    message: "",
   });
+  const [lastStatusCheckedAt, setLastStatusCheckedAt] = useState<string>();
   const [privacyNotice, setPrivacyNotice] = useState<EditorNotice>({
     tone: "idle",
     message: "El historial se guarda localmente y podés borrarlo cuando quieras.",
   });
+  const [diagnosticNotice, setDiagnosticNotice] = useState<EditorNotice>({
+    tone: "idle",
+    message: "",
+  });
   const [adminNotice, setAdminNotice] = useState<EditorNotice>({
     tone: "idle",
-    message: "OAuth and admin credentials remain server-side in the existing Control Room.",
+    message: "",
   });
   const [startupConfig, setStartupConfig] = useState<StartupLaunchConfig | undefined>();
   const [userPreferences, setUserPreferencesState] = useState<UserPreferences>(defaultUserPreferences);
@@ -155,6 +161,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
   });
   const [cloudPresetDefaults, setCloudPresetDefaults] = useState<CloudSelectionPresetDefault[]>([]);
   const captureArmedRef = useRef(false);
+  const accountAutoSelectDoneRef = useRef(false);
   const settingsAccess = cloudStatus
     ? resolveSettingsAccess(cloudStatus)
     : tauriRuntime
@@ -220,6 +227,17 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
 
     void loadCloudStatus();
   }, [effectiveSection, tauriRuntime]);
+
+  useEffect(() => {
+    if (!tauriRuntime || !cloudStatus || accountAutoSelectDoneRef.current) {
+      return;
+    }
+
+    accountAutoSelectDoneRef.current = true;
+    if (initialSection === "general" && !isFixvoxAccountReady(cloudStatus)) {
+      setSelectedSection("account");
+    }
+  }, [cloudStatus, initialSection, tauriRuntime]);
 
   useEffect(() => {
     if (!tauriRuntime || effectiveSection !== "general") {
@@ -644,8 +662,10 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     }
   }
 
-  async function loadCloudStatus() {
-    setBusyAction("status");
+  async function loadCloudStatus(manual = false) {
+    if (manual) {
+      setBusyAction("status");
+    }
     try {
       const [status, sessionStatus] = await Promise.all([
         getFixvoxCloudStatus(),
@@ -654,23 +674,42 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       setCloudStatus(status);
       setAuthSessionStatus(sessionStatus);
       const health = deriveFixvoxCloudHealth(status);
-      setCloudNotice({
-        tone: health.tone,
-        message: health.detail,
+      const checkedAt = new Date().toLocaleTimeString("es-AR", {
+        hour: "2-digit",
+        minute: "2-digit",
       });
+      if (manual) {
+        setLastStatusCheckedAt(checkedAt);
+      }
+      if (manual) {
+        setDiagnosticNotice({
+          tone: health.tone,
+          message: `Diagnóstico actualizado a las ${checkedAt}. ${health.detail}`,
+        });
+      }
     } catch (error) {
-      setCloudNotice({
-        tone: "danger",
-        message: `Cloud status failed: ${formatHotkeyEditReason(error)}`,
-      });
+      const reason = formatHotkeyEditReason(error);
+      if (manual) {
+        setDiagnosticNotice({
+          tone: "danger",
+          message: `No pudimos volver a comprobar el diagnóstico: ${reason}`,
+        });
+      } else {
+        setCloudNotice({
+          tone: "danger",
+          message: "No pudimos leer el estado de la cuenta.",
+        });
+      }
     } finally {
-      setBusyAction(undefined);
+      if (manual) {
+        setBusyAction(undefined);
+      }
     }
   }
 
   async function pollCloudLoginStatus(silent = false) {
     if (!tauriRuntime) {
-      setCloudNotice({ tone: "warning", message: "Open Settings inside Tauri to check login status." });
+      setCloudNotice({ tone: "warning", message: "Abrí estos ajustes desde la aplicación para continuar." });
       return;
     }
 
@@ -680,7 +719,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     try {
       const sessionStatus = await pollFixvoxCloudLogin();
       if (!sessionStatus) {
-        setCloudNotice({ tone: "warning", message: "Open this surface inside Tauri to check host-owned login." });
+        setCloudNotice({ tone: "warning", message: "No pudimos comprobar el inicio de sesión desde esta ventana." });
         return;
       }
 
@@ -692,23 +731,23 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
         setCloudNotice({
           tone: linkedAuthPolicy ? "success" : "warning",
           message: linkedAuthPolicy
-            ? "Fixvox Cloud sign-in completed; this device is linked and policy capabilities were refreshed."
-            : "Fixvox Cloud sign-in completed. Device link is still pending; use Link signed-in device or Check sign-in status again.",
+            ? "Cuenta conectada. Esta computadora ya está lista para dictar."
+            : "La cuenta está conectada. Estamos terminando de preparar esta computadora.",
         });
       } else if (sessionStatus.status === "pending") {
         setCloudNotice({
           tone: "idle",
-          message: "Waiting for browser sign-in to finish. Settings checks this session automatically.",
+          message: "Esperando confirmación del navegador… Esta pantalla se actualizará automáticamente.",
         });
       } else if (sessionStatus.status === "expired") {
-        setCloudNotice({ tone: "warning", message: "This login session expired. Start sign-in again." });
+        setCloudNotice({ tone: "warning", message: "La sesión venció. Iniciá sesión de nuevo." });
       } else if (sessionStatus.status === "error") {
-        setCloudNotice({ tone: "danger", message: "Fixvox Cloud sign-in failed. Start sign-in again." });
+        setCloudNotice({ tone: "danger", message: "No pudimos completar el inicio de sesión. Intentá de nuevo." });
       }
     } catch (error) {
       setCloudNotice({
         tone: "danger",
-        message: `Fixvox Cloud login status failed: ${formatHotkeyEditReason(error)}`,
+        message: `No pudimos comprobar el inicio de sesión: ${formatHotkeyEditReason(error)}`,
       });
     } finally {
       if (!silent) {
@@ -719,7 +758,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
 
   async function startCloudLogin() {
     if (!tauriRuntime) {
-      setCloudNotice({ tone: "warning", message: "Open Settings inside Tauri to start login." });
+      setCloudNotice({ tone: "warning", message: "Abrí estos ajustes desde la aplicación para iniciar sesión." });
       return;
     }
 
@@ -727,7 +766,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     try {
       const login = await startFixvoxCloudLogin(true);
       if (!login) {
-        setCloudNotice({ tone: "warning", message: "Open this surface inside Tauri to start host-owned login." });
+        setCloudNotice({ tone: "warning", message: "No pudimos iniciar sesión desde esta ventana." });
         return;
       }
 
@@ -744,13 +783,13 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       setCloudNotice({
         tone: login.browserOpened ? "success" : "warning",
         message: login.browserOpened
-          ? `Browser opened. Continue with Google there, then return here; Settings checks this session automatically.`
-          : `Login start prepared for ${login.flow}; use Check sign-in status after opening the browser.`,
+          ? "Completá el inicio de sesión en el navegador. Esta pantalla se actualizará cuando vuelvas."
+          : "No pudimos abrir el navegador. Intentá iniciar sesión de nuevo.",
       });
     } catch (error) {
       setCloudNotice({
         tone: "danger",
-        message: `Fixvox Cloud login start failed: ${formatHotkeyEditReason(error)}`,
+        message: `No pudimos iniciar sesión: ${formatHotkeyEditReason(error)}`,
       });
     } finally {
       setBusyAction(undefined);
@@ -952,14 +991,14 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
 
   async function openAdminControlRoom() {
     if (!tauriRuntime || !settingsAccess.canOpenAdmin) {
-      setAdminNotice({ tone: "warning", message: "The current Fixvox policy does not allow Admin settings." });
+      setAdminNotice({ tone: "warning", message: "Tu cuenta no tiene acceso a Control Room." });
       return;
     }
 
     setBusyAction("admin");
     try {
       await invoke("show_admin_control_room");
-      setAdminNotice({ tone: "success", message: "Control Room opened in a dedicated Fixvox window." });
+      setAdminNotice({ tone: "success", message: "Control Room se abrió en una ventana separada." });
     } catch (error) {
       setAdminNotice({ tone: "danger", message: formatHotkeyEditReason(error) });
     } finally {
@@ -1397,14 +1436,6 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
         </section>
         ) : effectiveSection === "account" ? (
         <section className="settings-panel settings-cloud-panel" aria-labelledby="settings-account-title">
-          <div className="settings-panel-header">
-            <div>
-              <h2 id="settings-account-title">Cuenta</h2>
-              <p>Administrá el acceso a Dictation en esta computadora.</p>
-            </div>
-            <span className="settings-panel-count">{loginSignedIn && signedInPolicyActive ? "Conectada" : "Sin iniciar sesión"}</span>
-          </div>
-
           <div className="settings-hotkey-list" aria-label="Estado de cuenta">
             {loginSignedIn && signedInPolicyActive ? (
               <>
@@ -1437,47 +1468,38 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
           <section className="settings-hotkey-editor" aria-labelledby="settings-account-action-title">
             <div className="settings-hotkey-editor-topline">
               <div className="settings-hotkey-editor-copy">
-                <div className="settings-native-plan-heading">
-                  <h3 id="settings-account-action-title">Acceso seguro</h3>
-                  <span>Cuenta</span>
-                </div>
-                <p>El inicio de sesión se abre en el navegador y volvés a la aplicación al terminar.</p>
+                <h3 id="settings-account-action-title">
+                  {loginPending ? "Completá el inicio de sesión" : "Conectá tu cuenta"}
+                </h3>
+                <p>
+                  {loginPending
+                    ? "Terminá el proceso en el navegador. Esta pantalla se actualizará automáticamente cuando vuelvas."
+                    : "Se abrirá Google en tu navegador. Cuando termines, volvé a Fixvox para continuar con la configuración."}
+                </p>
               </div>
             </div>
-            <div className="settings-hotkey-editor-actions">
-              <button
-                type="button"
-                className="settings-editor-button settings-editor-button-primary"
-                disabled={!tauriRuntime || Boolean(busyAction)}
-                onClick={() => void startCloudLogin()}
-              >
-                {busyAction === "login" ? "Abriendo…" : loginSignedIn ? "Iniciar sesión de nuevo" : "Continuar con Google"}
-              </button>
-              {loginPending || loginSignedIn ? (
+            {!loginPending ? (
+              <div className="settings-hotkey-editor-actions">
                 <button
                   type="button"
-                  className="settings-editor-button settings-editor-button-secondary"
+                  className="settings-editor-button settings-editor-button-primary"
                   disabled={!tauriRuntime || Boolean(busyAction)}
-                  onClick={() => void pollCloudLoginStatus()}
+                  onClick={() => void startCloudLogin()}
                 >
-                  {busyAction === "loginStatus" ? "Comprobando" : "Comprobar estado"}
+                  {busyAction === "login" ? "Abriendo…" : loginSignedIn ? "Cambiar cuenta" : "Continuar con Google"}
                 </button>
-              ) : null}
-            </div>
-            <div className="settings-hotkey-editor-feedback" data-tone={cloudNotice.tone} aria-live="polite">
-              <strong>{cloudNotice.message}</strong>
-            </div>
+              </div>
+            ) : null}
+            {loginPending || cloudNotice.message ? (
+              <div className="settings-hotkey-editor-feedback" data-tone={cloudNotice.tone} aria-live="polite">
+                <strong>{loginPending ? "Esperando confirmación…" : cloudNotice.message}</strong>
+                {loginPending ? <span>{cloudNotice.message}</span> : null}
+              </div>
+            ) : null}
           </section>
         </section>
         ) : effectiveSection === "advanced" ? (
         <section className="settings-panel settings-cloud-panel" aria-labelledby="settings-advanced-title">
-          <div className="settings-panel-header">
-            <div>
-              <h2 id="settings-advanced-title">Avanzado</h2>
-              <p>Diagnóstico reducido para resolver problemas sin mostrar datos sensibles.</p>
-            </div>
-            <span className="settings-panel-count">Diagnóstico</span>
-          </div>
           <div className="settings-hotkey-list" aria-label="Diagnóstico seguro">
             <div className="settings-hotkey-row" data-health={cloudHealth.tone}>
               <div className="settings-hotkey-copy">
@@ -1488,17 +1510,22 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
             </div>
             <div className="settings-hotkey-row">
               <div className="settings-hotkey-copy">
-                <strong>Estado del servicio</strong>
-                <span>Podés actualizar el estado antes de pedir ayuda.</span>
+                <strong>Diagnóstico local</strong>
+                <span>Volvé a leer el estado guardado en esta computadora.</span>
               </div>
-              <button
-                type="button"
-                className="settings-editor-button settings-editor-button-secondary"
-                disabled={!tauriRuntime || Boolean(busyAction)}
-                onClick={() => void loadCloudStatus()}
-              >
-                {busyAction === "status" ? "Actualizando" : "Actualizar estado"}
-              </button>
+              <div className="settings-status-check-control">
+                <button
+                  type="button"
+                  className="settings-editor-button settings-editor-button-secondary"
+                  disabled={!tauriRuntime || Boolean(busyAction)}
+                  onClick={() => void loadCloudStatus(true)}
+                >
+                  {busyAction === "status" ? "Comprobando…" : "Volver a comprobar"}
+                </button>
+                <small aria-live="polite">
+                  {lastStatusCheckedAt ? `Última comprobación: ${lastStatusCheckedAt}` : "Todavía no comprobado"}
+                </small>
+              </div>
             </div>
             {settingsAccess.canOpenAdmin ? (
               <div className="settings-hotkey-row">
@@ -1517,9 +1544,16 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
               </div>
             ) : null}
           </div>
-          <div className="settings-hotkey-editor-feedback" data-tone={adminNotice.tone} aria-live="polite">
-            <strong>{adminNotice.message}</strong>
-          </div>
+          {diagnosticNotice.message ? (
+            <div className="settings-hotkey-editor-feedback" data-tone={diagnosticNotice.tone} aria-live="polite">
+              <strong>{diagnosticNotice.message}</strong>
+            </div>
+          ) : null}
+          {adminNotice.message ? (
+            <div className="settings-hotkey-editor-feedback" data-tone={adminNotice.tone} aria-live="polite">
+              <strong>{adminNotice.message}</strong>
+            </div>
+          ) : null}
         </section>
         ) : (
         <section className="settings-panel settings-planned-panel" aria-labelledby={`settings-${effectiveSection}-planned-title`}>
