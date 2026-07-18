@@ -251,5 +251,11 @@ Foundation commit: `8bb6668`. JP eligió **Dictation push + Admin deploy** como 
 
 - `pi-admin-deploy-broker.mjs` agrega el helper exacto para Admin: source hash clean/main, manifest fijo, checks, backup, copy/restart/health y rollback+health verificado bajo lock.
 - Tests prueban hash/branch, manifest bounded, serialization implícita y health failure con rollback exacto.
+- Helper HTTP Unix sólo acepta `sourceHash`, body 4 KiB; rechaza JSON inválido y cualquier command/path/env/manifest caller-controlled.
+- Operations concretas: Git inspect exacto, node checks, tar backup, copies staged con owner/mode, restart user-service con uid/gid fijo, local+public health y restore verificado; cero shell fragments.
+- Units templates separan `fixvox-release` de helper root, sockets/grupo dedicados, filesystem restrictions y services disabled por default.
+- `pi-release-provision.ps1`: dry-run default, bundle SHA256, backup, manifests exactos y switches separados `-RegisterDeployKey`/`-EnableReleaseBroker`. Sólo registra key write en `jpsala/dictation-tauri`; nunca copia private key ni GH token.
+- Mirror Dictation cambia a group `fixvox-workspace` 0771/0660 para release-only group access; provider conserva sólo traverse. Constelaciones no cambia.
+- Linux `/tmp` provider-free: broker, Git runner/push temporal, Admin HTTP/helper y rollback 9/9 PASS. PowerShell parse + dry-run key PASS.
 
-Pendiente antes de cualquier rollout: commit/push del helper y gate separado para provisionar `fixvox-release`, deploy key write sólo para `jpsala/dictation-tauri`, socket/service/config root-owned y helper Admin exacto. Otro gate independiente para primer commit/push/deploy smoke. No credenciales fueron creadas ni leídas.
+Pendiente antes de cualquier rollout: commit/push de provisioning foundation y gate exacto para crear `fixvox-release`, deploy key write sólo para `jpsala/dictation-tauri`, sockets/services/config root-owned **deshabilitados**. Otro gate independiente para habilitar tools y primer commit/push/deploy smoke. No credenciales fueron creadas ni leídas.

@@ -20,6 +20,10 @@ RUNTIME_FILES=(
   pi-release-broker-client.mjs
   pi-release-git-runner.mjs
   pi-release-service.mjs
+  pi-admin-deploy-broker.mjs
+  pi-admin-deploy-operations.mjs
+  pi-admin-deploy-service.mjs
+  pi-admin-deploy-client.mjs
 )
 REPOS=(dictation-tauri constelaciones)
 SWAPPED=()
@@ -74,9 +78,15 @@ if [[ $SYNC_MIRRORS == 1 ]]; then
     git -C "/tmp/fixvox-agent-$RUN_ID-$repo" rev-parse HEAD > "$BACKUP_ROOT/$repo.candidate-commit"
     sudo rm -rf "$MIRROR_ROOT/.candidate-$RUN_ID-$repo"
     sudo mv "/tmp/fixvox-agent-$RUN_ID-$repo" "$MIRROR_ROOT/.candidate-$RUN_ID-$repo"
-    sudo chown -R fixvox-workspace:fixvox-agent-broker "$MIRROR_ROOT/.candidate-$RUN_ID-$repo"
-    sudo find "$MIRROR_ROOT/.candidate-$RUN_ID-$repo" -type d -exec chmod 0711 {} +
-    sudo find "$MIRROR_ROOT/.candidate-$RUN_ID-$repo" -type f -exec chmod 0600 {} +
+    if [[ $repo == dictation-tauri ]] && id fixvox-release >/dev/null 2>&1; then
+      sudo chown -R fixvox-workspace:fixvox-workspace "$MIRROR_ROOT/.candidate-$RUN_ID-$repo"
+      sudo find "$MIRROR_ROOT/.candidate-$RUN_ID-$repo" -type d -exec chmod 0771 {} +
+      sudo find "$MIRROR_ROOT/.candidate-$RUN_ID-$repo" -type f -exec chmod 0660 {} +
+    else
+      sudo chown -R fixvox-workspace:fixvox-agent-broker "$MIRROR_ROOT/.candidate-$RUN_ID-$repo"
+      sudo find "$MIRROR_ROOT/.candidate-$RUN_ID-$repo" -type d -exec chmod 0711 {} +
+      sudo find "$MIRROR_ROOT/.candidate-$RUN_ID-$repo" -type f -exec chmod 0600 {} +
+    fi
   done
 fi
 

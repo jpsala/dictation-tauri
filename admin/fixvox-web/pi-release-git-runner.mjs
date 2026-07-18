@@ -6,7 +6,7 @@ function execute(file, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(file, args, {
       cwd: options.cwd,
-      env: { PATH: process.platform === 'win32' ? process.env.PATH : '/usr/local/bin:/usr/bin:/bin', HOME: options.home || '/nonexistent', LANG: 'C.UTF-8', GIT_TERMINAL_PROMPT: '0', ...(options.gitSshCommand ? { GIT_SSH_COMMAND: options.gitSshCommand } : {}) },
+      env: { PATH: process.platform === 'win32' ? process.env.PATH : '/usr/local/bin:/usr/bin:/bin', HOME: options.home || '/nonexistent', LANG: 'C.UTF-8', GIT_TERMINAL_PROMPT: '0', ...(options.gitSshCommand ? { GIT_SSH_COMMAND: options.gitSshCommand } : {}), ...(options.extraEnv || {}) },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const stdout = []
@@ -43,7 +43,7 @@ export function createGitReleaseRunner() {
     async inspect(repo, { refreshRemote = false } = {}) {
       const branch = await git(repo, ['rev-parse', '--abbrev-ref', 'HEAD'])
       const remoteUrl = await git(repo, ['remote', 'get-url', repo.remoteName])
-      if (refreshRemote) await git(repo, ['fetch', '--prune', '--no-tags', repo.remoteName, repo.branch], { timeoutMs: 120_000 })
+      if (refreshRemote) await git(repo, ['fetch', '--no-tags', repo.pushUrl || repo.remoteName, repo.branch], { timeoutMs: 120_000 })
       const head = await git(repo, ['rev-parse', 'HEAD'])
       const status = await git(repo, ['status', '--porcelain=v1', '--untracked-files=all'], { trim: false })
       const lines = status ? status.split('\n') : []
@@ -52,7 +52,7 @@ export function createGitReleaseRunner() {
       let pushedHash = head
       let fastForward = true
       if (refreshRemote) {
-        pushedHash = await git(repo, ['rev-parse', `${repo.remoteName}/${repo.branch}`])
+        pushedHash = await git(repo, ['rev-parse', 'FETCH_HEAD'])
         try { await git(repo, ['merge-base', '--is-ancestor', pushedHash, head]) } catch { fastForward = false }
       }
       return { branch, remoteName: repo.remoteName, remoteMatches: remoteUrl === repo.remoteUrl, head, pushedHash, dirty: lines.length > 0, changedCount: lines.length, changedFiles: files, untracked, fastForward }
@@ -70,15 +70,15 @@ export function createGitReleaseRunner() {
     async push(repo, expectedHash) {
       const head = await git(repo, ['rev-parse', 'HEAD'])
       if (head !== expectedHash) throw new Error('Push source hash changed.')
-      await git(repo, ['push', '--porcelain', repo.remoteName, `HEAD:refs/heads/${repo.branch}`], { timeoutMs: 120_000 })
-      await git(repo, ['fetch', '--no-tags', repo.remoteName, repo.branch], { timeoutMs: 120_000 })
-      const pushedHash = await git(repo, ['rev-parse', `${repo.remoteName}/${repo.branch}`])
+      await git(repo, ['push', '--porcelain', repo.pushUrl || repo.remoteName, `HEAD:refs/heads/${repo.branch}`], { timeoutMs: 120_000 })
+      await git(repo, ['fetch', '--no-tags', repo.pushUrl || repo.remoteName, repo.branch], { timeoutMs: 120_000 })
+      const pushedHash = await git(repo, ['rev-parse', 'FETCH_HEAD'])
       if (pushedHash !== expectedHash) throw new Error('Remote hash does not match pushed source.')
       return { hash: pushedHash }
     },
     async deploy(recipe, expectedHash) {
       const cwd = path.resolve(recipe.cwd)
-      const runExact = (spec, extraArgs = []) => execute(spec.file, [...(spec.args || []), ...extraArgs], { cwd, home: recipe.home, timeoutMs: spec.timeoutMs || 300_000, maxBytes: 64 * 1024 })
+      const runExact = (spec, extraArgs = []) => execute(spec.file, [...(spec.args || []), ...extraArgs], { cwd, home: recipe.home, extraEnv: recipe.env, timeoutMs: spec.timeoutMs || 300_000, maxBytes: 64 * 1024 })
       try {
         await runExact(recipe.deploy, ['--source-hash', expectedHash])
         await runExact(recipe.health)

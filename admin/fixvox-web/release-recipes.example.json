@@ -6,7 +6,8 @@
       "home": "/var/lib/fixvox-release",
       "branch": "main",
       "remoteName": "origin",
-      "remoteUrl": "REPLACE_WITH_EXACT_REPOSITORY_REMOTE",
+      "remoteUrl": "https://github.com/jpsala/dictation-tauri.git",
+      "pushUrl": "git@github.com:jpsala/dictation-tauri.git",
       "gitSshCommand": "/usr/bin/ssh -F /etc/fixvox-release/ssh_config -o BatchMode=yes",
       "allowedPaths": ["admin/fixvox-web", "scripts", "docs"]
     }
@@ -20,9 +21,10 @@
       "cwd": "/var/lib/fixvox-workspace/repos/dictation-tauri",
       "home": "/var/lib/fixvox-release",
       "rollbackId": "admin-backup",
-      "deploy": { "file": "/opt/fixvox-release/bin/deploy-admin", "args": [], "timeoutMs": 300000 },
+      "env": { "PI_ADMIN_DEPLOY_SOCKET": "/run/fixvox-release/admin-deploy.sock" },
+      "deploy": { "file": "/usr/bin/node", "args": ["/opt/fixvox-agent/runtime/pi-admin-deploy-client.mjs"], "timeoutMs": 300000 },
       "health": { "file": "/usr/bin/curl", "args": ["-fsS", "http://127.0.0.1:8787/healthz"], "timeoutMs": 30000 },
-      "rollback": { "file": "/opt/fixvox-release/bin/rollback-admin", "args": [], "timeoutMs": 300000 }
+      "rollback": { "file": "/usr/bin/true", "args": [], "timeoutMs": 30000 }
     }
   }
 }

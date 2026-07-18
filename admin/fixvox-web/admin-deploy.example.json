@@ -1,0 +1,10 @@
+{
+  "sourceRoot": "/var/lib/fixvox-workspace/repos/dictation-tauri",
+  "targetRoot": "/home/jpsal/dev/dictation-tauri/admin/fixvox-web",
+  "backupRoot": "/home/jpsal/.local/state/fixvox-admin-backups",
+  "adminUid": 1000,
+  "adminGid": 1000,
+  "adminHome": "/home/jpsal",
+  "localHealthUrl": "http://127.0.0.1:8787/healthz",
+  "publicHealthUrl": "https://fixvox.jpsala.dev/healthz"
+}

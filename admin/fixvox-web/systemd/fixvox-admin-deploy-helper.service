@@ -1,0 +1,28 @@
+[Unit]
+Description=Fixvox exact Admin deploy helper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=fixvox-release-broker
+RuntimeDirectory=fixvox-release
+RuntimeDirectoryMode=0770
+RuntimeDirectoryPreserve=yes
+Environment=PI_ADMIN_DEPLOY_SOCKET=/run/fixvox-release/admin-deploy.sock
+Environment=PI_ADMIN_DEPLOY_CONFIG=/etc/fixvox-release/admin-deploy.json
+ExecStart=/usr/bin/node /opt/fixvox-agent/runtime/pi-admin-deploy-service.mjs
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/etc/fixvox-release /opt/fixvox-agent/runtime /var/lib/fixvox-workspace/repos/dictation-tauri
+ReadWritePaths=/home/jpsal/dev/dictation-tauri/admin/fixvox-web /home/jpsal/.local/state/fixvox-admin-backups /run/fixvox-release
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER
+
+[Install]
+WantedBy=multi-user.target
