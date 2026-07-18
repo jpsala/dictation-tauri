@@ -147,6 +147,10 @@ Stop inmediato ante secretos, checks rojos, diff no atribuible, health fallido, 
 - Redescarga final SHA256: `8f6ecbb1453eda2856b5ee254a853cc9dc91ed3a270ec999cb3ed3a2937754c8`, idéntico al local y al checksum publicado.
 - Release: `https://github.com/jpsala/fixvox-releases/releases/tag/fixvox-tauri-v0.1.0-20260718000133`.
 
+## Follow-up Admin 2026-07-18
+
+El review post-rollout detectó que Pi Chat seguía implementado y accesible desde acciones contextuales, pero había quedado fuera de `CONTROL_ROOM_AREAS` durante el rediseño, por lo que el sidebar no generaba su entrada. Se restauró `Pi Chat` como área primaria en `36daed2`, se movió el branch del click antes del lookup administrativo para no llamar `loadAdmin(undefined)`, y se agregó cobertura en server test + smoke visual del editor. Tests Admin 13/13 y smoke local PASS. Deploy Admin PASS con backup `/home/jpsal/.local/state/fixvox-admin-backups/20260718-005602.tar.gz`; servicio activo, healthz OK y Browser confirmó que `/assets/app.js` productivo contiene el nav y handler correctos. La sesión Browser seguía en login y no se inició OAuth.
+
 ## Siguiente Acción
 
 No hay batch activa. Login/link real, provider/dictado, smoke en otra PC o promoción de canal requieren gates nuevos y separados.
