@@ -59,7 +59,7 @@ test('remote runtime disables inherited resources and trusts no project implicit
   assert.match(joined, /--no-prompt-templates/)
   assert.match(joined, /--no-context-files/)
   assert.match(joined, /--no-builtin-tools/)
-  assert.match(joined, /--tools read,bash,edit,write,constelaciones_future_appointments/)
+  assert.match(joined, /--tools read,bash,edit,write,grep,find,ls,constelaciones_future_appointments/)
   assert.doesNotMatch(joined, /(?:^|\s)--approve(?:\s|$)/)
 })
 
@@ -193,6 +193,10 @@ test('remote policy extension gates tool calls before execution through RPC UI',
   assert.match(source, /timeout:\s*CONFIRM_TIMEOUT_MS/)
   assert.match(source, /if \(!approved\) return \{ block: true/)
   assert.match(source, /if \(!ctx\.hasUI\)/)
+  const extension = await fs.readFile(new URL('./pi-remote-agent-extension.mjs', import.meta.url), 'utf8')
+  assert.match(extension, /createFindTool/)
+  assert.match(extension, /createLsTool/)
+  assert.match(extension, /name: 'grep'/)
   for (const file of ['pi-chat-access.mjs', 'pi-remote-policy.mjs', 'pi-remote-agent-core.mjs', 'pi-remote-agent-extension.mjs', 'pi-workspace-broker-client.mjs', 'pi-workspace-broker.mjs', 'constelaciones-read-adapter.mjs', 'constelaciones-read-broker.mjs']) {
     assert.ok(deploy.includes(file))
   }

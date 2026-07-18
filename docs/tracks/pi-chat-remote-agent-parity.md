@@ -203,3 +203,18 @@ Rollout ejecutado con autorización exacta:
 - Admin + dos brokers active; sockets 0660; feature flag preservado en `1`; health público OK.
 - Direct provider→workspace y workspace→OAuth siguen bloqueados; broker read post-swap PASS.
 - Stage y bundle temporales eliminados. No OAuth copy, nuevas credenciales, push ni deploy de producto.
+
+## Batch 4 — Grep/Find/Ls Read-only
+
+**Estado: local/provider-free listo; rollout pendiente.**
+
+- `find` y `ls` usan factories Pi con operations delegadas al workspace broker; el provider user no toca filesystem directo.
+- `grep` es custom tool brokered. Broker ejecuta `/usr/bin/rg` sin shell, regex Rust sin backtracking, timeout 10 s, output 1 MiB, archivos 1 MiB, máximo 200 matches y líneas truncadas a 500 chars.
+- Globs absolutos, con `..` o mayores a 300 chars se rechazan. Find/glob canonicaliza cada resultado y no sigue escapes de roots.
+- Grep excluye `.git`, node_modules, target, `.env*`, sessions, stores, SQLite y DB; no sigue symlinks por default. Cada match de rg se canonicaliza y vuelve a autorizar; paths absolutos/`..` se descartan y sólo se muestran relativos.
+- Ls filtra entries sensibles antes de devolver nombres. Paths de resultados se muestran relativos al root consultado, no paths VPS.
+- Tests cubren find, ls, grep literal/case-insensitive, nested secrets/DB no leak, symlink outside, regex inválida, match cap y glob absoluto/`..` rechazado.
+- Verificación Linux provider-free en `/tmp`: 9/9 PASS con `/usr/bin/rg`; socket broker, path normalization y runtime Node Linux ejercitados sin tocar producción.
+- Args activos quedan explícitos: `read,bash,edit,write,grep,find,ls,constelaciones_future_appointments`; `--no-builtin-tools` se conserva.
+
+Gate pendiente: commit/push y rollout runtime-only mediante `pi-remote-agent-rollout.ps1 -ConfirmProduction`; sin mirror sync ni credenciales.

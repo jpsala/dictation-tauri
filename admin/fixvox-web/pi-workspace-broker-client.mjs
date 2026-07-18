@@ -23,6 +23,19 @@ export function createBrokerOperations(socketPath) {
   const access = async (file) => { await call('/v1/access', { path: file }) }
   return {
     read: { readFile, access },
+    find: {
+      exists: async (target) => (await call('/v1/exists', { path: target })).exists,
+      glob: async (pattern, cwd, options) => (await call('/v1/glob', { pattern, cwd, ...options })).paths,
+    },
+    ls: {
+      exists: async (target) => (await call('/v1/exists', { path: target })).exists,
+      stat: async (target) => {
+        const result = await call('/v1/stat', { path: target })
+        return { isDirectory: () => result.directory }
+      },
+      readdir: async (target) => (await call('/v1/readdir', { path: target })).entries,
+    },
+    grep: async (params, signal) => (await call('/v1/grep', params, signal)).matches,
     write: {
       writeFile: async (file, content) => { await call('/v1/write', { path: file, content }) },
       mkdir: async (dir) => { await call('/v1/mkdir', { path: dir }) },

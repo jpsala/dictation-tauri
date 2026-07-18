@@ -16,7 +16,8 @@ const PROTECTED_PATH_PARTS = [
   /(^|[/\\])\.cloudflared([/\\]|$)/i,
   /(^|[/\\])\.pi[/\\]agent[/\\](?:auth|sessions)([/\\]|$)/i,
   /(^|[/\\])(?:credentials?|secrets?)(?:\.[^/\\]+)?$/i,
-  /(^|[/\\])(?:stores?|sessions?|backups?)([/\\]|$)/i,
+  /(^|[/\\])(?:stores?|sessions?|backups?|private-exports?)([/\\]|$)/i,
+  /\.(?:sqlite|sqlite3|db)$/i,
 ]
 const SECRET_DISCOVERY_COMMAND = /(?:^|[;&|()\s])(?:env|printenv|set|export\s+-p|compgen\s+-e)(?:$|[;&|()\s])|\/proc\/(?:self|\$?\w+|\d+)\/environ|\.env(?:\s|$)|\.ssh(?:\/|\s|$)|credential|secret/i
 
@@ -74,7 +75,7 @@ export function remoteAgentArgs(options = {}) {
     '--no-prompt-templates',
     '--no-context-files',
     '--no-builtin-tools',
-    '--tools', 'read,bash,edit,write,constelaciones_future_appointments',
+    '--tools', 'read,bash,edit,write,grep,find,ls,constelaciones_future_appointments',
     '--extension', extensionPath,
     '--session-dir', sessionDir,
     '--name', 'fixvox-admin-remote-agent',
