@@ -181,7 +181,7 @@ test('stale OAuth receives 403 before the publish broker', async () => {
   }
 })
 
-test('Pi subprocess does not inherit any Worker admin credential', async () => {
+test('legacy token sessions cannot start or command the Pi subprocess', async () => {
   const probeFile = path.join(os.tmpdir(), `fixvox-pi-env-${process.pid}-${Date.now()}.txt`)
   const probeScript = path.join(os.tmpdir(), `fixvox-pi-env-${process.pid}-${Date.now()}.mjs`)
   await fs.writeFile(probeScript, `import fs from 'node:fs';\nconst file = process.env.PI_PROBE_FILE;\nif (file) fs.writeFileSync(file, process.env.ADMIN_PUBLISH_API_KEY || 'missing');\nif (process.argv.includes('--version')) process.exit(0);\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', (chunk) => { for (const line of chunk.split('\\n')) { if (!line.trim()) continue; const message = JSON.parse(line); process.stdout.write(JSON.stringify({ type: 'response', id: message.id, success: true, response: { data: {} } }) + '\\n'); } });`)
@@ -200,18 +200,33 @@ test('Pi subprocess does not inherit any Worker admin credential', async () => {
       const cookie = login.headers.get('set-cookie')?.split(';', 1)[0]
       assert.ok(cookie)
       const health = await fetch(`${baseUrl}/api/pi-chat/health`, { headers: { cookie } })
-      assert.equal(health.status, 200)
+      assert.equal(health.status, 403)
       const command = await fetch(`${baseUrl}/api/pi-chat/command`, {
         method: 'POST',
         headers: { cookie, 'content-type': 'application/json' },
         body: JSON.stringify({ command: { type: 'get_state' } }),
       })
-      assert.equal(command.status, 200)
-      assert.equal(await fs.readFile(probeFile, 'utf8'), 'missing')
+      assert.equal(command.status, 403)
+      await assert.rejects(() => fs.readFile(probeFile, 'utf8'), /ENOENT/)
     })
   } finally {
     await fs.rm(probeFile, { force: true })
     await fs.rm(probeScript, { force: true })
+  }
+})
+
+test('viewer and editor roles cannot access Pi Chat routes', async () => {
+  for (const role of ['viewer', 'editor']) {
+    await withServer({ FIXVOX_ADMIN_MOCK_EMAIL: `${role}@example.com`, FIXVOX_ADMIN_MOCK_ROLE: role }, async () => {
+      const health = await fetch(`${baseUrl}/api/pi-chat/health`)
+      const prompt = await fetch(`${baseUrl}/api/pi-chat/prompt`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: 'blocked' }),
+      })
+      const command = await fetch(`${baseUrl}/api/pi-chat/command`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: { type: 'get_state' } }),
+      })
+      assert.deepEqual([health.status, prompt.status, command.status], [403, 403, 403])
+    })
   }
 })
 

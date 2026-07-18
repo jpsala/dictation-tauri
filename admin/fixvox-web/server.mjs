@@ -8,6 +8,7 @@ import { StringDecoder } from 'node:string_decoder'
 import { fileURLToPath } from 'node:url'
 import { accountHandleForGoogleSubject, annotateCurrentAdminAccount, redactGoogleEmail } from './account-identity.mjs'
 import { buildRemoteAgentEnv, remoteAgentArgs, remoteAgentRoots } from './pi-remote-policy.mjs'
+import { PiChatAccessCoordinator, piChatSessionKey } from './pi-chat-access.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..')
@@ -202,6 +203,7 @@ class PiRpcProcess {
   }
 }
 const pi = new PiRpcProcess()
+const piAccess = new PiChatAccessCoordinator()
 
 async function getPiVersion() {
   return new Promise((resolve) => {
@@ -1133,15 +1135,21 @@ const server = http.createServer(async (req, res) => {
         ],
       })
     }
-    if (url.pathname === '/api/pi-chat/health') return sendJson(res, 200, MOCK_MODE ? { ok: true, cwd: PI_CWD, piBin: PI_BIN, piVersion: '0.80.2-mock', process: 'mock' } : await pi.health())
+    if (url.pathname === '/api/pi-chat/health') {
+      await requireGoogleRole(req, ['owner'])
+      return sendJson(res, 200, MOCK_MODE ? { ok: true, cwd: PI_CWD, piBin: PI_BIN, piVersion: '0.80.2-mock', process: 'mock' } : await pi.health())
+    }
     if (url.pathname === '/api/pi-chat/command' && req.method === 'POST') {
+      let principal = await requireGoogleRole(req, ['owner'])
       const body = JSON.parse(await readBody(req) || '{}')
       const command = body.command || body
-      if (MOCK_MODE) return sendJson(res, 200, mockCommand(command))
       if (command?.type === 'extension_ui_response') {
-        await pi.sendExtensionUiResponse(command)
+        principal = await requireRecentGoogleRole(req, ['owner'])
+        piAccess.consumeConfirmation(command.id, piChatSessionKey(req, principal))
+        if (!MOCK_MODE) await pi.sendExtensionUiResponse(command)
         return sendJson(res, 200, { ok: true })
       }
+      if (MOCK_MODE) return sendJson(res, 200, mockCommand(command))
       if (command?.type === 'stop') {
         await pi.stop()
         return sendJson(res, 200, { ok: true })
@@ -1149,15 +1157,27 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, response: await pi.send(command) })
     }
     if (url.pathname === '/api/pi-chat/prompt' && req.method === 'POST') {
+      const principal = await requireGoogleRole(req, ['owner'])
+      const sessionKey = piChatSessionKey(req, principal)
       const body = JSON.parse(await readBody(req) || '{}')
       const message = String(body.message || '').trim()
       if (!message) return sendJson(res, 400, { ok: false, error: 'Mensaje requerido.' })
+      piAccess.beginPrompt(sessionKey)
       res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive' })
-      const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`)
+      const send = (event) => {
+        piAccess.registerConfirmation(event, sessionKey)
+        res.write(`data: ${JSON.stringify(event)}\n\n`)
+      }
       send({ type: 'web_status', status: 'starting' })
-      if (MOCK_MODE) { await mockPrompt(message, send); return res.end() }
-      try { await pi.prompt(withGuardrails(message), send); send({ type: 'web_status', status: 'done' }) }
-      catch (error) { send({ type: 'web_error', error: error instanceof Error ? error.message : 'Pi error' }) }
+      try {
+        if (MOCK_MODE) await mockPrompt(message, send)
+        else await pi.prompt(withGuardrails(message), send)
+        send({ type: 'web_status', status: 'done' })
+      } catch (error) {
+        send({ type: 'web_error', error: error instanceof Error ? error.message : 'Pi error' })
+      } finally {
+        piAccess.endPrompt(sessionKey)
+      }
       return res.end()
     }
     if (url.pathname === '/api/admin/profiles/drafts' && (req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE')) await requireGoogleRole(req, ['editor', 'publisher', 'owner'])

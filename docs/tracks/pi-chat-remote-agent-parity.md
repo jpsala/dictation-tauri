@@ -148,7 +148,7 @@ Siguiente checkpoint autorizado: commit/push del split, test provider-free en VP
 
 ## Batch 2 Rollout Receipt
 
-**Estado: DONE para paridad remota VPS; browser local sigue fuera.**
+**Estado: sandbox remoto VPS activo sólo después del cierre RBAC; no es paridad total.**
 
 - Source commits: `bb630ba`, `12e26d9`, `8a5e0a0`, `e8438a4`, `10b0e6a`, `4bd5e8a`.
 - El primer deploy multi-file agotó 600 s y dejó sólo un stage con `server.mjs` de 0 bytes; producción quedó healthy/sin reemplazo. Stage exacto eliminado y backup `20260718-015558.tar.gz` preservado.
@@ -165,3 +165,14 @@ Siguiente checkpoint autorizado: commit/push del split, test provider-free en VP
 - Backup pre-runtime: `/home/jpsal/.local/state/fixvox-agent-rollouts/20260718-022000`.
 
 Stop conditions comprobadas: workspace user no lee OAuth, provider user no lee workspace directo, broker no expone OAuth/outside roots, agent no tiene sudo/Docker/SSH, feature usa no-builtin/no-global resources. No browser relay local.
+
+Security follow-up antes de reactivar tras el primer smoke:
+
+- Advisor detectó que las rutas Pi sólo exigían sesión global y compartían un único proceso RPC.
+- Feature se apagó inmediatamente en producción antes de corregirlo.
+- `pi-chat-access.mjs` exige prompt/health/command sólo para owner Google; token legacy, viewer y editor reciben 403.
+- Cada prompt queda serializado globalmente; una segunda sesión recibe 409 y no comparte stream/results.
+- Cada `confirm` queda ligado a hash de sesión, operation hash y TTL 65 s; consume una sola vez. Forged, stale, reused o cross-session reciben 403. Approval además exige OAuth reciente.
+- Tests cubren owner boundary, viewer/editor/token denial, concurrency, expiry, one-time y cross-session. El rollout se reactiva sólo después de deploy y live smokes nuevos.
+
+Límites de paridad vigentes: mirrors shallow/stale; no grep/find/ls autónomos, sync controlado, credenciales git/deploy ni browser relay. Éste es un sandbox VPS seguro, no acceso equivalente a la sesión Pi local.

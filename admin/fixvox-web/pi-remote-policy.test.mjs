@@ -193,7 +193,7 @@ test('remote policy extension gates tool calls before execution through RPC UI',
   assert.match(source, /timeout:\s*CONFIRM_TIMEOUT_MS/)
   assert.match(source, /if \(!approved\) return \{ block: true/)
   assert.match(source, /if \(!ctx\.hasUI\)/)
-  for (const file of ['pi-remote-policy.mjs', 'pi-remote-agent-core.mjs', 'pi-remote-agent-extension.mjs', 'pi-workspace-broker-client.mjs', 'pi-workspace-broker.mjs', 'constelaciones-read-adapter.mjs', 'constelaciones-read-broker.mjs']) {
+  for (const file of ['pi-chat-access.mjs', 'pi-remote-policy.mjs', 'pi-remote-agent-core.mjs', 'pi-remote-agent-extension.mjs', 'pi-workspace-broker-client.mjs', 'pi-workspace-broker.mjs', 'constelaciones-read-adapter.mjs', 'constelaciones-read-broker.mjs']) {
     assert.ok(deploy.includes(file))
   }
   assert.match(deploy, /Send-BundleWithRetry/)
