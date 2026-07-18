@@ -20,7 +20,7 @@ source_refs:
 
 ## Estado
 
-**Implementación local completa y verificada; todavía no incorporada a un nuevo installer ni a la instalación local.**
+**Rollout bloqueado en el deploy Worker por credencial Cloudflare inválida.** Código, push, installer, upgrade y smoke local están completos; Admin VPS y prerelease no se intentaron después del stop fail-closed.
 
 El dogfood de instalación limpia mostró tres fallos del flujo normal:
 
@@ -132,6 +132,19 @@ Stop inmediato ante secretos, checks rojos, diff no atribuible, health fallido, 
 
 **Checkpoint de rollout 2026-07-18:** el primer build desde `450cd3d` e instalación local salieron bien, pero el smoke empaquetado cortó correctamente porque todavía exigía el dock visible, contrato anterior al account gate. La evidencia real mostró `dock hide ok`, Settings solicitado y cero provider/login/clipboard, junto con una carrera packaged: el command renderer llegaba antes de que la ventana Settings configurada estuviera disponible y el fallback inmediato quedaba bloqueado. El smoke ahora exige dock oculto + Settings abierto + cero trabajo externo. El host agrega `show_account_setup_window`, command async que espera de forma acotada hasta 2,5 s sólo por la ventana configurada y nunca crea el fallback de Settings durante startup; `show_settings_window` conserva su fallback para aperturas posteriores del usuario. Tests Rust y source-contract cubren aparición, timeout redacted y separación del fallback. El rollout permanece detenido hasta commit/push, rebuild desde el nuevo HEAD y smoke instalado verde.
 
+## Rollout Receipt 2026-07-18
+
+- Commits pusheados a `origin/main`: `450cd3d`, `31cf205`, `9274577`.
+- HEAD/release source: `9274577a7fa2e6d0bba52ac5492a65b0dccd1a44`.
+- Suite final: 95 archivos / 480 tests; build, Rust fmt/check/test compile, Worker, Admin y visual checks verdes antes del rollout.
+- Installer unsigned final: SHA256 `8f6ecbb1453eda2856b5ee254a853cc9dc91ed3a270ec999cb3ed3a2937754c8`, 29.584.764 bytes.
+- Upgrade local: exit `0`; exe instalado SHA256 `11e715b650932fbd42837b9ef6c21fa41ac0838c636e40e13c1a7636718df1b6`.
+- Smoke instalado final: PASS en `artifacts/release/packaged-clean-smoke/20260717-234700-rollout-installed-pass/report.json`; dock oculto, Settings abierto, install ID local sin device/policy, cero provider/login/clipboard y proceso propio detenido.
+- Deploy Worker: **FAILED antes de mutar**. Wrangler rechazó el token configurado con Cloudflare `10000 Authentication error` / `9109 Invalid access token`.
+- Health público posterior: `200`, `ok: true`, servicio `fixvox-proxy`; la versión productiva previa permanece activa.
+- Admin VPS: no intentado.
+- Prerelease desktop: no publicada.
+
 ## Siguiente Acción
 
-Completar el rollout autorizado y registrar hashes/versiones/evidencia. Mantener login/link y provider como gates posteriores separados.
+Restaurar o autorizar una credencial Cloudflare válida para Workers y reanudar desde deploy Worker. No reejecutar build/upgrade/smoke salvo cambio de HEAD. Tras Worker health verde: Admin VPS y prerelease desktop, serialmente. Mantener login/link y provider como gates posteriores separados.
