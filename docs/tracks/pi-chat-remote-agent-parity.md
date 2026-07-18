@@ -247,4 +247,9 @@ Validación local:
 - Git runner real sobre repos temporales: exact remote, allowlisted commit, diff, fast-forward push y remote hash PASS; deploy/health failure ejecuta rollback exacto.
 - Policy tests prueban bypass de `git -C ... push`, systemctl y deploy script; release tools sólo aparecen en args/env cuando feature enabled.
 
-Pendiente antes de cualquier rollout: commit/push de foundation y gate separado para provisionar `fixvox-release`, deploy key repo-specific, socket/service/config root-owned. Otro gate independiente para primer commit/push/deploy smoke. No credenciales fueron creadas ni leídas.
+Foundation commit: `8bb6668`. JP eligió **Dictation push + Admin deploy** como primer scope.
+
+- `pi-admin-deploy-broker.mjs` agrega el helper exacto para Admin: source hash clean/main, manifest fijo, checks, backup, copy/restart/health y rollback+health verificado bajo lock.
+- Tests prueban hash/branch, manifest bounded, serialization implícita y health failure con rollback exacto.
+
+Pendiente antes de cualquier rollout: commit/push del helper y gate separado para provisionar `fixvox-release`, deploy key write sólo para `jpsala/dictation-tauri`, socket/service/config root-owned y helper Admin exacto. Otro gate independiente para primer commit/push/deploy smoke. No credenciales fueron creadas ni leídas.
