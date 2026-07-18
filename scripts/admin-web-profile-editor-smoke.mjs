@@ -40,6 +40,19 @@ try {
   await piChat.click()
   assert.equal(await page.getByRole('heading', { name: 'Pi Chat', exact: true }).isVisible(), true)
   assert.equal(await page.locator('#composer').isVisible(), true)
+  await page.setViewportSize({ width: 871, height: 625 })
+  const narrowLayout = await page.evaluate(() => {
+    const drawer = document.querySelector('.admin-drawer')?.getBoundingClientRect()
+    const chat = document.querySelector('.chat-card')?.getBoundingClientRect()
+    const activity = document.querySelector('.activity-card')?.getBoundingClientRect()
+    return {
+      noPageOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      drawerVisible: Boolean(drawer && drawer.left >= 0 && drawer.right <= document.documentElement.clientWidth),
+      activityStacked: Boolean(chat && activity && activity.top >= chat.bottom),
+    }
+  })
+  assert.deepEqual(narrowLayout, { noPageOverflow: true, drawerVisible: true, activityStacked: true })
+  await page.setViewportSize({ width: 1440, height: 950 })
   await page.getByTitle('Sistema avanzado').click()
   await page.getByRole('button', { name: 'Perfiles', exact: true }).click()
   assert.equal(await page.getByText('Legacy draft aislado', { exact: true }).count(), 0)

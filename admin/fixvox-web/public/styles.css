@@ -70,3 +70,19 @@ body, .admin-layout { background: var(--product-bg); color: var(--product-ink); 
 :is(a, button, input, select, textarea):focus-visible { outline: 3px solid var(--product-focus); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; scroll-behavior: auto !important; transition-duration: 0.001ms !important; } }
 @media (max-width: 760px) { .login-card { padding: 24px; } .admin-main { padding: 16px; } }
+
+/* Keep Pi Chat inside the viewport after later desktop polish overrides. */
+.admin-main, .pi-page, .pi-grid, .chat-card, .activity-card { min-width: 0; }
+.messages, .message-row, .bubble, .markdown-lite { min-width: 0; max-width: 100%; }
+
+@media (max-width: 1180px) {
+  .pi-grid { grid-template-columns: minmax(0, 1fr); }
+  .activity-card { max-height: none; overflow: visible; }
+  .pi-page { height: auto; min-height: 100vh; }
+  .markdown-lite pre {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}

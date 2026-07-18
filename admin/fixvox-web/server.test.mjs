@@ -390,3 +390,14 @@ test('Control Room keeps Pi Chat as a visible primary navigation area', async ()
   assert.match(appSource, /chat:\s*\{\s*label:\s*'Pi Chat'/)
   assert.ok(appSource.indexOf("if (key === 'chat')") < appSource.indexOf('const area = CONTROL_ROOM_AREAS[key]', appSource.indexOf('function wireDynamicEvents')))
 })
+
+test('Pi Chat narrow layout stacks activity without horizontal overflow', async () => {
+  const styles = await fs.readFile(new URL('./public/styles.css', import.meta.url), 'utf8')
+  const finalResponsiveRule = styles.lastIndexOf('@media (max-width: 1180px)')
+  const finalTwoColumnRule = styles.lastIndexOf('.pi-grid { grid-template-columns: minmax(0, 1fr) 340px; }')
+
+  assert.ok(finalResponsiveRule > finalTwoColumnRule)
+  assert.match(styles.slice(finalResponsiveRule), /\.pi-grid\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/)
+  assert.match(styles.slice(finalResponsiveRule), /\.activity-card\s*\{[^}]*overflow:\s*visible/)
+  assert.match(styles, /\.admin-main,\s*\.pi-page,\s*\.pi-grid,\s*\.chat-card,\s*\.activity-card\s*\{\s*min-width:\s*0/)
+})
