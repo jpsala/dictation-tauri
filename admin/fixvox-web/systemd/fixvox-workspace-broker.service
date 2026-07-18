@@ -1,0 +1,24 @@
+[Unit]
+Description=Fixvox Pi workspace tool broker
+After=network.target
+
+[Service]
+Type=simple
+User=fixvox-workspace
+Group=fixvox-agent-broker
+RuntimeDirectory=fixvox-agent
+RuntimeDirectoryMode=0770
+RuntimeDirectoryPreserve=yes
+Environment=PI_CHAT_WORKSPACE_BROKER_SOCKET=/run/fixvox-agent/workspace-broker.sock
+Environment=PI_CHAT_WORKSPACE_ROOTS=/var/lib/fixvox-workspace/repos/dictation-tauri:/var/lib/fixvox-workspace/repos/constelaciones
+ExecStart=/usr/bin/node /opt/fixvox-agent/runtime/pi-workspace-broker.mjs
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/fixvox-workspace/repos /run/fixvox-agent
+
+[Install]
+WantedBy=multi-user.target

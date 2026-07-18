@@ -145,3 +145,23 @@ Foundation del split implementada local/provider-free:
 - Producción sigue sin cambios y el feature flag apagado.
 
 Siguiente checkpoint autorizado: commit/push del split, test provider-free en VPS, luego crear usuarios/grupos/directorios y unidades con backup. Stop si el broker no puede operar sin que Pi vea OAuth+workspace simultáneamente.
+
+## Batch 2 Rollout Receipt
+
+**Estado: DONE para paridad remota VPS; browser local sigue fuera.**
+
+- Source commits: `bb630ba`, `12e26d9`, `8a5e0a0`, `e8438a4`, `10b0e6a`, `4bd5e8a`.
+- El primer deploy multi-file agotó 600 s y dejó sólo un stage con `server.mjs` de 0 bytes; producción quedó healthy/sin reemplazo. Stage exacto eliminado y backup `20260718-015558.tar.gz` preservado.
+- Deploy transport corregido a un tarball local único, SHA256 verificado remotamente, extract/check/replacement/rollback bounded. Deploys finales PASS; último backup Admin `20260718-021738.tar.gz`.
+- Usuarios system sin sudo/SSH: `fixvox-agent` (provider/sessions/audit) y `fixvox-workspace` (repo mirrors/tools), unidos sólo por grupo/socket `fixvox-agent-broker`.
+- Runtime Pi 0.80.6 y sólo auth `openai-codex` fueron copiados a `/opt/fixvox-agent` y `/var/lib/fixvox-agent/.pi/agent`; no se copió Minimax, packages globales ni settings heredados.
+- Repo mirrors shallow, sin working-tree secrets, en `/var/lib/fixvox-workspace/repos`; agent/admin tienen traverse para cwd pero no lectura directa de archivos. Broker owner conserva read/write.
+- Workspace broker systemd activo, socket `0660`; direct agent read falla, broker read funciona, `.env`/outside/auth/secret-discovery fallan.
+- Constelaciones broker root sandboxed expone sólo AF_UNIX y consulta SQLite read-only con proyección horario/estado/location, máximo 100. Adapter live devolvió 2 filas y sólo fields permitidos; no se reportaron valores.
+- Admin activó `PI_CHAT_REMOTE_AGENT_ENABLED=1` con runner aislado. Health Pi: 0.80.6, sin error.
+- Smoke provider real read-only: broker `read` + respuesta + `agent_settled` PASS.
+- Smoke dominio real: el agente eligió `constelaciones_future_appointments`, settled sin errores y respondió sin raw data en evidencia.
+- Approval smoke: write confirmado creó archivo temporal y fue limpiado; write cancelado emitió request, no creó archivo; audit tiene sólo 7 fields permitidos, decisiones allow/approved/blocked y cero raw fields.
+- Backup pre-runtime: `/home/jpsal/.local/state/fixvox-agent-rollouts/20260718-022000`.
+
+Stop conditions comprobadas: workspace user no lee OAuth, provider user no lee workspace directo, broker no expone OAuth/outside roots, agent no tiene sudo/Docker/SSH, feature usa no-builtin/no-global resources. No browser relay local.
