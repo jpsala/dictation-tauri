@@ -177,4 +177,19 @@ Security follow-up antes de reactivar tras el primer smoke:
 - Cierre desplegado con backup Admin `20260718-024234.tar.gz`; OAuth owner fue autorizado explícitamente. Owner health 200 y turno futuro usó el tool correcto, sin error, con `agent_settled`. Feature reactivado en `1`; token fallback sigue 403 para rutas Pi.
 - El write approve/cancel live pre-RBAC ya había probado side effects; post-RBAC el boundary/TTL/one-time/cross-session está cubierto en harness determinista. Los prompts Browser de write no eligieron tool de forma estable, por lo que no se fuerza una mutación adicional para “hacer pasar” el smoke.
 
-Límites de paridad vigentes: mirrors shallow/stale; no grep/find/ls autónomos, sync controlado, credenciales git/deploy ni browser relay. Éste es un sandbox VPS seguro, no acceso equivalente a la sesión Pi local.
+Límites de paridad vigentes: mirrors shallow/stale; no grep/find/ls autónomos, credenciales git/deploy ni browser relay. Éste es un sandbox VPS seguro, no acceso equivalente a la sesión Pi local.
+
+## Batch 3 — Rollout Y Sync Durable
+
+**Estado: local/provider-free listo; producción aún no ejecutada.**
+
+- `scripts/pi-remote-agent-rollout.ps1` es dry-run por default; toda mutación requiere `-ConfirmProduction` y mirror refresh además requiere `-SyncMirrors`.
+- Manifest exacto, tarball único, SHA256 local/remoto, retries bounded, stage y cleanup.
+- `scripts/pi-remote-agent-apply.sh` respalda runtime/wrapper/units, hace `node --check`, instala ownership/modes explícitos y preserva el feature flag Admin.
+- Mirror sync falla ante tracked/staged/untracked dirty state, clona shallow `main` desde origins canónicos con identidad `jpsal`, rechaza paths sensibles tracked y registra sólo hashes de commit.
+- Swap de mirrors ocurre por rename en el mismo filesystem con Admin/broker detenidos; rollback restaura mirrors, runtime, units y servicios.
+- Postchecks: servicios, sockets 0660, aislamiento cruzado, broker read y health local/público.
+- OAuth/auth no se copia, archiva ni imprime. El único acceso a `auth.json` es un `test -r` negativo ejecutado como workspace user.
+- Validación local: PowerShell parse PASS, Bash syntax PASS, dry-run `-SyncMirrors` PASS sin side effects y tests estáticos provider-free PASS.
+
+Gate pendiente: commit/push y autorización exacta separada antes de ejecutar `-ConfirmProduction -SyncMirrors`.
