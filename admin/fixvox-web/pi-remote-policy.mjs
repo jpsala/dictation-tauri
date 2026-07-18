@@ -58,6 +58,7 @@ export function buildRemoteAgentEnv(source, options = {}) {
   if (options.auditPath) env.PI_CHAT_AGENT_AUDIT_PATH = canonical(options.auditPath)
   if (Array.isArray(options.roots)) env.PI_CHAT_AGENT_ROOTS = options.roots.map(canonical).join(path.delimiter)
   if (options.constelacionesSocket) env.PI_CHAT_CONSTELACIONES_SOCKET = canonical(options.constelacionesSocket)
+  if (options.workspaceBrokerSocket) env.PI_CHAT_WORKSPACE_BROKER_SOCKET = canonical(options.workspaceBrokerSocket)
   env.PI_CHAT_REMOTE_AGENT = '1'
   return env
 }
@@ -72,7 +73,8 @@ export function remoteAgentArgs(options = {}) {
     '--no-skills',
     '--no-prompt-templates',
     '--no-context-files',
-    '--tools', 'read,bash,edit,write,grep,find,ls,constelaciones_future_appointments',
+    '--no-builtin-tools',
+    '--tools', 'read,bash,edit,write,constelaciones_future_appointments',
     '--extension', extensionPath,
     '--session-dir', sessionDir,
     '--name', 'fixvox-admin-remote-agent',

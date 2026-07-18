@@ -17,6 +17,8 @@ $runtimeFiles = @(
   'pi-remote-policy.mjs',
   'pi-remote-agent-core.mjs',
   'pi-remote-agent-extension.mjs',
+  'pi-workspace-broker-client.mjs',
+  'pi-workspace-broker.mjs',
   'constelaciones-read-adapter.mjs'
 )
 $publicFiles = @('public/app.js', 'public/styles.css')
@@ -67,10 +69,10 @@ try {
   Invoke-Remote "mkdir -p '$backupRoot' '$remoteStage'; tar -czf '$remoteBackup' -C '$remoteRoot' ."
   $scpArguments = @($files | ForEach-Object { Join-Path $adminRoot $_ }) + "${remoteHost}:$remoteStage/"
   Invoke-Checked -FilePath 'scp' -ArgumentList $scpArguments
-  Invoke-Remote "node --check '$remoteStage/server.mjs'; node --check '$remoteStage/pi-remote-policy.mjs'; node --check '$remoteStage/pi-remote-agent-core.mjs'; node --check '$remoteStage/pi-remote-agent-extension.mjs'; node --check '$remoteStage/constelaciones-read-adapter.mjs'; node --check '$remoteStage/app.js'"
+  Invoke-Remote "node --check '$remoteStage/server.mjs'; node --check '$remoteStage/pi-remote-policy.mjs'; node --check '$remoteStage/pi-remote-agent-core.mjs'; node --check '$remoteStage/pi-remote-agent-extension.mjs'; node --check '$remoteStage/pi-workspace-broker-client.mjs'; node --check '$remoteStage/pi-workspace-broker.mjs'; node --check '$remoteStage/constelaciones-read-adapter.mjs'; node --check '$remoteStage/app.js'"
 
   $replacementStarted = $true
-  Invoke-Remote "cp '$remoteStage/server.mjs' '$remoteRoot/server.mjs'; cp '$remoteStage/pi-remote-policy.mjs' '$remoteRoot/pi-remote-policy.mjs'; cp '$remoteStage/pi-remote-agent-core.mjs' '$remoteRoot/pi-remote-agent-core.mjs'; cp '$remoteStage/pi-remote-agent-extension.mjs' '$remoteRoot/pi-remote-agent-extension.mjs'; cp '$remoteStage/constelaciones-read-adapter.mjs' '$remoteRoot/constelaciones-read-adapter.mjs'; cp '$remoteStage/app.js' '$remoteRoot/public/app.js'; cp '$remoteStage/styles.css' '$remoteRoot/public/styles.css'; systemctl --user restart fixvox-admin-web.service"
+  Invoke-Remote "cp '$remoteStage/server.mjs' '$remoteRoot/server.mjs'; cp '$remoteStage/pi-remote-policy.mjs' '$remoteRoot/pi-remote-policy.mjs'; cp '$remoteStage/pi-remote-agent-core.mjs' '$remoteRoot/pi-remote-agent-core.mjs'; cp '$remoteStage/pi-remote-agent-extension.mjs' '$remoteRoot/pi-remote-agent-extension.mjs'; cp '$remoteStage/pi-workspace-broker-client.mjs' '$remoteRoot/pi-workspace-broker-client.mjs'; cp '$remoteStage/pi-workspace-broker.mjs' '$remoteRoot/pi-workspace-broker.mjs'; cp '$remoteStage/constelaciones-read-adapter.mjs' '$remoteRoot/constelaciones-read-adapter.mjs'; cp '$remoteStage/app.js' '$remoteRoot/public/app.js'; cp '$remoteStage/styles.css' '$remoteRoot/public/styles.css'; systemctl --user restart fixvox-admin-web.service"
   Wait-ForAdminReadiness
   Invoke-Remote "rm -rf '$remoteStage'"
   Write-Host "Admin deploy complete. Backup: $remoteBackup" -ForegroundColor Green

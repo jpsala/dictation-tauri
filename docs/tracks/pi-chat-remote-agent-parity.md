@@ -134,6 +134,14 @@ JP autorizó Batch 2 completo, incluyendo commit/push, usuarios/permisos, provid
 - Docker existe, pero el usuario actual no pertenece al grupo y agregar el agente equivaldría a root;
 - env allowlist y `tool_call` son necesarios pero no aíslan memoria/FD/auth file del mismo UID.
 
-La arquitectura segura requiere separar **provider process** de **workspace tool broker**: Pi posee OAuth pero no acceso directo a repos/shell; tools built-in se reemplazan por operations sobre Unix socket hacia otro usuario sin provider credentials. El broker debe repetir roots/secret policy y ejecutar sólo requests ya aprobados. No crear usuarios ni tocar systemd hasta que este broker tenga implementación/tests provider-free y rollback revisado.
+La arquitectura segura separa **provider process** de **workspace tool broker**: Pi posee OAuth pero no acceso directo a repos/shell; tools built-in se reemplazan por operations sobre Unix socket hacia otro usuario sin provider credentials. El broker repite roots/secret policy y ejecuta sólo requests que atravesaron el gate de la extensión.
 
-Batch 1 puede commitearse/pushearse porque está feature-flagged off. Producción queda sin cambios.
+Foundation del split implementada local/provider-free:
+
+- Pi arranca con `--no-builtin-tools`; la única extensión registra `read`, `write`, `edit` y `bash` sobre `pi-workspace-broker-client.mjs`.
+- `pi-workspace-broker.mjs` expone sólo read/access/write/mkdir/bash por Unix socket, limita body/output/timeout, usa env shell mínimo y vuelve a bloquear roots/secrets.
+- El provider process no necesita permisos de workspace; el futuro broker user no recibe OAuth.
+- 26 tests Node + RPC offline PASS. Test broker cubre read/write/mkdir, root escape, `.env` y secret-discovery; bash Linux se verificará en VPS antes de activar.
+- Producción sigue sin cambios y el feature flag apagado.
+
+Siguiente checkpoint autorizado: commit/push del split, test provider-free en VPS, luego crear usuarios/grupos/directorios y unidades con backup. Stop si el broker no puede operar sin que Pi vea OAuth+workspace simultáneamente.

@@ -34,6 +34,7 @@ test('remote agent child env is allowlisted and excludes credential-shaped names
     auditPath: '/home/fixvox-agent/audit/operations.jsonl',
     roots,
     constelacionesSocket: '/home/fixvox-agent/run/constelaciones-read.sock',
+    workspaceBrokerSocket: '/home/fixvox-agent/run/workspace-broker.sock',
   })
 
   assert.equal(env.PATH, '/usr/bin')
@@ -57,7 +58,8 @@ test('remote runtime disables inherited resources and trusts no project implicit
   assert.match(joined, /--no-skills/)
   assert.match(joined, /--no-prompt-templates/)
   assert.match(joined, /--no-context-files/)
-  assert.match(joined, /--tools read,bash,edit,write,grep,find,ls,constelaciones_future_appointments/)
+  assert.match(joined, /--no-builtin-tools/)
+  assert.match(joined, /--tools read,bash,edit,write,constelaciones_future_appointments/)
   assert.doesNotMatch(joined, /(?:^|\s)--approve(?:\s|$)/)
 })
 
@@ -191,7 +193,7 @@ test('remote policy extension gates tool calls before execution through RPC UI',
   assert.match(source, /timeout:\s*CONFIRM_TIMEOUT_MS/)
   assert.match(source, /if \(!approved\) return \{ block: true/)
   assert.match(source, /if \(!ctx\.hasUI\)/)
-  for (const file of ['pi-remote-policy.mjs', 'pi-remote-agent-core.mjs', 'pi-remote-agent-extension.mjs', 'constelaciones-read-adapter.mjs']) {
+  for (const file of ['pi-remote-policy.mjs', 'pi-remote-agent-core.mjs', 'pi-remote-agent-extension.mjs', 'pi-workspace-broker-client.mjs', 'pi-workspace-broker.mjs', 'constelaciones-read-adapter.mjs']) {
     assert.ok(deploy.includes(file))
   }
 })

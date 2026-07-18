@@ -15,6 +15,8 @@ const env = buildRemoteAgentEnv(process.env, {
   agentDir: path.join(temp, '.pi', 'agent'),
   auditPath: path.join(temp, 'audit', 'operations.jsonl'),
   roots: [repo],
+  workspaceBrokerSocket: path.join(temp, 'run', 'workspace-broker.sock'),
+  constelacionesSocket: path.join(temp, 'run', 'constelaciones-read.sock'),
 })
 const executable = process.platform === 'win32' ? 'cmd.exe' : 'pi'
 const executableArgs = process.platform === 'win32' ? ['/d', '/s', '/c', 'pi.cmd', ...args] : args
