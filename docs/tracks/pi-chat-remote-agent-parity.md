@@ -258,4 +258,16 @@ Foundation commit: `8bb6668`. JP eligió **Dictation push + Admin deploy** como 
 - Mirror Dictation cambia a group `fixvox-workspace` 0771/0660 para release-only group access; provider conserva sólo traverse. Constelaciones no cambia.
 - Linux `/tmp` provider-free: broker, Git runner/push temporal, Admin HTTP/helper y rollback 9/9 PASS. PowerShell parse + dry-run key PASS.
 
-Pendiente antes de cualquier rollout: commit/push de provisioning foundation y gate exacto para crear `fixvox-release`, deploy key write sólo para `jpsala/dictation-tauri`, sockets/services/config root-owned **deshabilitados**. Otro gate independiente para habilitar tools y primer commit/push/deploy smoke. No credenciales fueron creadas ni leídas.
+Provisioning foundation: `2c19794`; deploy-key receipt fix `df021fc`.
+
+Provisioning ejecutado con autorización exacta:
+
+- Run `20260718-034947`, key registrada write-only scope en `jpsala/dictation-tauri`, title `fixvox-release-dictation`; key ID persistido para rollback.
+- Usuario `fixvox-release` sin sudo/Docker/SSH login; private key 0600 sólo release. Agent/workspace no reciben key ni GH token.
+- Dictation mirror group-write sólo para `fixvox-workspace`; release puede leerlo, provider no. Constelaciones sigue inaccesible para release.
+- Runtime/config/units root-owned instalados; release broker y Admin helper disabled/inactive; Admin feature release sigue `0`/unset.
+- Host key público de GitHub reutilizado desde known_hosts existente; deploy-key SSH auth PASS. Git safe.directory/identity local quedaron configurados sin secretos.
+- Backup/receipt: `/home/jpsal/.local/state/fixvox-release-provision/20260718-034947/`; GitHub key ID guardado.
+- Mirror Dictation está clean pero stale (`5400a16` vs remote `df021fc`), por lo que fast-forward guard devuelve false y cualquier push queda bloqueado como corresponde.
+
+Pendiente: commit/push de fixes de known_hosts/safe.directory. Gate independiente para sync durable del mirror, habilitar dos services + Admin tools y smoke status/diff solamente. Otro gate posterior para primer commit/push; deploy Admin requiere otro approval separado.

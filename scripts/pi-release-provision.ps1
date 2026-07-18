@@ -71,6 +71,10 @@ sudo install -o root -g fixvox-release-broker -m 0640 "$stage/admin/fixvox-web/a
 sudo install -o root -g root -m 0644 "$stage/admin/fixvox-web/systemd/fixvox-release-broker.service" /etc/systemd/system/fixvox-release-broker.service
 sudo install -o root -g root -m 0644 "$stage/admin/fixvox-web/systemd/fixvox-admin-deploy-helper.service" /etc/systemd/system/fixvox-admin-deploy-helper.service
 sudo install -d -o fixvox-release -g fixvox-release -m 0700 /var/lib/fixvox-release/.ssh /var/lib/fixvox-release/audit
+sudo -u fixvox-release git config --global --replace-all safe.directory /var/lib/fixvox-workspace/repos/dictation-tauri
+sudo -u fixvox-release git config --global user.name 'Fixvox Release'
+sudo -u fixvox-release git config --global user.email 'release-broker@users.noreply.github.com'
+sudo chmod 0600 /var/lib/fixvox-release/.gitconfig
 if [[ $register == 1 ]]; then
   key=/var/lib/fixvox-release/.ssh/dictation-tauri
   if [[ ! -f $key ]]; then sudo -u fixvox-release ssh-keygen -q -t ed25519 -N '' -C fixvox-release-dictation -f "$key"; fi
@@ -88,6 +92,9 @@ Host github.com
 CFG
   sudo chown root:fixvox-release-broker /etc/fixvox-release/ssh_config
   sudo chmod 0640 /etc/fixvox-release/ssh_config
+  sudo sh -c 'grep "github.com" /home/jpsal/.ssh/known_hosts > /var/lib/fixvox-release/.ssh/known_hosts'
+  sudo chown fixvox-release:fixvox-release /var/lib/fixvox-release/.ssh/known_hosts
+  sudo chmod 0600 /var/lib/fixvox-release/.ssh/known_hosts
 fi
 sudo systemctl daemon-reload
 if [[ $enable == 1 ]]; then
