@@ -52,7 +52,12 @@ export async function getEffectiveTauriAccountReadiness(
 
 export async function openTauriAccountSetup(invoke: TauriAccountGateInvoke): Promise<void> {
   await invoke("hide_dock");
-  await invoke("show_settings_window");
+  try {
+    await invoke("show_settings_window");
+  } catch {
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 300));
+    await invoke("show_settings_window");
+  }
 }
 
 export async function ensureTauriDictationReadiness(

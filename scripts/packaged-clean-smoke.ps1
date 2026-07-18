@@ -63,6 +63,15 @@ function Wait-ForFile([string]$Path, [int]$TimeoutSeconds = 30) {
   return $false
 }
 
+function Wait-ForLogPattern([string]$Path, [string]$Pattern, [int]$TimeoutSeconds = 30) {
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    if ((Read-TextIfExists $Path) -match $Pattern) { return $true }
+    Start-Sleep -Milliseconds 500
+  }
+  return $false
+}
+
 function Read-TextIfExists([string]$Path) {
   if (Test-Path $Path) { return (Get-Content -Raw -Path $Path -ErrorAction SilentlyContinue) }
   return ''
@@ -114,16 +123,20 @@ try {
   Add-Check 'clean first-run persists install id' ($report.persistedState.hasInstallId) $report.persistedState
   Add-Check 'clean first-run has no device id before activation' (-not $report.persistedState.hasDeviceId) $report.persistedState
 
+  $dockHidden = Wait-ForLogPattern $errLog '\[dictation-tauri\]\[dock\] hide ok' 30
+  $settingsShown = Wait-ForLogPattern $errLog '\[dictation-tauri\]\[settings\] show ok' 30
   $errText = Read-TextIfExists $errLog
   $report.logSummary = [ordered]@{
     stderrLength = $errText.Length
     containsPanic = $errText -match 'panicked|Failed to setup app'
-    containsDockConfigured = $errText -match '\[dictation-tauri\]\[dock\] configured'
-    containsCtrlShiftFallback = $errText -match 'effective shortcut=Ctrl\+Shift\+F9'
+    containsDockHidden = $dockHidden
+    containsSettingsShown = $settingsShown
+    containsExternalWork = $errText -match 'FIXVOX_REQUEST|preflight request|transcrib|clipboard|paste_observed|poll_fixvox_cloud_login'
   }
   Add-Check 'packaged stderr has no startup panic' (-not $report.logSummary.containsPanic) $report.logSummary
-  Add-Check 'dock shell configures in packaged clean launch' ($report.logSummary.containsDockConfigured) $report.logSummary
-  Add-Check 'smoke uses Ctrl+Shift+F9 instead of Alt+Space' ($report.logSummary.containsCtrlShiftFallback) $report.logSummary
+  Add-Check 'clean account-first launch hides the dock' ($report.logSummary.containsDockHidden) $report.logSummary
+  Add-Check 'clean account-first launch opens Settings' ($report.logSummary.containsSettingsShown) $report.logSummary
+  Add-Check 'clean account-first launch performs no provider, login, or clipboard work' (-not $report.logSummary.containsExternalWork) $report.logSummary
 
   Add-Check 'working dir does not contain dotenv secrets' (-not (Test-Path (Join-Path $workRoot '.env'))) $workRoot
 

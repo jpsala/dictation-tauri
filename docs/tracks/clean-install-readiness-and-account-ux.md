@@ -130,6 +130,8 @@ El log confirma `hide_dock` y `show_settings_window`; el proceso propio quedó d
 
 Stop inmediato ante secretos, checks rojos, diff no atribuible, health fallido, rollback no verificable o hash divergente. No ejecutar login/link ni provider/dictado dentro de este rollout.
 
+**Checkpoint de rollout 2026-07-18:** el primer build desde `450cd3d` e instalación local salieron bien, pero el smoke empaquetado cortó correctamente porque todavía exigía el dock visible, contrato anterior al account gate. La evidencia real mostró el comportamiento nuevo esperado (`dock hide ok`, Settings solicitado, cero provider/login/clipboard), junto con una carrera packaged donde la ventana Settings configurada aún no estaba disponible en la primera invocación. Se actualizó el smoke para exigir dock oculto + Settings abierto + cero trabajo externo, se agregó test del contrato y el account gate reintenta una sola vez `show_settings_window` tras 300 ms. El rollout permanece detenido hasta commit/push, rebuild desde el nuevo HEAD y smoke instalado verde.
+
 ## Siguiente Acción
 
 Completar el rollout autorizado y registrar hashes/versiones/evidencia. Mantener login/link y provider como gates posteriores separados.
