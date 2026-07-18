@@ -28,6 +28,7 @@ RUNTIME_FILES=(
 REPOS=(dictation-tauri constelaciones)
 SWAPPED=()
 RUNTIME_APPLIED=0
+RELEASE_WAS_ACTIVE=0
 
 restore_runtime() {
   [[ $RUNTIME_APPLIED == 1 ]] || return 0
@@ -46,6 +47,7 @@ rollback() {
   done
   restore_runtime || true
   sudo systemctl restart fixvox-workspace-broker.service fixvox-constelaciones-read-broker.service || true
+  if [[ $RELEASE_WAS_ACTIVE == 1 ]]; then sudo systemctl restart fixvox-release-broker.service || true; fi
   systemctl --user restart fixvox-admin-web.service || true
   exit "$code"
 }
@@ -103,6 +105,7 @@ sudo systemctl daemon-reload
 if [[ $SYNC_MIRRORS == 1 ]]; then
   systemctl --user stop fixvox-admin-web.service
   sudo systemctl stop fixvox-workspace-broker.service
+  if sudo systemctl is-active --quiet fixvox-release-broker.service; then RELEASE_WAS_ACTIVE=1; sudo systemctl stop fixvox-release-broker.service; fi
   for repo in "${REPOS[@]}"; do
     sudo mv "$MIRROR_ROOT/$repo" "$MIRROR_ROOT/.backup-$RUN_ID-$repo"
     sudo mv "$MIRROR_ROOT/.candidate-$RUN_ID-$repo" "$MIRROR_ROOT/$repo"
@@ -111,6 +114,7 @@ if [[ $SYNC_MIRRORS == 1 ]]; then
 fi
 
 sudo systemctl restart fixvox-workspace-broker.service fixvox-constelaciones-read-broker.service
+if [[ $RELEASE_WAS_ACTIVE == 1 ]]; then sudo systemctl restart fixvox-release-broker.service; fi
 systemctl --user restart fixvox-admin-web.service
 sleep 1
 sudo systemctl is-active --quiet fixvox-workspace-broker.service

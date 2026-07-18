@@ -31,7 +31,7 @@ export class ReleaseBroker {
   }
 
   async status(repoId) {
-    const { repo, state } = await this.inspect(repoId)
+    const { repo, state } = await this.inspect(repoId, 'git_push')
     return { repoId: repo.id, branch: state.branch, head: state.head, dirty: state.dirty, changedCount: Number(state.changedCount || 0), untrackedCount: (state.untracked || []).length, fastForward: state.fastForward === true }
   }
 

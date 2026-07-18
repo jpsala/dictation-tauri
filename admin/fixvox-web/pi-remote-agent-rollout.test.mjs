@@ -30,6 +30,8 @@ test('remote apply fails dirty mirrors, rejects secrets and swaps on one filesys
   assert.match(apply, /sqlite/)
   assert.match(apply, /sudo mv "\$MIRROR_ROOT\/\$repo" "\$MIRROR_ROOT\/\.backup-/)
   assert.match(apply, /trap rollback ERR/)
+  assert.match(apply, /systemctl stop fixvox-release-broker\.service/)
+  assert.match(apply, /RELEASE_WAS_ACTIVE/)
   assert.match(apply, /runtime-and-units\.tar\.gz/)
 })
 
