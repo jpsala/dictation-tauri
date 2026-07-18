@@ -21,6 +21,7 @@ test('deploy key is repo-specific, write-enabled and never copied to agent/works
   assert.match(provision, /repos\/jpsala\/dictation-tauri\/keys/)
   assert.match(provision, /read_only=false/)
   assert.match(provision, /fixvox-release-dictation/)
+  assert.match(provision, /if ! sudo test -f "\$key"/)
   assert.doesNotMatch(provision, /(?:cp|install)[^\n]*(?:dictation-tauri$|dictation-tauri")/m)
   assert.doesNotMatch(provision, /cat "\$key"(?:\s|$)/)
   assert.doesNotMatch(provision, /gho_|GITHUB_TOKEN|GH_TOKEN/)

@@ -77,7 +77,7 @@ sudo -u fixvox-release git config --global user.email 'release-broker@users.nore
 sudo chmod 0600 /var/lib/fixvox-release/.gitconfig
 if [[ $register == 1 ]]; then
   key=/var/lib/fixvox-release/.ssh/dictation-tauri
-  if [[ ! -f $key ]]; then sudo -u fixvox-release ssh-keygen -q -t ed25519 -N '' -C fixvox-release-dictation -f "$key"; fi
+  if ! sudo test -f "$key"; then sudo -u fixvox-release ssh-keygen -q -t ed25519 -N '' -C fixvox-release-dictation -f "$key"; fi
   title=fixvox-release-dictation
   existing=$(gh api repos/jpsala/dictation-tauri/keys --jq ".[] | select(.title == \"$title\") | .id" | head -1)
   if [[ -z $existing ]]; then public=$(sudo cat "$key.pub"); existing=$(gh api -X POST repos/jpsala/dictation-tauri/keys -f title="$title" -f key="$public" -F read_only=false --jq .id); fi
