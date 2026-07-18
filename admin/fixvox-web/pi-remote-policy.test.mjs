@@ -196,4 +196,7 @@ test('remote policy extension gates tool calls before execution through RPC UI',
   for (const file of ['pi-remote-policy.mjs', 'pi-remote-agent-core.mjs', 'pi-remote-agent-extension.mjs', 'pi-workspace-broker-client.mjs', 'pi-workspace-broker.mjs', 'constelaciones-read-adapter.mjs']) {
     assert.ok(deploy.includes(file))
   }
+  assert.match(deploy, /Send-BundleWithRetry/)
+  assert.match(deploy, /sha256sum -c/)
+  assert.doesNotMatch(deploy, /\$scpArguments/)
 })

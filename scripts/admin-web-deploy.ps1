@@ -29,6 +29,8 @@ $backupRoot = '/home/jpsal/.local/state/fixvox-admin-backups'
 $runId = Get-Date -Format 'yyyyMMdd-HHmmss'
 $remoteStage = "/tmp/fixvox-admin-deploy-$runId"
 $remoteBackup = "$backupRoot/$runId.tar.gz"
+$localBundle = Join-Path ([IO.Path]::GetTempPath()) "fixvox-admin-deploy-$runId.tar.gz"
+$remoteBundle = "/tmp/fixvox-admin-deploy-$runId.tar.gz"
 
 function Invoke-Checked {
   param(
@@ -45,6 +47,24 @@ function Invoke-Checked {
 function Invoke-Remote {
   param([Parameter(Mandatory)] [string]$Command)
   Invoke-Checked -FilePath 'ssh' -ArgumentList @($remoteHost, "set -e; $Command")
+}
+
+function Get-Sha256([string]$Path) {
+  $stream = [IO.File]::OpenRead($Path)
+  try {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '').ToLowerInvariant() }
+    finally { $sha.Dispose() }
+  } finally { $stream.Dispose() }
+}
+
+function Send-BundleWithRetry([string]$Path, [string]$Destination) {
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    & scp $Path $Destination
+    if ($LASTEXITCODE -eq 0) { return }
+    if ($attempt -lt 3) { Start-Sleep -Seconds (2 * $attempt) }
+  }
+  throw "Bundle upload failed after 3 attempts."
 }
 
 function Wait-ForAdminReadiness {
@@ -66,13 +86,14 @@ foreach ($file in $files) {
 
 $replacementStarted = $false
 try {
-  Invoke-Remote "mkdir -p '$backupRoot' '$remoteStage'; tar -czf '$remoteBackup' -C '$remoteRoot' ."
-  $scpArguments = @($files | ForEach-Object { Join-Path $adminRoot $_ }) + "${remoteHost}:$remoteStage/"
-  Invoke-Checked -FilePath 'scp' -ArgumentList $scpArguments
-  Invoke-Remote "node --check '$remoteStage/server.mjs'; node --check '$remoteStage/pi-remote-policy.mjs'; node --check '$remoteStage/pi-remote-agent-core.mjs'; node --check '$remoteStage/pi-remote-agent-extension.mjs'; node --check '$remoteStage/pi-workspace-broker-client.mjs'; node --check '$remoteStage/pi-workspace-broker.mjs'; node --check '$remoteStage/constelaciones-read-adapter.mjs'; node --check '$remoteStage/app.js'"
+  Invoke-Checked -FilePath 'tar' -ArgumentList (@('-czf', $localBundle, '-C', $adminRoot) + $files)
+  $bundleHash = Get-Sha256 $localBundle
+  Invoke-Remote "mkdir -p '$backupRoot'; rm -rf '$remoteStage' '$remoteBundle'; mkdir -p '$remoteStage'; tar -czf '$remoteBackup' -C '$remoteRoot' ."
+  Send-BundleWithRetry $localBundle "${remoteHost}:$remoteBundle"
+  Invoke-Remote "echo '$bundleHash  $remoteBundle' | sha256sum -c -; tar -xzf '$remoteBundle' -C '$remoteStage'; node --check '$remoteStage/server.mjs'; node --check '$remoteStage/pi-remote-policy.mjs'; node --check '$remoteStage/pi-remote-agent-core.mjs'; node --check '$remoteStage/pi-remote-agent-extension.mjs'; node --check '$remoteStage/pi-workspace-broker-client.mjs'; node --check '$remoteStage/pi-workspace-broker.mjs'; node --check '$remoteStage/constelaciones-read-adapter.mjs'; node --check '$remoteStage/public/app.js'"
 
   $replacementStarted = $true
-  Invoke-Remote "cp '$remoteStage/server.mjs' '$remoteRoot/server.mjs'; cp '$remoteStage/pi-remote-policy.mjs' '$remoteRoot/pi-remote-policy.mjs'; cp '$remoteStage/pi-remote-agent-core.mjs' '$remoteRoot/pi-remote-agent-core.mjs'; cp '$remoteStage/pi-remote-agent-extension.mjs' '$remoteRoot/pi-remote-agent-extension.mjs'; cp '$remoteStage/pi-workspace-broker-client.mjs' '$remoteRoot/pi-workspace-broker-client.mjs'; cp '$remoteStage/pi-workspace-broker.mjs' '$remoteRoot/pi-workspace-broker.mjs'; cp '$remoteStage/constelaciones-read-adapter.mjs' '$remoteRoot/constelaciones-read-adapter.mjs'; cp '$remoteStage/app.js' '$remoteRoot/public/app.js'; cp '$remoteStage/styles.css' '$remoteRoot/public/styles.css'; systemctl --user restart fixvox-admin-web.service"
+  Invoke-Remote "cp '$remoteStage/server.mjs' '$remoteRoot/server.mjs'; cp '$remoteStage/pi-remote-policy.mjs' '$remoteRoot/pi-remote-policy.mjs'; cp '$remoteStage/pi-remote-agent-core.mjs' '$remoteRoot/pi-remote-agent-core.mjs'; cp '$remoteStage/pi-remote-agent-extension.mjs' '$remoteRoot/pi-remote-agent-extension.mjs'; cp '$remoteStage/pi-workspace-broker-client.mjs' '$remoteRoot/pi-workspace-broker-client.mjs'; cp '$remoteStage/pi-workspace-broker.mjs' '$remoteRoot/pi-workspace-broker.mjs'; cp '$remoteStage/constelaciones-read-adapter.mjs' '$remoteRoot/constelaciones-read-adapter.mjs'; cp '$remoteStage/public/app.js' '$remoteRoot/public/app.js'; cp '$remoteStage/public/styles.css' '$remoteRoot/public/styles.css'; systemctl --user restart fixvox-admin-web.service"
   Wait-ForAdminReadiness
   Invoke-Remote "rm -rf '$remoteStage'"
   Write-Host "Admin deploy complete. Backup: $remoteBackup" -ForegroundColor Green
@@ -88,4 +109,7 @@ try {
     throw "Admin deploy failed; rollback restored from $remoteBackup. Original error: $($deployError.Exception.Message)"
   }
   throw
+} finally {
+  Remove-Item -LiteralPath $localBundle -Force -ErrorAction SilentlyContinue
+  try { Invoke-Remote "rm -rf '$remoteStage' '$remoteBundle'" } catch { }
 }
