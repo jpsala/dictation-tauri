@@ -70,8 +70,9 @@ Smokes físicos/live requieren confirmación: hotkeys, audio mute/cues, auto-sto
 
 ## Foco Único De Ejecución
 
-- **Plan:** `docs/tracks/clean-install-readiness-and-account-ux.md`.
-- **Estado:** rollout completo `DONE`. Suite 95/480, build/Rust/Worker/Admin/visual verdes; source producto `9274577`. Installer SHA256 `8f6ecbb1453eda2856b5ee254a853cc9dc91ed3a270ec999cb3ed3a2937754c8`; upgrade + smoke instalado PASS. Worker activo `df416730-61b8-4222-ab5f-282879251db9` con health 200; Admin VPS deploy/healthz PASS y backup `20260718-000036.tar.gz`; prerelease `fixvox-tauri-v0.1.0-20260718000133` redescargada con hash idéntico. Browser verificó login público Admin sin iniciar sesión.
-- **Próximo batch/corte:** no hay batch activa. Login/link real, provider/dictado, smoke en otra PC o promoción de canal requieren gates nuevos y separados.
-- **Perfil recomendado:** **Implementador**, manual staged y un único owner.
-- **Gate:** rebuild/install, login/link, provider/dictado, publicación, commit y push son autorizaciones separadas. Preservar host-owned readiness, cero captura antes de ready, copy Spanish-first, cero IDs/tokens/policy en UI normal y cambios ajenos del working tree.
+- **Plan:** `docs/tracks/pi-chat-remote-agent-parity.md`.
+- **Decisión:** JP eligió **Agente remoto total** para Pi Chat. Paridad funcional multi-repo/infra, no ejecución irrestricta como `jpsal` ni herencia de secrets/SSH/Chrome local.
+- **Estado:** Batch 1 local/provider-free completo. Env allowlist, args sin recursos globales/trust implícito, policy `tool_call`, approval fail-closed, audit hashed/redacted, realpath anti-symlink y cliente/contrato `constelaciones_future_appointments` para broker Unix socket quedaron implementados detrás de `PI_CHAT_REMOTE_AGENT_ENABLED=0` default. 25 tests Node, Admin smoke, PowerShell parse y RPC startup offline verdes; producción no cambió.
+- **Próximo batch/corte:** Batch 2 fue autorizado pero quedó `STOPPED` antes de mutar VPS. OpenAI Codex usa OAuth en `auth.json`; el mismo UID de Pi+shell podría leerlo. No hay bwrap/firejail/podman, user namespaces están bloqueados y Docker access sería root-equivalent. Próximo: implementar/testear split provider-process + workspace-tool-broker por Unix socket; recién después crear usuarios/permisos, Constelaciones broker, systemd y smokes. Browser local queda para relay posterior.
+- **Perfil recomendado:** **Arquitecto/Implementador**, manual staged, un owner y security review antes del rollout.
+- **Gate:** crear usuario/permisos, tocar systemd, provisionar provider credential, ejecutar Pi real, desplegar o exponer browser local requieren rollout separado con backup/rollback. Stop si el child sigue como `jpsal`, ve secrets o muta antes de approval.

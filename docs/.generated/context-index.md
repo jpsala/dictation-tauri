@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-18T04:20:02.271Z
+Generated: 2026-07-18T04:48:50.092Z
 
 ## Topics
 
@@ -51,6 +51,7 @@ Generated: 2026-07-18T04:20:02.271Z
 - superseded: [Fixvox Self-Hosted Checkpoint D Closure Plan](../tracks/fixvox-self-hosted-checkpoint-d-closure-plan.md)
 - active: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md)
 - active: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md)
+- active: [Pi Chat Remote Agent Parity](../tracks/pi-chat-remote-agent-parity.md)
 - active: [Pi Prod Workspace For Dictation Tauri](../tracks/pi-prod-workspace.md)
 - stable: [Profile Composer: Cloudflare rollout seguro y auditable](../tracks/profile-composer-cloudflare-rollout-plan.md)
 - stable: [Profile Composer Phase 3: preview, RBAC and safe publish](../tracks/profile-composer-phase-3-rbac-publish-plan.md)

@@ -12,7 +12,15 @@ if (-not $ConfirmProduction) {
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $adminRoot = Join-Path $repo 'admin/fixvox-web'
-$files = @('server.mjs', 'public/app.js', 'public/styles.css')
+$runtimeFiles = @(
+  'server.mjs',
+  'pi-remote-policy.mjs',
+  'pi-remote-agent-core.mjs',
+  'pi-remote-agent-extension.mjs',
+  'constelaciones-read-adapter.mjs'
+)
+$publicFiles = @('public/app.js', 'public/styles.css')
+$files = @($runtimeFiles + $publicFiles)
 $remoteHost = 'vps'
 $remoteRoot = '/home/jpsal/dev/dictation-tauri/admin/fixvox-web'
 $backupRoot = '/home/jpsal/.local/state/fixvox-admin-backups'
@@ -56,17 +64,13 @@ foreach ($file in $files) {
 
 $replacementStarted = $false
 try {
-  Invoke-Remote "mkdir -p '$backupRoot' '$remoteStage'; tar -czf '$remoteBackup' -C '$remoteRoot' server.mjs public/app.js public/styles.css"
-  Invoke-Checked -FilePath 'scp' -ArgumentList @(
-    (Join-Path $adminRoot 'server.mjs'),
-    (Join-Path $adminRoot 'public/app.js'),
-    (Join-Path $adminRoot 'public/styles.css'),
-    "${remoteHost}:$remoteStage/"
-  )
-  Invoke-Remote "node --check '$remoteStage/server.mjs'; node --check '$remoteStage/app.js'"
+  Invoke-Remote "mkdir -p '$backupRoot' '$remoteStage'; tar -czf '$remoteBackup' -C '$remoteRoot' ."
+  $scpArguments = @($files | ForEach-Object { Join-Path $adminRoot $_ }) + "${remoteHost}:$remoteStage/"
+  Invoke-Checked -FilePath 'scp' -ArgumentList $scpArguments
+  Invoke-Remote "node --check '$remoteStage/server.mjs'; node --check '$remoteStage/pi-remote-policy.mjs'; node --check '$remoteStage/pi-remote-agent-core.mjs'; node --check '$remoteStage/pi-remote-agent-extension.mjs'; node --check '$remoteStage/constelaciones-read-adapter.mjs'; node --check '$remoteStage/app.js'"
 
   $replacementStarted = $true
-  Invoke-Remote "cp '$remoteStage/server.mjs' '$remoteRoot/server.mjs'; cp '$remoteStage/app.js' '$remoteRoot/public/app.js'; cp '$remoteStage/styles.css' '$remoteRoot/public/styles.css'; systemctl --user restart fixvox-admin-web.service"
+  Invoke-Remote "cp '$remoteStage/server.mjs' '$remoteRoot/server.mjs'; cp '$remoteStage/pi-remote-policy.mjs' '$remoteRoot/pi-remote-policy.mjs'; cp '$remoteStage/pi-remote-agent-core.mjs' '$remoteRoot/pi-remote-agent-core.mjs'; cp '$remoteStage/pi-remote-agent-extension.mjs' '$remoteRoot/pi-remote-agent-extension.mjs'; cp '$remoteStage/constelaciones-read-adapter.mjs' '$remoteRoot/constelaciones-read-adapter.mjs'; cp '$remoteStage/app.js' '$remoteRoot/public/app.js'; cp '$remoteStage/styles.css' '$remoteRoot/public/styles.css'; systemctl --user restart fixvox-admin-web.service"
   Wait-ForAdminReadiness
   Invoke-Remote "rm -rf '$remoteStage'"
   Write-Host "Admin deploy complete. Backup: $remoteBackup" -ForegroundColor Green

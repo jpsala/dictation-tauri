@@ -7,6 +7,7 @@ import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { fileURLToPath } from 'node:url'
 import { accountHandleForGoogleSubject, annotateCurrentAdminAccount, redactGoogleEmail } from './account-identity.mjs'
+import { buildRemoteAgentEnv, remoteAgentArgs, remoteAgentRoots } from './pi-remote-policy.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..')
@@ -16,6 +17,14 @@ const HOST = process.env.FIXVOX_ADMIN_HOST || '127.0.0.1'
 const PI_CWD = path.resolve(process.env.PI_CHAT_CWD || repoRoot)
 const PI_BIN = process.env.PI_CHAT_BIN || 'pi'
 const PI_ARGS = splitArgs(process.env.PI_CHAT_ARGS || '')
+const REMOTE_AGENT_ENABLED = process.env.PI_CHAT_REMOTE_AGENT_ENABLED === '1'
+const REMOTE_AGENT_HOME = path.resolve(process.env.PI_CHAT_AGENT_HOME || path.join(process.env.HOME || repoRoot, '.local', 'share', 'fixvox-agent'))
+const REMOTE_AGENT_DIR = path.resolve(process.env.PI_CHAT_AGENT_DIR || path.join(REMOTE_AGENT_HOME, '.pi', 'agent'))
+const REMOTE_AGENT_SESSION_DIR = path.resolve(process.env.PI_CHAT_AGENT_SESSION_DIR || path.join(REMOTE_AGENT_HOME, 'sessions'))
+const REMOTE_AGENT_AUDIT_PATH = path.resolve(process.env.PI_CHAT_AGENT_AUDIT_PATH || path.join(REMOTE_AGENT_HOME, 'audit', 'operations.jsonl'))
+const REMOTE_AGENT_CONSTELACIONES_SOCKET = path.resolve(process.env.PI_CHAT_CONSTELACIONES_SOCKET || path.join(REMOTE_AGENT_HOME, 'run', 'constelaciones-read.sock'))
+const REMOTE_AGENT_ROOTS = remoteAgentRoots(process.env.PI_CHAT_AGENT_ROOTS, repoRoot)
+const REMOTE_AGENT_EXTENSION = path.join(__dirname, 'pi-remote-agent-extension.mjs')
 const ADMIN_BASE_URL = (process.env.FIXVOX_ADMIN_BASE_URL || 'https://auth-fixvox.jpsala.dev').replace(/\/+$/g, '')
 const ADMIN_ENV = process.env.FIXVOX_ADMIN_ENV || (ADMIN_BASE_URL.includes('127.0.0.1') || ADMIN_BASE_URL.includes('localhost') ? 'local' : 'production')
 const sessions = new Map()
@@ -37,9 +46,27 @@ const MOCK_MODE = process.env.FIXVOX_ADMIN_MOCK === '1'
 const ADMIN_CREDENTIAL_ENV_KEYS = ['ADMIN_API_KEY', 'ADMIN_VIEW_API_KEY', 'ADMIN_EDIT_API_KEY', 'ADMIN_PUBLISH_API_KEY']
 
 function piProcessEnv() {
+  if (REMOTE_AGENT_ENABLED) {
+    return buildRemoteAgentEnv(process.env, {
+      home: REMOTE_AGENT_HOME,
+      user: process.env.PI_CHAT_AGENT_USER || 'fixvox-agent',
+      agentDir: REMOTE_AGENT_DIR,
+      auditPath: REMOTE_AGENT_AUDIT_PATH,
+      roots: REMOTE_AGENT_ROOTS,
+      constelacionesSocket: REMOTE_AGENT_CONSTELACIONES_SOCKET,
+    })
+  }
   const env = { ...process.env }
   for (const key of ADMIN_CREDENTIAL_ENV_KEYS) delete env[key]
   return env
+}
+
+function piRuntimeArgs() {
+  if (!REMOTE_AGENT_ENABLED) return [...PI_ARGS, '--mode', 'rpc', '--approve', '--name', 'fixvox-admin-web-pi']
+  return remoteAgentArgs({
+    extensionPath: REMOTE_AGENT_EXTENSION,
+    sessionDir: REMOTE_AGENT_SESSION_DIR,
+  })
 }
 
 function loadEnvFile(file) {
@@ -75,7 +102,7 @@ class PiRpcProcess {
   }
   async ensureStarted() {
     if (this.running) return
-    const child = spawn(PI_BIN, [...PI_ARGS, '--mode', 'rpc', '--approve', '--name', 'fixvox-admin-web-pi'], {
+    const child = spawn(PI_BIN, piRuntimeArgs(), {
       cwd: PI_CWD,
       env: piProcessEnv(),
       stdio: ['pipe', 'pipe', 'pipe'],
