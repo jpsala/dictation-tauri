@@ -314,4 +314,15 @@ Validación local/VPS sin rollout:
 
 - Pi normal `/home/jpsal/.local/bin/pi` 0.80.6 arrancó RPC offline desde el repo real, cargó el catálogo global de extensions y devolvió `get_state` con modelo/session bajo `/home/jpsal/.pi/agent`.
 - Tests prueban que unrestricted requiere OAuth reciente en health, command y prompt; 27/27 security/Admin PASS.
-- Release tools continúan feature-off. Aún no se cambió producción a unrestricted.
+- Release tools continúan feature-off.
+
+Activación production autorizada y completada:
+
+- Source `91c7b3b`; Admin backup `/home/jpsal/.local/state/fixvox-admin-backups/20260718-215058.tar.gz`.
+- Env receipt/rollback: `/home/jpsal/.local/state/fixvox-owner-mode/20260718-215058-owner/`.
+- Active: `PI_CHAT_UNRESTRICTED_OWNER=1`, remote sandbox/release tools off, bin `/home/jpsal/.local/bin/pi`, cwd `/home/jpsal/dev/dictation-tauri`, idle 30m.
+- OAuth Google owner reciente requerido y validado. `/api/admin/env` reportó `piMode=unrestricted-owner`; health Pi 0.80.6 PASS.
+- Proceso dentro del cgroup Admin corre UID/GID 1000 `jpsal`, HOME `/home/jpsal`, repo real y sesión bajo `/home/jpsal/.pi/agent`; no remote extension/broker args.
+- Prompt UI real `Respondé exactamente OWNER_MODE_OK. No uses herramientas.` devolvió `OWNER_MODE_OK`, settled/listo, 0 tools.
+- Public health PASS. No commit/push/deploy durante el smoke.
+- Nota operativa: el checkout VPS canónico ya tenía 19 paths dirty y HEAD `0ae95311` por el modelo histórico de Admin deploy; no se limpió ni revirtió nada. Trusted Owner Pi ve exactamente ese estado, como una sesión manual en el VPS.
