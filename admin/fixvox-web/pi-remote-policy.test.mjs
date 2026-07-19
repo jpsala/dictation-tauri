@@ -174,6 +174,10 @@ test('remote policy behavior blocks before execution and audits allow, deny, app
   try {
     registerRemoteAgentPolicy(fakePi, { futureAppointmentsParameters: { type: 'object', properties: {} } })
     const gate = handlers.get('tool_call')
+    const promptPolicy = handlers.get('before_agent_start')({ systemPrompt: 'base' }).systemPrompt
+    assert.match(promptPolicy, /call the intended tool normally/)
+    assert.match(promptPolicy, /policy intercepts the call before execution and opens the card/)
+    assert.match(promptPolicy, /Never ask for approval only in prose/)
     assert.equal(typeof gate, 'function')
     assert.ok(tools.includes('constelaciones_future_appointments'))
     assert.equal(await gate({ toolName: 'read', input: { path: 'safe.txt' } }, context(false)), undefined)

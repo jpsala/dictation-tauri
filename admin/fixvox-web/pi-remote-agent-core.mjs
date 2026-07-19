@@ -39,7 +39,7 @@ export function registerRemoteAgentPolicy(pi, options) {
   })
 
   pi.on('before_agent_start', (event) => ({
-    systemPrompt: `${event.systemPrompt}\n\nRemote-agent policy: work across approved VPS repositories. Never seek credentials or sensitive stores. Reads inside approved roots are allowed. Writes, edits, shell, git, deploy and system operations require a pre-execution approval card. A missing, cancelled or timed-out approval means do not execute. Browser access to JP's local Chrome is unavailable.`,
+    systemPrompt: `${event.systemPrompt}\n\nRemote-agent policy: work across approved VPS repositories. Never seek credentials or sensitive stores. Reads inside approved roots are allowed. Writes, edits, shell, git, deploy and system operations require a pre-execution approval card. To request approval, call the intended tool normally: policy intercepts the call before execution and opens the card. Never ask for approval only in prose and never claim approval must exist before the tool call. A missing, cancelled or timed-out card means do not execute. Browser access to JP's local Chrome is unavailable.`,
   }))
 
   pi.on('tool_call', async (event, ctx) => {

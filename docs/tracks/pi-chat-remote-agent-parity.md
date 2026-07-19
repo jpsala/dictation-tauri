@@ -279,4 +279,20 @@ Enable read-only ejecutado con autorización exacta:
 - Read-only smoke como `fixvox-agent`: status main/clean/fastForward true, diff 0; RPC offline cargó release tools explícitas con no-builtins.
 - No mutation: local==remote, tree clean, journal vacío, Admin helper no invocado. Health y tres services activos.
 
-Siguiente gate independiente: primer commit controlado sobre un archivo fixture permitido + confirm owner, seguido por push typed. Deploy Admin queda para un gate posterior aun si commit/push pasa.
+Primer commit/push smoke fue autorizado y comenzó:
+
+- Sync pre-smoke `20260718-163509` dejó mirror/remote `34ad7bd`, clean, main y servicios activos.
+- OAuth owner quedó listo. Dos prompts intentaron crear `docs/tracks/pi-release-broker-smoke.md`, pero el modelo se negó antes de llamar `write`: interpretó “pre-execution approval card” como una tarjeta que debía existir antes del tool call.
+- No hubo tool call, write, commit, push ni deploy; mirror/remote siguen `34ad7bd`, tree clean y release journal 0 bytes.
+- Root cause: wording ambiguo en `pi-remote-agent-core.mjs`. Fix local WIP aclara que llamar la tool dispara la intercepción/card y que no debe pedir aprobación sólo en prosa. Aún no está testeado, commiteado ni desplegado.
+
+Regression local agregada: el before-agent prompt debe decir `call the intended tool normally`, que policy intercepta antes de ejecutar y que nunca se pida approval sólo en prosa. Suite security/Admin 38/38 PASS.
+
+Segundo intento autorizado:
+
+- Sync preparatorio `20260718-210101` dejó mirror/remote `34ad7bd` clean.
+- Un prompt UI alcanzó read+edit; la automatización de stream duplicó una request (una siguió y la otra recibió 409), por lo que no hubo una señal única confiable para avanzar a commit.
+- Se restauró el único cambio documental sin commit. Mirror clean==remote, journal release vacío; no commit, push ni deploy.
+- Fail-closed: `PI_CHAT_RELEASE_BROKER_ENABLED=0` y Admin restart. Key y services quedan provisionados/activos, pero tools release no se registran en Pi.
+
+Próximo paso exacto: commit/push del wording+regression; gate nuevo para rollout runtime+sync y re-enable read-only. Repetir smoke sólo con requests UI separadas y observables, nunca con un evaluator que pueda duplicar fetch. Deploy Admin sigue separado.
