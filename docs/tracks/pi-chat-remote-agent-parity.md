@@ -327,4 +327,11 @@ Activación production autorizada y completada:
 - Public health PASS. No commit/push/deploy durante el smoke.
 - Nota operativa: el checkout VPS canónico ya tenía 19 paths dirty y HEAD `0ae95311` por el modelo histórico de Admin deploy; no se limpió ni revirtió nada. Trusted Owner Pi ve exactamente ese estado, como una sesión manual en el VPS.
 
-Follow-up pre-cierre: se detectó que la ruta prompt todavía agregaba los guardrails históricos aunque el proceso ya era unrestricted. Fix local hace pass-through byte-for-byte del mensaje en owner mode, reporta guardrails vacíos + warning honesto, conserva wrapper sólo en modos aislados y prueba exclusión mutua/recent OAuth. Tests server/access 21/21 PASS; pendiente commit y redeploy Admin acotado.
+Follow-up cerrado:
+
+- Se detectó que la ruta prompt todavía agregaba los guardrails históricos aunque el proceso ya era unrestricted.
+- Fix `d92c09b` hace pass-through exacto del mensaje en owner mode, reporta `guardrails=[]` + warning honesto, conserva wrapper sólo en modos aislados y prueba exclusión mutua/recent OAuth; tests server/access 21/21 PASS.
+- Redeploy Admin autorizado, backup `/home/jpsal/.local/state/fixvox-admin-backups/20260718-220037.tar.gz`; owner env se preservó.
+- OAuth reciente, env mode/warning/guardrails, health y proceso PASS. Prompt UI real `RAW_OWNER_PROMPT_OK` volvió exactamente, ready, 0 tools y sin texto histórico agregado.
+
+Trusted Owner Pi queda operativo sin restricciones internas. Las únicas fronteras restantes son el perímetro owner/OAuth/single-task/stop/idle y la ausencia de relay hacia Windows/Chrome local.
