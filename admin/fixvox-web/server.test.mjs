@@ -53,6 +53,24 @@ test('server RBAC accepts a verified Google session without recent reauthenticat
   })
 })
 
+test('unrestricted owner mode requires recent Google auth at the Pi perimeter', async () => {
+  await withServer({ PI_CHAT_UNRESTRICTED_OWNER: '1', PI_CHAT_REMOTE_AGENT_ENABLED: '0', FIXVOX_ADMIN_MOCK_AUTHENTICATED_AT: String(Date.now() - 11 * 60 * 1000) }, async () => {
+    const envResponse = await fetch(`${baseUrl}/api/admin/env`)
+    assert.equal((await envResponse.json()).piMode, 'unrestricted-owner')
+    assert.equal((await fetch(`${baseUrl}/api/pi-chat/health`)).status, 403)
+    assert.equal((await fetch(`${baseUrl}/api/pi-chat/command`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: { type: 'get_state' } }) })).status, 403)
+    assert.equal((await fetch(`${baseUrl}/api/pi-chat/prompt`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: 'hello' }) })).status, 403)
+  })
+})
+
+test('recent owner can use unrestricted Pi perimeter in mock mode', async () => {
+  await withServer({ PI_CHAT_UNRESTRICTED_OWNER: '1', PI_CHAT_REMOTE_AGENT_ENABLED: '0' }, async () => {
+    assert.equal((await fetch(`${baseUrl}/api/pi-chat/health`)).status, 200)
+    assert.equal((await fetch(`${baseUrl}/api/pi-chat/command`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: { type: 'get_state' } }) })).status, 200)
+    assert.equal((await fetch(`${baseUrl}/api/pi-chat/prompt`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: 'hello' }) })).status, 200)
+  })
+})
+
 test('owner Settings routes manage roles while returning only redacted bindings', async () => {
   await withServer({}, async () => {
     const created = await fetch(`${baseUrl}/api/admin/roles`, {

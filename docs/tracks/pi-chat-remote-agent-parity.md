@@ -296,3 +296,22 @@ Segundo intento autorizado:
 - Fail-closed: `PI_CHAT_RELEASE_BROKER_ENABLED=0` y Admin restart. Key y services quedan provisionados/activos, pero tools release no se registran en Pi.
 
 Próximo paso exacto: commit/push del wording+regression; gate nuevo para rollout runtime+sync y re-enable read-only. Repetir smoke sólo con requests UI separadas y observables, nunca con un evaluator que pueda duplicar fetch. Deploy Admin sigue separado.
+
+## Batch 6 — Trusted Owner Pi
+
+**Dirección corregida por JP:** Pi Chat Admin debe ser el Pi normal del VPS, equivalente a abrir una sesión como `jpsal`, no un sandbox/catálogo de herramientas Fixvox. JP aceptó explícitamente el blast radius y eligió **Sin restricciones**.
+
+Contrato:
+
+- Proceso Pi corre como `jpsal`, `HOME=/home/jpsal`, cwd `/home/jpsal/dev/dictation-tauri`.
+- Usa instalación/configuración/modelo/sesiones/extensions/skills/tools globales reales; built-in read/write/edit/bash y credenciales accesibles desde esa identidad.
+- RPC usa `--approve`: no approvals por tool, push, deploy o comando. Brokers/release policy no se cargan.
+- Perímetro solamente: Google owner con OAuth reciente para health/prompt/command, una tarea global, CSRF/origin existente, stop/kill y idle timeout 30 min.
+- `PI_CHAT_UNRESTRICTED_OWNER=1` y `PI_CHAT_REMOTE_AGENT_ENABLED=0` son mutuamente excluyentes.
+- No incluye Windows/Chrome local sin relay aparte.
+
+Validación local/VPS sin rollout:
+
+- Pi normal `/home/jpsal/.local/bin/pi` 0.80.6 arrancó RPC offline desde el repo real, cargó el catálogo global de extensions y devolvió `get_state` con modelo/session bajo `/home/jpsal/.pi/agent`.
+- Tests prueban que unrestricted requiere OAuth reciente en health, command y prompt; 27/27 security/Admin PASS.
+- Release tools continúan feature-off. Aún no se cambió producción a unrestricted.

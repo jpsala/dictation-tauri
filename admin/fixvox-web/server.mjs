@@ -19,6 +19,9 @@ const PI_CWD = path.resolve(process.env.PI_CHAT_CWD || repoRoot)
 const PI_BIN = process.env.PI_CHAT_BIN || 'pi'
 const PI_ARGS = splitArgs(process.env.PI_CHAT_ARGS || '')
 const REMOTE_AGENT_ENABLED = process.env.PI_CHAT_REMOTE_AGENT_ENABLED === '1'
+const UNRESTRICTED_OWNER_MODE = process.env.PI_CHAT_UNRESTRICTED_OWNER === '1'
+const OWNER_PI_IDLE_MS = Math.max(60_000, Number(process.env.PI_CHAT_OWNER_IDLE_MS || 30 * 60_000))
+if (REMOTE_AGENT_ENABLED && UNRESTRICTED_OWNER_MODE) throw new Error('Pi Chat cannot enable isolated and unrestricted modes together.')
 const REMOTE_AGENT_HOME = path.resolve(process.env.PI_CHAT_AGENT_HOME || path.join(process.env.HOME || repoRoot, '.local', 'share', 'fixvox-agent'))
 const REMOTE_AGENT_DIR = path.resolve(process.env.PI_CHAT_AGENT_DIR || path.join(REMOTE_AGENT_HOME, '.pi', 'agent'))
 const REMOTE_AGENT_SESSION_DIR = path.resolve(process.env.PI_CHAT_AGENT_SESSION_DIR || path.join(REMOTE_AGENT_HOME, 'sessions'))
@@ -69,7 +72,7 @@ function piProcessEnv() {
 }
 
 function piRuntimeArgs() {
-  if (!REMOTE_AGENT_ENABLED) return [...PI_ARGS, '--mode', 'rpc', '--approve', '--name', 'fixvox-admin-web-pi']
+  if (UNRESTRICTED_OWNER_MODE || !REMOTE_AGENT_ENABLED) return [...PI_ARGS, '--mode', 'rpc', '--approve', '--name', 'fixvox-admin-owner-pi']
   return remoteAgentArgs({
     extensionPath: REMOTE_AGENT_EXTENSION,
     sessionDir: REMOTE_AGENT_SESSION_DIR,
@@ -100,6 +103,13 @@ class PiRpcProcess {
     this.stderr = ''
     this.stdoutBuffer = ''
     this.lastError = undefined
+    this.idleTimer = null
+  }
+  touchActivity() {
+    if (!UNRESTRICTED_OWNER_MODE) return
+    clearTimeout(this.idleTimer)
+    this.idleTimer = setTimeout(() => this.stop(), OWNER_PI_IDLE_MS)
+    this.idleTimer.unref?.()
   }
   get running() { return this.process?.exitCode === null && !this.process.killed }
   async health() {
@@ -109,7 +119,7 @@ class PiRpcProcess {
     return { ok: version.ok, cwd: PI_CWD, piBin: PI_BIN, piVersion: version.version, process: this.running ? 'running' : 'stopped', error: version.error, instructions: version.ok ? undefined : 'Instala Pi o configura PI_CHAT_BIN.' }
   }
   async ensureStarted() {
-    if (this.running) return
+    if (this.running) { this.touchActivity(); return }
     const child = spawn(PI_BIN, piRuntimeArgs(), {
       cwd: PI_CWD,
       env: piProcessEnv(),
@@ -125,6 +135,7 @@ class PiRpcProcess {
     child.once('error', (error) => this.handleExit(error))
     child.once('exit', (code, signal) => this.handleExit(new Error(`Pi RPC terminó${code === null ? '' : ` con código ${code}`}${signal ? ` (${signal})` : ''}.${this.stderr ? ` stderr: ${this.stderr}` : ''}`)))
     await new Promise((resolve) => setTimeout(resolve, 200))
+    this.touchActivity()
     if (!this.running) throw new Error(this.lastError || `No se pudo iniciar Pi RPC. ${this.stderr}`)
   }
   async send(command, timeoutMs = 15_000) {
@@ -150,6 +161,8 @@ class PiRpcProcess {
     this.process.stdin.write(`${JSON.stringify({ ...response, type: 'extension_ui_response' })}\n`)
   }
   async stop() {
+    clearTimeout(this.idleTimer)
+    this.idleTimer = null
     const child = this.process
     if (!child) return
     child.kill('SIGTERM')
@@ -188,6 +201,7 @@ class PiRpcProcess {
     }
   }
   handleLine(rawLine) {
+    this.touchActivity()
     let event
     try { event = JSON.parse(rawLine) } catch (error) { this.lastError = `No pude parsear JSONL Pi: ${error}`; return }
     if (event.type === 'response' && typeof event.id === 'string') {
@@ -1133,6 +1147,7 @@ const server = http.createServer(async (req, res) => {
         mock: MOCK_MODE,
         adminBaseUrl: MOCK_MODE ? 'mock://fixvox-admin' : ADMIN_BASE_URL,
         piCwd: PI_CWD,
+        piMode: UNRESTRICTED_OWNER_MODE ? 'unrestricted-owner' : REMOTE_AGENT_ENABLED ? 'isolated' : 'standard',
         user: session ? { provider: session.provider, emailRedacted: session.email ? redactGoogleEmail(session.email) : null, name: session.name || null } : null,
       guardrails: [
         'No push/deploy/systemd/tunnel sin aprobacion explicita.',
@@ -1142,11 +1157,12 @@ const server = http.createServer(async (req, res) => {
       })
     }
     if (url.pathname === '/api/pi-chat/health') {
-      await requireGoogleRole(req, ['owner'])
+      if (UNRESTRICTED_OWNER_MODE) await requireRecentGoogleRole(req, ['owner'])
+      else await requireGoogleRole(req, ['owner'])
       return sendJson(res, 200, MOCK_MODE ? { ok: true, cwd: PI_CWD, piBin: PI_BIN, piVersion: '0.80.2-mock', process: 'mock' } : await pi.health())
     }
     if (url.pathname === '/api/pi-chat/command' && req.method === 'POST') {
-      let principal = await requireGoogleRole(req, ['owner'])
+      let principal = UNRESTRICTED_OWNER_MODE ? await requireRecentGoogleRole(req, ['owner']) : await requireGoogleRole(req, ['owner'])
       const body = JSON.parse(await readBody(req) || '{}')
       const command = body.command || body
       if (command?.type === 'extension_ui_response') {
@@ -1164,7 +1180,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, response: await pi.send(command) })
     }
     if (url.pathname === '/api/pi-chat/prompt' && req.method === 'POST') {
-      const principal = await requireGoogleRole(req, ['owner'])
+      const principal = UNRESTRICTED_OWNER_MODE ? await requireRecentGoogleRole(req, ['owner']) : await requireGoogleRole(req, ['owner'])
       const sessionKey = piChatSessionKey(req, principal)
       const body = JSON.parse(await readBody(req) || '{}')
       const message = String(body.message || '').trim()
