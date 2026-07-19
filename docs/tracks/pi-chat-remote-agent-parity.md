@@ -326,3 +326,5 @@ Activación production autorizada y completada:
 - Prompt UI real `Respondé exactamente OWNER_MODE_OK. No uses herramientas.` devolvió `OWNER_MODE_OK`, settled/listo, 0 tools.
 - Public health PASS. No commit/push/deploy durante el smoke.
 - Nota operativa: el checkout VPS canónico ya tenía 19 paths dirty y HEAD `0ae95311` por el modelo histórico de Admin deploy; no se limpió ni revirtió nada. Trusted Owner Pi ve exactamente ese estado, como una sesión manual en el VPS.
+
+Follow-up pre-cierre: se detectó que la ruta prompt todavía agregaba los guardrails históricos aunque el proceso ya era unrestricted. Fix local hace pass-through byte-for-byte del mensaje en owner mode, reporta guardrails vacíos + warning honesto, conserva wrapper sólo en modos aislados y prueba exclusión mutua/recent OAuth. Tests server/access 21/21 PASS; pendiente commit y redeploy Admin acotado.

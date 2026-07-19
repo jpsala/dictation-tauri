@@ -968,6 +968,11 @@ async function mockPrompt(message, send) {
   send({ type: 'tool_execution_start', toolCallId: toolId, toolName: 'fixvox.local_ui_probe', extensionPath: 'mock/local' })
   await new Promise((resolve) => setTimeout(resolve, 120))
   send({ type: 'tool_execution_end', toolCallId: toolId, toolName: 'fixvox.local_ui_probe', result: { ok: true, checked: ['sidebar', 'chat', 'composer', 'activity'] } })
+  if (message.startsWith('FIXVOX_ECHO_PROMPT:')) {
+    send({ type: 'message_end', message: { role: 'assistant', content: message } })
+    send({ type: 'agent_end' })
+    return
+  }
   if (message.includes('FIXVOX_USER_MESSAGE_ONLY_EVENT')) {
     send({ type: 'message_end', message: { role: 'user', content: message } })
     send({ type: 'agent_end', messages: [{ role: 'user', content: message }] })
@@ -1023,7 +1028,8 @@ function mockAdmin(pathname) {
   return null
 }
 
-function withGuardrails(message) {
+function piPromptMessage(message) {
+  if (UNRESTRICTED_OWNER_MODE) return message
   return `${message}\n\nContexto: estas en Fixvox Admin Web remoto, repo /home/jpsal/dev/dictation-tauri. Guardrails: no push, deploy, systemd/tunnel, policy mutation, secrets ni acciones destructivas sin confirmacion explicita de JP. No imprimir tokens, emails completos, account IDs, device IDs completos, transcripts, selected text ni audio.`
 }
 
@@ -1149,11 +1155,12 @@ const server = http.createServer(async (req, res) => {
         piCwd: PI_CWD,
         piMode: UNRESTRICTED_OWNER_MODE ? 'unrestricted-owner' : REMOTE_AGENT_ENABLED ? 'isolated' : 'standard',
         user: session ? { provider: session.provider, emailRedacted: session.email ? redactGoogleEmail(session.email) : null, name: session.name || null } : null,
-      guardrails: [
+      guardrails: UNRESTRICTED_OWNER_MODE ? [] : [
         'No push/deploy/systemd/tunnel sin aprobacion explicita.',
         'No mutar policies/users en production sin confirmacion explicita.',
         'No imprimir tokens, account IDs crudos, device IDs completos, transcripts ni audio.',
         ],
+      unrestrictedOwnerWarning: UNRESTRICTED_OWNER_MODE ? 'Pi tiene la misma autoridad que la identidad jpsal del VPS.' : undefined,
       })
     }
     if (url.pathname === '/api/pi-chat/health') {
@@ -1193,8 +1200,9 @@ const server = http.createServer(async (req, res) => {
       }
       send({ type: 'web_status', status: 'starting' })
       try {
-        if (MOCK_MODE) await mockPrompt(message, send)
-        else await pi.prompt(withGuardrails(message), send)
+        const effectiveMessage = piPromptMessage(message)
+        if (MOCK_MODE) await mockPrompt(effectiveMessage, send)
+        else await pi.prompt(effectiveMessage, send)
         send({ type: 'web_status', status: 'done' })
       } catch (error) {
         send({ type: 'web_error', error: error instanceof Error ? error.message : 'Pi error' })

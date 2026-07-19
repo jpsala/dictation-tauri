@@ -53,6 +53,15 @@ test('server RBAC accepts a verified Google session without recent reauthenticat
   })
 })
 
+test('isolated and unrestricted Pi modes are mutually exclusive', async () => {
+  const child = spawn(process.execPath, ['server.mjs'], { cwd: new URL('.', import.meta.url), env: { ...process.env, FIXVOX_ADMIN_MOCK: '1', PI_CHAT_UNRESTRICTED_OWNER: '1', PI_CHAT_REMOTE_AGENT_ENABLED: '1' }, stdio: ['ignore', 'ignore', 'pipe'] })
+  let stderr = ''
+  child.stderr.on('data', (chunk) => { stderr += chunk.toString() })
+  const [code] = await once(child, 'exit')
+  assert.notEqual(code, 0)
+  assert.match(stderr, /cannot enable isolated and unrestricted modes together/)
+})
+
 test('unrestricted owner mode requires recent Google auth at the Pi perimeter', async () => {
   await withServer({ PI_CHAT_UNRESTRICTED_OWNER: '1', PI_CHAT_REMOTE_AGENT_ENABLED: '0', FIXVOX_ADMIN_MOCK_AUTHENTICATED_AT: String(Date.now() - 11 * 60 * 1000) }, async () => {
     const envResponse = await fetch(`${baseUrl}/api/admin/env`)
@@ -63,11 +72,19 @@ test('unrestricted owner mode requires recent Google auth at the Pi perimeter', 
   })
 })
 
-test('recent owner can use unrestricted Pi perimeter in mock mode', async () => {
+test('recent owner gets an exact unwrapped prompt in unrestricted mode', async () => {
   await withServer({ PI_CHAT_UNRESTRICTED_OWNER: '1', PI_CHAT_REMOTE_AGENT_ENABLED: '0' }, async () => {
     assert.equal((await fetch(`${baseUrl}/api/pi-chat/health`)).status, 200)
     assert.equal((await fetch(`${baseUrl}/api/pi-chat/command`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: { type: 'get_state' } }) })).status, 200)
-    assert.equal((await fetch(`${baseUrl}/api/pi-chat/prompt`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: 'hello' }) })).status, 200)
+    const envPayload = await (await fetch(`${baseUrl}/api/admin/env`)).json()
+    assert.deepEqual(envPayload.guardrails, [])
+    assert.match(envPayload.unrestrictedOwnerWarning, /misma autoridad/)
+    const exactMessage = 'FIXVOX_ECHO_PROMPT: raw owner message'
+    const prompt = await fetch(`${baseUrl}/api/pi-chat/prompt`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: exactMessage }) })
+    assert.equal(prompt.status, 200)
+    const stream = await prompt.text()
+    assert.match(stream, new RegExp(exactMessage))
+    assert.doesNotMatch(stream, /Guardrails: no push|confirmacion explicita/)
   })
 })
 
