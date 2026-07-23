@@ -48,7 +48,7 @@ class MemoryMigrationDatabase implements MigrationDatabase {
 describe("PostgreSQL migration manifest", () => {
   test("loads a contiguous initial migration with a deterministic checksum", async () => {
     const migrations = await loadMigrations();
-    expect(migrations).toHaveLength(4);
+    expect(migrations).toHaveLength(6);
     expect(migrations[0].version).toBe(1);
     expect(migrations[0].name).toBe("initial_control_plane");
     expect(migrations[0].checksum).toBe(migrationChecksum(migrations[0].sql));
@@ -60,23 +60,35 @@ describe("PostgreSQL migration manifest", () => {
     expect(migrations[3].version).toBe(4);
     expect(migrations[3].name).toBe("admin_read_projections");
     expect(migrations[3].sql).toContain("prewarm_daily_counters");
+    expect(migrations[4].version).toBe(5);
+    expect(migrations[4].name).toBe("budget_ledger");
+    expect(migrations[4].sql).toContain("CREATE TABLE budget_counters");
+    expect(migrations[4].sql).toContain("CREATE TABLE budget_reservations");
+    expect(migrations[4].sql).not.toMatch(/\bSUM\s*\(/i);
+    expect(migrations[5].version).toBe(6);
+    expect(migrations[5].name).toBe("budget_ledger_async_projection");
+    expect(migrations[5].sql).toContain("CREATE TABLE budget_ledger_checkpoints");
+    expect(migrations[5].sql).toContain("CREATE TABLE budget_ledger_outbox");
+    expect(migrations[5].sql).toContain("CREATE TABLE budget_ledger_read_model");
   });
 
   test("applies pending migrations once and records their checksums", async () => {
     const database = new MemoryMigrationDatabase();
     const migrations = await loadMigrations();
 
-    expect(await applyMigrations(database, migrations)).toEqual({ applied: [1, 2, 3, 4], currentVersion: 4 });
+    expect(await applyMigrations(database, migrations)).toEqual({ applied: [1, 2, 3, 4, 5, 6], currentVersion: 6 });
     expect(database.applied).toEqual([
       { version: 1, name: migrations[0].name, checksum: migrations[0].checksum },
       { version: 2, name: migrations[1].name, checksum: migrations[1].checksum },
       { version: 3, name: migrations[2].name, checksum: migrations[2].checksum },
       { version: 4, name: migrations[3].name, checksum: migrations[3].checksum },
+      { version: 5, name: migrations[4].name, checksum: migrations[4].checksum },
+      { version: 6, name: migrations[5].name, checksum: migrations[5].checksum },
     ]);
-    expect(database.transactions).toBe(4);
+    expect(database.transactions).toBe(6);
 
-    expect(await applyMigrations(database, migrations)).toEqual({ applied: [], currentVersion: 4 });
-    expect(database.transactions).toBe(4);
+    expect(await applyMigrations(database, migrations)).toEqual({ applied: [], currentVersion: 6 });
+    expect(database.transactions).toBe(6);
   });
 
   test("fails closed when an applied checksum differs", async () => {
@@ -91,9 +103,9 @@ describe("PostgreSQL migration manifest", () => {
   test("fails closed when the database contains an unknown migration", async () => {
     const database = new MemoryMigrationDatabase();
     const migrations = await loadMigrations();
-    database.applied.push({ version: 5, name: "future", checksum: "future" });
+    database.applied.push({ version: 7, name: "future", checksum: "future" });
 
-    await expect(applyMigrations(database, migrations)).rejects.toThrow("database_schema_ahead_or_unknown:5");
+    await expect(applyMigrations(database, migrations)).rejects.toThrow("database_schema_ahead_or_unknown:7");
     expect(database.transactions).toBe(0);
   });
 });

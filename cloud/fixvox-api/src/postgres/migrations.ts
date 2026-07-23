@@ -28,6 +28,8 @@ const MIGRATION_FILES = [
   "0002_immutable_history_guards.sql",
   "0003_auth_desktop_handoff.sql",
   "0004_admin_read_projections.sql",
+  "0005_budget_ledger.sql",
+  "0006_budget_ledger_async_projection.sql",
 ] as const;
 
 export function migrationChecksum(sql: string): string {

@@ -1,8 +1,8 @@
 # Tasks: Fixvox Self-Hosted Control Plane
 
-**Input**: `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/http-api.md`
+**Input**: `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/http-api.md`, `contracts/product-api.md`, `contracts/temporary-aliases.md`, `contracts/product-route-disposition.md`
 
-**Execution rule**: Manual staged work only. Execute one checkpoint at a time, run its checks, update this file/docs, and stop. Do not use Taskflow or bulk-complete this plan unless JP explicitly changes that preference.
+**Execution rule**: Manual staged work only. Execute one approved outcome band at a time, run its checks, update this file/docs, and stop. Do not use Taskflow or bulk-complete this plan unless JP explicitly changes that preference.
 
 ## Checkpoint A - Freeze contracts and current authority
 
@@ -95,10 +95,12 @@ cd cloud/fixvox-proxy; npx wrangler deploy --dry-run
 
 ### Product-first recalibration (2026-07-16)
 
-- [x] D-R1 Build the 73-fixture/72-route consumer and disposition map (`canonical`, `redesign`, `temporary-compat`, `drop`) plus the scheduled boundary.
-- [ ] D-R2 Specify typed canonical contracts for desktop bootstrap/session, transcription, runtime actions and Admin-BFF domain calls; name every alias owner and retirement condition.
-- [ ] D-R3 Reconcile `spec.md`, `plan.md`, `contracts/http-api.md`, this task list and the closure track around canonical-flow gates rather than Worker equality.
-- [ ] D-R4 Review the product contract and migration slices before any runtime, Tauri or Admin implementation.
+- [x] D-R1 Build and reconcile the 74-fixture/73-route consumer and disposition map (`canonical`, `redesign`, `temporary-compat`, `drop`) plus the scheduled boundary.
+- [x] D-R2 Finalize the normative typed canonical contracts and complete the 40-scenario/39-alias ledger, including atomic `admin-profile-apply`.
+- [x] D-R3 Reconcile `spec.md`, `plan.md`, contracts, this task list and the closure track; preserve historical blocked receipts while removing stale current blockers.
+- [x] D-R4 Review the D2-D4 migration slices against the fully reconciled supported-consumer inventory and non-negotiable auth/quota/privacy/audit/exactly-one-provider invariants before runtime, Tauri or Admin implementation.
+
+**Cadence amendment (2026-07-19):** D-R2-D-R4 formed one continuous outcome band, **D1 Contract closure**, now complete. The contracts are normative and ready for TDD. Detailed implementation tasks below remain checklists inside D2-D4, not mandatory micro-stops. D2 completed provider-free on 2026-07-19; D3 is the next separate batch and remains unstarted.
 
 ### D-R1 receipt (2026-07-17)
 
@@ -107,18 +109,53 @@ cd cloud/fixvox-proxy; npx wrangler deploy --dry-run
 - Mechanical validation covered the exact fixture set, 72 routes, scheduled boundary, eight Tauri paths and 26 `proxyAdmin(...)` prefixes. Contract inventory passed 4/4; `git diff --check` and context audit passed without errors.
 - This batch changed docs only. It did not define Batch 2 schemas, modify runtime/client code, touch PostgreSQL/Cloudflare/production, or begin Checkpoint E.
 
-The original T022-T029 implementation items remain useful inputs but are suspended until D-R1-D-R4 determine whether each belongs to a canonical flow, migration alias or dropped legacy surface.
+### Reality audit receipt (2026-07-19)
 
-- [ ] T022 Implement strict config loading and secret-presence validation in `cloud/fixvox-api/src/config.ts`.
-- [ ] T023 Implement `Bun.serve` adapter, graceful shutdown, request limits/timeouts, and JSON error boundary.
-- [ ] T024 Implement `/health` compatibility and self-hosted `/ready` safe dependency/schema checks.
-- [ ] T025 Wire device/auth/preflight/Admin routes to PostgreSQL repositories.
-- [ ] T026 Wire STT/chat provider proxy with streaming/bounded buffers and no content persistence.
-- [ ] T027 Add structured allowlist logging and raw-body/content redaction tests.
-- [ ] T028 Replace Worker cron behavior with explicit job functions and planned systemd timers.
-- [ ] T029 Run the same contract suite against Worker and Bun adapters and compare normalized responses.
+- Cloudflare API confirms Worker `df416730-61b8-4222-ab5f-282879251db9` at 100%, with KV `USAGE`, DO `USAGE_COUNTERS`, DO `CONTROL_PLANE_PUBLISH_LOCKS` and `fetch`/`scheduled`; public health is green. Cloudflare remains authority and hot path.
+- VPS runs only the Admin/Pi surface relevant here: `fixvox-admin-web.service` is active on `127.0.0.1:8787`, production mode, proxying `https://auth-fixvox.jpsala.dev`.
+- No installed `fixvox-api` unit or target directories exist on VPS, and no dedicated Fixvox PostgreSQL was proven there. Existing PostgreSQL processes belong to containerized workloads that were not inspected beyond read-only process evidence.
+- Local self-hosted code is real and green at its bounded level: TypeScript, API unit 17/17 and PostgreSQL integration 12/12. Production composition still rejects non-mock mode; provider quota consume/release and Admin mutations remain absent.
+- Tauri still defaults to the Cloudflare hostname. VPS checkout/WIP drift, the `8787` port collision, stale split-key support in `fixvox-admin`, and historical Worker-153 wording are explicit migration inputs.
+- Audit was read-only: no deploy, restart, import, provider call, secret change, database mutation outside isolated `fixvox_test`, DNS or production mutation.
 
-**Checkpoint D gate**: Full provider-free contract parity; no VPS/public route.
+D1 assigned implementation to D2-D4. D2-D4 are complete; the closure receipt lives in `docs/tracks/fixvox-product-first-self-hosted-contract-plan.md`.
+
+### D2 — Runtime + Tauri (complete)
+
+- [x] T022 Complete strict config loading, secret-presence validation, explicit non-Admin port, and mock-only provider composition tests.
+- [x] T023 Complete the Bun adapter, graceful shutdown, request limits/timeouts, redacted JSON boundary, `/health`, and safe `/ready` contract.
+- [x] T024 TDD canonical desktop bootstrap/session/auth/context and implement only the Desktop/Auth aliases listed in `temporary-aliases.md` as thin adapters.
+- [x] T025 TDD canonical transcription admission → reserve → exactly-one mocked provider dispatch → consume/release/ambiguous finalization, including `pro-unlimited` zero writes and concurrency/p95 gate.
+- [x] T026 TDD typed `postprocess`, `selection_transform`, and `assistant` actions with server-owned engine/prompt/provider/model and one transformation/provider call.
+- [x] T027 Add structured allowlist logging, privacy-sentinel scans, operation idempotency, and alias/canonical 0/1-call tests.
+- [x] T028 Migrate Tauri coordinately to bootstrap/context, canonical transcription and typed actions; remove separate preflight from the canonical client flow while retaining rollback aliases for supported releases.
+- [x] T029 Run D2 canonical and Desktop/Auth alias suites provider-free; record consumer/static route inventory. No physical/provider smoke.
+
+### D2 COMPLETE receipt (2026-07-19)
+
+- Bun API owns canonical desktop bootstrap/context/auth sessions, transcription and typed runtime actions on explicit local port `8790`; production-mode config still fails closed without provider secrets.
+- Metered runtime reserves immediately before one mock provider dispatch, consumes/releases without retrying ambiguous outcomes, rejects duplicate operation IDs, and keeps `pro-unlimited` free of reservation/event writes. PostgreSQL quota-boundary p95 was **5.011 ms**, below the 15 ms gate.
+- Tauri now builds canonical product-v1 bootstrap/auth/transcription/action requests and no longer performs the separate preflight in the canonical transcription flow. Named Desktop/Auth and preflight helpers remain only as rollback/compatibility surface; the static contract test proves canonical callers and retained aliases separately.
+- Provider-free checks: TypeScript; API **26/26**; core **5/5**; PostgreSQL `fixvox_test` **13/13**; contract inventory **4/4**; runtime pipeline **40/40**; host-runtime **53/53**; `cargo fmt --check`; `cargo check`; Fixvox cloud contract **36/36**; Rust lib **104 passed, 1 ignored**; `git diff --check`.
+- Residual non-blocking debt: Rust reports dead-code warnings around retained legacy preflight helpers; do not delete them before their compatibility/consumer retirement gate. Pi Lens also flags high complexity/fan-out in `cloud/fixvox-api/src/app.ts` (`dispatch` 202; `executeRuntime` 28); refactor only as a bounded safety improvement, not as hidden D3 scope.
+- No dependency/schema change, provider/OAuth real, physical desktop smoke, secret, VPS, production, deploy, import, commit or push occurred. Cloudflare remains authority/hot path. D3 was not started.
+
+### D3 — Control Room + retained operations (complete)
+
+**RBAC decision (2026-07-19):** role targets must be already-linked accounts selected by opaque `principalKey`; email is redacted display metadata only. Stable browser `/api/admin/*` routes remain, while the BFF maps authorized selections to canonical role operations. Free-form `subjectEmail`, pending email invitations and schema changes are outside D3.
+
+- [x] D3-01 TDD `/product/v1/control-room/*` DTOs and auth matrix by Session/RBAC, Profiles, Configuration, Engines/Pricing, Prompts, Accounts, Devices, Groups, Usage, Audit and Signals.
+- [x] D3-02 Migrate stable browser `/api/admin/*` BFF calls domain by domain; keep backend credentials server-side and each old alias until caller count is zero.
+- [x] D3-03 Implement revision-safe mutations, publish/rollback preview-confirmation, recent-Google/RBAC checks and immutable redacted audit with provider-free OAuth fixtures.
+- [x] D3-04 Implement bounded product signals and only the five retained internal jobs in `product-api.md`; keep dropped support/prewarm/counter routes absent.
+- [x] D3-05 Run every Control Room alias test and retire none unless its ledger condition and rollback review pass.
+
+### D4 — Checkpoint D final gate (complete)
+
+- [x] D4-01 Verify canonical desktop/Control Room flows, all 40 temporary-compat fixture scenarios across 39 unique aliases, dropped-route absence, auth/RBAC, quota concurrency, privacy sentinels and exactly-one-provider behavior provider-free.
+- [x] D4-02 Run the broad deterministic ladder, confirm `fixvox_test` safe state and Cloudflare authority unchanged, then write the single Checkpoint D receipt or block.
+
+**Checkpoint D gate**: Canonical desktop/Admin flows and named temporary aliases pass provider-free with privacy/auth/quota/exactly-once evidence; no VPS/public route.
 
 ---
 
@@ -150,20 +187,41 @@ A read-only conformance review found the current gate red and established the cl
 - API TypeScript, bootstrap 6/6, PostgreSQL 12/12, migration verification and contract inventory 4/4 passed twice in order. Final state remained `fixvox_test`, `cloudflare-authority`, revision `0`, with the advisory lock available and released.
 - Batch 1 is complete. Batch 2 (truthful 73-fixture HTTP matrix plus the explicit scheduled boundary) is unlocked; no Checkpoint D implementation task is marked complete yet.
 
-**Checkpoint D remains incomplete. Do not begin Checkpoint E.**
+### D1 blocked receipt (2026-07-19)
+
+- Drafted `contracts/product-api.md` and the 39-scenario stale-map subset in `contracts/temporary-aliases.md`.
+- Mechanical source comparison then found 74 top-level HTTP fixtures versus 73 disposition rows. Missing: supported `admin-profile-apply` (`POST /admin/control-plane/profiles/apply`), called by Control Room `/api/admin/profiles/apply`.
+- This contradiction changes route disposition/transition, so D-R2-D-R4 remain open and the drafts are non-normative. No inference or runtime work followed.
+- Docs-only: no runtime, Tauri, Admin, Worker, DB, provider, OAuth, VPS, production or external side effect.
+
+### D1 COMPLETE receipt (2026-07-19)
+
+- D-R1..D-R4 are closed. Normative `product-api.md`, `temporary-aliases.md`, `http-api.md`, and `product-route-disposition.md` reconcile the current source at 74 HTTP fixtures, 73 method/path pairs, 40 temporary-compat scenarios, and 39 unique aliases.
+- Atomic profile apply is ready for TDD at `POST /product/v1/control-room/profiles/{profileKey}/apply`: `expectedRevision`, recent Google + `publish`, server-owned principal/actor/credential, one authoritative lock, zero-write stale/invalid failures, exactly one publication/revision/audit/receipt on success, and write-free identical replay. Draft/publish remains isolated legacy compatibility only.
+- Spec, plan, tasks, contracts, closure track, Working Memory and generated context index were reconciled docs-only. Historical D1 BLOCKED, D1R-1 and D1R-2 receipts remain unchanged as chronology.
+- Focused apply tests and mechanical source/disposition/alias plus contract assertions passed. D2-D4 remain unexecuted; Cloudflare remains authority/hot path.
+
+**Checkpoint D is complete. D1-D4 and the final gate are closed; see the 2026-07-20 receipt in the canonical track.**
 
 ## Checkpoint E - Local product integration
 
-**Goal**: Prove current Admin and Tauri clients work unchanged against the local service.
+**Goal**: Prove the coordinated Admin BFF and Tauri adapters work against the canonical local service, with temporary aliases only for explicitly supported older consumers.
 
-- [ ] T030 Add local start scripts for PostgreSQL + `fixvox-api` with explicit LOCAL banner/base URL.
-- [ ] T031 Run Admin Web against local API and verify Profiles/Engines/Prompts/Presets/Accounts/Devices/Audit read paths.
-- [ ] T032 Verify draft/preview/publish/rollback locally with synthetic data and immutable audit.
-- [ ] T033 Run Tauri provider-free/local contract flow against the same endpoint paths.
-- [ ] T034 Verify normal dictation, selection/preset, and Quick Chat routing use effective profile engines/prompts.
-- [ ] T035 With separate approval, run one local real-provider smoke and prove exactly one provider request.
+- [x] T030 Add local start scripts for PostgreSQL + `fixvox-api` with explicit LOCAL banner/base URL.
+- [x] T031 Run Admin Web against local API and verify Profiles/Engines/Prompts/Presets/Accounts/Devices/Audit read paths.
+- [x] T032 Verify the product-first atomic apply/rollback path locally with synthetic data, idempotent receipts and immutable audit. Legacy draft/publish remains isolated compatibility and is not used to implement apply.
+- [x] T033 Run Tauri provider-free/local contract flow against the same endpoint paths.
+- [x] T034 Verify normal dictation, selection/preset, and Quick Chat routing use effective profile engines/prompts.
+- [x] T035 With separate approval, run one local real-provider smoke and prove exactly one provider request.
 
-**Checkpoint E gate**: Local product parity and privacy evidence pass.
+**Checkpoint E gate**: Complete. Local product parity/privacy passed provider-free, followed by one explicitly authorized real Groq chat request with synthetic content and exactly-one evidence.
+
+### Checkpoint E provider-free receipt (2026-07-20)
+
+- `npm run selfhosted:api:local` now starts only loopback `fixvox-api` on `8790`, requires the isolated `fixvox_test` database, runs migrations, prints an explicit LOCAL/MOCK banner and leaves Cloudflare authority unchanged. `npm run admin:web:local -- -SelfHosted` selects the same local backend with a fail-closed loopback-only auth fixture; production mode cannot enable it.
+- The coordinated smoke starts the real Bun API and Admin BFF against PostgreSQL, verifies Profiles/Engines/Prompts/Presets/Accounts/Devices/Audit, atomic apply + idempotent replay + rollback, immutable redacted audit, canonical bootstrap/context/transcription/actions, and exact server-owned routing for STT, postprocess, selection preset and Quick Chat. It terminates both services and restores `fixvox_test` to `cloudflare-authority` revision `0`.
+- Product profile definitions now materialize engine/provider/model/prompt routing server-side from the PostgreSQL catalog; browser/Tauri responses do not expose routing authority. Canonical apply/rollback require owner/publisher, recent Google, expected revision and typed confirmation, and append one redacted receipt without schema or dependency changes.
+- Final evidence: provider-free local smoke **1/1, 23 assertions**; explicitly authorized T035 real-provider smoke **1/1, 3 assertions**, Groq chat `200`, exactly **1** provider request, output present and no raw content persisted; API unit **29/29**; PostgreSQL **17/17**, quota p95 **4.044 ms**; Admin BFF **22/22**; Tauri canonical/aliases **36/36**; cloud contract **4/4**; build, TypeScript, syntax and `git diff --check` green. Redacted ignored report: `artifacts/self-hosted-control-plane/checkpoint-e/t035-real-provider-smoke.json`. No OAuth real, VPS, Cloudflare/production mutation, deploy, import, DNS, canary, commit, push or publish occurred.
 
 ---
 
@@ -171,15 +229,62 @@ A read-only conformance review found the current gate red and established the cl
 
 **Goal**: Operate the service privately before any public traffic.
 
-- [ ] T036 Update `C:/dev/infra` plan/runbook with service owner, port, paths, DB, backups, checks, and secret variable names only.
-- [ ] T037 Request approval and provision dedicated PostgreSQL/service runtime on VPS; do not reuse Coolify internal DB.
-- [ ] T038 Install/deploy `fixvox-api.service` bound to loopback/private network with protected env.
-- [ ] T039 Add health/readiness/status/log wrappers and systemd timer(s).
-- [ ] T040 Configure encrypted backup and retention outside the repo.
+- [x] T036 Update `C:/dev/infra` plan/runbook with service owner, port, paths, DB, backups, checks, and secret variable names only.
+- [x] T037 Request approval and provision dedicated PostgreSQL/service runtime on VPS; do not reuse Coolify internal DB.
+- [x] T038 Install/deploy `fixvox-api.service` bound to loopback/private network with protected env.
+- [x] T039 Add health/readiness/status/log wrappers and systemd timer(s).
+- [x] T040 Configure encrypted backup and retention outside the repo.
 - [ ] T041 Rehearse service restart, application rollback, database backup, and isolated restore.
+  - [x] F5R1 local control-release proof: two deterministic repackages from
+    approved archive `9afa…`; runtime identity and isolated `/health` passed.
+    F5R2 está superseded; F5R3-F6 forman ahora un outcome band consolidado.
 - [ ] T042 Verify through SSH tunnel/host-local requests only; no public DNS route.
 
-**Checkpoint F gate**: Loopback service and restore rehearsal pass.
+**F1 receipt (2026-07-20)**: T036 complete with matching project/Infra runbooks and deterministic dry-run deployment assets under `ops/fixvox-api/`.
+
+**F2 receipt (2026-07-20)**: T037 complete after explicit install/VPS gates. PostgreSQL 16 host-managed, dedicated DB/roles, schema v4, protected config and an off-host backup identity/public recipient pair passed checksums, least-privilege, permissions and synthetic encryption verification.
+
+**F3 attempt (2026-07-20)**: T038 remains incomplete. Hash, immutable release, `current`, unit verification and preflight passed, but runtime boot failed because the approved bundle omits `fixvox-proxy` modules imported by `fixvox-api/src/projections.ts`. The first-deploy unit was stopped and disabled; `8790` is free, Admin `8787` remains healthy and Cloudflare remains authority. F3 is blocked pending a reviewed dependency closure, exact-bundle local boot proof and a new authorization.
+
+**F3R4 local review receipt (2026-07-20)**: The one bounded local repair aligned the Bun `admin-runtime-policy` projection with the Worker shape by carrying persisted selection-preset defaults with safe fallback metadata and excluding the internal `groupOptions` field from that DTO. The frozen core default and `defaults.recipePolicy` remain intact. The applicable parity report compares 27 fixtures with `missingWorker/mismatches = 0/0`; `npm run cloud:test` is **154/154**, API unit is **29/29**, the exact archive boot smoke returns health 200 and cleans up, and the deterministic archive hash is `9afa5dc85b783793b25573ff50d5d6b918afc83f95880c6231f8b44c42f7bb0d` (local evidence only, not transferred). Project docs were updated before the Infra mirror. No VPS, provider, import, DNS/Tunnel, public traffic, commit or push occurred.
+
+**F3R4 status**: complete; focus was `waiting_gate`. Reference: `docs/tracks/fixvox-self-hosted-checkpoint-f-vps-loopback-plan.md`.
+
+**F3R5 VPS retry receipt (2026-07-20)**: With fresh explicit authorization, the approved archive SHA-256 `9afa5dc85b783793b25573ff50d5d6b918afc83f95880c6231f8b44c42f7bb0d` was verified locally, in staging, and in immutable release `9afa5dc85b783793`; `current` moved atomically while `cdda90ea76d4c361` remained preserved. Preflight passed with `8790` free and final resources above 1 GiB; PostgreSQL is accepting with schema v4, all four migration checksums exact, and `cloudflare-authority`. The user unit passed `systemd-analyze --user verify`, is enabled/active/running with zero restarts, and owns exactly one `127.0.0.1:8790` listener/PID. Host-local `/health` and `/ready` returned 200 with DB/schema/jobs and authority green. Admin `127.0.0.1:8787` remained active/200; mock-only env allowlist, redacted allowlisted journal/privacy sentinel, and the dirty VPS checkout fingerprint remained green. No provider, import, DNS/Tunnel, public route, Coolify/Zulip, commit or push occurred.
+
+**F3R5 status**: complete. F4 was separately authorized and is complete; F5-F6 remain unstarted and separately gated. The Checkpoint F gate still requires restart, rollback and isolated restore rehearsal.
+
+**F4 receipt (2026-07-21)**: Installed six F4 wrappers and four user units/timers under the approved VPS paths; `systemd-analyze --user verify`, daemon-reload, enable/start and timer visibility passed. Timers use `Persistent=true` with 15/30 minute randomized jitter; maintenance and backup wrappers use fail-closed `flock` locks. Manual and systemd maintenance/backup executions succeeded. The encrypted artifact is `pg_dump` custom → `zstd` → `age` with only the public recipient; no decrypt or private identity use occurred. Backup and manifest are `jpsal`-owned, `0600`, inside the `0700` backup directory; age header/hash, strict manifest allowlist, health/readiness `cloudflare-authority`, Admin `/healthz` 200, loopback listener, resources and redacted journal/privacy checks passed. Lock-collision tests produced no extra backup. No provider, import, DNS/Tunnel, public traffic, restore, commit or push occurred.
+
+**F4 status**: complete; focus returns to `waiting_gate`. F5 requires fresh explicit authorization and is not started.
+
+**F5 blocked receipt (2026-07-21)**: T041 remains unchecked. The critical rollback guard found only two remote releases: current `9afa5dc85b783793` and the prior `cdda90ea76d4c361`. The prior release is the known defective dependency-closure bundle and is not an approved arrancable rollback target. No other approved healthy target exists in the assets/runbook/remote release set. Therefore no `current` transition, rollback restart, decrypt, `pg_restore`, temporary database creation or cleanup was attempted. Read-only VPS evidence preserved `current -> 9afa5dc85b783793`, enabled/active API, one loopback listener, health/readiness 200 with `cloudflare-authority`, Admin 8787 200, F4 timers/backups, `MemAvailable=2601444 KiB`, `/` free `58971424 KiB`, and the 19-entry dirty checkout. Cloudflare remains authority; no traffic, mutation, provider, import, DNS/Tunnel or checkout change occurred.
+
+**F5 recovery plan (2026-07-21)**: T041 remains one gate but is resumed through four serial bounded batches. F5R1 locally builds a deterministic rollback-control archive from the approved `9afa…` archive only; it must have a distinct archive hash while every extracted runtime path and file hash remains identical, and it must pass isolated boot without VPS access. F5R2 is separately gated to promote that control candidate as the forward `current`, preserving `9afa…` as the known-good rollback target. F5R3 is separately gated to rehearse restart, rollback to `9afa…`, and return to the candidate. F5R4 is separately gated to decrypt off-host, restore into one `fixvox_restore_*` database, compare schema/authority/counts/projection hashes, and drop it only after an exact match. `cdda…` is never used or repaired.
+
+**F5R1 receipt (2026-07-21)**: The local builder consumed only the approved archive SHA-256 `9afa5dc85b783793b25573ff50d5d6b918afc83f95880c6231f8b44c42f7bb0d` plus exact manifest SHA-256 `62969be6d7fbef3c99f019f9f9cb26d54a97fecdf2832e8a8ca8d998e71dd6e8`. Two independent builds matched at candidate archive SHA-256 `b18a1e92ad3ef9707f733ffdeecf3a8e2f42967b1935df725d501521e288f28c` / release ID `b18a1e92ad3ef970`, with fixed control epoch `946684801`; all 54 runtime paths and file hashes matched source, allowlist/privacy passed, and isolated candidate boot returned `/health` 200 with cleanup. No checkout `bundle.sh`, VPS, `cdda…`, install, provider, deploy, restart, decrypt, restore, DB, commit, push or publish occurred.
+
+**F5 status**: `waiting_gate` after F5R1. F5R2 is superseded; F5R3,
+F5R4 and T042/F6 are unstarted and consolidated into Gate F Closure. The
+current VPS release, F4 backups/timers and off-host identity remain preserved.
+
+**Checkpoint F gate**: Loopback service, restart/application rollback,
+encrypted backup, and isolated restore pass.
+
+---
+
+## Remaining Cadence Amendment — 2026-07-22
+
+`/flow → Hacer` ejecuta un solo outcome band, no una sesión por cada task. Las
+tareas detalladas siguen como aceptación interna, con esta cadencia restante:
+
+1. **Gate F Closure:** F5R3, F5R4 y F6/T042 en una ejecución larga.
+2. **Checkpoint G:** T043-T048 en una ejecución larga.
+3. **Checkpoint H:** T049-T053 en una ejecución larga con el routing canary.
+4. **Checkpoint I:** cutover separado; Checkpoint J sólo tras estabilización.
+
+Cada band conserva su autorización externa exacta y se detiene fail-closed si
+falla una etapa crítica. No hay handoff ni `/flow` nuevo entre etapas internas.
 
 ---
 
@@ -248,8 +353,13 @@ A read-only conformance review found the current gate red and established the cl
 - H blocks authority cutover I.
 - I stabilization blocks retirement J.
 
-## Current Bounded Batch
+## Current Outcome Band
 
-Checkpoints A-C (T001-T021) are complete. **Checkpoint D is active and incomplete** under manual staged work. Batch 1 deterministic gates are green; JP then selected product-first architecture, superseding route-count parity as the target.
+Checkpoints A-E y F1-F4/F5R1 están completos. F5R2 está superseded. El foco es
+**Gate F Closure**: F5R3, F5R4 y F6/T042 en una sola ejecución Hacer sobre
+`current=4075da53c365a8b1`, rollback `66652d0fa6073c26` y schema 6. Cloudflare
+permanece authority/hot path; releases, backups, timers e identidad off-host
+siguen preservados.
 
-Single execution focus: `docs/tracks/fixvox-product-first-self-hosted-contract-plan.md`, **Batch 1 — Mapa Consumidor/Disposición**, profile **Implementador** with manual staged execution and one owner. Convert the 73 HTTP fixtures/72 unique routes plus scheduled boundary into consumer/disposition evidence, then stop at the batch checkpoint. Do not run Taskflow, edit runtime/clients, start Checkpoint E, provision VPS, deploy, import production state, mutate Admin/Cloudflare, create/copy secrets or use real providers.
+Next action: obtain one explicit authorization for the consolidated Gate F
+Closure brief; do not operate the VPS before that gate.

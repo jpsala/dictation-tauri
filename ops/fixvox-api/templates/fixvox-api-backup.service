@@ -1,0 +1,17 @@
+[Unit]
+Description=Fixvox API encrypted PostgreSQL backup
+After=fixvox-api.service postgresql.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/jpsal/opt/fixvox-api/current
+EnvironmentFile=/home/jpsal/.config/dictation-tauri/fixvox-api.env
+Environment=PATH=/home/jpsal/.local/bin:/home/jpsal/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/home/jpsal/.local/bin/fixvox-api-backup --execute --approved-f4
+TimeoutStartSec=900
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/jpsal/backups/fixvox-api

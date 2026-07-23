@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Fixvox API maintenance with jitter
+
+[Timer]
+OnCalendar=*-*-* 03:17:00
+Persistent=true
+RandomizedDelaySec=15m
+AccuracySec=1m
+Unit=fixvox-api-maintenance.service
+
+[Install]
+WantedBy=timers.target

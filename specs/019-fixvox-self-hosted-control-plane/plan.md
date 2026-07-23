@@ -11,7 +11,7 @@ Build a product-owned control-plane/provider runtime from the portable rules tha
 ## Technical Context
 
 **Language/Version**: TypeScript strict, Bun runtime, existing React/Admin and Rust/Tauri clients
-**Primary Dependencies**: Existing `cloud/fixvox-proxy` business rules/tests, Bun Web Request/Response server, PostgreSQL driver/runtime support, systemd user service, optional Cloudflare Tunnel edge
+**Primary Dependencies**: Existing `cloud/fixvox-proxy` business rules/tests, Bun Web Request/Response server, PostgreSQL driver/runtime support, dedicated systemd service, optional Cloudflare Tunnel edge
 **Storage**: Dedicated PostgreSQL; encrypted backups; no durable raw audio/transcript; Redis deferred
 **Testing**: Bun unit/contract/integration tests, isolated PostgreSQL, existing cloud tests, Tauri provider-free tests, gated live preflight/dictation smokes
 **Target Platform**: JP VPS Linux, loopback service behind reverse proxy/Tunnel
@@ -25,8 +25,8 @@ Build a product-owned control-plane/provider runtime from the portable rules tha
 - **Human outcome**: dictation remains available without Cloudflare compute/storage quotas.
 - **Privacy**: provider content remains transient; migration/evidence redacted; secrets stay server-side.
 - **Durable state**: PostgreSQL authority and backup/restore are explicit; browser/temp/KV are not accidental truth after cutover.
-- **Small batches**: implementation is checkpointed; no bulk execution of `tasks.md`.
-- **External boundaries**: PostgreSQL provisioning, VPS deploy, DNS/Tunnel, production import, provider smoke, and Worker retirement are separate approval gates.
+- **Outcome bands**: implementation is checkpointed by coherent results, not by microtask; each band may complete several related tasks before one receipt and broad gate.
+- **External boundaries**: PostgreSQL provisioning, VPS deploy, DNS/Tunnel, production import, provider smoke, and Worker retirement remain separate approval gates.
 - **Verification**: canonical product-flow conformance and temporary-alias tests precede storage migration; canary precedes authority cutover.
 - **Tooling**: manual staged implementation; no Taskflow unless JP reverses the explicit preference.
 
@@ -61,7 +61,11 @@ specs/019-fixvox-self-hosted-control-plane/
 ├── plan.md
 ├── research.md
 ├── data-model.md
-├── contracts/http-api.md
+├── contracts/
+│   ├── http-api.md               # reconciled legacy/reference index
+│   ├── product-api.md            # normative canonical typed contract
+│   ├── temporary-aliases.md      # complete bridge/retirement ledger
+│   └── product-route-disposition.md
 ├── quickstart.md
 └── tasks.md
 ```
@@ -102,6 +106,44 @@ tests/
 
 **Structure Decision**: Extract only domain behavior required by canonical product flows rather than duplicating the Worker. Keep the Worker adapter operational until rollback closes. The self-hosted adapter owns PostgreSQL, server lifecycle, required jobs and observability; Tauri and the Admin BFF may migrate coordinately to cleaner contracts.
 
+## Execution Cadence
+
+JP prefers longer, outcome-based execution bands for reversible local work. The previous micro-batch cadence added review/receipt overhead without reducing material risk. Effective 2026-07-19:
+
+- focused checks run while a band advances; the broad deterministic ladder and one receipt run at the end;
+- no approval or ceremonial stop is required between local/provider-free steps already owned by the active band;
+- a band stops for an unresolved product decision, two failed repair attempts, privacy/auth/quota/exactly-once risk, or scope escape;
+- dependency/schema changes outside the approved design, real provider/OAuth/desktop side effects, VPS/secrets/deploy/import/DNS/canary/cutover and commit/push/publish/release retain explicit gates.
+
+Checkpoint D is consolidated into four execution bands while its detailed technical sections remain checklists:
+
+1. **D1 Contract closure — COMPLETE** — normative contracts reconcile 74 HTTP fixtures, 73 method/path pairs, 40 temporary-compat scenarios and 39 aliases, including supported `admin-profile-apply`; D-R1..D-R4 are closed docs-only.
+2. **D2 Runtime + Tauri — COMPLETE** — Bun provider/quota/runtime slice, typed actions and coordinated Tauri canonical migration are provider-free green; aliases remain for rollback.
+3. **D3 Control Room + operations retained — NEXT / NOT STARTED** — Admin/BFF mutations, required jobs/signals and legacy removal.
+4. **D4 Final gate — NOT STARTED** — canonical desktop/Admin suites, privacy/auth/quota/exactly-once evidence and Checkpoint D receipt.
+
+### Normative Checkpoint D migration slices (D1-D2 complete; D3 next)
+
+**D2 Runtime + Tauri, serial:**
+
+1. Write canonical provider-free contract tests for bootstrap/context, transcription and all three action kinds, including redaction sentinels and the `0/1` provider-call matrix.
+2. Compose auth/effective-profile/capability checks, then transactional reservation immediately before the single provider dispatch, then consume/release/ambiguous finalization. Stop if p95 PostgreSQL boundary overhead exceeds 15 ms; preserve `pro-unlimited` zero-write semantics.
+3. Add canonical Bun adapters, then legacy audio/chat/bootstrap/auth aliases as thin translators to the same core. No generic provider/model authority enters the request.
+4. Migrate Tauri atomically: preflight becomes internal canonical admission, STT uses canonical transcription, chat becomes the typed action union, and context comes from canonical bootstrap/refresh. Keep old aliases for supported releases.
+5. Run provider-free canonical + dual alias tests. Do not run desktop physical/provider smokes in D2 without a separate gate.
+
+**D3 Control Room + retained operations, serial:**
+
+1. Add domain tests/DTOs for Session/RBAC, Profiles, Configuration, Engines/Pricing, Prompts, Accounts, Devices, Groups, Usage, Audit and Signals.
+2. Implement BFF-to-canonical domain calls one domain at a time while stable browser `/api/admin/*` tests stay green; never expose backend credentials or trust browser role/recent-auth claims.
+3. Implement mutations with expected revisions, preview/confirmation where required, recent-Google/RBAC matrix and immutable redacted audit; tests remain OAuth/provider-free.
+4. Retain only the five named jobs and bounded signals in `product-api.md`; no Discord/support or usage-prewarm/counter fetch surface.
+5. Remove a backend alias from the target only after its BFF caller count is zero and ledger tests pass. Cloudflare remains rollback.
+
+**D4 final gate:** run the deterministic suite ladder plus canonical/alias inventory, dropped-route absence, privacy sentinel, auth/RBAC, quota concurrency and exactly-one-provider checks. Close Checkpoint D only on a wholly green provider-free receipt; otherwise report the blocker. Checkpoint E remains separate.
+
+This cadence does not bulk-authorize D2-D4 or later phases. Phases 5-9 keep their infrastructure and production approval gates.
+
 ## Implementation Phases
 
 ### Phase 0 - Stabilize and freeze evidence
@@ -133,9 +175,11 @@ tests/
 ### Phase 3 - Bun self-hosted HTTP runtime
 
 - Implement config validation, `Bun.serve`, graceful shutdown, health/readiness, provider streaming, structured redaction, and systemd artifacts.
+- Compose real providers only after the provider-free boundary is complete; reserve immediately before the single provider call and consume/release afterward.
+- Keep the API port explicit and distinct from Admin Web's current `127.0.0.1:8787` listener.
 - Run canonical product-flow fixtures with mocked providers and explicit tests for each temporary alias or dropped legacy surface.
 
-**Gate D**: Bun passes canonical desktop/Admin flows and all privacy/auth/quota invariants; each temporary alias has a consumer and retirement condition. Worker equality is informational outside those aliases.
+**Gate D**: Bun passes the normative `product-api.md` canonical desktop/Control Room flows and all privacy/auth/quota/exactly-one-provider invariants; every alias in the reconciled current source inventory has owner/tests/retirement/rollback and supported-consumer counts are zero before removal. Worker equality is informational outside named aliases.
 
 ### Phase 4 - Coordinated local client migration
 
@@ -147,8 +191,9 @@ tests/
 
 ### Phase 5 - VPS loopback deployment
 
-- Provision dedicated PostgreSQL and backup job after approval.
-- Deploy `fixvox-api.service` bound to loopback only.
+- Reconcile the VPS checkout/WIP and choose explicit service ownership before provisioning.
+- Provision dedicated PostgreSQL and backup job after approval; do not infer that existing containerized PostgreSQL belongs to Fixvox.
+- Deploy `fixvox-api.service` on an explicit loopback port different from Admin Web.
 - Verify through SSH/local health and contract checks; no public DNS route.
 
 **Gate F**: service restart, migration, backup, and restore rehearsal pass on VPS without production traffic.

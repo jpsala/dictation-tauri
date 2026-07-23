@@ -1,3 +1,5 @@
+import type { BudgetShadowEvidence } from "../../fixvox-core/src/execution/budget-shadow.ts";
+
 const SAFE_LOG_FIELDS = new Set(["requestId", "route", "method", "status", "durationMs", "code"]);
 
 export type SafeLogEvent = {
@@ -18,6 +20,10 @@ export function createAllowlistLogger(write: (line: string) => void = console.lo
       write(JSON.stringify(safe));
     },
   };
+}
+
+export function createBudgetShadowReceiptSink(write: (line: string) => void = console.log): (receipt: BudgetShadowEvidence) => void {
+  return (receipt) => write(JSON.stringify({ event: "budget_shadow", ...receipt }));
 }
 
 export function requestId(): string {

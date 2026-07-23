@@ -136,6 +136,13 @@ export type ExecutionEngineResolution = {
     selected: ControlPlaneAdminEngineOption | null;
     byKind: Record<ControlPlaneAdminEngineKind, ControlPlaneAdminEngineOption | null>;
   };
+  resolvedPrompt: { id: string; content: string } | null;
+  profileBudget: ControlPlaneAdminPolicyBudget | null;
+  timing: {
+    engineBindingMs: number;
+    promptResolutionMs: number;
+    budgetConfigMs: number;
+  };
 };
 
 export type ExecutionPreflightResponse = {
@@ -1931,8 +1938,7 @@ function normalizeAccountVariantOption(option: Partial<ControlPlaneAdminAccountV
   return { id, label, description, preset, effects: effects.length ? effects : (VARIANT_PRESET_EFFECTS[preset] ?? VARIANT_PRESET_EFFECTS.custom), source };
 }
 
-async function readAccountVariantOptions(store: KvNamespaceLike): Promise<ControlPlaneAdminAccountVariantOption[]> {
-  const stored = await readAccountVariantsStore(store);
+function accountVariantOptionsFromStore(stored: AccountVariantsStore): ControlPlaneAdminAccountVariantOption[] {
   const deleted = new Set(stored.deletedBuiltIns.map((id) => sanitizeVariantId(id)).filter((id): id is string => Boolean(id)));
   const byId = new Map<string, ControlPlaneAdminAccountVariantOption>();
   for (const option of BUILT_IN_ACCOUNT_VARIANTS) if (!deleted.has(option.id)) byId.set(option.id, option);
@@ -1942,6 +1948,10 @@ async function readAccountVariantOptions(store: KvNamespaceLike): Promise<Contro
     byId.set(normalized.id, normalized);
   }
   return [...byId.values()];
+}
+
+async function readAccountVariantOptions(store: KvNamespaceLike): Promise<ControlPlaneAdminAccountVariantOption[]> {
+  return accountVariantOptionsFromStore(await readAccountVariantsStore(store));
 }
 
 function normalizeGroupOption(option: Partial<ControlPlaneAdminGroupOption>, source: "built-in" | "custom" = "custom"): ControlPlaneAdminGroupOption | null {
@@ -1954,8 +1964,7 @@ function normalizeGroupOption(option: Partial<ControlPlaneAdminGroupOption>, sou
   return { id, label, description, policyId, policyLabel, source };
 }
 
-async function readGroupOptions(store: KvNamespaceLike): Promise<ControlPlaneAdminGroupOption[]> {
-  const stored = await readAccountVariantsStore(store);
+function groupOptionsFromStore(stored: AccountVariantsStore): ControlPlaneAdminGroupOption[] {
   const deleted = new Set(stored.deletedBuiltInGroups.map((id) => sanitizeVariantId(id)).filter((id): id is string => Boolean(id)));
   const byId = new Map<string, ControlPlaneAdminGroupOption>();
   for (const option of BUILT_IN_GROUPS) if (!deleted.has(option.id)) byId.set(option.id, option);
@@ -1965,6 +1974,10 @@ async function readGroupOptions(store: KvNamespaceLike): Promise<ControlPlaneAdm
     byId.set(normalized.id, normalized);
   }
   return [...byId.values()];
+}
+
+async function readGroupOptions(store: KvNamespaceLike): Promise<ControlPlaneAdminGroupOption[]> {
+  return groupOptionsFromStore(await readAccountVariantsStore(store));
 }
 
 function sanitizeAccountGroups(value: unknown, groupOptions: ControlPlaneAdminGroupOption[]): string[] {
@@ -1989,8 +2002,7 @@ function normalizeEngineOption(option: Partial<ControlPlaneAdminEngineOption>, s
   return { id, label, kind, tier, provider, model, notes, promptKey, promptSummary, source };
 }
 
-async function readPolicyEngineOptions(store: KvNamespaceLike): Promise<ControlPlaneAdminEngineOption[]> {
-  const stored = await readAccountVariantsStore(store);
+function policyEngineOptionsFromStore(stored: AccountVariantsStore): ControlPlaneAdminEngineOption[] {
   const deleted = new Set(stored.deletedBuiltInEngines.map((id) => sanitizeEngineId(id)).filter((id): id is string => Boolean(id)));
   const byId = new Map<string, ControlPlaneAdminEngineOption>();
   for (const option of BUILT_IN_POLICY_ENGINES) if (!deleted.has(option.id)) byId.set(option.id, option);
@@ -2000,6 +2012,10 @@ async function readPolicyEngineOptions(store: KvNamespaceLike): Promise<ControlP
     byId.set(normalized.id, normalized);
   }
   return [...byId.values()];
+}
+
+async function readPolicyEngineOptions(store: KvNamespaceLike): Promise<ControlPlaneAdminEngineOption[]> {
+  return policyEngineOptionsFromStore(await readAccountVariantsStore(store));
 }
 
 function sanitizePromptKind(value: unknown): ControlPlaneAdminPromptOption["kind"] | null {
@@ -2066,8 +2082,7 @@ function promptOptionFromSelectionPreset(item: RegisterSelectionPresetDefault): 
   }, "custom");
 }
 
-async function readPromptOptions(store: KvNamespaceLike): Promise<ControlPlaneAdminPromptOption[]> {
-  const stored = await readAccountVariantsStore(store);
+function promptOptionsFromStore(stored: AccountVariantsStore): ControlPlaneAdminPromptOption[] {
   const deleted = new Set(stored.deletedBuiltInPrompts.map((id) => sanitizeString(id)).filter((id): id is string => Boolean(id)));
   const byId = new Map<string, ControlPlaneAdminPromptOption>();
   for (const option of BUILT_IN_PROMPTS) if (!deleted.has(option.id)) byId.set(option.id, option);
@@ -2077,6 +2092,10 @@ async function readPromptOptions(store: KvNamespaceLike): Promise<ControlPlaneAd
     byId.set(normalized.id, normalized);
   }
   return [...byId.values()];
+}
+
+async function readPromptOptions(store: KvNamespaceLike): Promise<ControlPlaneAdminPromptOption[]> {
+  return promptOptionsFromStore(await readAccountVariantsStore(store));
 }
 
 function sanitizeAccountSegments(value: unknown, variantOptions: ControlPlaneAdminAccountVariantOption[]): string[] {
@@ -2338,14 +2357,15 @@ async function assertProjectionRevisionCommitted(
   if (!Number.isSafeInteger(projection.authorityRevision) || projection.authorityRevision < 0) {
     throw new ControlPlaneProfileProjectionUnavailableError();
   }
-  const marker = parseJson<{ schemaVersion?: unknown; authorityRevision?: unknown } | null>(
-    await store.get(CONTROL_PLANE_PROFILE_PROJECTION_COMMIT_KEY),
-    null,
-  );
+  const [markerRaw, peerRevision] = await Promise.all([
+    store.get(CONTROL_PLANE_PROFILE_PROJECTION_COMMIT_KEY),
+    peerKey === undefined ? Promise.resolve(projection.authorityRevision) : readProjectionRevision(store, peerKey),
+  ]);
+  const marker = parseJson<{ schemaVersion?: unknown; authorityRevision?: unknown } | null>(markerRaw, null);
   if (marker?.schemaVersion !== 1 || marker.authorityRevision !== projection.authorityRevision) {
     throw new ControlPlaneProfileProjectionUnavailableError();
   }
-  if (peerKey !== undefined && await readProjectionRevision(store, peerKey) !== projection.authorityRevision) {
+  if (peerRevision !== projection.authorityRevision) {
     throw new ControlPlaneProfileProjectionUnavailableError();
   }
 }
@@ -2893,13 +2913,16 @@ function resolvePublishedProfileEngines(
 }
 
 export async function getControlPlaneAdminVariantConfig(store: KvNamespaceLike): Promise<ControlPlaneAdminVariantConfig> {
-  const runtimePolicy = await getRuntimePolicy(store);
+  const [runtimePolicy, stored, profileList] = await Promise.all([
+    getRuntimePolicy(store),
+    readAccountVariantsStore(store),
+    listControlPlaneAdminProfiles(store),
+  ]);
   const basePolicy = runtimePolicy.policy as Record<string, unknown>;
-  const variantOptions = await readAccountVariantOptions(store);
-  const engineOptions = await readPolicyEngineOptions(store);
-  const promptOptions = await readPromptOptions(store);
-  const stored = await readAccountVariantsStore(store);
-  const profileVersions = (await listControlPlaneAdminProfiles(store)).profiles;
+  const variantOptions = accountVariantOptionsFromStore(stored);
+  const engineOptions = policyEngineOptionsFromStore(stored);
+  const promptOptions = promptOptionsFromStore(stored);
+  const profileVersions = profileList.profiles;
   const legacyOptions = new Map(buildAdminProfileOptions(basePolicy).map((profile) => [profile.policyId, profile]));
   const publishedProfiles = profileVersions.map((record) => record.published).filter((profile): profile is ProfileDefinition => Boolean(profile));
   const policyEngines = sanitizePolicyEnginesMap(stored.policyEngines, engineOptions);
@@ -2946,13 +2969,16 @@ async function resolveEffectiveRuntimeProfile(
   runtimePolicy: Record<string, unknown>,
   record: DeviceRecord,
 ): Promise<EffectiveRuntimeProfile> {
-  const accountHandle = record.accountId ? await buildAccountHandle(record.accountId) : null;
-  const accountAssignment = record.accountId ? await readAccountPolicyAssignment(store, record.accountId) : null;
-  const accountBudget = record.accountId ? (await readAccountBudgetAssignment(store, record.accountId))?.budget ?? null : null;
-  const groupOptions = record.accountId ? await readGroupOptions(store) : [];
-  const groupsAssignment = record.accountId ? await readAccountGroupsAssignment(store, record.accountId) : null;
+  const [accountHandle, accountAssignment, budgetAssignment, groupOptions, groupsAssignment, policyOptions] = await Promise.all([
+    record.accountId ? buildAccountHandle(record.accountId) : Promise.resolve(null),
+    record.accountId ? readAccountPolicyAssignment(store, record.accountId) : Promise.resolve(null),
+    record.accountId ? readAccountBudgetAssignment(store, record.accountId) : Promise.resolve(null),
+    record.accountId ? readGroupOptions(store) : Promise.resolve([]),
+    record.accountId ? readAccountGroupsAssignment(store, record.accountId) : Promise.resolve(null),
+    readControlPlaneAdminPolicyOptions(store, runtimePolicy),
+  ]);
+  const accountBudget = budgetAssignment?.budget ?? null;
   const activeGroups = sanitizeAccountGroups(groupsAssignment?.groups ?? [], groupOptions);
-  const policyOptions = await readControlPlaneAdminPolicyOptions(store, runtimePolicy);
 
   return resolveCoreEffectiveRuntimeProfile({
     basePolicyId: record.policyId,
@@ -3761,6 +3787,7 @@ export async function resolveExecutionEngineForDevice(
   store: KvNamespaceLike,
   payload: { deviceId?: string | null; usageKind?: string | null; engineKind?: string | null },
 ): Promise<ExecutionEngineResolution | null> {
+  const engineBindingStartedAt = performance.now();
   const deviceId = sanitizeString(payload.deviceId);
   if (!deviceId) return null;
   const record = normalizeDeviceRecord(parseJson<DeviceRecord | null>(await store.get(buildDeviceKey(deviceId)), null));
@@ -3768,12 +3795,30 @@ export async function resolveExecutionEngineForDevice(
   const kind = parseUsageKind(payload.usageKind);
   const selectedKind = resolvePreflightEngineKind(payload, kind);
   const runtimePolicy = await getRuntimePolicy(store);
-  const profile = await resolveEffectiveRuntimeProfile(store, runtimePolicy.policy as Record<string, unknown>, record);
-  const variantConfig = await getControlPlaneAdminVariantConfig(store);
+  const [profile, variantConfig] = await Promise.all([
+    resolveEffectiveRuntimeProfile(store, runtimePolicy.policy as Record<string, unknown>, record),
+    getControlPlaneAdminVariantConfig(store),
+  ]);
   const engines = resolvePublishedProfileEngines(profile.policyId, variantConfig, selectedKind);
+  const engineBindingMs = performance.now() - engineBindingStartedAt;
+
+  const promptResolutionStartedAt = performance.now();
+  const promptKey = engines.selected?.promptKey?.trim();
+  const prompt = promptKey && promptKey !== "none"
+    ? variantConfig.promptOptions.find((candidate) => candidate.id === promptKey)
+    : null;
+  const resolvedPrompt = prompt?.content.trim() ? { id: prompt.id, content: prompt.content } : null;
+  const promptResolutionMs = performance.now() - promptResolutionStartedAt;
+
+  const budgetConfigStartedAt = performance.now();
+  const profileBudget = profile.accountBudget ?? variantConfig.policyBudgets[profile.policyId ?? ""] ?? null;
+  const budgetConfigMs = performance.now() - budgetConfigStartedAt;
   return {
     profile,
     engines,
+    resolvedPrompt,
+    profileBudget,
+    timing: { engineBindingMs, promptResolutionMs, budgetConfigMs },
   };
 }
 

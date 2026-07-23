@@ -1,24 +1,37 @@
 export type JobDependencies = {
   releaseExpiredReservations(): Promise<number>;
-  refreshSafeProjections(): Promise<void>;
+  publishBudgetLedgerOutbox(): Promise<number>;
+  refreshSafeProjections(): Promise<number | void>;
+  expireAuthHandoffs(): Promise<number | void>;
+  pruneProductSignals(): Promise<number>;
 };
 
-export type JobResult = { name: "release-expired-reservations" | "refresh-safe-projections"; ok: boolean };
+export type JobName =
+  | "release-expired-reservations"
+  | "publish-budget-ledger-outbox"
+  | "refresh-safe-projections"
+  | "expire-auth-handoffs"
+  | "prune-product-signals";
+export type JobResult = { name: JobName; ok: boolean; count: number; durationMs: number };
 
-/** Explicit, injectable scheduled work; systemd invokes these functions, not HTTP routes. */
+/** Explicit, provider-free local jobs. Each failure is isolated from the runtime hot path. */
 export async function runMaintenanceJobs(deps: JobDependencies): Promise<JobResult[]> {
+  const jobs: Array<[JobName, () => Promise<number | void>]> = [
+    ["release-expired-reservations", deps.releaseExpiredReservations],
+    ["publish-budget-ledger-outbox", deps.publishBudgetLedgerOutbox],
+    ["refresh-safe-projections", deps.refreshSafeProjections],
+    ["expire-auth-handoffs", deps.expireAuthHandoffs],
+    ["prune-product-signals", deps.pruneProductSignals],
+  ];
   const results: JobResult[] = [];
-  try {
-    await deps.releaseExpiredReservations();
-    results.push({ name: "release-expired-reservations", ok: true });
-  } catch {
-    results.push({ name: "release-expired-reservations", ok: false });
-  }
-  try {
-    await deps.refreshSafeProjections();
-    results.push({ name: "refresh-safe-projections", ok: true });
-  } catch {
-    results.push({ name: "refresh-safe-projections", ok: false });
+  for (const [name, run] of jobs) {
+    const started = performance.now();
+    try {
+      const count = await run();
+      results.push({ name, ok: true, count: typeof count === "number" ? count : 0, durationMs: Math.max(0, Math.round(performance.now() - started)) });
+    } catch {
+      results.push({ name, ok: false, count: 0, durationMs: Math.max(0, Math.round(performance.now() - started)) });
+    }
   }
   return results;
 }

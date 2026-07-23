@@ -252,6 +252,16 @@ type ProxyTiming = {
   upstreamMs: number | null;
   initMs: number | null;
   totalMs: number | null;
+  engineBindingMs?: number | null;
+  promptResolutionMs?: number | null;
+  budgetConfigMs?: number | null;
+  budgetEventsMs?: number | null;
+  multipartMs?: number | null;
+  budgetMs?: number | null;
+};
+
+type BudgetEvaluationTiming = {
+  eventsMs: number;
 };
 
 type GroqUsagePayload = {
@@ -514,6 +524,7 @@ const DISCORD_GLOBAL_COMMANDS = [
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const handlerStartedAt = performance.now();
     const url = new URL(request.url);
     const controlPlaneStorage = createWorkerStoragePort(env.USAGE);
     const providerClient = createWorkerProviderPort();
@@ -1309,13 +1320,19 @@ export default {
       let upstreamProvider = "groq";
       let upstreamEngineId: string | null = null;
       let upstreamPromptId: string | null = null;
+      let engineBindingMs: number | null = null;
+      let budgetMs: number | null = null;
       try {
+        const bindingStartedAt = performance.now();
         const bound = await bindChatRequestToProfileEngine(env, request, deviceId);
+        engineBindingMs = roundTimingMs(performance.now() - bindingStartedAt);
         upstreamRequest = bound.request;
         upstreamProvider = bound.provider;
         upstreamEngineId = bound.engineId;
         upstreamPromptId = bound.promptId;
-        const budgetBlock = await assertProfileBudgetAllows(env, deviceId, bound.policyId, bound.accountBudget);
+        const budgetStartedAt = performance.now();
+        const budgetBlock = await assertProfileBudgetAllows(env.USAGE, deviceId, bound.policyId, bound.budget, bound.budgetSource);
+        budgetMs = roundTimingMs(performance.now() - budgetStartedAt);
         if (budgetBlock) return budgetBlock;
       } catch (error) {
         const message = error instanceof Error ? error.message : "engine_resolution_failed";
@@ -1354,6 +1371,8 @@ export default {
         upstreamMs,
         initMs: roundTimingMs(performance.now() - requestStartedAt),
         totalMs: null,
+        engineBindingMs,
+        budgetMs,
       });
     }
 
@@ -1401,23 +1420,51 @@ export default {
         return missingDeviceIdResponse();
       }
 
-      const requestStartedAt = performance.now();
+      const requestStartedAt = handlerStartedAt;
       let upstreamRequest = request;
       let upstreamProvider = "groq";
       let boundAudioModel: string | null = null;
       let boundAudioEngineId: string | null = null;
       let boundAudioPromptId: string | null = null;
       let boundAudioProfileId: string | null = null;
+      let engineBindingMs: number | null = null;
+      let promptResolutionMs: number | null = null;
+      let budgetConfigMs: number | null = null;
+      let budgetEventsMs: number | null = null;
+      let multipartMs: number | null = null;
+      let budgetMs: number | null = null;
       try {
         const bound = await bindAudioRequestToProfileEngine(env, request, deviceId);
+        engineBindingMs = roundTimingMs(bound.timing.engineBindingMs);
+        promptResolutionMs = roundTimingMs(bound.timing.promptResolutionMs);
+        budgetConfigMs = roundTimingMs(bound.timing.budgetConfigMs);
+        multipartMs = roundTimingMs(bound.timing.multipartMs);
         upstreamRequest = bound.request;
         upstreamProvider = bound.provider;
         boundAudioModel = bound.model;
         boundAudioEngineId = bound.engineId;
         boundAudioPromptId = bound.promptId;
         boundAudioProfileId = bound.policyId;
-        const budgetBlock = await assertProfileBudgetAllows(env, deviceId, bound.policyId, bound.accountBudget);
-        if (budgetBlock) return budgetBlock;
+        const budgetStartedAt = performance.now();
+        const budgetTiming: BudgetEvaluationTiming = { eventsMs: 0 };
+        const budgetBlock = await assertProfileBudgetAllows(env.USAGE, deviceId, bound.policyId, bound.budget, bound.budgetSource, budgetTiming);
+        budgetMs = roundTimingMs(performance.now() - budgetStartedAt);
+        budgetEventsMs = roundTimingMs(budgetTiming.eventsMs);
+        if (budgetBlock) {
+          return finalizeProxyTimingResponse(budgetBlock, requestStartedAt, {
+            parseMs: null,
+            usageMs: null,
+            upstreamMs: null,
+            initMs: roundTimingMs(performance.now() - requestStartedAt),
+            totalMs: null,
+            engineBindingMs,
+            promptResolutionMs,
+            budgetConfigMs,
+            budgetEventsMs,
+            multipartMs,
+            budgetMs,
+          });
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "engine_resolution_failed";
         return json({ error: { message } }, message === "engine_disabled" ? 403 : 400);
@@ -1450,12 +1497,18 @@ export default {
       });
       const upstreamMs = roundTimingMs(performance.now() - upstreamStartedAt);
 
-      return proxyAudioTranscriptionResponse(env, ctx, upstream, usage, upstreamProvider, audioModel, boundAudioProfileId, boundAudioEngineId, boundAudioPromptId, seconds, deviceId, {
+      return proxyAudioTranscriptionResponse(env, ctx, upstream, usage, upstreamProvider, audioModel, boundAudioProfileId, boundAudioEngineId, boundAudioPromptId, seconds, deviceId, requestStartedAt, {
         parseMs,
         usageMs,
         upstreamMs,
         initMs: roundTimingMs(performance.now() - requestStartedAt),
         totalMs: null,
+        engineBindingMs,
+        promptResolutionMs,
+        budgetConfigMs,
+        budgetEventsMs,
+        multipartMs,
+        budgetMs,
       });
     }
 
@@ -2811,15 +2864,6 @@ const MANAGED_POSTPROCESS_SAFETY_PROMPT = [
   "Return only the cleaned transcript as plain text.",
 ].join(" ");
 
-async function resolvePromptContentForEngine(env: Env, promptKey: string | null | undefined): Promise<{ id: string; content: string } | null> {
-  const id = promptKey?.trim();
-  if (!id || id === "none") return null;
-  const config = await getControlPlaneAdminVariantConfig(env.USAGE);
-  const prompt = config.promptOptions.find((option) => option.id === id);
-  if (!prompt || !prompt.content.trim()) return null;
-  return { id: prompt.id, content: prompt.content };
-}
-
 function applySystemPrompt(
   payload: Record<string, unknown>,
   prompt: string,
@@ -2838,12 +2882,12 @@ function applySystemPrompt(
   payload.messages = messages;
 }
 
-async function assertProfileBudgetAllows(env: Env, deviceId: string, policyId: string | null, accountBudget?: { dailyUsd: number | null; monthlyUsd: number | null; mode: "block" | "warn" } | null): Promise<Response | null> {
-  if (!policyId && !accountBudget) return null;
-  const config = await getControlPlaneAdminVariantConfig(env.USAGE);
-  const budget = accountBudget ?? (policyId ? config.policyBudgets[policyId] : null);
+async function assertProfileBudgetAllows(store: KvNamespaceLike, deviceId: string, policyId: string | null, budget: { dailyUsd: number | null; monthlyUsd: number | null; mode: "block" | "warn" } | null, budgetSource: "account" | "profile" | null, timing?: BudgetEvaluationTiming): Promise<Response | null> {
+  if (timing) timing.eventsMs = 0;
   if (!budget || budget.mode !== "block") return null;
-  const events = (await listRequestEvents(env.USAGE, { deviceId, limit: 100 })).items;
+  const eventsStartedAt = performance.now();
+  const events = (await listRequestEvents(store, { deviceId, limit: 100 })).items;
+  if (timing) timing.eventsMs = performance.now() - eventsStartedAt;
   const now = new Date();
   const dayPrefix = now.toISOString().slice(0, 10);
   const monthPrefix = now.toISOString().slice(0, 7);
@@ -2859,7 +2903,7 @@ async function assertProfileBudgetAllows(env: Env, deviceId: string, policyId: s
       type: "budget_exceeded",
       code: dailyExceeded ? "daily_budget_exceeded" : "monthly_budget_exceeded",
       policyId,
-      budgetSource: accountBudget ? "account" : "profile",
+      budgetSource: budgetSource ?? "profile",
       dailySpent,
       monthlySpent,
       budget,
@@ -2867,9 +2911,9 @@ async function assertProfileBudgetAllows(env: Env, deviceId: string, policyId: s
   }, 402);
 }
 
-async function bindChatRequestToProfileEngine(env: Env, request: Request, deviceId: string): Promise<{ request: Request; provider: string; model: string | null; engineId: string | null; promptId: string | null; policyId: string | null; accountBudget: { dailyUsd: number | null; monthlyUsd: number | null; mode: "block" | "warn" } | null }> {
+async function bindChatRequestToProfileEngine(env: Env, request: Request, deviceId: string): Promise<{ request: Request; provider: string; model: string | null; engineId: string | null; promptId: string | null; policyId: string | null; budget: { dailyUsd: number | null; monthlyUsd: number | null; mode: "block" | "warn" } | null; budgetSource: "account" | "profile" | null }> {
   const requestedKind = readRequestedEngineKind(request);
-  if (!requestedKind) return { request, provider: "groq", model: null, engineId: null, promptId: null, policyId: null, accountBudget: null };
+  if (!requestedKind) return { request, provider: "groq", model: null, engineId: null, promptId: null, policyId: null, budget: null, budgetSource: null };
   const resolution = await resolveExecutionEngineForDevice(env.USAGE, { deviceId, usageKind: "aiAction", engineKind: requestedKind });
   const engine = resolution?.engines.selected;
   if (!engine || engine.provider === "none" || engine.model === "off") throw new Error("engine_disabled");
@@ -2877,32 +2921,34 @@ async function bindChatRequestToProfileEngine(env: Env, request: Request, device
   if (!apiKey) throw new Error("engine_provider_not_configured");
   const payload = await request.clone().json() as Record<string, unknown>;
   payload.model = engine.model;
-  const prompt = await resolvePromptContentForEngine(env, engine.promptKey);
+  const prompt = resolution?.resolvedPrompt ?? null;
   if (prompt) applySystemPrompt(payload, prompt.content, requestedKind);
   const headers = new Headers(request.headers);
   headers.set("Content-Type", "application/json");
   headers.set("X-Fixvox-Resolved-Engine", engine.id);
   if (resolution?.profile.policyId) headers.set("X-Fixvox-Resolved-Profile", resolution.profile.policyId);
   if (prompt) headers.set("X-Fixvox-Resolved-Prompt", prompt.id);
-  return { request: new Request(request.url, { method: request.method, headers, body: JSON.stringify(payload) }), provider: engine.provider, model: engine.model, engineId: engine.id, promptId: prompt?.id ?? null, policyId: resolution?.profile.policyId ?? null, accountBudget: resolution?.profile.accountBudget ?? null };
+  return { request: new Request(request.url, { method: request.method, headers, body: JSON.stringify(payload) }), provider: engine.provider, model: engine.model, engineId: engine.id, promptId: prompt?.id ?? null, policyId: resolution?.profile.policyId ?? null, budget: resolution?.profileBudget ?? null, budgetSource: resolution?.profile.accountBudget ? "account" : "profile" };
 }
 
-async function bindAudioRequestToProfileEngine(env: Env, request: Request, deviceId: string): Promise<{ request: Request; provider: string; model: string; engineId: string; promptId: string | null; policyId: string | null; accountBudget: { dailyUsd: number | null; monthlyUsd: number | null; mode: "block" | "warn" } | null }> {
+async function bindAudioRequestToProfileEngine(env: Env, request: Request, deviceId: string): Promise<{ request: Request; provider: string; model: string; engineId: string; promptId: string | null; policyId: string | null; budget: { dailyUsd: number | null; monthlyUsd: number | null; mode: "block" | "warn" } | null; budgetSource: "account" | "profile"; timing: { engineBindingMs: number; promptResolutionMs: number; budgetConfigMs: number; multipartMs: number } }> {
   const resolution = await resolveExecutionEngineForDevice(env.USAGE, { deviceId, usageKind: "transcription", engineKind: "transcription" });
   const engine = resolution?.engines.selected;
   if (!engine || engine.provider === "none" || engine.model === "off") throw new Error("engine_disabled");
   if (engine.provider !== "groq") throw new Error("engine_provider_not_supported_for_audio");
   const apiKey = providerApiKey(env, engine.provider);
   if (!apiKey) throw new Error("engine_provider_not_configured");
+  const multipartStartedAt = performance.now();
   const form = await request.clone().formData();
+  const multipartMs = performance.now() - multipartStartedAt;
   form.set("model", engine.model);
   const headers = new Headers(request.headers);
   headers.delete("Content-Type");
   headers.set("X-Fixvox-Resolved-Engine", engine.id);
-  const prompt = await resolvePromptContentForEngine(env, engine.promptKey);
-  if (resolution?.profile.policyId) headers.set("X-Fixvox-Resolved-Profile", resolution.profile.policyId);
+  const prompt = resolution.resolvedPrompt;
+  if (resolution.profile.policyId) headers.set("X-Fixvox-Resolved-Profile", resolution.profile.policyId);
   if (prompt) headers.set("X-Fixvox-Resolved-Prompt", prompt.id);
-  return { request: new Request(request.url, { method: request.method, headers, body: form }), provider: engine.provider, model: engine.model, engineId: engine.id, promptId: prompt?.id ?? null, policyId: resolution?.profile.policyId ?? null, accountBudget: resolution?.profile.accountBudget ?? null };
+  return { request: new Request(request.url, { method: request.method, headers, body: form }), provider: engine.provider, model: engine.model, engineId: engine.id, promptId: prompt?.id ?? null, policyId: resolution.profile.policyId ?? null, budget: resolution.profileBudget, budgetSource: resolution.profile.accountBudget ? "account" : "profile", timing: { ...resolution.timing, multipartMs } };
 }
 
 function buildThinBenchmarkChatCompletionResponse(
@@ -3140,11 +3186,24 @@ function applyTimingHeaders(headers: Headers, timing?: Partial<ProxyTiming>): vo
   setTimingHeader(headers, serverTiming, "X-Fixvox-Proxy-Parse-Ms", "parse", timing.parseMs);
   setTimingHeader(headers, serverTiming, "X-Fixvox-Proxy-Usage-Ms", "usage", timing.usageMs);
   setTimingHeader(headers, serverTiming, "X-Fixvox-Proxy-Upstream-Ms", "upstream", timing.upstreamMs);
+  setTimingHeader(headers, serverTiming, "X-Fixvox-Proxy-Engine-Binding-Ms", "engine_binding", timing.engineBindingMs);
+  setTimingHeader(headers, serverTiming, "X-Fixvox-Proxy-Prompt-Resolution-Ms", "prompt_resolution", timing.promptResolutionMs);
+  setTimingHeader(headers, serverTiming, "X-Fixvox-Proxy-Budget-Config-Ms", "budget_config", timing.budgetConfigMs);
+  setTimingHeader(headers, serverTiming, "X-Fixvox-Proxy-Budget-Events-Ms", "budget_events", timing.budgetEventsMs);
+  setTimingHeader(headers, serverTiming, "X-Fixvox-Proxy-Multipart-Ms", "multipart", timing.multipartMs);
+  setTimingHeader(headers, serverTiming, "X-Fixvox-Proxy-Budget-Ms", "budget", timing.budgetMs);
   setTimingHeader(headers, serverTiming, "X-Fixvox-Proxy-Init-Ms", "init", timing.initMs);
   setTimingHeader(headers, serverTiming, "X-Fixvox-Proxy-Total-Ms", "total", timing.totalMs);
   if (serverTiming.length > 0) {
-    headers.set("Server-Timing", serverTiming.join(", "));
+    const existing = headers.get("Server-Timing")?.trim();
+    headers.set("Server-Timing", existing ? `${existing}, ${serverTiming.join(", ")}` : serverTiming.join(", "));
   }
+}
+
+function finalizeProxyTimingResponse(response: Response, requestStartedAt: number, timing: Partial<ProxyTiming>): Response {
+  applyTimingHeaders(response.headers, timing);
+  applyTimingHeaders(response.headers, { totalMs: roundTimingMs(performance.now() - requestStartedAt) });
+  return response;
 }
 
 function setTimingHeader(
@@ -3576,10 +3635,10 @@ async function proxyAudioTranscriptionResponse(
   promptId: string | null,
   audioSeconds: number,
   deviceId: string,
+  requestStartedAt: number,
   timing: ProxyTiming,
 ): Promise<Response> {
   const backendRequestId = crypto.randomUUID();
-  const responseStartedAt = performance.now();
   const text = await upstream.text();
   const providerRequestId = upstream.headers.get("x-request-id")?.trim() || null;
   const costUsd = provider === "groq" ? estimateGroqTranscriptionCostUsd(model, audioSeconds) : null;
@@ -3591,8 +3650,6 @@ async function proxyAudioTranscriptionResponse(
   } catch {
     outputChars = 0;
   }
-  const totalMs = roundTimingMs((timing.initMs ?? 0) + (performance.now() - responseStartedAt));
-
   ctx.waitUntil(createWorkerRequestEventPort(env.USAGE).append(buildRequestEvent({
     backendRequestId,
     deviceId,
@@ -3604,7 +3661,7 @@ async function proxyAudioTranscriptionResponse(
     outputChars,
     inputSeconds: audioSeconds,
     outputSeconds: null,
-    durationMs: totalMs,
+    durationMs: roundTimingMs(performance.now() - requestStartedAt),
     promptTokens: null,
     completionTokens: null,
     totalTokens: null,
@@ -3626,15 +3683,13 @@ async function proxyAudioTranscriptionResponse(
     profileId,
     engineId,
     promptId,
-  }, {
-    ...timing,
-    totalMs,
-  });
-  return new Response(text, {
+  }, timing);
+  const response = new Response(text, {
     status: upstream.status,
     statusText: upstream.statusText,
     headers,
   });
+  return finalizeProxyTimingResponse(response, requestStartedAt, {});
 }
 
 function validateGoogleOAuthConfig(env: Env): string | null {

@@ -59,6 +59,49 @@ class MemoryKv implements KvNamespaceLike {
   }
 }
 
+class CountingKv extends MemoryKv {
+  getCount = 0;
+  private readonly getCountsByKey = new Map<string, number>();
+
+  override async get(key: string): Promise<string | null> {
+    this.getCount += 1;
+    this.getCountsByKey.set(key, (this.getCountsByKey.get(key) ?? 0) + 1);
+    return super.get(key);
+  }
+
+  getCountForPrefix(prefix: string): number {
+    return [...this.getCountsByKey.entries()]
+      .filter(([key]) => key.startsWith(prefix))
+      .reduce((total, [, count]) => total + count, 0);
+  }
+
+  resetGetCount(): void {
+    this.getCount = 0;
+    this.getCountsByKey.clear();
+  }
+}
+
+class DelayedCountingKv extends CountingKv {
+  maxConcurrentGets = 0;
+  private activeGets = 0;
+
+  override async get(key: string): Promise<string | null> {
+    this.activeGets += 1;
+    this.maxConcurrentGets = Math.max(this.maxConcurrentGets, this.activeGets);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      return await super.get(key);
+    } finally {
+      this.activeGets -= 1;
+    }
+  }
+
+  override resetGetCount(): void {
+    super.resetGetCount();
+    this.maxConcurrentGets = 0;
+  }
+}
+
 class UsagePutFailureKv extends MemoryKv {
   override async put(key: string, value: string): Promise<void> {
     if (key.startsWith("control:usage:")) {
@@ -1723,12 +1766,16 @@ describe("managed execution preflight", () => {
     expect(await response.json()).toMatchObject({ error: { code: "daily_budget_exceeded", budgetSource: "account" } });
   });
 
-  test("audio transcription proxy binds requested profile transcription engine", async () => {
-    const store = new MemoryKv();
+  test("audio transcription proxy binds requested profile transcription engine with bounded parallel hot-path reads", async () => {
+    const store = new DelayedCountingKv();
     const registration = await registerDevice(store, {
       installId: "install-1",
       deviceId: "device-1",
     });
+    await publishProfileChanges(store, "alpha-basic", (draft) => ({
+      ...draft,
+      limits: { ...draft.limits, mode: "warn" },
+    }));
 
     const originalFetch = globalThis.fetch;
     let upstreamModel: string | null = null;
@@ -1742,6 +1789,7 @@ describe("managed execution preflight", () => {
       const form = new FormData();
       form.set("model", "caller-whisper");
       form.set("file", new Blob([new Uint8Array([1, 2, 3, 4])], { type: "audio/wav" }), "audio.wav");
+      store.resetGetCount();
       const response = await worker.fetch(
         new Request("https://example.com/v1/audio/transcriptions", {
           method: "POST",
@@ -1759,11 +1807,108 @@ describe("managed execution preflight", () => {
       expect(response.headers.get("X-Fixvox-Profile-Id")).toBe("alpha-basic");
       expect(response.headers.get("X-Fixvox-Engine-Id")).toBe("stt-groq-whisper-turbo");
       expect(response.headers.get("X-Fixvox-Prompt-Id")).toBe("transcriptBase");
+      const phaseHeaders = [
+        "X-Fixvox-Proxy-Engine-Binding-Ms",
+        "X-Fixvox-Proxy-Prompt-Resolution-Ms",
+        "X-Fixvox-Proxy-Budget-Config-Ms",
+        "X-Fixvox-Proxy-Budget-Events-Ms",
+        "X-Fixvox-Proxy-Multipart-Ms",
+        "X-Fixvox-Proxy-Total-Ms",
+      ];
+      for (const header of phaseHeaders) {
+        expect(response.headers.get(header)).not.toBeNull();
+        expect(Number(response.headers.get(header))).toBeGreaterThanOrEqual(0);
+      }
+      expect(Number(response.headers.get("X-Fixvox-Proxy-Budget-Events-Ms"))).toBe(0);
+      expect(Number(response.headers.get("X-Fixvox-Proxy-Total-Ms"))).toBeGreaterThanOrEqual(Number(response.headers.get("X-Fixvox-Proxy-Upstream-Ms")));
+      expect(Number(response.headers.get("X-Fixvox-Proxy-Total-Ms"))).toBeGreaterThanOrEqual(Number(response.headers.get("X-Fixvox-Proxy-Init-Ms")));
+      const serverTiming = response.headers.get("Server-Timing") ?? "";
+      for (const metric of ["engine_binding", "prompt_resolution", "budget_config", "budget_events", "multipart", "total"]) {
+        expect(serverTiming).toContain(metric);
+      }
       expect(await response.json()).toEqual({ text: "hola mundo" });
       expect(upstreamModel).toBe("whisper-large-v3-turbo");
+      expect(store.getCount).toBeLessThanOrEqual(18);
+      expect(store.getCountForPrefix("telemetry:request:")).toBe(0);
+      expect(store.maxConcurrentGets).toBeGreaterThanOrEqual(3);
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  test("audio block budget attributes delayed event reads without exceeding the scan contract", async () => {
+    const store = new DelayedCountingKv();
+    const registration = await registerDevice(store, {
+      installId: "install-budget-timing",
+      deviceId: "device-budget-timing",
+    });
+    await publishProfileChanges(store, "alpha-basic", (draft) => ({
+      ...draft,
+      limits: { ...draft.limits, dailyUsd: 0.01, monthlyUsd: 1, mode: "block" },
+    }));
+
+    for (let index = 0; index < 3; index += 1) {
+      await persistRequestEvent(store, {
+        id: `budget-timing-event-${index}`,
+        ts: new Date().toISOString(),
+        deviceId: registration.deviceId,
+        provider: "groq",
+        model: "whisper-large-v3-turbo",
+        context: "voice-transcription",
+        status: "success",
+        transportMode: "proxied",
+        costAuthority: "backend-reported",
+        inputChars: 0,
+        outputChars: 1,
+        inputSeconds: 1,
+        outputSeconds: null,
+        durationMs: 1,
+        ttftMs: null,
+        promptTokens: null,
+        completionTokens: null,
+        totalTokens: null,
+        actualCostUsd: 0.01,
+        billedCostUsd: 0.01,
+        pricingSource: "test",
+        providerRequestId: null,
+        backendRequestId: `budget-timing-event-${index}`,
+        profileId: "alpha-basic",
+        engineId: "stt-groq-whisper-turbo",
+        promptId: "transcriptBase",
+        usageKey: null,
+        usageLimit: null,
+        usageRemaining: null,
+        usageResetAt: null,
+        errorMessage: null,
+      });
+    }
+
+    store.resetGetCount();
+    const form = new FormData();
+    form.set("model", "caller-whisper");
+    form.set("file", new Blob([new Uint8Array([1, 2, 3, 4])], { type: "audio/wav" }), "audio.wav");
+    const response = await worker.fetch(
+      new Request("https://example.com/v1/audio/transcriptions", {
+        method: "POST",
+        headers: {
+          "X-Device-Id": registration.deviceId,
+          "X-Audio-Duration": "3",
+        },
+        body: form,
+      }),
+      createEnv(store) as never,
+      { waitUntil() {} } as unknown as ExecutionContext,
+    );
+
+    expect(response.status).toBe(402);
+    expect(await response.json()).toMatchObject({ error: { code: "daily_budget_exceeded" } });
+    expect(Number(response.headers.get("X-Fixvox-Proxy-Budget-Events-Ms"))).toBeGreaterThanOrEqual(2);
+    expect(Number(response.headers.get("X-Fixvox-Proxy-Total-Ms"))).toBeGreaterThanOrEqual(Number(response.headers.get("X-Fixvox-Proxy-Budget-Events-Ms")));
+    expect(response.headers.get("Server-Timing")).toContain("budget_events");
+    expect(store.getCountForPrefix("telemetry:requests:recent")).toBe(1);
+    expect(store.getCountForPrefix("telemetry:request:")).toBe(3);
+    expect(store.getCountForPrefix("telemetry:request:")).toBeLessThanOrEqual(250);
+    expect(store.getCount).toBeLessThanOrEqual(22);
   });
 
   test("denies managed preflight when installId does not match provided deviceId", async () => {

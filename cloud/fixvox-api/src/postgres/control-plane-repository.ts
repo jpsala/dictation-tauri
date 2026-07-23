@@ -16,6 +16,7 @@ export type RegisteredDevice = {
   id: string;
   deviceId: string;
   accountId: string | null;
+  accountBudget?: { dailyMicrousd: number | null; monthlyMicrousd: number | null; mode: "block" | "warn" | null } | null;
 };
 
 export type EffectiveProfile = {
@@ -47,6 +48,50 @@ function parseProfileDefinition(value: Record<string, unknown> | string): Record
     if (error instanceof Error && error.message === "profile_definition_invalid") throw error;
     throw new Error("profile_definition_invalid", { cause: error });
   }
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function nullableMicrousd(value: string | null): number | null {
+  if (value === null) return null;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error("account_budget_out_of_range");
+  return parsed;
+}
+
+async function materializeProductRuntime(sql: Bun.SQL, definition: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const runtime = record(definition.runtime);
+  if (Object.keys(runtime).length === 0) return definition;
+  const operations = Object.fromEntries(["transcription", "postprocess", "selectionTransform"].map((kind) => [kind, record(runtime[kind])]));
+  const engineIds = [...new Set(Object.values(operations).map((operation) => String(operation.engineId ?? operation.engineKey ?? "").trim()).filter(Boolean))];
+  if (engineIds.length === 0) throw new Error("profile_definition_invalid");
+  const placeholders = engineIds.map((_, index) => `$${index + 1}`).join(", ");
+  const rows = await sql.unsafe<{ engine_id: string; provider: string; model: string }>(`SELECT engine_id, provider, model FROM engines WHERE enabled AND engine_id IN (${placeholders})`, engineIds);
+  const byId = new Map(rows.map((row) => [row.engine_id, row]));
+  const engine = (kind: keyof typeof operations): Record<string, unknown> => {
+    const operation = operations[kind];
+    const id = String(operation.engineId ?? operation.engineKey ?? "").trim();
+    const selected = byId.get(id);
+    if (!selected) throw new Error("profile_engine_unavailable");
+    const promptId = String(operation.promptId ?? operation.promptKey ?? "").trim();
+    return { id, provider: selected.provider, model: selected.model, ...(promptId ? { promptId } : {}) };
+  };
+  const access = record(definition.access);
+  const limits = record(definition.limits);
+  const selection = engine("selectionTransform");
+  return {
+    ...definition,
+    capabilities: Array.isArray(access.capabilities) ? access.capabilities : definition.capabilities,
+    quota: { profile: limits.quotaProfile ?? limits.quotaProfileKey },
+    engines: {
+      transcription: engine("transcription"),
+      postprocess: engine("postprocess"),
+      selectionTransform: selection,
+      assistant: selection,
+    },
+  };
 }
 
 export class PostgresControlPlaneRepository {
@@ -101,11 +146,24 @@ export class PostgresControlPlaneRepository {
   }
 
   async resolveDevice(deviceId: string): Promise<RegisteredDevice | null> {
-    const rows = await this.sql.unsafe<{ id: string; device_id: string; account_id: string | null }>(`
-      SELECT id::text, device_id, account_id::text FROM devices WHERE device_id = $1 AND status = 'active'
+    const rows = await this.sql.unsafe<{
+      id: string; device_id: string; account_id: string | null;
+      budget_daily_microusd: string | null; budget_monthly_microusd: string | null; budget_mode: "block" | "warn" | null;
+    }>(`
+      SELECT d.id::text, d.device_id, d.account_id::text,
+        a.budget_daily_microusd::text, a.budget_monthly_microusd::text, a.budget_mode
+      FROM devices d
+      LEFT JOIN accounts a ON a.id = d.account_id
+      WHERE d.device_id = $1 AND d.status = 'active'
     `, [deviceId]);
     const row = rows[0];
-    return row ? { id: row.id, deviceId: row.device_id, accountId: row.account_id } : null;
+    if (!row) return null;
+    const accountBudget = row.account_id === null ? null : {
+      dailyMicrousd: nullableMicrousd(row.budget_daily_microusd),
+      monthlyMicrousd: nullableMicrousd(row.budget_monthly_microusd),
+      mode: row.budget_mode,
+    };
+    return { id: row.id, deviceId: row.device_id, accountId: row.account_id, accountBudget };
   }
 
   async resolveEffectiveProfile(input: {
@@ -143,12 +201,14 @@ export class PostgresControlPlaneRepository {
       LIMIT 1
     `, [input.deviceId, input.fallbackProfileId]);
     const row = rows[0];
-    return row ? {
+    if (!row) return null;
+    const definition = await materializeProductRuntime(this.sql, parseProfileDefinition(row.definition));
+    return {
       profileId: row.profile_id,
       label: row.label,
       version: row.version,
-      definition: parseProfileDefinition(row.definition),
+      definition,
       source: row.source,
-    } : null;
+    };
   }
 }

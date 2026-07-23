@@ -4,11 +4,13 @@
 
 **Created**: 2026-07-14
 
-**Status**: Active / Checkpoints A-C complete; Checkpoint D recalibrating product contracts
+**Status**: Active / Checkpoints A-C, D1 contract closure and D2 runtime + Tauri complete; D3 Control Room + retained operations is next and remains explicitly not started
 
 **Input**: Replace Fixvox's operational dependency on Cloudflare Workers, KV, and Durable Objects with JP-owned infrastructure while preserving safety and a coordinated rollback path. Product-owned contracts may replace legacy Worker contracts together with their Tauri/Admin consumers.
 
 **Product-first amendment (2026-07-16)**: JP explicitly chose product-first evolution over Worker parity. The frozen Worker inventory is migration evidence, not the target architecture. Canonical flows are defined by Dictation Tauri and Control Room outcomes; legacy compatibility exists only as a temporary, owned bridge. Execution plan: `docs/tracks/fixvox-product-first-self-hosted-contract-plan.md`.
+
+**Reality/cadence amendment (2026-07-19)**: Cloudflare Worker/KV/DO remain the production authority and hot path; only Admin/Pi runs on VPS. The Bun/PostgreSQL target is local/provider-free and not installed in VPS. Checkpoint D advances in four outcome bands (D1 contracts, D2 runtime+Tauri, D3 Control Room+operations, D4 final gate) with one receipt per band and no ceremonial stops between reversible local steps. D1 reconciled the current 74-fixture/73-route source inventory, 40 temporary-compat scenarios/39 aliases, and the product-owned contracts. D2 completed canonical provider-free runtime/Tauri flows with authoritative 0/1-call quota semantics and retained migration aliases. D3-D4 remain unexecuted. External-risk approvals in FR-015 remain unchanged.
 
 ## User Scenarios & Testing
 
@@ -22,7 +24,7 @@ As JP, I want the managed dictation control-plane and provider proxy to run on i
 
 **Acceptance Scenarios**:
 
-1. **Given** the self-hosted service and PostgreSQL are available, **When** a registered allowed device performs preflight, **Then** it receives the same safe JSON contract as the Worker without KV/DO access.
+1. **Given** the self-hosted service and PostgreSQL are available, **When** a registered allowed device invokes canonical transcription or a typed action, **Then** admission occurs authoritatively at the provider boundary and returns the product-owned safe JSON contract without KV/DO access.
 2. **Given** PostgreSQL or a required provider is unavailable, **When** a request is made, **Then** the service returns a redacted JSON error and does not silently fall back or leak content.
 3. **Given** a normal dictation reaches the proxy, **When** STT succeeds, **Then** audio is streamed to the selected provider and is not persisted by the service.
 
@@ -39,6 +41,7 @@ As JP, I want accounts, devices, profiles, prompts, engines, policy assignments,
 1. **Given** a published profile and account/device assignment, **When** it is imported, **Then** the self-hosted resolver returns the same profile, capabilities, limits, engines, and prompt IDs.
 2. **Given** concurrent quota checks, **When** requests reserve/consume usage, **Then** PostgreSQL transactions prevent lost updates and quota bypass.
 3. **Given** a failed or partial import, **When** validation runs, **Then** authority remains on Cloudflare and production traffic is not cut over.
+4. **Given** an authorized Control Room profile candidate, **When** the BFF applies it with recent Google authentication, `publish`, and the current expected revision, **Then** the backend commits one published version, one revision advance, one immutable redacted audit, and one idempotency receipt atomically; stale or invalid commands commit nothing.
 
 ---
 
@@ -102,6 +105,10 @@ As JP, I want health checks, backups, logs, deploy/rollback commands, and recove
 - **FR-016**: The first production architecture MUST keep Cloudflare only as optional DNS/proxy/Tunnel edge; replacing DNS/edge entirely is a later decision.
 - **FR-017**: Existing Worker production MUST remain available as rollback during canary and the agreed stabilization window.
 - **FR-018**: The migration MUST not depend on Taskflow; implementation proceeds manually by SpecKit checkpoints and deterministic checks.
+- **FR-019**: The canonical API MUST implement the typed operations, desktop bootstrap/session/auth, effective context, transcription, runtime-action, Control Room domain, product-signal, and retained-job contracts in `contracts/product-api.md`.
+- **FR-020**: Every supported compatibility route MUST appear in `contracts/temporary-aliases.md` with consumer, owner, canonical replacement, focused tests, retirement condition, and Cloudflare rollback; a coordinated release transition MUST cover any supported consumer intentionally lacking an alias.
+- **FR-021**: A metered runtime operation MUST reserve immediately before dispatch, invoke exactly one server-selected provider, then consume/release according to the documented lifecycle; ambiguous post-dispatch outcomes MUST NOT retry. `pro-unlimited` MUST invoke at most one provider without reservation/usage-event writes.
+- **FR-022**: `POST /product/v1/control-room/profiles/{profileKey}/apply` MUST be the sole canonical normal-path profile write. It MUST require server-verified recent Google authentication plus `publish`, derive principal/actor/credential server-side, validate `expectedRevision` and all references under one authoritative lock before writing, commit exactly one publication/revision/audit/idempotency receipt on success, and perform zero writes for stale/invalid commands. Identical replay MUST add no writes. Draft and separate publish routes MAY exist only as isolated legacy compatibility and MUST NOT implement or be called by canonical apply.
 
 ### Key Entities
 
@@ -127,6 +134,7 @@ As JP, I want health checks, backups, logs, deploy/rollback commands, and recove
 - **SC-006**: Application rollback to the prior release completes within 10 minutes during rehearsal.
 - **SC-007**: PostgreSQL backup restore rehearsal reproduces schema revision and safe projection hashes/counts.
 - **SC-008**: A supported Tauri release completes normal dictation through the canonical contract, and any older supported release continues only through an explicitly owned temporary alias until its retirement condition is met.
+- **SC-009**: The D1 mechanical ledger matches the complete current fixture/source inventory exactly: 74 HTTP fixtures, 73 method/path pairs, 40 `temporary-compat` scenarios and 39 unique aliases. All eight current Tauri paths plus every Control Room BFF downstream consumer have an explicit disposition and alias or coordinated transition, including `admin-profile-apply`.
 
 ## Assumptions
 

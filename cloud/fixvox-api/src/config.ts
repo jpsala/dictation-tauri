@@ -41,15 +41,22 @@ function boolean(env: Environment, name: string): boolean {
 
 export function loadConfig(env: Environment = Bun.env): FixvoxApiConfig {
   const databaseUrl = required(env, "FIXVOX_API_DATABASE_URL");
+  const mockProviders = boolean(env, "FIXVOX_API_MOCK_PROVIDERS");
+  const host = env.FIXVOX_API_HOST?.trim() || "127.0.0.1";
   let publicBaseUrl: URL;
   try {
     publicBaseUrl = new URL(required(env, "FIXVOX_API_PUBLIC_BASE_URL"));
   } catch {
     throw new Error("config_invalid:FIXVOX_API_PUBLIC_BASE_URL");
   }
-  if (publicBaseUrl.protocol !== "https:") throw new Error("config_invalid:FIXVOX_API_PUBLIC_BASE_URL");
+  const loopbackHosts = ["127.0.0.1", "localhost", "::1", "[::1]"];
+  const loopbackHttp = publicBaseUrl.protocol === "http:"
+    && loopbackHosts.includes(publicBaseUrl.hostname)
+    && loopbackHosts.includes(host);
+  if (publicBaseUrl.protocol !== "https:" && !loopbackHttp) {
+    throw new Error("config_invalid:FIXVOX_API_PUBLIC_BASE_URL");
+  }
 
-  const mockProviders = boolean(env, "FIXVOX_API_MOCK_PROVIDERS");
   const providerKeys = {
     groq: optionalSecret(env, "GROQ_API_KEY"),
     openrouter: optionalSecret(env, "OPENROUTER_API_KEY"),
@@ -61,8 +68,9 @@ export function loadConfig(env: Environment = Bun.env): FixvoxApiConfig {
   return {
     databaseUrl,
     publicBaseUrl,
-    host: env.FIXVOX_API_HOST?.trim() || "127.0.0.1",
-    port: integer(env, "FIXVOX_API_PORT", 8787, 1, 65535),
+    host,
+    // Keep the product API distinct from the Admin BFF, which owns 8787.
+    port: integer(env, "FIXVOX_API_PORT", 8790, 1, 65535),
     requestTimeoutMs: integer(env, "FIXVOX_API_REQUEST_TIMEOUT_MS", 30_000, 100, 120_000),
     maxRequestBytes: integer(env, "FIXVOX_API_MAX_REQUEST_BYTES", 25 * 1024 * 1024, 1_024, 100 * 1024 * 1024),
     mockProviders,

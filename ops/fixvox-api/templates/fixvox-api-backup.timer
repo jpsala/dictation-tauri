@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Fixvox API encrypted backup with jitter
+
+[Timer]
+OnCalendar=*-*-* 04:41:00
+Persistent=true
+RandomizedDelaySec=30m
+AccuracySec=1m
+Unit=fixvox-api-backup.service
+
+[Install]
+WantedBy=timers.target

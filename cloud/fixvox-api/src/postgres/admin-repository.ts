@@ -1,5 +1,8 @@
 /// <reference path="../bun-runtime.d.ts" />
 
+import { BUILTIN_ENGINES, BUILTIN_PROMPTS, BUILTIN_VARIANTS } from "../../../fixvox-core/src/control-plane/catalog.ts";
+import { buildDefaultRuntimePolicy } from "../../../fixvox-core/src/control-plane/runtime-policy.ts";
+
 const PAGE_MAX = 100;
 const SAFE_METRIC_KEYS = new Set(["schemaVersion", "pricingSource", "transportMode", "costAuthority"]);
 
@@ -18,10 +21,333 @@ function redactedDevice(value: string): string { return value.length > 10 ? `${v
 function numeric(value: string | number | null): number { return value === null ? 0 : Number(value); }
 function decodeCursor(value: string | null): Cursor | null { if (!value) return null; try { const parsed = JSON.parse(atob(value)) as Cursor; return typeof parsed.occurredAt === "string" && Number.isInteger(parsed.id) ? parsed : null; } catch { return null; } }
 function encodeCursor(value: Cursor): string { return btoa(JSON.stringify(value)); }
+function profileDefinition(value: Record<string, unknown> | string): Record<string, unknown> {
+  if (typeof value !== "string") return value;
+  try { const parsed: unknown = JSON.parse(value); return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}; }
+  catch { return {}; }
+}
+function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
+function stringValue(value: unknown, fallback: string): string { return typeof value === "string" && value.trim() ? value.trim() : fallback; }
+function scalar(value: unknown, fallback: string | number | boolean): string | number | boolean { return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? value : fallback; }
+function policyLabel(policyId: string): string {
+  return ({ "alpha-basic": "Alpha Basic", "alpha-full": "Alpha Full", "alpha-private": "Alpha Private", "power-admin": "Power Admin", pro: "Pro" } as Record<string, string>)[policyId] ?? policyId.split(/[-_]/g).filter(Boolean).map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`).join(" ");
+}
+
+const POLICY_OPTIONS = [
+  { policyId: "alpha-basic", policyLabel: "Alpha Basic", source: "built-in" },
+  { policyId: "alpha-full", policyLabel: "Alpha Full", source: "built-in" },
+  { policyId: "alpha-private", policyLabel: "Alpha Private", source: "quota-group" },
+  { policyId: "power-admin", policyLabel: "Power Admin", source: "built-in" },
+  { policyId: "pro", policyLabel: "Pro", source: "built-in" },
+] as const;
+const PROFILE_SETTING_KEYS = [
+  "appearance.themeId", "appearance.dockSkin", "general.onboardingDone", "general.showDockOnStartup", "general.startWithWindows", "general.preferredSurface", "general.uiLanguage",
+  "hotkeys.pasteLast", "hotkeys.quickChat", "hotkeys.resultHistory", "hotkeys.picker", "hotkeys.pushToTalk", "hotkeys.stopAndSubmit", "hotkeys.toggleAssistantMode", "hotkeys.togglePressEnterAfterPaste", "hotkeys.voiceRecord",
+  "transcript.language", "voice.muteOutputDuringRecording", "voice.pressEnterAfterPaste", "voice.showQuickChatReasoning", "voice.showPresetReasoning", "voice.assistantWakeWords", "voice.assistantModeToggleWords", "voice.commandWakeWords",
+] as const;
+const PROFILE_DEFAULTS: Record<string, string | number | boolean> = {
+  "appearance.themeId": "github-light", "appearance.dockSkin": 4,
+  "general.onboardingDone": false, "general.showDockOnStartup": true, "general.startWithWindows": false, "general.preferredSurface": "alpha", "general.uiLanguage": "system",
+  "hotkeys.pasteLast": "Alt+Shift+X", "hotkeys.quickChat": "Alt+Shift+C", "hotkeys.resultHistory": "Alt+Shift+Z", "hotkeys.picker": "Alt+Q", "hotkeys.pushToTalk": "Ctrl+Alt+Space", "hotkeys.stopAndSubmit": "Alt+Shift+Space", "hotkeys.toggleAssistantMode": "", "hotkeys.togglePressEnterAfterPaste": "", "hotkeys.voiceRecord": "Alt+Space",
+  "transcript.language": "", "voice.muteOutputDuringRecording": true, "voice.pressEnterAfterPaste": false, "voice.showQuickChatReasoning": true, "voice.showPresetReasoning": false, "voice.assistantWakeWords": "assistant,asistente,ai,zuno,lulu", "voice.assistantModeToggleWords": "assistant,asistente,ai,zuno,lulu", "voice.commandWakeWords": "comando,command",
+};
+const BUILTIN_GROUPS = [
+  { id: "friends", label: "Friends", description: "Usuarios cercanos y amigos con feedback manual.", policyId: "pro", policyLabel: "Pro", source: "built-in" },
+  { id: "private-alpha", label: "Private alpha", description: "Usuarios en alpha privada con acceso controlado.", policyId: "alpha-full", policyLabel: "Alpha Full", source: "built-in" },
+  { id: "trial", label: "Trial", description: "Usuarios de prueba con límites bajos.", policyId: "alpha-basic", policyLabel: "Alpha Basic", source: "built-in" },
+  { id: "paid", label: "Paid", description: "Usuarios pagos o habilitados comercialmente.", policyId: "pro", policyLabel: "Pro", source: "built-in" },
+] as const;
+
+function profileCapabilities(profileId: string): string[] {
+  if (profileId === "alpha-basic") return ["dictation", "postprocess", "managed_stt", "managed_llm"];
+  if (profileId === "alpha-full") return ["translate", "dictation", "postprocess", "selection_transform", "assistant_actions", "custom_prompts", "advanced_settings", "managed_stt", "managed_llm"];
+  if (profileId === "power-admin") return ["translate", "dictation", "postprocess", "selection_transform", "assistant_actions", "custom_prompts", "advanced_settings", "debug_tools", "managed_stt", "managed_llm", "admin_settings"];
+  if (profileId === "pro") return ["translate", "dictation", "postprocess", "selection_transform", "assistant_actions", "custom_prompts", "advanced_settings", "managed_stt", "managed_llm"];
+  return [];
+}
+function profileAssignments(profileId: string): Record<string, string | null> {
+  if (profileId === "alpha-basic") return { uiProfile: "alpha-basic", capabilityProfile: "basic", quotaProfile: null, llmProfile: "locked-presets", settingsDefaultsProfile: "alpha-lulu" };
+  if (profileId === "alpha-full") return { uiProfile: "alpha-full", capabilityProfile: "full", quotaProfile: null, llmProfile: "allow-presets", settingsDefaultsProfile: "alpha-lulu" };
+  if (profileId === "power-admin" || profileId === "pro") return { uiProfile: "alpha-full", capabilityProfile: profileId === "power-admin" ? "power" : "full", quotaProfile: "pro-unlimited", llmProfile: "pro-best-voice", settingsDefaultsProfile: "alpha-lulu" };
+  return { uiProfile: null, capabilityProfile: null, quotaProfile: null, llmProfile: null, settingsDefaultsProfile: null };
+}
+function policyBudget(profileId: string): { dailyUsd: number; monthlyUsd: number; mode: string } {
+  if (profileId === "alpha-basic") return { dailyUsd: 0.25, monthlyUsd: 2, mode: "block" };
+  if (profileId === "alpha-full") return { dailyUsd: 1, monthlyUsd: 10, mode: "block" };
+  if (profileId === "pro") return { dailyUsd: 5, monthlyUsd: 50, mode: "warn" };
+  return { dailyUsd: 0.5, monthlyUsd: 5, mode: "block" };
+}
+function defaultEngineId(kind: "transcription" | "postprocess" | "selectionTransform"): string {
+  return kind === "transcription" ? "stt-groq-whisper-turbo" : kind === "postprocess" ? "postprocess-groq-gpt-oss-120b" : "transform-groq-llama-70b";
+}
+function defaultPromptId(kind: "transcription" | "postprocess" | "selectionTransform"): string {
+  return kind === "transcription" ? "transcriptBase" : kind === "postprocess" ? "postProcessBase" : "selectionTransformBase";
+}
+function canonicalProfileDefinition(profileId: string, label: string, input: Record<string, unknown> | null, version: number, status: string): Record<string, unknown> {
+  const source = input ?? {};
+  const access = record(source.access);
+  const legacyCapabilities = Array.isArray(source.capabilities) ? source.capabilities.filter((value): value is string => typeof value === "string") : [];
+  const capabilities = Array.isArray(access.capabilities) ? access.capabilities.filter((value): value is string => typeof value === "string") : legacyCapabilities.length > 0 ? legacyCapabilities : profileCapabilities(profileId);
+  const runtime = record(source.runtime);
+  const engines = record(source.engines);
+  const operation = (kind: "transcription" | "postprocess" | "selectionTransform"): Record<string, string> => {
+    const configured = record(runtime[kind]);
+    const legacy = record(engines[kind] ?? (kind === "transcription" ? engines.audio : kind === "postprocess" ? engines.chat : null));
+    return {
+      engineId: stringValue(configured.engineId ?? configured.engineKey ?? legacy.id, defaultEngineId(kind)),
+      promptId: stringValue(configured.promptId ?? configured.promptKey ?? legacy.promptId, defaultPromptId(kind)),
+    };
+  };
+  const rawLimits = record(source.limits);
+  const rawQuota = record(source.quota);
+  const budget = policyBudget(profileId);
+  const limits = {
+    dailyUsd: typeof rawLimits.dailyUsd === "number" ? rawLimits.dailyUsd : budget.dailyUsd,
+    monthlyUsd: typeof rawLimits.monthlyUsd === "number" ? rawLimits.monthlyUsd : budget.monthlyUsd,
+    mode: rawLimits.mode === "warn" ? "warn" : rawLimits.mode === "block" ? "block" : budget.mode,
+    ...(typeof rawLimits.quotaProfile === "string" ? { quotaProfile: rawLimits.quotaProfile } : typeof rawQuota.profile === "string" ? { quotaProfile: rawQuota.profile } : (profileId === "pro" || profileId === "power-admin") ? { quotaProfile: "pro-unlimited" } : {}),
+  };
+  const rawControls = record(source.userControls);
+  const rawDefaults = record(source.defaults);
+  const defaults = Object.fromEntries(PROFILE_SETTING_KEYS.map((key) => [key, scalar(rawDefaults[key], PROFILE_DEFAULTS[key] as string | number | boolean)]));
+  const userControls = Object.fromEntries(PROFILE_SETTING_KEYS.map((key) => [key, rawControls[key] === "hidden" || rawControls[key] === "visible-locked" ? rawControls[key] : "editable"]));
+  return {
+    schemaVersion: 1,
+    profileId,
+    label,
+    version,
+    status: status === "draft" ? "draft" : "published",
+    access: { capabilities },
+    runtime: { transcription: operation("transcription"), postprocess: operation("postprocess"), selectionTransform: operation("selectionTransform") },
+    limits,
+    userControls,
+    defaults,
+  };
+}
+function policyOptions(): Array<Record<string, string>> { return POLICY_OPTIONS.map((option) => ({ ...option })); }
+function policyEngines(): Record<string, Record<string, string>> {
+  return Object.fromEntries(POLICY_OPTIONS.map((option) => [option.policyId, { transcription: defaultEngineId("transcription"), postprocess: defaultEngineId("postprocess"), selectionTransform: defaultEngineId("selectionTransform") }]));
+}
+function policyBudgets(): Record<string, Record<string, string | number>> { return Object.fromEntries(POLICY_OPTIONS.map((option) => [option.policyId, policyBudget(option.policyId)])); }
+function frozenLimits(policyId: string | null): Record<string, unknown> {
+  const windows = { rolling5h: { used: 0, limit: 20, remaining: 20, resetsAt: new Date(0).toISOString() }, weekly: { used: 0, limit: 120, remaining: 120, resetsAt: new Date(0).toISOString() } };
+  const policy = { policyId, matchedCohort: policyId, quotaMultiplier: 1, globalMultiplier: 1 };
+  const entry = (unit: string, label?: string) => ({ ...(label ? { label } : {}), unit, state: "ok", blockedWindow: null, windows, policy });
+  return { managedUsage: entry("managedUsageUnit"), transcription: entry("audioSecond", "Transcription"), aiActions: entry("aiAction", "AI actions") };
+}
 
 /** PostgreSQL-backed, redacted Admin read projections and allowlisted event writers. */
 export class PostgresAdminRepository {
   constructor(private readonly sql: Bun.SQL) {}
+
+  private async workerCatalog(): Promise<{ engineOptions: Record<string, unknown>[]; promptOptions: Record<string, unknown>[]; variantOptions: Record<string, unknown>[]; groupOptions: Record<string, unknown>[]; selectionPresets: Record<string, unknown> | null }> {
+    const [engines, prompts, groups, accounts, defaults] = await Promise.all([
+      this.sql.unsafe<{ engine_id: string; kind: string; provider: string; model: string; enabled: boolean; runtime_options: Record<string, unknown> | string }>("SELECT engine_id, kind, provider, model, enabled, runtime_options FROM engines WHERE enabled ORDER BY engine_id"),
+      this.sql.unsafe<{ prompt_id: string; kind: string; version: number; enabled: boolean; body: string }>("SELECT prompt_id, kind, version, enabled, body FROM prompts WHERE enabled ORDER BY prompt_id"),
+      this.sql.unsafe<{ group_id: string; label: string; description: string | null; runtime_profile_id: string | null; source: string }>("SELECT group_id, label, description, runtime_profile_id, source FROM groups ORDER BY group_id"),
+      this.sql.unsafe<{ admin_metadata: Record<string, unknown> | string }>("SELECT admin_metadata FROM accounts ORDER BY handle"),
+      this.sql.unsafe<{ settings: Record<string, unknown> | string }>("SELECT settings FROM settings_defaults ORDER BY profile_id"),
+    ]);
+    const engineOptions = new Map<string, Record<string, unknown>>(BUILTIN_ENGINES.map((engine) => [engine.id, { id: engine.id, label: engine.label, kind: engine.kind, tier: engine.tier, provider: engine.provider, model: engine.model, notes: engine.notes, promptKey: engine.promptKey, promptSummary: engine.promptSummary, source: engine.source }]));
+    for (const row of engines) {
+      const options = record(typeof row.runtime_options === "string" ? profileDefinition(row.runtime_options) : row.runtime_options);
+      engineOptions.set(row.engine_id, {
+        id: row.engine_id,
+        label: stringValue(options.label, row.engine_id),
+        kind: row.kind,
+        tier: stringValue(options.tier, "custom"),
+        provider: row.provider,
+        model: row.model,
+        notes: stringValue(options.notes, "motor personalizado"),
+        promptKey: stringValue(options.promptKey, "custom"),
+        promptSummary: stringValue(options.promptSummary, "Prompt editable/custom."),
+        source: "custom",
+      });
+    }
+    const promptOptions = new Map<string, Record<string, unknown>>(BUILTIN_PROMPTS.map((prompt) => [prompt.id, { id: prompt.id, label: prompt.label, kind: prompt.kind, version: prompt.version, summary: prompt.summary, content: prompt.body, source: prompt.source }]));
+    for (const row of prompts) promptOptions.set(row.prompt_id, { id: row.prompt_id, label: row.prompt_id, kind: row.kind, version: `v${row.version}`, summary: "Prompt personalizado.", content: row.body, source: "custom" });
+    let selectionPresets: Record<string, unknown> | null = null;
+    for (const raw of defaults) {
+      const settings = typeof raw.settings === "string" ? profileDefinition(raw.settings) : raw.settings;
+      const configuredSelectionPresets = record(settings).selectionPresets;
+      const presetRecord = record(configuredSelectionPresets);
+      const items: unknown[] = Array.isArray(presetRecord.items) ? presetRecord.items : [];
+      if (!selectionPresets && items.length > 0) {
+        selectionPresets = {
+          schemaVersion: 1,
+          source: stringValue(presetRecord.source, "fixvox-cloud-admin"),
+          items: structuredClone(items),
+        };
+      }
+      for (const item of items) {
+        const preset = record(item);
+        const itemId = stringValue(preset.id, "custom");
+        const promptId = `preset.${itemId}`;
+        if (promptOptions.has(promptId)) continue;
+        promptOptions.set(promptId, { id: promptId, label: `Preset - ${stringValue(preset.label, itemId)}`, kind: "selectionTransform", version: "v1", summary: `Selection preset default synced from ${itemId}.`, content: stringValue(preset.promptContent, ""), source: "custom" });
+      }
+    }
+    const variantOptions = new Map<string, Record<string, unknown>>(BUILTIN_VARIANTS.map((variant) => [variant.id, { id: variant.id, label: variant.label, description: variant.description, preset: variant.preset, effects: [...variant.effects], source: variant.source }]));
+    for (const raw of accounts) {
+      const metadata = typeof raw.admin_metadata === "string" ? profileDefinition(raw.admin_metadata) : raw.admin_metadata;
+      const metadataRecord = record(metadata);
+      const rawVariants = metadataRecord.variants;
+      const variants: unknown[] = Array.isArray(rawVariants) ? rawVariants : [];
+      for (const value of variants) {
+        const id = typeof value === "string" ? value.trim() : "";
+        if (!id || variantOptions.has(id)) continue;
+        variantOptions.set(id, { id, label: id, description: "Variante personalizada.", preset: "custom", effects: ["customOverride: define-before-production"], source: "custom" });
+      }
+    }
+    const groupOptions = new Map<string, Record<string, unknown>>(BUILTIN_GROUPS.map((group) => [group.id, { ...group }]));
+    for (const row of groups) {
+      const policyId = row.runtime_profile_id?.trim() || null;
+      groupOptions.set(row.group_id, { id: row.group_id, label: row.label, description: row.description ?? "Grupo personalizado", ...(policyId ? { policyId, policyLabel: policyLabel(policyId) } : { policyId: null, policyLabel: null }), source: row.source === "built-in" ? "built-in" : "custom" });
+    }
+    return { engineOptions: [...engineOptions.values()], promptOptions: [...promptOptions.values()], variantOptions: [...variantOptions.values()], groupOptions: [...groupOptions.values()], selectionPresets };
+  }
+
+  private async workerProfiles(): Promise<Array<{ profileId: string; label: string; published: Record<string, unknown>; draft: Record<string, unknown> | null; history: Record<string, unknown>[] }>> {
+    const rows = await this.sql.unsafe<{ profile_id: string; label: string; active_published_version: number | null; current_draft_version: number | null; version: number | null; status: string | null; definition: Record<string, unknown> | string | null }>(`
+      SELECT p.profile_id, p.label, p.active_published_version, p.current_draft_version, pv.version, pv.status, pv.definition
+      FROM profiles p LEFT JOIN profile_versions pv ON pv.profile_id = p.id
+      ORDER BY p.profile_id, pv.version
+    `);
+    const byId = new Map<string, typeof rows>();
+    for (const row of rows) byId.set(row.profile_id, [...(byId.get(row.profile_id) ?? []), row]);
+    const ids = [...new Set([...POLICY_OPTIONS.map((option) => option.policyId), ...rows.map((row) => row.profile_id).filter((profileId) => profileId !== "basic")])].sort((left, right) => left.localeCompare(right));
+    return ids.map((profileId) => {
+      const option = POLICY_OPTIONS.find((candidate) => candidate.policyId === profileId);
+      const profileRows = byId.get(profileId) ?? [];
+      const label = option?.policyLabel ?? profileRows[0]?.label ?? profileId;
+      const activeVersion = profileRows[0]?.active_published_version ?? null;
+      const publishedRow = profileRows.find((row) => row.version === activeVersion && row.status !== "draft") ?? profileRows.filter((row) => row.status !== "draft" && row.version !== null).at(-1);
+      const historyRows = profileRows.filter((row) => row.status !== "draft" && row.version !== null);
+      const history = historyRows.length > 0
+        ? historyRows.map((row) => canonicalProfileDefinition(profileId, label, row.definition ? profileDefinition(row.definition) : null, row.version ?? 1, "published"))
+        : [canonicalProfileDefinition(profileId, label, null, 1, "published")];
+      const published = publishedRow?.version !== null && publishedRow?.version !== undefined
+        ? canonicalProfileDefinition(profileId, label, publishedRow.definition ? profileDefinition(publishedRow.definition) : null, publishedRow.version, "published")
+        : history.at(-1)!;
+      const draftRow = profileRows.find((row) => row.version === row.current_draft_version && row.status === "draft");
+      const draft = draftRow?.version !== null && draftRow?.version !== undefined
+        ? canonicalProfileDefinition(profileId, label, draftRow.definition ? profileDefinition(draftRow.definition) : null, draftRow.version, "draft")
+        : null;
+      return { profileId, label, published, draft, history };
+    });
+  }
+
+  async workerProfileList() {
+    const profiles = await this.workerProfiles();
+    return { ok: true as const, schemaVersion: 1, updatedAt: new Date().toISOString(), profiles };
+  }
+
+  async workerRuntimePolicy() {
+    const policy = buildDefaultRuntimePolicy() as Record<string, unknown>;
+    const [catalog, profiles] = await Promise.all([this.workerCatalog(), this.workerProfiles()]);
+    if (catalog.selectionPresets) {
+      policy.userSettingsDefaults = { ...record(policy.userSettingsDefaults), selectionPresets: catalog.selectionPresets };
+    }
+    const { groupOptions: _groupOptions, selectionPresets: _selectionPresets, ...catalogProjection } = catalog;
+    const profileOptions = profiles.map((profile) => ({
+      policyId: profile.profileId,
+      policyLabel: profile.label,
+      source: POLICY_OPTIONS.find((option) => option.policyId === profile.profileId)?.source ?? "built-in",
+      capabilities: (record(profile.published.access).capabilities as unknown[] | undefined)?.filter((value): value is string => typeof value === "string") ?? [],
+      profiles: profileAssignments(profile.profileId),
+    }));
+    return {
+      ok: true as const,
+      source: "default" as const,
+      updatedAt: new Date().toISOString(),
+      policy,
+      defaultPolicy: buildDefaultRuntimePolicy(),
+      ...catalogProjection,
+      availableSegments: catalog.variantOptions.map((variant) => String(variant.id)),
+      policyVariants: {},
+      policyEngines: policyEngines(),
+      policyBudgets: policyBudgets(),
+      profileOptions,
+      profileVersions: profiles,
+    };
+  }
+
+  async workerDevices(input: { limit?: number; cursor?: string | null } = {}) {
+    const limit = boundedLimit(input.limit);
+    const rows = await this.sql.unsafe<{ device_id: string; install_id_hash: string | null; account_handle: string | null; status: string; policy_id: string | null; policy_label: string | null; updated_at: string }>(`SELECT d.device_id, d.install_id_hash, a.handle AS account_handle, d.status, d.policy_id, d.policy_label, d.updated_at::text FROM devices d LEFT JOIN accounts a ON a.id = d.account_id ORDER BY d.updated_at DESC, d.id DESC LIMIT $1`, [limit]);
+    const devices = rows.map((row) => {
+      const policyId = row.policy_id ?? "alpha-basic";
+      return {
+        deviceId: row.device_id,
+        installId: row.install_id_hash ?? "redacted",
+        accountHandle: row.account_handle,
+        policyId,
+        policyLabel: policyLabel(policyId),
+        cohorts: policyId === "alpha-private" ? ["alpha-private", "default"] : ["alpha-private", policyId],
+        status: row.status,
+        lastSeenAt: row.updated_at,
+        profiles: profileAssignments(policyId),
+        limits: frozenLimits(policyId),
+      };
+    });
+    return { ok: true as const, source: "default" as const, updatedAt: new Date().toISOString(), policyOptions: policyOptions(), devices, nextCursor: null };
+  }
+
+  async workerAccounts(input: { limit?: number; cursor?: string | null } = {}) {
+    const limit = boundedLimit(input.limit);
+    const [accounts, assignments, groups, devices] = await Promise.all([
+      this.sql.unsafe<{ account_id: string; provider: string; handle: string; display_label: string | null; status: string; updated_at: string; budget_daily_microusd: string | null; budget_monthly_microusd: string | null; budget_mode: string | null; admin_metadata: Record<string, unknown> | string }>(`SELECT a.id::text AS account_id, a.provider, a.handle, a.display_label, a.status, a.updated_at::text, a.budget_daily_microusd::text, a.budget_monthly_microusd::text, a.budget_mode, a.admin_metadata FROM accounts a ORDER BY a.updated_at DESC, a.id DESC LIMIT $1`, [limit]),
+      this.sql.unsafe<{ account_id: string; policy_id: string; policy_label: string | null }>(`SELECT pa.target_id::text AS account_id, p.profile_id AS policy_id, p.label AS policy_label FROM policy_assignments pa JOIN profiles p ON p.id = pa.profile_id WHERE pa.target_type = 'account' AND pa.active`),
+      this.sql.unsafe<{ account_id: string; group_id: string }>(`SELECT ag.account_id::text, g.group_id FROM account_groups ag JOIN groups g ON g.id = ag.group_id ORDER BY g.group_id`),
+      this.sql.unsafe<{ account_id: string; device_id: string; status: string; policy_id: string | null; policy_label: string | null; updated_at: string }>(`SELECT d.account_id::text, d.device_id, d.status, d.policy_id, d.policy_label, d.updated_at::text FROM devices d WHERE d.account_id IS NOT NULL ORDER BY d.updated_at DESC, d.id DESC`),
+    ]);
+    const [catalog] = await Promise.all([this.workerCatalog()]);
+    const accountsProjection = accounts.map((row) => {
+      const accountDevices = devices.filter((device) => device.account_id === row.account_id);
+      const assignment = assignments.find((candidate) => candidate.account_id === row.account_id);
+      const policyId = assignment?.policy_id ?? accountDevices[0]?.policy_id ?? "alpha-basic";
+      const policy = policyLabel(policyId);
+      const metadata = typeof row.admin_metadata === "string" ? profileDefinition(row.admin_metadata) : row.admin_metadata;
+      const metadataRecord = record(metadata);
+      const rawVariants = metadataRecord.variants;
+      const variants = Array.isArray(rawVariants) ? rawVariants.filter((value: unknown): value is string => typeof value === "string") : [];
+      const groupsForAccount = groups.filter((group) => group.account_id === row.account_id).map((group) => group.group_id);
+      const accountBudget = row.budget_mode ? { dailyUsd: numeric(row.budget_daily_microusd) / 1_000_000, monthlyUsd: numeric(row.budget_monthly_microusd) / 1_000_000, mode: row.budget_mode } : null;
+      return {
+        accountHandle: row.handle,
+        accountIdRedacted: "account redacted",
+        userRedacted: "user redacted",
+        userEmailRedacted: null,
+        provider: row.provider,
+        variants,
+        segments: [...variants],
+        groups: groupsForAccount,
+        policyId,
+        policyLabel: policy,
+        effectivePolicyId: policyId,
+        effectivePolicyLabel: policy,
+        effectivePolicySource: assignment ? "account" : accountDevices[0] ? "device" : "base",
+        matchedGroup: null,
+        accountBudget,
+        deviceCount: accountDevices.length,
+        devices: accountDevices.slice(0, 20).map((device) => ({ deviceIdRedacted: redactedDevice(device.device_id), policyId: device.policy_id ?? policyId, policyLabel: policyLabel(device.policy_id ?? policyId), status: device.status, lastSeenAt: device.updated_at })),
+        lastSeenAt: accountDevices[0]?.updated_at ?? row.updated_at,
+      };
+    });
+    return {
+      ok: true as const,
+      source: "default" as const,
+      updatedAt: new Date().toISOString(),
+      policyOptions: policyOptions(),
+      availableSegments: catalog.variantOptions.map((variant) => String(variant.id)),
+      variantOptions: catalog.variantOptions,
+      groupOptions: catalog.groupOptions,
+      policyVariants: {},
+      policyEngines: policyEngines(),
+      accounts: accountsProjection,
+      nextCursor: null,
+    };
+  }
 
   validateSafeMetrics(value: Record<string, unknown> | undefined): Record<string, string> {
     const candidate = value ?? { schemaVersion: 1 };
@@ -45,6 +371,58 @@ export class PostgresAdminRepository {
   }
 
   async appendFeedback(input: { classification: string; deviceId?: string | null }): Promise<string> { const rows = await this.sql.unsafe<{ id: string }>(`INSERT INTO feedback_events (device_id, classification, safe_metadata) VALUES ((SELECT id FROM devices WHERE device_id = $1), $2, '{"schemaVersion":1}'::jsonb) RETURNING id::text`, [input.deviceId ?? null, input.classification.slice(0, 64)]); return rows[0]?.id ?? "redacted"; }
+
+  async pruneProductSignals(retentionDays = 30): Promise<number> {
+    const days = Math.min(90, Math.max(1, Math.trunc(retentionDays)));
+    const rows = await this.sql.unsafe<{ count: string }>(`WITH deleted AS (DELETE FROM feedback_events WHERE occurred_at < now() - ($1::text || ' days')::interval RETURNING 1) SELECT count(*)::text AS count FROM deleted`, [days]);
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  async linkedPrincipals() {
+    const rows = await this.sql.unsafe<{ provider_subject_hash: string; handle: string; display_label: string | null; role: string | null }>(`
+      SELECT a.provider_subject_hash, a.handle, a.display_label, rb.role
+      FROM accounts a LEFT JOIN role_bindings rb ON rb.account_id = a.id
+      WHERE a.provider = 'google' AND a.provider_subject_hash IS NOT NULL
+        AND EXISTS (SELECT 1 FROM devices d WHERE d.account_id = a.id)
+      ORDER BY a.handle, rb.role
+      LIMIT 400
+    `);
+    const rank: Record<string, number> = { viewer: 0, editor: 1, publisher: 2, owner: 3 };
+    const principals = new Map<string, { principalKey: string; accountHandle: string; emailRedacted: null; role: string | null }>();
+    for (const row of rows) {
+      const principalKey = `arp_${row.provider_subject_hash}`;
+      const current = principals.get(principalKey);
+      if (!current || (rank[row.role ?? ""] ?? -1) > (rank[current.role ?? ""] ?? -1)) principals.set(principalKey, { principalKey, accountHandle: row.handle, emailRedacted: null, role: row.role });
+    }
+    const values = [...principals.values()];
+    return { principals: values, bindings: values.filter((value) => value.role !== null) };
+  }
+
+  async roleForPrincipal(principalKey: string): Promise<"viewer" | "editor" | "publisher" | "owner" | null> {
+    if (!/^arp_[a-f0-9]{64}$/.test(principalKey)) return null;
+    const rows = await this.sql.unsafe<{ role: string }>(`SELECT rb.role FROM accounts a JOIN devices d ON d.account_id = a.id JOIN role_bindings rb ON rb.account_id = a.id WHERE a.provider = 'google' AND a.provider_subject_hash = $1`, [principalKey.slice(4)]);
+    const rank = ["viewer", "editor", "publisher", "owner"] as const;
+    return rows.reduce<(typeof rank)[number] | null>((best, row) => rank.indexOf(row.role as (typeof rank)[number]) > rank.indexOf(best as (typeof rank)[number]) ? row.role as (typeof rank)[number] : best, null);
+  }
+
+  async setRoleBinding(input: { actorPrincipalKey: string; subjectPrincipalKey: string; role: "viewer" | "editor" | "publisher" | "owner" | null }) {
+    if (!/^arp_[a-f0-9]{64}$/.test(input.actorPrincipalKey) || !/^arp_[a-f0-9]{64}$/.test(input.subjectPrincipalKey)) throw new Error("listed_linked_principal_required");
+    return this.sql.begin(async (tx) => {
+      const subjects = await tx.unsafe<{ id: string }>(`SELECT a.id::text FROM accounts a WHERE a.provider = 'google' AND a.provider_subject_hash = $1 AND EXISTS (SELECT 1 FROM devices d WHERE d.account_id = a.id) FOR UPDATE`, [input.subjectPrincipalKey.slice(4)]);
+      if (!subjects[0]) throw new Error("listed_linked_principal_required");
+      const actorRole = await tx.unsafe<{ role: string }>(`SELECT rb.role FROM accounts a JOIN role_bindings rb ON rb.account_id = a.id WHERE a.provider = 'google' AND a.provider_subject_hash = $1 AND rb.role = 'owner'`, [input.actorPrincipalKey.slice(4)]);
+      if (!actorRole[0]) throw new Error("forbidden");
+      const current = await tx.unsafe<{ role: string }>(`SELECT role FROM role_bindings WHERE account_id = $1::uuid FOR UPDATE`, [subjects[0].id]);
+      if (current.some((row) => row.role === "owner") && input.role !== "owner") {
+        const owners = await tx.unsafe<{ count: string }>(`SELECT count(DISTINCT account_id)::text AS count FROM role_bindings WHERE role = 'owner'`);
+        if (Number(owners[0]?.count ?? 0) <= 1) throw new Error("forbidden");
+      }
+      await tx.unsafe(`DELETE FROM role_bindings WHERE account_id = $1::uuid`, [subjects[0].id]);
+      if (input.role) await tx.unsafe(`INSERT INTO role_bindings (account_id, role, granted_by) VALUES ($1::uuid, $2, $3)`, [subjects[0].id, input.role, input.actorPrincipalKey]);
+      await tx.unsafe(`INSERT INTO audit_records (actor_ref_hash, action, target_type, target_ref_hash, result, safe_metadata) VALUES ($1, $2, 'principal', $3, 'success', $4::jsonb)`, [input.actorPrincipalKey, input.role ? "role.set" : "role.remove", input.subjectPrincipalKey, JSON.stringify({ role: input.role })]);
+      return { ok: true, principalKey: input.subjectPrincipalKey, role: input.role, audit: { action: input.role ? "role.set" : "role.remove", result: "success" } };
+    });
+  }
 
   async observePrewarm(deviceId: string, success: boolean, observedAt = new Date()): Promise<void> {
     await this.sql.unsafe(`
@@ -82,7 +460,26 @@ export class PostgresAdminRepository {
     `, [input.status ?? null, cursor?.occurredAt ?? null, cursor?.id ?? null, limit + 1]);
     const page = rows.slice(0, limit); return { items: page.map((row) => ({ ts: row.occurred_at, deviceId: row.device_id ? redactedDevice(row.device_id) : "redacted", provider: row.provider_id ?? "unknown", model: row.model_id ?? "unknown", context: row.context ?? "unknown", status: row.outcome === "error" ? "error" : "success", durationMs: row.latency_ms, profileId: row.profile_id, engineId: row.engine_id, promptId: row.prompt_id, totalTokens: row.total_tokens ?? 0, billedCostUsd: numeric(row.cost_microusd) / 1_000_000 })), nextCursor: rows.length > limit && page.at(-1) ? encodeCursor({ occurredAt: page.at(-1)!.occurred_at, id: Number(page.at(-1)!.id) }) : null }; }
   async feedback(input: { limit?: number; cursor?: string | null } = {}) { const limit = boundedLimit(input.limit); const cursor = decodeCursor(input.cursor ?? null); if (input.cursor && !cursor) throw new Error("cursor_invalid"); const rows = await this.sql.unsafe<{ id: string; classification: string; occurred_at: string }>(`SELECT id::text, classification, occurred_at::text FROM feedback_events WHERE ($1::timestamptz IS NULL OR occurred_at < $1::timestamptz) ORDER BY occurred_at DESC, id DESC LIMIT $2`, [cursor?.occurredAt ?? null, limit + 1]); const page = rows.slice(0, limit); return { items: page.map((row) => ({ classification: row.classification, occurredAt: row.occurred_at })), nextCursor: rows.length > limit && page.at(-1) ? encodeCursor({ occurredAt: page.at(-1)!.occurred_at, id: 0 }) : null }; }
-  async profiles() { const rows = await this.sql.unsafe<{ profile_id: string; label: string; active_published_version: number | null; current_draft_version: number | null; revision: string }>(`SELECT profile_id, label, active_published_version, current_draft_version, revision::text FROM profiles ORDER BY profile_id`); return rows.map((r) => ({ profileId: r.profile_id, label: r.label, published: r.active_published_version === null ? null : { version: r.active_published_version, status: "published" }, draft: r.current_draft_version === null ? null : { version: r.current_draft_version, status: "draft" }, revision: Number(r.revision) })); }
+  async profiles() {
+    const rows = await this.sql.unsafe<{ profile_id: string; label: string; active_published_version: number | null; current_draft_version: number | null; revision: string; version: number | null; status: string | null; definition: Record<string, unknown> | string | null }>(`
+      SELECT p.profile_id, p.label, p.active_published_version, p.current_draft_version, p.revision::text,
+             pv.version, pv.status, pv.definition
+      FROM profiles p LEFT JOIN profile_versions pv ON pv.profile_id = p.id
+      ORDER BY p.profile_id, pv.version
+    `);
+    const profiles = new Map<string, { profileId: string; label: string; revision: number; published: Record<string, unknown> | null; draft: Record<string, unknown> | null; history: Record<string, unknown>[] }>();
+    for (const row of rows) {
+      const profile = profiles.get(row.profile_id) ?? { profileId: row.profile_id, label: row.label, revision: Number(row.revision), published: null, draft: null, history: [] };
+      if (row.version !== null && row.status && row.definition) {
+        const version = { ...profileDefinition(row.definition), profileId: row.profile_id, version: row.version, status: row.status };
+        if (row.version === row.active_published_version) profile.published = { ...version, status: "published" };
+        if (row.version === row.current_draft_version) profile.draft = { ...version, status: "draft" };
+        if (row.status !== "draft") profile.history.push(version);
+      }
+      profiles.set(row.profile_id, profile);
+    }
+    return [...profiles.values()];
+  }
   async audit(limit?: number) { const rows = await this.sql.unsafe<{ action: string; target_type: string; result: string; occurred_at: string }>(`SELECT action, target_type, result, occurred_at::text FROM audit_records ORDER BY sequence_id DESC LIMIT $1`, [boundedLimit(limit)]); return rows.map((r) => ({ action: r.action, targetType: r.target_type, result: r.result, occurredAt: r.occurred_at })); }
   async devices(input: { limit?: number; cursor?: string | null } = {}) { const limit = boundedLimit(input.limit); const rows = await this.sql.unsafe<{ device_id: string; status: string; policy_id: string | null; policy_label: string | null; updated_at: string }>(`SELECT device_id, status, policy_id, policy_label, updated_at::text FROM devices ORDER BY updated_at DESC, id DESC LIMIT $1`, [limit]); return { devices: rows.map((r) => ({ deviceIdRedacted: redactedDevice(r.device_id), policyId: r.policy_id, policyLabel: r.policy_label, status: r.status, lastSeenAt: r.updated_at })), nextCursor: null }; }
   async accounts(input: { limit?: number } = {}) { const limit = boundedLimit(input.limit); const rows = await this.sql.unsafe<{ handle: string; display_label: string | null; status: string; updated_at: string; budget_daily_microusd: string | null; budget_monthly_microusd: string | null; budget_mode: string | null; admin_metadata: Record<string, unknown> | string }>(`SELECT handle, display_label, status, updated_at::text, budget_daily_microusd::text, budget_monthly_microusd::text, budget_mode, admin_metadata FROM accounts ORDER BY updated_at DESC, id DESC LIMIT $1`, [limit]); return { accounts: rows.map((r) => ({ accountHandle: r.handle, label: r.display_label, status: r.status, variants: this.metadataArray(r.admin_metadata, "variants"), segments: this.metadataArray(r.admin_metadata, "segments"), accountBudget: r.budget_mode ? { dailyUsd: numeric(r.budget_daily_microusd) / 1_000_000, monthlyUsd: numeric(r.budget_monthly_microusd) / 1_000_000, mode: r.budget_mode } : null, lastSeenAt: r.updated_at })), nextCursor: null }; }

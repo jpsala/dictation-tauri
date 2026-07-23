@@ -15,7 +15,7 @@ afterAll(async () => database.close());
 describe("PostgreSQL migration integration", () => {
   test("is idempotent against the isolated local database", async () => {
     const result = await applyMigrations(database, await loadMigrations());
-    expect(result).toEqual({ applied: [], currentVersion: 4 });
+    expect(result).toEqual({ applied: [], currentVersion: 6 });
   });
 
   test("creates the required authority and control-plane tables", async () => {
@@ -36,6 +36,11 @@ describe("PostgreSQL migration integration", () => {
       "schema_migrations",
       "usage_events",
       "usage_reservations",
+      "budget_counters",
+      "budget_reservations",
+      "budget_ledger_checkpoints",
+      "budget_ledger_outbox",
+      "budget_ledger_read_model",
       "oauth_states",
       "desktop_login_sessions",
       "prewarm_daily_counters",

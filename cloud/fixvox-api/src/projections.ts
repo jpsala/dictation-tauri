@@ -3,8 +3,8 @@ import {
   buildFeatureFlagsFromRuntimePolicy,
   buildRegisterDefaultsFromRuntimePolicy,
   buildTransportPolicyFromRuntimePolicy,
-} from "../../fixvox-proxy/src/runtime-policy-store.ts";
-import { buildDefaultRecipePolicy } from "../../fixvox-proxy/src/recipe-policy-store.ts";
+} from "../../fixvox-core/src/control-plane/runtime-policy.ts";
+import { buildDefaultRecipePolicy } from "../../fixvox-core/src/control-plane/recipe-policy.ts";
 
 type RecordValue = Record<string, unknown>;
 export type EffectiveProfileProjectionInput = { profileId: string; label: string; version: number; source: string; definition: RecordValue };

@@ -82,7 +82,7 @@ async function resetDomainData(): Promise<void> {
   await api.sql.unsafe(`
     INSERT INTO profile_versions (profile_id, version, status, definition, authority_revision, created_by, published_by, published_at)
     VALUES ($1::uuid, 1, 'published', $2::jsonb, 0, 'contract-test', 'contract-test', now())
-  `, [profiles[0].id, JSON.stringify({ capabilities: ["dictation"], quota: { mode: "unlimited" }, engines: { chat: { provider: "mock", model: "fixture-chat" }, audio: { provider: "mock", model: "fixture-audio" } } })]);
+  `, [profiles[0].id, JSON.stringify({ capabilities: ["dictation", "postprocess"], quota: { mode: "unlimited" }, engines: { chat: { provider: "mock", model: "fixture-chat" }, postprocess: { provider: "mock", model: "fixture-postprocess" }, audio: { provider: "mock", model: "fixture-audio" } } })]);
   await api.sql.unsafe("UPDATE profiles SET active_published_version = 1 WHERE id = $1::uuid", [profiles[0].id]);
 }
 
