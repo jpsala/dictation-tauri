@@ -2,13 +2,13 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-19T01:03:05.150Z
+Generated: 2026-07-23T03:10:07.728Z
 
 ## Topics
 
-- active: [agent-tool-routing](../topics/agent-tool-routing.md) - tool routing, routing decision, combinar tools, elegir herramienta, dgoal, until-done, taskflow, advisor
+- active: [agent-tool-routing](../topics/agent-tool-routing.md) - tool routing, routing decision, /flow, elegir herramienta, subagente
 - active: [agentic-os-operations](../topics/agentic-os-operations.md) - crear sistema agentico, migrar sistema agentico, actualizar norte, aos, init os, adopt os, update os, adaptar proyecto
-- active: [agentic-os](../topics/agentic-os.md) - norte, working memory, aos, agentic os, memoria viva, audit docs, tracks, cerrar sesion
+- active: [agentic-os](../topics/agentic-os.md) - norte, working memory, aos, agentic os, memoria viva, audit docs, tracks, /flow
 - active: [app-design-loop](../topics/app-design-loop.md) - design loop, app design, UI polish, screenshot Playwright, Impeccable, accounts, admin web, settings
 - active: [automation-and-reference-fixtures](../topics/automation-and-reference-fixtures.md) - fixtures, audio sintetico, TTS, STT, benchmarks, Fixvox, fixvox, sin interaccion humana
 - draft: [backend-and-model-routing](../topics/backend-and-model-routing.md) - backend, proxy, model routing, proveedores, API keys, Groq, OpenAI, OpenRouter
@@ -24,8 +24,8 @@ Generated: 2026-07-19T01:03:05.150Z
 - reference: [local-codex-skills](../topics/local-codex-skills.md) - skills locales, local skills, slash commands, docs/skills, .agents/skills, toggle skills, skills on, skills off
 - active: [minimal-implementation](../topics/minimal-implementation.md) - ponytail, minimal implementation, implementacion minima, solucion minima, yagni, over-engineering, bloat, boilerplate
 - active: [os-quality](../topics/os-quality.md) - perfect os, proyecto perfecto, dejar en condiciones, calidad agentica, optimizar contexto, docs livianos, docs indexados, comandos os
-- active: [pi-agentic-os](../topics/pi-agentic-os.md) - pi os, pi agentic os, /aos-continuar, /aos-sync, /aos-skills, /aos-plan-implementar, /aos-orquestar, /aos-fanout
-- active: [pi-extension-stack](../topics/pi-extension-stack.md) - extensiones pi, paquetes pi, pi packages, sincronizar pi, web_search, web_research, codemapper, fff
+- active: [pi-agentic-os](../topics/pi-agentic-os.md) - pi os, pi agentic os, /flow, pensar, planear, hacer, cerrar, ask_user
+- active: [pi-extension-stack](../topics/pi-extension-stack.md) - extensiones pi, paquetes pi, pi packages, sincronizar pi, web_search, codemapper, fff, advisor
 - active: [privacy-and-dictation-data](../topics/privacy-and-dictation-data.md) - privacidad, audio, transcripciones, dictado, logs, storage, modelos
 - active: [product-direction](../topics/product-direction.md) - producto, MVP, alcance, direccion, no human interaction, automatizacion
 - active: [selection-and-assistant-actions](../topics/selection-and-assistant-actions.md) - texto seleccionado, seleccion, assistant mode, asistente, quick chat, alt-q, presets, hotkeys
@@ -39,26 +39,32 @@ Generated: 2026-07-19T01:03:05.150Z
 - archived: [Fixvox Effective Runtime Parity](../tracks/archive/fixvox-effective-runtime-parity.md)
 - archived: [Prompt Para Proxima Sesion Archivado](../tracks/archive/next-session-prompt-2026-06-20.md)
 - archived: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md)
-- active: [Bounded Taskflow Implementation Spike](../tracks/bounded-taskflow-implementation-spike.md)
+- paused: [Bounded Taskflow Implementation Spike](../tracks/bounded-taskflow-implementation-spike.md)
 - complete: [Clean Install Readiness And Account UX](../tracks/clean-install-readiness-and-account-ux.md)
-- active: [Fixvox Admin Configuration Hub](../tracks/fixvox-admin-configuration-hub.md)
+- complete: [Cloudflare Proxy Latency Optimization](../tracks/cloudflare-proxy-latency-optimization.md)
+- complete: [Fixvox Admin Configuration Hub](../tracks/fixvox-admin-configuration-hub.md)
 - stable: [Fixvox Admin Profile Composer](../tracks/fixvox-admin-profile-composer.md)
-- active: [Fixvox Admin Web + Pi Chat](../tracks/fixvox-admin-web-pi-chat.md)
-- active: [Fixvox Lulu Assistant Parity Refactor](../tracks/fixvox-lulu-assistant-parity-refactor.md)
-- active: [Fixvox Lulu Assistant Safe Architecture Plan](../tracks/fixvox-lulu-assistant-safe-architecture-plan.md)
+- superseded: [Fixvox Admin Web + Pi Chat](../tracks/fixvox-admin-web-pi-chat.md)
+- complete: [Fixvox Lulu Assistant Parity Refactor](../tracks/fixvox-lulu-assistant-parity-refactor.md)
+- complete: [Fixvox Lulu Assistant Safe Architecture Plan](../tracks/fixvox-lulu-assistant-safe-architecture-plan.md)
 - active: [Fixvox Product-First Self-Hosted Contract Plan](../tracks/fixvox-product-first-self-hosted-contract-plan.md)
 - active: [Fixvox Registered Users Opportunities](../tracks/fixvox-registered-users-opportunities.md)
 - superseded: [Fixvox Self-Hosted Checkpoint D Closure Plan](../tracks/fixvox-self-hosted-checkpoint-d-closure-plan.md)
-- active: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md)
-- active: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md)
-- active: [Pi Chat Remote Agent Parity](../tracks/pi-chat-remote-agent-parity.md)
-- active: [Pi Prod Workspace For Dictation Tauri](../tracks/pi-prod-workspace.md)
+- paused: [Fixvox Self-Hosted Checkpoint F — VPS Loopback And Operations](../tracks/fixvox-self-hosted-checkpoint-f-vps-loopback-plan.md)
+- superseded: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md)
+- complete: [Flow Plan/Execution Evaluation](../tracks/flow-plan-execution-evaluation.md)
+- superseded: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md)
+- active: [Pi Chat — Conversation-First UX](../tracks/pi-chat-conversation-first-ux.md)
+- complete: [Pi Chat Remote Agent Parity](../tracks/pi-chat-remote-agent-parity.md)
+- stable: [Pi Prod Workspace For Dictation Tauri](../tracks/pi-prod-workspace.md)
 - stable: [Profile Composer: Cloudflare rollout seguro y auditable](../tracks/profile-composer-cloudflare-rollout-plan.md)
 - stable: [Profile Composer Phase 3: preview, RBAC and safe publish](../tracks/profile-composer-phase-3-rbac-publish-plan.md)
-- active: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md)
-- active: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md)
+- complete: [QuickPick Alt+Q — Reliability](../tracks/quickpick-alt-q-reliability.md)
+- complete: [QuickPick — Installed App Validation](../tracks/quickpick-installed-app-validation.md)
+- superseded: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md)
+- complete: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md)
 - active: [Standard Product UX — External Operation Gate Plan](../tracks/standard-product-ux-external-operation-gate-plan.md)
-- active: [Standard Product UX Redesign Plan](../tracks/standard-product-ux-redesign-plan.md)
+- complete: [Standard Product UX Redesign Plan](../tracks/standard-product-ux-redesign-plan.md)
 - complete: [Acceptance Matrix](../tracks/standard-product-ux-redesign/acceptance-matrix.md)
 - complete: [Control Room Wireframes](../tracks/standard-product-ux-redesign/control-room-wireframes.md)
 - complete: [Copy And Error Contract](../tracks/standard-product-ux-redesign/copy-and-error-contract.md)
@@ -67,6 +73,11 @@ Generated: 2026-07-19T01:03:05.150Z
 - complete: [Information Architecture And Navigation](../tracks/standard-product-ux-redesign/information-architecture.md)
 - complete: [Settings Wireframes](../tracks/standard-product-ux-redesign/settings-wireframes.md)
 - complete: [Surface Boundaries](../tracks/standard-product-ux-redesign/surface-boundaries.md)
+- complete: [VPS Gate F Closure](../tracks/vps-gate-f-closure-brief.md)
+- complete: [VPS Gate F External Closure](../tracks/vps-gate-f-external-closure-brief.md)
+- complete: [VPS Persistent Provider And Canary Gate Plan](../tracks/vps-persistent-provider-canary-plan.md)
+- complete: [VPS Provider-Loopback Rollback Candidate](../tracks/vps-provider-loopback-rollback-brief.md)
+- blocked: [VPS Routing Canary](../tracks/vps-routing-canary-brief.md)
 
 ## Specs
 
@@ -93,11 +104,12 @@ Generated: 2026-07-19T01:03:05.150Z
 ## Skills
 
 - Canon: [docs/skills/](../skills/)
+- Operational commands: aos-doctor
 - Guidance: [local-codex-skills](../topics/local-codex-skills.md)
 
 ## Pi Resources
 
-- Prompts: aos-gol
+- Extensions: aos-doctor.ts
 - Guidance: [pi-agentic-os](../topics/pi-agentic-os.md)
 
 ## Aliases

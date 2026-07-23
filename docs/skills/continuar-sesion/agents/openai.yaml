@@ -1,4 +1,0 @@
-interface:
-  display_name: Continuar Sesion
-  short_description: Cerrar y preparar handoff
-  default_prompt: Usa Continuar Sesion para cerrar con valor y preparar una sesion nueva.

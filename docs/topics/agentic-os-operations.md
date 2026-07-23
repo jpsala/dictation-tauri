@@ -26,6 +26,7 @@ primary_refs:
   - docs/topics/os-quality.md
   - docs/topics/local-codex-skills.md
   - scripts/agent-context-audit.ts
+  - scripts/aos-doctor.ts
   - scripts/context-index.ts
   - scripts/context-refresh.ts
 ---
@@ -72,7 +73,7 @@ No abrir docs largos, specs completas, archivos archivados ni referencias profun
 
 ### Revisar
 
-- Capas locales: core docs, scripts, skills, adapter Codex (`.agents`), SpecKit si aplica, indice y audit.
+- Capas locales: core docs, scripts, skills, adapter Codex (`.agents`), requisitos del `/flow` global y extensiones Pi específicas del proyecto, SpecKit si aplica, índice y audit.
 - Ruta caliente: `AGENTS.md`, indice generado, `WORKING_MEMORY.md`, `TOPICS.md` y tracks activas siguen chicos y no son transcript.
 - Routing: topics relevantes existen, tienen triggers utiles y estan linkeados desde `docs/TOPICS.md`.
 - Continuidad: tracks activas tienen estado, prioridad, fecha, next step y refs que existen; tracks archivadas viven en `docs/tracks/archive/`.
@@ -81,7 +82,7 @@ No abrir docs largos, specs completas, archivos archivados ni referencias profun
 - Specs: specs activas estan indexadas, no tienen prefijos duplicados y tienen `spec.md`.
 - Drift: docs raiz no contradicen la ruta inicial ni el estado real del repo.
 - Archivos sueltos: notas, drafts, handoffs o contexto viejo tienen destino claro.
-- Audit/sync: `scripts/context-index.ts`, `scripts/context-refresh.ts` y `scripts/agent-context-audit.ts` cubren problemas recurrentes baratos de validar.
+- Audit/sync: `scripts/aos-doctor.ts`, `scripts/context-index.ts`, `scripts/context-refresh.ts` y `scripts/agent-context-audit.ts` cubren problemas recurrentes baratos de validar. El audit exige el package global `aos.flow-first`, `aos.requirements.json` compatible y ausencia de una copia local de `/flow`.
 
 ### Corregir Sin Preguntar
 
@@ -112,7 +113,7 @@ bun run context:index
 bun run context:audit
 ```
 
-5. Reportar correcciones, omitidos, pendientes y resultado del audit.
+1. Reportar correcciones, omitidos, pendientes y resultado del audit.
 
 ### Criterio De Exito
 

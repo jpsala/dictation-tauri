@@ -10,11 +10,8 @@ triggers:
   - memoria viva
   - audit docs
   - tracks
-  - cerrar sesion
-  - continuar sesion
-  - siguiente
-  - handoff thread
-  - nuevo thread
+  - /flow
+  - handoff documental
   - context index
   - Small Batches
   - small batches
@@ -81,7 +78,7 @@ Cada archivo debe tener frontmatter minimo:
 
 ```yaml
 ---
-status: pending | active | paused | blocked | done | archived
+status: pending | active | paused | blocked | complete | stable | superseded | archived
 started: YYYY-MM-DD
 updated: YYYY-MM-DD
 priority: low | medium | high | critical
@@ -112,21 +109,17 @@ Cada tanda debe tener:
 2. alcance revisable, idealmente de 2-5 tasks cuando esas tasks comparten comportamiento y checks;
 3. check de cierre explicito;
 4. `tasks.md` marcado si aplica;
-5. commit atomico reversible.
+5. diff reversible y atribuible; commit sólo con autorización explícita.
 
 Separar siempre lo que cruce gates o side effects reales: decisiones nuevas, provider calls, smokes manuales, paste automation, selection real, historial durable y cambios amplios de seguridad/capabilities. Si una tanda empieza a mezclar responsabilidades no relacionadas o vuelve dificil revertir, se divide antes de seguir.
 
-## Handoff Con `siguiente`
+## Continuidad Con `/flow`
 
-`siguiente` es un comando conversacional de JP para cerrar la continuidad en un thread nuevo. El agente debe:
-
-1. verificar estado real con git y la spec/track activa;
-2. redactar el prompt compacto de "seguimos en la siguiente sesion" para el proximo Small Batch;
-3. crear o forkear un nuevo thread Codex en el mismo proyecto/directorio;
-4. enviar ese prompt al thread nuevo;
-5. devolver el thread creado a JP.
-
-El comando no significa continuar trabajando en el thread actual. El prompt debe incluir ruta inicial, ultimo commit esperado, worktree esperado, objetivo del batch, guardrails, checks de cierre, commit atomico, no push y pedido explicito de arrancar con `gol`. Archivar el thread actual solo con pedido explicito o despues de confirmar que el nuevo thread quedo creado correctamente.
+`/flow → Hacer` abre una sesión nueva enlazada y precarga un handoff basado sólo
+en índice, Working Memory y brief seleccionado. La implementación ocurre
+directamente en ese hilo, sin Agent ni auto-send. `/flow → Cerrar` queda para
+valor durable todavía faltante y no es obligatorio si Hacer ya dejó el estado
+final correcto.
 
 ## Auditoria
 

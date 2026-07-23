@@ -1,7 +1,7 @@
 ---
-status: active
+status: complete
 started: 2026-06-07
-updated: 2026-06-29
+updated: 2026-07-20
 priority: high
 topic: docs/topics/source-project-map.md
 related:

@@ -26,9 +26,9 @@ No abrir por defecto docs largos (`PROJECT`, `ASSISTANT_RULES`, `DEVELOPMENT`), 
 - Para features Fixvox-like, volver a `C:/dev/fixvox` como fuente canónica antes de cerrar el lote.
 - Trabajar en small batches/checkpoints verificables y reversibles.
 
-## Pi Actors
+## Paquetes Pi
 
-`@llblab/pi-actors` es project-local para flows largos con evidencia (Tauri/Vite, smokes dock/hotkeys/selection, dictado, monitoreo, cloud/admin local). No usar para comandos cortos. Prefijos `fixvox_`/`dictation_`; cwd `C:/dev/dictation-tauri`; evidencia en `artifacts/actors/<run-id>/`.
+El repo no instala paquetes Pi project-locales. Hereda la allowlist global vigente de `C:/dev/os`; `Agent` sólo se usa por pedido explícito y según `docs/topics/agent-tool-routing.md`. `.pi/extensions/aos-doctor.ts` es un adapter local del proyecto, no un paquete.
 
 ## Persistencia
 
@@ -53,15 +53,16 @@ No correr smokes físicos/audio/prod/deploy/autostart sin confirmación.
 
 ## Comandos AOS
 
-- `aos-sigamos`: seguir acá sin cierre.
-- `aos-guardar-sesion` / `aos-checkpoint` / `aos-cerrar-sesion`: promover valor durable, regenerar índice y auditar si corresponde.
-- `aos-realinear-os`: abrir `docs/topics/agentic-os-operations.md`; solo capa agentica salvo pedido.
-- `aos-perfect-os`: abrir `docs/topics/os-quality.md`; optimizar contexto, docs, tracks, skills/adapters, índice y audit.
-- Pi: JP guarda primero; `/aos-continuar [objetivo]` abre sesión nueva desde docs vivos (`--preview` revisa antes).
+- `/flow` es la única entrada diaria: `Pensar | Planear | Hacer | Cerrar`.
+- Planear declara `execution_route: economical | balanced | strong`; Hacer aplica esa ruta (`balanced` por defecto) en la sesión nueva y bloquea sin fallback si falta modelo o auth.
+- Hacer sólo avanza con foco `ready`: abre una sesión nueva enlazada, precarga índice, Working Memory y brief para revisión, y ejecuta directamente allí sin Agent ni auto-send.
+- Cerrar compacta sólo valor durable faltante y es opcional si Hacer ya persistió el estado final; `/new` queda para sesiones manuales fuera de ese handoff.
+- `aos-realinear-os` abre `docs/topics/agentic-os-operations.md`; las operaciones manager-only no son motores diarios.
+- No copiar `/flow` ni revivir prompts o skills legacy de planificación, continuidad o cierre dentro del repo.
 
 ## Design Context
 
-Para UI/frontend, leer `PRODUCT.md` y `DESIGN.md`; usar `docs/skills/impeccable`. Para superficie visual importante: screenshot real, Impeccable/product-register, comparación visual/council opcional, small batches, smokes y evidencia en `artifacts/...`.
+Para UI/frontend, leer `PRODUCT.md` y `DESIGN.md`; usar `docs/skills/impeccable`. Para superficie visual importante: screenshot real, Impeccable/product-register, revisión visual opcional, small batches, smokes y evidencia en `artifacts/...`.
 
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure, shell commands, and other important information, read the current active spec or track listed in docs/WORKING_MEMORY.md when one exists.

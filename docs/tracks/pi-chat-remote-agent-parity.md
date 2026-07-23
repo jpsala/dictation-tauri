@@ -1,7 +1,7 @@
 ---
-status: active
+status: complete
 started: 2026-07-18
-updated: 2026-07-18
+updated: 2026-07-20
 priority: high
 owner: JP/Pi
 topic: admin-control-room

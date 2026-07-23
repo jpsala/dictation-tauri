@@ -1,7 +1,7 @@
 ---
-status: active
+status: complete
 started: 2026-07-14
-updated: 2026-07-14
+updated: 2026-07-20
 priority: high
 owner: JP/Pi
 topic: fixvox-admin-configuration-hub

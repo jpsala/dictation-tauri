@@ -48,7 +48,17 @@ npm run admin:web:local -- -Mock
 # Integracion local con Worker dev real
 npm run cloud:dev:local
 npm run admin:web:local
+
+# Integracion self-hosted provider-free (Checkpoint E)
+npm run selfhosted:api:local
+npm run admin:web:local -- -SelfHosted
+npm run selfhosted:local:smoke
+
+# Gated: sólo tras autorización explícita; genera una llamada/costo real
+npm run selfhosted:local:real-provider:smoke
 ```
+
+El lane `-SelfHosted` usa API `127.0.0.1:8790`, Admin `127.0.0.1:8787`, PostgreSQL exclusivamente `fixvox_test` y providers mock. La auth fixture sólo puede activarse con entorno `local` y backend loopback; falla cerrado fuera de ese perímetro. No cambia la autoridad productiva: Cloudflare sigue hot path/rollback.
 
 `admin:web:local` setea:
 
@@ -107,6 +117,17 @@ Nunca imprimir:
 ## Flujo De Trabajo Recomendado
 
 ### 1. Desarrollo local
+
+Elegir un solo lane: Worker legacy para compatibilidad, o self-hosted provider-free para el contrato producto. Para el lane self-hosted:
+
+```bash
+npm run selfhosted:api:local
+npm run admin:web:local -- -SelfHosted
+# Gate automatizado coordinado:
+npm run selfhosted:local:smoke
+```
+
+Para el lane Worker legacy:
 
 1. Arrancar Worker local:
 
@@ -210,9 +231,13 @@ En production, acciones de mutation desde UI deben pedir confirmacion reforzada 
 ## Estado Implementado
 
 - `scripts/cloud-dev-local.ps1`
-- `scripts/admin-web-local.ps1`
+- `scripts/fixvox-api-local.ps1`
+- `scripts/admin-web-local.ps1` (`-Mock`, Worker legacy o `-SelfHosted`)
 - `scripts/admin-web-prod.ps1`
 - `npm run cloud:dev:local`
+- `npm run selfhosted:api:local`
+- `npm run selfhosted:local:smoke`
+- `npm run selfhosted:local:real-provider:smoke` (gated; exactamente una llamada chat)
 - `npm run admin:web:local`
 - `npm run admin:web:prod`
 - `admin/fixvox-web/server.mjs` soporta `FIXVOX_ADMIN_ENV` y `/api/admin/env`.

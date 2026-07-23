@@ -1,6 +1,9 @@
+/// <reference path="../types/aos-runtime.d.ts" />
+
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
+import { runAosDoctor } from "./lib/aos-doctor.ts";
 
 type Finding = {
   level: "error" | "warn";
@@ -13,37 +16,32 @@ const aosHome = process.env.AOS_HOME?.trim() ||
   (process.platform === "win32"
     ? "C:\\dev\\os"
     : join(process.env.HOME ?? "", "dev", "os"));
+type GlobalAosCheck = { ok: boolean; reason?: string };
 let globalAosExists = (_path: string) => false;
+let globalAosCheck: GlobalAosCheck = {
+  ok: false,
+  reason: "AOS_HOME doctor could not be loaded",
+};
 try {
   const aosHomeModule = await import(
     pathToFileURL(join(aosHome, "scripts", "aos-home.ts")).href
   );
+  const configDir = process.env.PI_CODING_AGENT_DIR ?? join(
+    process.env.USERPROFILE ?? process.env.HOME ?? "",
+    ".pi",
+    "agent",
+  );
   globalAosExists = (path: string) => aosHomeModule.aosPathExists(path, aosHome);
+  globalAosCheck = aosHomeModule.checkAosHome(
+    aosHome,
+    false,
+    join(configDir, "settings.json"),
+  );
 } catch {
-  // AOS global is optional; local adapters remain the fallback.
+  // Reported below as a required global contract failure.
 }
 
-const requiredAosPiPrompts = [
-  "aos-evaluar-skills.md",
-  "aos-fanout.md",
-  "aos-guardar-sesion.md",
-  "aos-help.md",
-  "aos-orquestar.md",
-  "aos-sigamos.md",
-];
-
-const requiredAosPiExtensions = [
-  "aos-checkpoint-nudge.ts",
-  "aos-tools.ts",
-];
-
-const requiredAosToolCommands = [
-  "aos-compact",
-  "aos-continuar",
-  "aos-skills",
-  "aos-status",
-  "aos-sync",
-];
+const requiredAosPiExtensions = ["aos-doctor.ts"];
 
 const legacyAosPiPrompts = [
   "adopt-os.md",
@@ -69,6 +67,14 @@ const legacyAosPiExtensions = [
   "checkpoint-nudge.ts",
   "os-tools.ts",
 ];
+
+const retiredLocalFlowSkills = new Set([
+  "cerrar-sesion",
+  "continuar-sesion",
+  "continuar-sesion-con-gol",
+  "plan-implementar",
+  "sigamos",
+]);
 
 function read(path: string) {
   return readFileSync(join(root, path), "utf8");
@@ -102,13 +108,18 @@ function frontmatter(content: string) {
   return match?.[1] ?? "";
 }
 
+function frontmatterLine(frontmatterText: string, key: string) {
+  return frontmatterText
+    .split(/\r?\n/)
+    .find((line) => line.startsWith(`${key}:`));
+}
+
 function hasFrontmatterKey(frontmatterText: string, key: string) {
-  return new RegExp(`^${key}:`, "m").test(frontmatterText);
+  return frontmatterLine(frontmatterText, key) !== undefined;
 }
 
 function frontmatterValue(frontmatterText: string, key: string) {
-  const match = frontmatterText.match(new RegExp(`^${key}:[ \\t]*([^\\r\\n]*)`, "m"));
-  return match?.[1]?.trim();
+  return frontmatterLine(frontmatterText, key)?.slice(key.length + 1).trim();
 }
 
 function hasUnsafePlainYamlColon(value: string | undefined) {
@@ -334,7 +345,9 @@ for (const file of walkMarkdownFiles(join(root, "docs", "tracks"))) {
     if (!hasFrontmatterKey(fm, key)) add("warn", `${trackPath} frontmatter missing ${key}`);
   }
 
-  if (content.length > 50000) {
+  const trackStatus = frontmatterValue(fm, "status") ?? "";
+  const maxTrackChars = ["active", "pending", "paused", "blocked"].includes(trackStatus) ? 50000 : 100000;
+  if (content.length > maxTrackChars) {
     add(
       "warn",
       `${trackPath} is large (${content.length} chars, ~${approxTokensFromChars(content.length)} tokens); tracks should be resumable state, not a transcript`,
@@ -346,6 +359,13 @@ if (exists("docs/skills")) {
   const skillDirs = listDirs("docs/skills");
   if (!skillDirs.length) {
     add("warn", "docs/skills/ exists but has no skill directories");
+  }
+
+  for (const skillDir of skillDirs) {
+    const skillName = skillDir.split("/").at(-1) ?? skillDir;
+    if (retiredLocalFlowSkills.has(skillName)) {
+      add("error", `${skillDir} competes with the global /flow planning, implementation, continuity, or close contract`);
+    }
   }
 
   if (exists("docs/skills/README.md")) {
@@ -386,59 +406,67 @@ if (exists(".pi/prompts")) {
   }
 }
 
+if (!globalAosCheck.ok) {
+  add(
+    "error",
+    `Global AOS package does not satisfy the /flow contract: ${globalAosCheck.reason ?? "unknown doctor failure"}`,
+  );
+}
+
+try {
+  const requirements = JSON.parse(read("aos.requirements.json"));
+  const flow = requirements?.commands?.flow;
+  if (
+    requirements?.schemaVersion !== 1 ||
+    flow?.contract !== "aos.flow-first" ||
+    flow?.minVersion !== "1.1.0" ||
+    flow?.scope !== "user" ||
+    flow?.cardinality !== 1
+  ) {
+    add(
+      "error",
+      "aos.requirements.json must require exactly one user/package aos.flow-first /flow at version 1.1.0",
+    );
+  }
+} catch {
+  add("error", "Missing or invalid aos.requirements.json global /flow declaration");
+}
+
+if (exists(".pi/extensions/aos-flujo.ts")) {
+  add(
+    "error",
+    ".pi/extensions/aos-flujo.ts is an unauthorized local copy; /flow must come from the user-scoped AOS package",
+  );
+}
+
 const hasPiAdapter = exists(".pi") || exists(".pi/prompts") || exists(".pi/extensions");
 if (hasPiAdapter) {
-  if (!exists(".pi/prompts")) {
-    add("error", "Pi adapter exists but .pi/prompts/ is missing; slash prompt templates will not be visible");
-  } else {
+  if (exists(".pi/prompts")) {
     const promptNames = new Set(listFileNames(".pi/prompts", ".md"));
-    for (const prompt of requiredAosPiPrompts) {
-      if (!promptNames.has(prompt) && !globalAosExists(join(".pi", "prompts", prompt))) {
-        add("error", `.pi/prompts/${prompt} is missing locally and from AOS_HOME; required /${prompt.replace(/\.md$/, "")} slash prompt will not be visible`);
-      }
-    }
-
     for (const prompt of legacyAosPiPrompts) {
       if (promptNames.has(prompt)) {
         const command = prompt.replace(/\.md$/, "");
-        const level: Finding["level"] = prompt === "threads.md" ? "error" : "warn";
-        add(level, `.pi/prompts/${prompt} is legacy unprefixed AOS slash command /${command}; use /aos-* prompt names to avoid slash palette drift`);
+        add("warn", `.pi/prompts/${prompt} is a legacy AOS slash command /${command}; /flow is the canonical daily entry`);
       }
     }
   }
 
-  const globalExtensionsAvailable = requiredAosPiExtensions.every((extension) =>
-    globalAosExists(join(".pi", "extensions", extension)),
-  );
-  if (!exists(".pi/extensions") && !globalExtensionsAvailable) {
-    add("error", "Pi adapter exists but extensions are missing locally and from AOS_HOME; commands like /aos-sync will not load");
+  if (!exists(".pi/extensions")) {
+    add("error", "Pi adapter exists but .pi/extensions/ is missing; local project commands will not load");
   } else {
-    const extensionNames = new Set(
-      exists(".pi/extensions") ? listFileNames(".pi/extensions", ".ts") : [],
-    );
+    const extensionNames = new Set(listFileNames(".pi/extensions", ".ts"));
     for (const extension of requiredAosPiExtensions) {
-      if (!extensionNames.has(extension) && !globalAosExists(join(".pi", "extensions", extension))) {
-        add("error", `.pi/extensions/${extension} is missing locally and from AOS_HOME; required AOS Pi extension commands/nudges will not load`);
+      if (!extensionNames.has(extension)) {
+        add("error", `.pi/extensions/${extension} is missing; required local AOS command will not load`);
       }
     }
 
     for (const extension of legacyAosPiExtensions) {
       if (extensionNames.has(extension)) {
-        add("warn", `.pi/extensions/${extension} is legacy unprefixed AOS adapter; use .pi/extensions/aos-* to avoid duplicate or stale slash commands`);
+        add("warn", `.pi/extensions/${extension} is a legacy AOS adapter; /flow is canonical`);
       }
     }
 
-    const aosToolsPath = exists(".pi/extensions/aos-tools.ts")
-      ? join(root, ".pi", "extensions", "aos-tools.ts")
-      : join(aosHome, ".pi", "extensions", "aos-tools.ts");
-    if (existsSync(aosToolsPath)) {
-      const aosTools = readFileSync(aosToolsPath, "utf8");
-      for (const command of requiredAosToolCommands) {
-        if (!aosTools.includes(`registerCommand("${command}"`)) {
-          add("error", `${aosToolsPath} does not register /${command}`);
-        }
-      }
-    }
   }
 }
 
@@ -517,6 +545,10 @@ if (!exists("docs/.generated/context-index.md")) {
       add("warn", `docs/.generated/context-index.md is older than ${path}`);
     }
   }
+}
+
+for (const finding of runAosDoctor(root, { includeContextSize: false }).findings) {
+  add(finding.level, `AOS doctor [${finding.code}]: ${finding.message}`);
 }
 
 const errors = findings.filter((finding) => finding.level === "error");

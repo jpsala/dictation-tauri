@@ -1,7 +1,7 @@
 ---
-status: active
+status: stable
 started: 2026-06-30
-updated: 2026-06-30
+updated: 2026-07-20
 priority: high
 owner: JP
 related:

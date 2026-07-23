@@ -1,4 +1,0 @@
-interface:
-  display_name: Cerrar Sesion
-  short_description: Cerrar con valor y audit
-  default_prompt: Usa Cerrar Sesion para cerrar el trabajo actual sin guardar transcript.

@@ -1,148 +1,70 @@
 ---
 id: agent-tool-routing
 status: active
-kind: how-to
+kind: policy
 triggers:
   - tool routing
   - routing decision
-  - combinar tools
+  - /flow
   - elegir herramienta
-  - dgoal
-  - until-done
-  - taskflow
-  - advisor
-  - ask_user
+  - subagente
 primary_refs:
   - docs/reference/tool-routing.yaml
   - docs/topics/pi-agentic-os.md
-  - docs/topics/pi-extension-stack.md
-  - upstream skill `aos-plan-implementar`
-  - .pi/extensions/aos-tools.ts
+  - aos.requirements.json
 ---
 
 # Agent Tool Routing
 
-Contrato operativo para que AOS elija y combine herramientas Pi sin pisarse. La
-regla base: **un motor gobierna; las demas herramientas apoyan**.
+Dictation Tauri usa una política **flow-first**: una entrada humana, un foco y el
+menor mecanismo suficiente.
 
-## Routing Decision
+## Ruta Canónica
 
-Antes de un trabajo mediano/grande, declarar:
-
-```text
-Routing Decision
-- Intent: discuss | study | spec | plan | implement | review
-- Primary engine: manual | planner | dgoal | until-done | long-task | taskflow | pi-dynamic-workflows (solo piloto opt-in)
-- Why: scenario de docs/reference/tool-routing.yaml que matchea
-- Support tools: advisor | ask_user | lens | web | librarian | council | taskflow
-- Forbidden nesting: combinaciones que no se van a iniciar
-- Required gates: ask_user/advisor/lens/checks
-- Verification: comando/check/evidencia de cierre
-```
-
-Si el trabajo es chico y reversible, basta una linea: `Routing: manual, porque
-es cambio chico; validar con <check>`.
-
-## Matriz Corta
-
-| Escenario | Motor principal | Apoyos | Gate |
-| --- | --- | --- | --- |
-| Cambio chico/reversible | manual | Ponytail si aplica, lens, checks | ninguno |
-| Feature grande con stages/TDD | planner | advisor, lens, checks | advisor si cambia arquitectura |
-| Objetivo largo por fases | dgoal | taskflow read-only, advisor, lens | dgoal_check por fase |
-| Loop con verify command claro | until-done | advisor, lens, checks | verify command |
-| TODO secuencial claro | long-task | checks | ask_user si costo/side effects |
-| Fleet update AOS serial | long-task via `/aos-fleet-update` | checks, git, registry | commits solo si JP los pidio; no push |
-| Investigacion/auditoria interactiva acotada en un repo | manual por etapas | `read`/`rg`/`bash`, web y checks | no Taskflow salvo pedido explicito |
-| Fan-out real/multi-repo | taskflow solo opt-in | advisor/council si aporta | confirmar costo/topologia antes; workers read-only por defecto |
-| Fan-out pesado experimental/benchmark | pi-dynamic-workflows | taskflow baseline, advisor | opt-in explicito, trigger seguro, tabla comparativa |
-| Research externo/versionado | manual/research | web_search, fetch_content, web_answer, librarian | no secretos/datos privados |
-| Prod/deploy/envios/datos/destructivo | el que corresponda | ask_user | confirmacion explicita |
-
-La version verificable vive en `docs/reference/tool-routing.yaml`.
-
-## Routing GPT-5.6
-
-Para elegir modelo y nivel de razonamiento dentro del motor ya seleccionado:
-
-| Trabajo | Ruta preferida |
+| Intención | Ruta |
 | --- | --- |
-| Pi normal y planificacion compacta | Sol medium |
-| Planificacion sustantiva, arquitectura, advisor y conformance | Sol high |
-| Trabajo mecanico barato | Luna medium |
-| Implementacion background acotada | Luna xhigh; reintentar con Luna max |
-| Implementacion interactiva sensible a latencia | Terra high |
-| Trabajo de alta garantia | Terra max, validado por Sol xhigh |
+| Entender o decidir | `/flow → Pensar` en el hilo actual |
+| Materializar un brief | `/flow → Planear` en el hilo actual |
+| Seleccionar foco | `/flow → Hacer`; 0 deriva, 1 autoselecciona, N abre picker |
+| Implementar | Hacer abre una sesión nueva enlazada y ejecuta directamente allí |
+| Persistir valor faltante | `/flow → Cerrar`, opcional si Hacer ya cerró correctamente |
 
-Tests, conformance y riesgo prevalecen sobre las heuristicas de costo. Los
-cambios de settings requieren reload o una sesion nueva cuando aplique.
+## Selección Y Ejecución
 
-## Preferencia Operativa JP: Manual Antes Que Taskflow
+Hacer lee sólo `Foco Único De Ejecución` en `WORKING_MEMORY`. Un foco inválido,
+un path fuera de `docs/tracks`/`specs` o campos inconsistentes bloquean antes del
+handoff. Un foco `ready` abre una nueva sesión con linaje, índice, Working Memory
+y brief en el editor; no usa Agent, resumen LLM, runtime state ni auto-send.
 
-Desde 2026-07-14, investigaciones conversacionales, explicaciones end-to-end y
-auditorias acotadas usan por defecto un flujo manual por etapas: descubrir con
-`rg`/`read`, verificar con comandos read-only, cruzar evidencia y sintetizar en
-la misma sesion. No iniciar Taskflow automaticamente por considerar una tarea
-"no trivial": agrega latencia y costo que no se justifican cuando un solo
-orquestador puede cerrar el trabajo. Taskflow queda reservado para fan-out/DAG
-real y solo despues de que JP lo pida o acepte explicitamente. Si JP dice
-`sin taskflow`, esa preferencia domina durante todo el trabajo y no se intenta
-reanudar un run pausado.
+Planear declara una ruta revisable en el brief: `economical` usa Luna High para
+docs o mecánica de bajo riesgo, `balanced` usa Sol Medium por defecto y `strong`
+usa Sol High para trabajo sensible. Hacer la aplica en la sesión nueva; modelo o
+auth ausentes bloquean sin fallback. No hay Terra, clasificador extra ni routing
+por turno.
 
-## Nesting Permitido
+Para trabajo local, reversible y barato de rehacer, el brief es orientación y no
+checklist exhaustiva. Inspeccionar sólo lo necesario para preservar cambios,
+resolver el comportamiento observable en una pasada y correr evidencia mínima
+no duplicada. Si el alcance crece materialmente, detenerse.
 
-- `long-task -> checks/git` para fleet updates AOS seriales; `/aos-fleet-update` arma el TODO y mantiene commits por repo aislados.
-- `dgoal -> taskflow` solo como auditoria/research/review acotada; dgoal sigue
-gobernando.
-- `dgoal/until-done/planner -> advisor|ask_user|lens|web` como apoyo.
-- `taskflow -> workers read-only`; el orquestador integra y escribe.
-- `pi-dynamic-workflows` solo via `aos-dynamic-workflows-pilot`/`pi-workflow`, preferentemente read-only, para comparar fan-out pesado contra `taskflow`; keyword trigger off por defecto y config JSON sin BOM.
-- `manual -> cualquier apoyo chico` si no crea estado persistente ni fan-out caro.
+## Herramientas De Apoyo
 
-## Nesting Prohibido
+- CodeMapper/FFF: orientación y búsqueda.
+- LSP/Lens: feedback técnico.
+- Advisor: riesgo, arquitectura o evidencia en conflicto.
+- Web/librarian: conocimiento externo o versionado.
+- Ask User: producto, permisos y side effects reales.
+- Chrome/CUA: UI explícita con aviso inicial.
 
-- `dgoal` como default para fleet updates AOS mientras mantenga UX/i18n/gate fragil.
-- `dgoal -> until-done` o `until-done -> dgoal`.
-- `planner -> dgoal/until-done` salvo decision explicita de migrar de motor.
-- `taskflow detached -> taskflow detached`.
-- `pi-dynamic-workflows` como reemplazo default de `taskflow`, `/ultracode` permanente, trigger generico `workflow`, o settings con BOM/corruptos que hagan volver al default.
-- dos branches paralelas escribiendo los mismos archivos.
-- desktop/browser automation con cuentas/canales reales sin `ask_user`.
-
-## Active Engine Register
-
-`/aos-routing status|set <engine> [goal]|clear` mantiene un registro advisory en
-`.pi/state/aos-routing.json` (ignorado por git). Sirve para que `/aos-status`,
-`/aos-continuar` y `/aos-plan-implementar` avisen si el motor pedido entra en
-conflicto con el motor principal ya activo. No es un interceptor global de tool
-calls; enforcement duro requiere hooks del runtime Pi.
-
-Usarlo cuando arranca o termina un loop principal:
-
-```text
-/aos-routing set dgoal "alinear repos AOS"
-/aos-routing clear
-```
+Agent se usa únicamente por pedido explícito fuera de Hacer. Taskflow, Council,
+planner, until-done, dgoal, Ponytail, Governed Runner y worktree bridge están
+retirados del runtime AOS actual; no recrearlos como fallback local.
 
 ## Gates
 
-- `ask_user`: prod, deploy, installs, commits/push, envios externos, datos
-privados, acciones destructivas, fan-out costoso o scope ambiguo.
-- `advisor`: arquitectura/storage/prod/security, decisiones `DECISIONS.md`-worthy
-o loops largos. No usarlo para confirmar obviedades, orientación barata,
-checks, ni pasos chicos de un playbook ya decidido; una vez por racimo de
-riesgo alcanza.
-- `lens`: despues de tocar codigo; si hay error real, resolver o documentar por
-que es ruido ambiental.
-- checks del repo: siempre mandan sobre heuristicas.
+Preguntar antes de installs, credenciales, acciones destructivas o externas,
+commit, push, deploy o producción cuando aún no estén autorizados. Para audio,
+selección, hotkeys y delivery físico aplican además los guardrails de `AGENTS.md`
+y la spec/track activa. No volver a pedir una autorización explícita vigente.
 
-## Si Hay Duda
-
-Elegir la opcion mas chica que no pierda seguridad:
-
-```text
-manual < long-task < until-done < planner < taskflow/council
-```
-
-Si dos motores parecen igual de buenos, usar `ask_user` o `advisor`, pero no
-activar dos motores principales a la vez.
+La policy verificable vive en `docs/reference/tool-routing.yaml`.

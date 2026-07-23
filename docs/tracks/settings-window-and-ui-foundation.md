@@ -1,10 +1,11 @@
 ---
-status: active
+status: superseded
 started: 2026-06-25
-updated: 2026-07-02
+updated: 2026-07-20
 priority: high
 owner: JP/Pi
 related:
+  - docs/tracks/standard-product-ux-redesign-plan.md
   - docs/topics/ui-design-and-impeccable.md
   - docs/topics/fixvox-dock-and-hotkeys-reference.md
   - docs/topics/source-project-map.md

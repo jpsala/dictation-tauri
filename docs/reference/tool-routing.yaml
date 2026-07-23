@@ -1,174 +1,127 @@
-# AOS tool routing policy v1
-# Human-readable guide: docs/topics/agent-tool-routing.md
-version: 1
+version: 9
+policy: flow_first_lean_brief
 
-runtime_state:
-  path: .pi/state/aos-routing.json
-  gitignored: true
-  command: /aos-routing status|set <engine> [goal]|clear
-  enforcement: advisory
+runtime:
+  daily_entry: /flow
+  source: global_aos_package
+  package_extension: runtime/aos-flujo.ts
+  requirement: aos.requirements.json
+  local_flow_copy: forbidden
 
-engines:
-  manual:
-    kind: root
-    use_when: small reversible local change
-    allows: [advisor, ask_user, lens, web, librarian, bash]
-    forbids: []
-  planner:
-    kind: root
-    use_when: large feature with stages, TDD, worktree, or planner artifacts
-    allows: [advisor, ask_user, lens, web, librarian, taskflow]
-    forbids: [dgoal, until_done]
-  dgoal:
-    kind: root
-    use_when: long phased goal with task ledger and independent phase checks
-    allows: [advisor, ask_user, lens, web, librarian, taskflow]
-    forbids: [planner, until_done]
-  until_done:
-    kind: root
-    use_when: autonomous loop with explicit done criteria and verify command
-    allows: [advisor, ask_user, lens, web, librarian]
-    forbids: [planner, dgoal]
-  long_task:
-    kind: root
-    use_when: clear sequential TODO list
-    allows: [advisor, ask_user, lens, web, librarian]
-    forbids: [planner, dgoal, until_done]
-  taskflow:
-    kind: orchestration
-    use_when: fan-out, DAG, audit, review, map-reduce, multi-repo read-only work
-    allows: [advisor, ask_user, lens, web, librarian, council]
-    forbids: [taskflow_detached_nested]
-  pi_dynamic_workflows:
-    kind: orchestration_pilot
-    use_when: >-
-      explicit pi-workflow pilot for heavy fan-out, deep research,
-      adversarial review, codebase-wide audit, or benchmark against taskflow
-    allows: [advisor, ask_user, lens, web, librarian]
-    forbids:
-      - default_replacement
-      - generic_workflow_trigger
-      - ultracode_default
-      - overlapping_parallel_writes
-
-scenarios:
-  small_fix:
-    primary: manual
-    support: [lens, bash]
-    gates: []
-  large_feature_tdd:
-    primary: planner
-    support: [advisor, lens, bash]
-    gates: [advisor_if_architecture]
-  phased_goal:
-    primary: dgoal
-    support: [taskflow, advisor, lens, bash]
-    gates: [dgoal_check]
-  verify_command_loop:
-    primary: until_done
-    support: [advisor, lens, bash]
-    gates: [verify_command]
-  sequential_todo:
-    primary: long_task
-    support: [lens, bash]
-    gates: [ask_user_if_side_effects]
-  aos_fleet_update:
-    primary: long_task
-    support: [git, bash, repo_checks]
-    gates: [ask_user_if_commit_or_push]
-    forbids: [dgoal, parallel_writes, push]
-  multi_repo_audit:
-    primary: taskflow
-    support: [advisor]
-    gates: [read_only_workers]
-  pi_dynamic_workflows_pilot:
-    primary: pi_dynamic_workflows
-    support: [advisor, taskflow_baseline]
-    gates:
-      - explicit_opt_in
-      - safe_trigger
-      - budget_or_concurrency
-      - comparison_table
-  external_research:
-    primary: manual
-    support: [web_search, fetch_content, web_answer, web_research, librarian]
-    gates: [no_secrets]
-  prod_or_external_side_effect:
-    primary: ask_user
-    support: [advisor]
-    gates: [explicit_confirmation]
-  architecture_decision:
-    primary: advisor
-    support: []
-    gates: [advisor]
-  code_changed:
-    primary: lens
-    support: [bash]
-    gates: [repo_checks]
-
-forbidden_nesting:
-  - parent: aos_fleet_update
-    child: dgoal
-    reason: dgoal startup gate/i18n is too fragile for JP fleet ops
-  - parent: dgoal
-    child: until_done
-    reason: two goal loops would compete for done criteria
-  - parent: until_done
-    child: dgoal
-    reason: two goal loops would compete for task ownership
-  - parent: planner
-    child: dgoal
-    reason: planner owns the implementation state
-  - parent: planner
-    child: until_done
-    reason: planner owns the implementation state
-  - parent: taskflow
-    child: taskflow_detached
-    reason: detached recursive DAG can become unbounded
-  - parent: taskflow_branch
-    child: write_same_files
-    reason: parallel writers conflict; orchestrator owns writes
-  - parent: pi_dynamic_workflows
-    child: generic_workflow_trigger
-    reason: pilot must be opt-in via pi-workflow or explicit tool use
-  - parent: pi_dynamic_workflows
-    child: ultracode_default
-    reason: >-
-      exhaustive standing mode can consume unbounded tokens and compete with
-      AOS routing
-  - parent: pi_dynamic_workflows_branch
-    child: write_same_files
-    reason: parallel edits require explicit worktree isolation
-
-required_gates:
-  ask_user:
-    triggers:
-      - prod
-      - deploy
-      - install
-      - commit
-      - push
-      - destructive
-      - external_send
-      - private_data
-      - costly_fanout
-      - ambiguous_scope
-      - pi_dynamic_workflows_install
-  advisor:
-    triggers:
-      - architecture
-      - storage
+flow:
+  think:
+    mode: current_thread
+    outcome: THINK_COMPLETE_or_THINK_BLOCKED
+  plan:
+    mode: current_thread
+    default: lightweight_implementation_brief
+    content:
+      - objective
+      - observable_behavior
+      - explicit_limits
+      - 2_to_4_done_criteria
+      - focused_checks
+    exhaustive_only_for:
       - security
-      - prod
-      - decisions_md_worthy
-      - long_loop
-    skip_when:
-      - cheap_orientation
-      - repo_checks
-      - small_step_in_decided_playbook
-      - obvious_confirmation
-    cadence: once_per_risk_cluster
-  lens:
-    triggers: [code_changed]
-  repo_checks:
-    triggers: [done_claim]
+      - irreversible_migration
+      - production
+      - multi_repo_coordination
+      - explicit_request
+    outcome: PLAN_READY_or_PLAN_BLOCKED
+  selection:
+    source: docs_working_memory_focus
+    zero: needs_planning_without_plan_preloads_plan
+    one: ready_adjacent_plan_batch_auto_selects
+    many: ready_adjacent_plan_batch_pairs_open_picker
+    non_executable: blocked_complete_waiting_gate_use_reference
+    fail_closed_on_invalid_state_fields_or_path: true
+  inspection: minimum_needed_to_preserve_existing_changes
+  handoff:
+    mode: new_linked_session
+    parent_session: preserved_as_lineage
+    source: context_index_working_memory_and_selected_plan
+    editor: reviewable_not_auto_sent
+    transient_chat: not_implicitly_carried
+    llm_summary: none
+  execution:
+    mode: direct_in_replacement_parent
+    agent_use: explicit_user_request_only
+    writer_count: 1
+    max_batches: 1
+    model_routing:
+      source: selected_plan_frontmatter
+      field: execution_route
+      default: balanced
+      economical: openai-codex/gpt-5.6-luna@high
+      balanced: openai-codex/gpt-5.6-sol@medium
+      strong: openai-codex/gpt-5.6-sol@high
+      application: replacement_session_reload_before_handoff
+      visibility: prompt_and_notification
+      unavailable: fail_closed_without_fallback
+      classifier: none
+      terra: excluded_until_local_evidence
+  plan_role: scope_guidance_not_exhaustive_checklist
+  scope_growth: stop_instead_of_completing_adjacent_work
+  checks: minimum_sufficient_nonduplicated_checks
+  documentation: concise_final_state_only
+  authorization: explicit_authorization_is_not_reasked
+  close:
+    mode: current_thread
+    required_after_persisted_hacer: false
+    outcome: CHECKPOINT_SAVED_or_CHECKPOINT_BLOCKED
+    track: compact_only_missing_durable_value
+    working_memory: minimal_state_reference_and_next_action_without_receipts
+
+support_tools:
+  orientation: [codemapper, fff]
+  diagnostics: [lsp, lens]
+  judgment: [advisor]
+  human_decision: [ask_user]
+  external_knowledge: [web, librarian]
+  visible_ui: [chrome, cua]
+
+local_gates:
+  - physical_audio
+  - hotkeys
+  - selection
+  - desktop_delivery
+  - accounts
+  - installs
+  - commit
+  - push
+  - deploy
+  - production
+
+removed_engines:
+  taskflow: removed
+  council: removed
+  planner: removed
+  until_done: removed
+  dgoal: removed
+  governed_runner: removed
+  worktree_bridge: removed
+
+invariants:
+  - prompts_are_reviewable_and_not_auto_sent
+  - no_runtime_state
+  - execution_route_is_explicit_reviewable_and_session_scoped
+  - focused_plan_paths_stay_inside_project
+  - local_reversible_work_uses_a_lightweight_brief
+  - brief_is_guidance_not_an_exhaustive_checklist
+  - implementation_targets_the_observable_result_in_one_pass
+  - no_hardening_compatibility_rollout_or_full_matrix_without_need_or_request
+  - material_scope_growth_stops_instead_of_absorbing_adjacent_work
+  - minimum_sufficient_nonduplicated_checks
+  - hacer_uses_a_linked_documentary_handoff
+  - transient_chat_must_be_persisted_before_hacer
+  - hacer_does_not_use_agent
+  - durable_state_update_is_concise
+  - explicit_authorization_is_not_reasked
+  - no_parallel_writers
+  - no_automatic_second_batch
+  - project_desktop_gates_are_preserved
+
+local_adapters:
+  - /doctor
+  - speckit
+  - impeccable

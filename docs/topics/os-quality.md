@@ -28,13 +28,16 @@ Asegurar que este repo quede en condiciones optimas para trabajo con agentes: co
 
 No se agrega documentacion por agregar. Una sesion nueva debe leer poco, entender lo importante, continuar sin romper reglas locales y encontrar cualquier doc util bajo demanda.
 
-## Comandos Naturales
+## Superficie Operativa
 
-- `aos-help` / `os help`: mostrar comandos disponibles y cuando usarlos.
-- `aos-perfect-os` / `perfect os` / `dejar en condiciones`: auditar y mejorar la capa agentica hasta dejarla optima.
+- `/flow`: única entrada cotidiana para Pensar, Planear, Hacer y Cerrar.
+- `aos-help` / `os help`: mostrar la superficie AOS sin ejecutar cambios.
+- `aos-perfect-os` / `perfect os` / `dejar en condiciones`: auditar y mejorar la capa agentica hasta dejarla óptima.
 - `aos-realinear-os` / `realinear os`: reparar drift de la capa agentica del repo actual.
-- `aos-guardar-sesion` / `aos-checkpoint` / `cerrar sesion`: guardar valor durable sin transcript.
-- `/aos-continuar [objetivo]`: abrir sesion Pi nueva despues de que JP guardo valor durable.
+- `/doctor`: diagnóstico read-only específico de Dictation Tauri.
+
+Las operaciones especializadas no compiten con `/flow` para planificación,
+implementación o continuidad.
 
 ## Checklist Perfect OS
 

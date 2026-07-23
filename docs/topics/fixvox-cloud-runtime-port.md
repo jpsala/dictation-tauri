@@ -143,9 +143,21 @@ El proxy devuelve headers que Dictation Tauri deberia conservar en `HostTranscri
 - `X-Fixvox-Proxy-Parse-Ms`
 - `X-Fixvox-Proxy-Usage-Ms`
 - `X-Fixvox-Proxy-Upstream-Ms`
+- `X-Fixvox-Proxy-Engine-Binding-Ms`
+- `X-Fixvox-Proxy-Budget-Ms`
 - `X-Fixvox-Proxy-Init-Ms`
 - `X-Fixvox-Proxy-Total-Ms`
 - `Server-Timing`
+
+`X-Fixvox-Proxy-Init-Ms` es un nombre legacy: mide acumulado desde el inicio de la request hasta después del upstream, no sólo cold start. Para diagnóstico nuevo usar `engine_binding`, `budget`, `parse`, `usage`, `upstream` y `total`.
+
+## Update 2026-07-21: Hot Path De Audio
+
+- Evidencia real previa al cambio local: proxy total `4401 ms`, upstream Groq `625 ms`, compresión host `164 ms` y postproceso apagado. El overhead no explicado dentro del Worker era aproximadamente `3776 ms`.
+- La regresión probable entró con `bc9de65`, que agregó resolución de profile/engine/prompt y budget al hot path de `/v1/audio/transcriptions`; Fixvox de referencia conserva una ruta más directa.
+- Optimización local, todavía sin deploy: una sola resolución reusable por request, eliminación de dos reconstrucciones completas de Control Room config, lecturas KV independientes en paralelo, una sola lectura del variants store por config y timings explícitos `engineBindingMs`/`budgetMs` preservados por Rust en reports redacted.
+- El test de hot path limita la request de audio a 18 lecturas KV y exige concurrencia de lecturas, manteniendo binding de profile/engine/prompt y bloqueo `402` por budget.
+- Gate arquitectónico pendiente: si `budgetMs` sigue dominando tras validar la build desplegada, reemplazar `listRequestEvents()` por un ledger de gasto O(1) y concurrency-safe, preferentemente Durable Object. No relajar budgets ni desplegar sin gate separado.
 
 ## Soporte Actual Del Managed Proxy
 

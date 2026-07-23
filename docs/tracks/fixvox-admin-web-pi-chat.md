@@ -1,10 +1,13 @@
 ---
-status: active
+status: superseded
 started: 2026-06-30
-updated: 2026-07-02
+updated: 2026-07-20
 priority: high
 owner: JP
 related:
+  - docs/tracks/pi-chat-conversation-first-ux.md
+  - docs/tracks/pi-chat-remote-agent-parity.md
+  - docs/tracks/fixvox-admin-configuration-hub.md
   - docs/tracks/pi-prod-workspace.md
   - docs/tracks/fixvox-registered-users-opportunities.md
   - docs/tracks/fixvox-tauri-cloud-release.md

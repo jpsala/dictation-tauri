@@ -1,10 +1,11 @@
 ---
-status: active
+status: superseded
 started: 2026-06-27
-updated: 2026-07-11
+updated: 2026-07-20
 priority: high
 owner: JP
 related:
+  - docs/tracks/standard-product-ux-external-operation-gate-plan.md
   - docs/topics/fixvox-cloud-runtime-port.md
   - docs/topics/backend-and-model-routing.md
   - specs/009-fixvox-cloud-runtime-port/tasks.md

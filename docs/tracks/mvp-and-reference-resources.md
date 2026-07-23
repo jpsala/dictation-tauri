@@ -1,7 +1,7 @@
 ---
-status: active
+status: superseded
 started: 2026-06-05
-updated: 2026-06-10
+updated: 2026-07-20
 priority: high
 topic: docs/topics/product-direction.md
 related:

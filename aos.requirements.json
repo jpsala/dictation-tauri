@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "commands": {
+    "flow": {
+      "contract": "aos.flow-first",
+      "minVersion": "1.1.0",
+      "scope": "user",
+      "cardinality": 1
+    }
+  }
+}

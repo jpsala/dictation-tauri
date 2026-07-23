@@ -1,7 +1,7 @@
 ---
-status: active
+status: paused
 started: 2026-07-15
-updated: 2026-07-17
+updated: 2026-07-20
 priority: high
 owner: Pi
 related:
@@ -111,24 +111,24 @@ No se usa Batch 2 como piloto porque diseñar contratos canónicos requiere juic
 
 - Nombre: `dictation-bounded-plan-implement-spike`
 - Archivo: `.pi/taskflows/dictation-bounded-plan-implement-spike.json`
-- FlowIR: `ir:22e51921382eaa06db7a9dfa9a7b70aa9e63031e3473363bfae83da950664b20`
-- Fases: `baseline → plan → implement → {verify, scope-check} → quality-gate → receipt`
-- Planner: read-only, salida JSON con contrato y un retry de formato.
-- Writer: `executor-code`, ownership exclusivo del test nuevo.
-- Reviewer: sólo si los scripts no auto-pasan; máximo una reparación.
+- FlowIR anterior (histórico): `ir:22e51921382eaa06db7a9dfa9a7b70aa9e63031e3473363bfae83da950664b20`.
+- Fases endurecidas: `baseline → plan → implement → verify-and-scope → receipt`.
+- Planner: read-only, salida JSON con contrato y un único retry de formato.
+- Writer: `executor-code`, con whitelist explícita `read`/`grep`/`write`/`edit`, ownership exclusivo del test nuevo y sin retry automático.
+- Verificación: una fase determinística combina contract tests, `git diff --check` y el hash de scope; ante cualquier fallo termina el intento antes del receipt.
 - Presupuesto: 250.000 tokens observados.
-- Estado: **prepared-not-run**. Search de library recomendó copiar/generalizar el flow original (score 0,55). Verify final PASS, compile PASS, 7 fases, 0 errores.
-- Warning intencional: `quality-gate` es la única ruta al receipt; al agotar la reparación debe fallar cerrado, no producir bypass ni falso cierre.
+- Estado: **prepared-not-run**. El JSON revisado queda pendiente de verify/compile del runtime Taskflow antes de cualquier run; no se afirma un FlowIR nuevo hasta entonces.
+- Razonamiento: el diseño anterior tenía siete fases y `onBlock: retry` sobre un writer no idempotente. Se eliminó ese rework y el archivo temporal compartido bajo `%TEMP%`; el digest base ahora viaja por interpolación entre fases.
 
 ### Autonomy Contract V2
 
 **Objetivo:** probar el relay planner → implementador → verificación sobre un test útil, pequeño y todavía inexistente.
 
-**Scope:** un único archivo nuevo, fuentes read-only del inventario, Tauri y Control Room, y estado temporal propio del flow.
+**Scope:** un único archivo nuevo y fuentes read-only del inventario, Tauri y Control Room. No crea estado temporal persistente fuera del run.
 
-**Presupuesto:** máximo 250.000 tokens; un planner, un executor por intento, reviewer sólo ante fallo y máximo una reparación.
+**Presupuesto:** máximo 250.000 tokens; un planner con un retry de formato y un único executor sin retry automático.
 
-**Checkpoints:** fingerprint inicial, plan JSON, writer único, contract tests, `git diff --check`, scope hash, gate y receipt.
+**Checkpoints:** fingerprint inicial, plan JSON, writer único, contract tests, `git diff --check`, scope hash y receipt.
 
 **Verificación:**
 
@@ -137,9 +137,9 @@ bun test tests/cloud-contract/contract-fixtures.test.ts tests/cloud-contract/pro
 git diff --check -- tests/cloud-contract/product-route-disposition.test.ts
 ```
 
-**Stop condition:** target ya existente al iniciar, edición fuera de ownership, dependencia/package script, cambio de fixture/doc/runtime, efecto externo, presupuesto agotado o una reparación fallida.
+**Stop condition:** target ya existente al iniciar, edición fuera de ownership, dependencia/package script, cambio de fixture/doc/runtime, efecto externo, presupuesto agotado o cualquier fallo de writer/verificación. Un fallo se reporta y exige un nuevo flow pequeño; no se reanuda como reparación implícita.
 
-**Efectos locales permitidos durante una futura ejecución:** crear el test nuevo, leer fuentes locales, ejecutar los dos checks y crear/eliminar el hash temporal bajo `%TEMP%`.
+**Efectos locales permitidos durante una futura ejecución:** crear el test nuevo, leer fuentes locales y ejecutar los dos checks.
 
 **Efectos prohibidos:** editar archivos existentes; dependencias, installs, package scripts, runtime/Tauri/Admin/product docs; DB/provider/red/OAuth/producción/deploy; secrets/datos reales; commit/push; run/resume de cualquier otro flow.
 

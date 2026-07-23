@@ -24,7 +24,7 @@ priority: medium
 
 Campos:
 
-- `status`: `pending`, `active`, `paused`, `blocked`, `done` o `archived`.
+- `status`: `pending`, `active`, `paused`, `blocked`, `complete`, `stable`, `superseded` o `archived`.
 - `started`: fecha en que se creo la track.
 - `updated`: ultima fecha en que se actualizo.
 - `priority`: `low`, `medium`, `high` o `critical`.
@@ -32,6 +32,20 @@ Campos:
 - `related`: opcional; docs, topics, specs o archivos relacionados.
 - `topic`: opcional; topic principal que explica el contexto estable.
 - `source_refs`: opcional; archivos de codigo o docs que deben revisarse para refrescar la track.
+
+Semántica de estados:
+
+- `pending`: reconocida, todavía no iniciada.
+- `active`: trabajo vigente con siguiente paso; objetivo máximo de cinco tracks.
+- `paused`: trabajo válido detenido intencionalmente, sin ejecución actual.
+- `blocked`: no puede avanzar por un bloqueo concreto distinto de un gate externo normal.
+- `complete`: objetivo cumplido; se conserva mientras siga siendo referencia útil.
+- `stable`: superficie operativa o runbook vigente, sin batch de implementación activa.
+- `superseded`: reemplazada por una fuente sucesora explícita; conserva valor histórico.
+- `archived`: memoria fría movida a `docs/tracks/archive/`.
+
+No usar `done`, `reference` ni estados ad hoc en tracks de trabajo. `README.md` puede usar
+`reference` porque documenta el sistema y `TEMPLATE.md` usa `pending` como ejemplo.
 
 Usar `docs/tracks/TEMPLATE.md` como base para crear una track nueva.
 
