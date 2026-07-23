@@ -7,6 +7,8 @@ import type {
 
 export const hostSelectionCaptureCommand = "capture_selection_context";
 export const hostSelectionCaptureForTargetCommand = "capture_selection_context_for_target";
+export const hostSelectionCaptureForTargetWithClipboardCommand =
+  "capture_selection_context_for_target_with_clipboard";
 
 export const hostSelectionCaptureRoute: HostSelectionCaptureRoute = {
   owner: "tauri_host",

@@ -4,6 +4,7 @@ import {
   extractCloudSelectionPresetDefaults,
 } from "../../src/settings/preset-store-control";
 import {
+  deleteSelectionTransformPreset,
   getSelectionTransformPreset,
   hydrateSelectionTransformPresetStore,
 } from "../../src/selection-transform";
@@ -79,8 +80,8 @@ describe("preset-store-control", () => {
     });
   });
 
-  it("imports cloud defaults only into known starter presets", () => {
-    hydrateSelectionTransformPresetStore({ schemaVersion: 1, starterCustomizations: {}, customPresets: {} });
+  it("imports cloud defaults only into matching presets that still exist", () => {
+    hydrateSelectionTransformPresetStore({ schemaVersion: 2, seedRequired: true, presets: {} });
 
     const applied = applyCloudSelectionPresetDefaults(extractCloudSelectionPresetDefaults(cloudStatusWithSelectionPresets()));
     const preset = getSelectionTransformPreset("corregir-texto");
@@ -97,5 +98,9 @@ describe("preset-store-control", () => {
       body: "Cloud managed correction prompt. Return only corrected text.",
     });
     expect(() => getSelectionTransformPreset("custom-cloud-only")).toThrow("Unknown selection transform preset");
+
+    deleteSelectionTransformPreset("corregir-texto");
+    expect(applyCloudSelectionPresetDefaults(extractCloudSelectionPresetDefaults(cloudStatusWithSelectionPresets()))).toBe(0);
+    expect(() => getSelectionTransformPreset("corregir-texto")).toThrow("Unknown selection transform preset");
   });
 });

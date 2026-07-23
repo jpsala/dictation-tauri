@@ -5,8 +5,7 @@ export const selectionTransformPresetIds = [
   "like-me-en",
 ] as const;
 
-export type StarterSelectionTransformPresetId = (typeof selectionTransformPresetIds)[number];
-export type SelectionTransformPresetId = StarterSelectionTransformPresetId | (string & {});
+export type SelectionTransformPresetId = string;
 
 export type SelectionTransformPresetDefinition = {
   id: SelectionTransformPresetId;
@@ -25,12 +24,9 @@ export type SelectionTransformPresetEditableFields = Pick<
   "name" | "body" | "hotkey" | "pickerKey" | "provider" | "model" | "enabled" | "confirm"
 >;
 
-export type SelectionTransformPresetAdminItem = SelectionTransformPresetDefinition & {
-  isCustomized: boolean;
-  canDelete: boolean;
-};
+export type SelectionTransformPresetAdminItem = SelectionTransformPresetDefinition;
 
-const presetDefinitions: Record<StarterSelectionTransformPresetId, SelectionTransformPresetDefinition> = {
+const initialPresetDefinitions: Record<string, SelectionTransformPresetDefinition> = {
   "como-yo-es": {
     id: "como-yo-es",
     name: "Como yo (español)",
@@ -182,17 +178,22 @@ const PRESET_INPUT_CONTRACT = [
   "If the source text is empty or unusable, return plain text only and keep the response minimal.",
 ].join(" ");
 
-const PRESET_CUSTOMIZATIONS_STORAGE_KEY = "dictation-tauri.selection-presets.v1";
-const CUSTOM_PRESETS_STORAGE_KEY = "dictation-tauri.selection-custom-presets.v1";
+const PRESET_STORE_STORAGE_KEY = "dictation-tauri.selection-preset-store.v2";
+const LEGACY_PRESET_CUSTOMIZATIONS_STORAGE_KEY = "dictation-tauri.selection-presets.v1";
+const LEGACY_CUSTOM_PRESETS_STORAGE_KEY = "dictation-tauri.selection-custom-presets.v1";
 
 export type SelectionTransformPresetStore = {
-  schemaVersion: 1;
-  starterCustomizations: Partial<Record<StarterSelectionTransformPresetId, Partial<SelectionTransformPresetEditableFields>>>;
-  customPresets: Record<string, SelectionTransformPresetDefinition>;
+  schemaVersion: 2;
+  presets: Record<string, SelectionTransformPresetDefinition>;
 };
 
-type StoredPresetCustomizations = SelectionTransformPresetStore["starterCustomizations"];
-type StoredCustomPresets = SelectionTransformPresetStore["customPresets"];
+type LegacySelectionTransformPresetStore = {
+  schemaVersion?: number;
+  seedRequired?: boolean;
+  starterCustomizations?: Record<string, Partial<SelectionTransformPresetEditableFields>>;
+  customPresets?: Record<string, Partial<SelectionTransformPresetDefinition>>;
+  presets?: Record<string, Partial<SelectionTransformPresetDefinition>>;
+};
 
 let hostOwnedPresetStore: SelectionTransformPresetStore | undefined;
 
@@ -204,184 +205,160 @@ function getPresetStorage(): Storage | undefined {
   }
 }
 
-function sanitizePresetCustomization(
-  customization: Partial<SelectionTransformPresetEditableFields> | undefined,
+function sanitizePresetFields(
+  fields: Partial<SelectionTransformPresetEditableFields> | undefined,
 ): Partial<SelectionTransformPresetEditableFields> | undefined {
-  if (!customization || typeof customization !== "object") {
+  if (!fields || typeof fields !== "object") {
     return undefined;
   }
 
   const next: Partial<SelectionTransformPresetEditableFields> = {};
-  if (typeof customization.name === "string" && customization.name.trim()) {
-    next.name = customization.name.trim();
+  if (typeof fields.name === "string" && fields.name.trim()) next.name = fields.name.trim();
+  if (typeof fields.body === "string" && fields.body.trim()) next.body = fields.body.trim();
+  if (typeof fields.hotkey === "string") next.hotkey = fields.hotkey.trim();
+  if (typeof fields.pickerKey === "string" && fields.pickerKey.trim()) {
+    next.pickerKey = fields.pickerKey.trim().slice(0, 1).toUpperCase();
   }
-  if (typeof customization.body === "string" && customization.body.trim()) {
-    next.body = customization.body.trim();
+  if (typeof fields.provider === "string" || fields.provider === null) {
+    next.provider = typeof fields.provider === "string" ? fields.provider.trim() || null : null;
   }
-  if (typeof customization.hotkey === "string") {
-    next.hotkey = customization.hotkey.trim();
+  if (typeof fields.model === "string" || fields.model === null) {
+    next.model = typeof fields.model === "string" ? fields.model.trim() || null : null;
   }
-  if (typeof customization.pickerKey === "string" && customization.pickerKey.trim()) {
-    next.pickerKey = customization.pickerKey.trim().slice(0, 1).toUpperCase();
-  }
-  if (typeof customization.provider === "string") {
-    next.provider = customization.provider.trim() || null;
-  }
-  if (typeof customization.model === "string") {
-    next.model = customization.model.trim() || null;
-  }
-  if (typeof customization.enabled === "boolean") {
-    next.enabled = customization.enabled;
-  }
-  if (typeof customization.confirm === "boolean") {
-    next.confirm = customization.confirm;
-  }
+  if (typeof fields.enabled === "boolean") next.enabled = fields.enabled;
+  if (typeof fields.confirm === "boolean") next.confirm = fields.confirm;
 
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
-function readStoredPresetCustomizations(): StoredPresetCustomizations {
-  if (hostOwnedPresetStore) {
-    return hostOwnedPresetStore.starterCustomizations;
+function sanitizePresetDefinition(
+  id: string,
+  definition: Partial<SelectionTransformPresetDefinition> | undefined,
+): SelectionTransformPresetDefinition | undefined {
+  if (!id.trim() || !definition || typeof definition !== "object") {
+    return undefined;
   }
 
-  const storage = getPresetStorage();
-  if (!storage) {
+  const fields = sanitizePresetFields(definition);
+  if (!fields?.name || !fields.body || !fields.pickerKey) {
+    return undefined;
+  }
+
+  return {
+    id,
+    name: fields.name,
+    body: fields.body,
+    hotkey: fields.hotkey ?? "",
+    pickerKey: fields.pickerKey,
+    provider: fields.provider,
+    model: fields.model,
+    enabled: fields.enabled ?? true,
+    confirm: fields.confirm ?? false,
+  };
+}
+
+function cloneInitialPresets(): Record<string, SelectionTransformPresetDefinition> {
+  return Object.fromEntries(
+    Object.entries(initialPresetDefinitions).map(([id, preset]) => [id, { ...preset }]),
+  );
+}
+
+function sanitizePresetRecord(
+  presets: Record<string, Partial<SelectionTransformPresetDefinition>> | undefined,
+): Record<string, SelectionTransformPresetDefinition> {
+  if (!presets || typeof presets !== "object") {
     return {};
   }
 
+  const sanitized: Record<string, SelectionTransformPresetDefinition> = {};
+  for (const [id, definition] of Object.entries(presets)) {
+    const preset = sanitizePresetDefinition(id, definition);
+    if (preset) sanitized[id] = preset;
+  }
+  return sanitized;
+}
+
+function migrateLegacyPresetStore(store: LegacySelectionTransformPresetStore): SelectionTransformPresetStore {
+  const presets = cloneInitialPresets();
+  for (const [id, fields] of Object.entries(store.starterCustomizations ?? {})) {
+    if (!presets[id]) continue;
+    const customization = sanitizePresetFields(fields);
+    if (customization) presets[id] = { ...presets[id], ...customization, id };
+  }
+  Object.assign(presets, sanitizePresetRecord(store.customPresets));
+  return { schemaVersion: 2, presets };
+}
+
+export function normalizeSelectionTransformPresetStore(store: unknown): SelectionTransformPresetStore {
+  const input = store && typeof store === "object" ? store as LegacySelectionTransformPresetStore : undefined;
+  if (input?.schemaVersion === 2 && input.seedRequired !== true && input.presets && typeof input.presets === "object") {
+    return { schemaVersion: 2, presets: sanitizePresetRecord(input.presets) };
+  }
+  if (input?.schemaVersion === 1) {
+    return migrateLegacyPresetStore(input);
+  }
+  return { schemaVersion: 2, presets: cloneInitialPresets() };
+}
+
+function readBrowserPresetStore(): SelectionTransformPresetStore {
+  const storage = getPresetStorage();
+  if (!storage) {
+    return { schemaVersion: 2, presets: cloneInitialPresets() };
+  }
+
+  const currentRaw = storage.getItem(PRESET_STORE_STORAGE_KEY);
+  if (currentRaw !== null) {
+    try {
+      return normalizeSelectionTransformPresetStore(JSON.parse(currentRaw));
+    } catch {
+      return { schemaVersion: 2, presets: {} };
+    }
+  }
+
+  const legacyCustomizationsRaw = storage.getItem(LEGACY_PRESET_CUSTOMIZATIONS_STORAGE_KEY);
+  const legacyCustomPresetsRaw = storage.getItem(LEGACY_CUSTOM_PRESETS_STORAGE_KEY);
+  let legacyCustomizations: LegacySelectionTransformPresetStore["starterCustomizations"] = {};
+  let legacyCustomPresets: LegacySelectionTransformPresetStore["customPresets"] = {};
   try {
-    const parsed = JSON.parse(storage.getItem(PRESET_CUSTOMIZATIONS_STORAGE_KEY) ?? "{}");
-    if (!parsed || typeof parsed !== "object") {
-      return {};
-    }
-
-    const customizations: StoredPresetCustomizations = {};
-    for (const presetId of selectionTransformPresetIds) {
-      const customization = sanitizePresetCustomization(
-        (parsed as Record<string, Partial<SelectionTransformPresetEditableFields> | undefined>)[presetId],
-      );
-      if (customization) {
-        customizations[presetId] = customization;
-      }
-    }
-    return customizations;
+    legacyCustomizations = JSON.parse(legacyCustomizationsRaw ?? "{}");
   } catch {
-    return {};
+    legacyCustomizations = {};
   }
-}
-
-function writeStoredPresetCustomizations(customizations: StoredPresetCustomizations): void {
-  if (hostOwnedPresetStore) {
-    hostOwnedPresetStore = {
-      ...hostOwnedPresetStore,
-      starterCustomizations: customizations,
-    };
-    return;
-  }
-
-  const storage = getPresetStorage();
-  if (!storage) {
-    return;
-  }
-
-  storage.setItem(PRESET_CUSTOMIZATIONS_STORAGE_KEY, JSON.stringify(customizations));
-}
-
-function isStarterPresetId(presetId: string): presetId is StarterSelectionTransformPresetId {
-  return selectionTransformPresetIds.includes(presetId as StarterSelectionTransformPresetId);
-}
-
-function readStoredCustomPresets(): StoredCustomPresets {
-  if (hostOwnedPresetStore) {
-    return hostOwnedPresetStore.customPresets;
-  }
-
-  const storage = getPresetStorage();
-  if (!storage) {
-    return {};
-  }
-
   try {
-    const parsed = JSON.parse(storage.getItem(CUSTOM_PRESETS_STORAGE_KEY) ?? "{}");
-    if (!parsed || typeof parsed !== "object") {
-      return {};
-    }
-
-    const customPresets: StoredCustomPresets = {};
-    for (const [id, rawPreset] of Object.entries(parsed as Record<string, Partial<SelectionTransformPresetDefinition>>)) {
-      if (isStarterPresetId(id) || !id.startsWith("custom-")) {
-        continue;
-      }
-      const fields = sanitizePresetCustomization(rawPreset);
-      if (!fields?.name || !fields.body || !fields.pickerKey) {
-        continue;
-      }
-      customPresets[id] = {
-        id,
-        name: fields.name,
-        body: fields.body,
-        hotkey: fields.hotkey ?? "",
-        pickerKey: fields.pickerKey,
-        provider: fields.provider,
-        model: fields.model,
-        enabled: fields.enabled ?? true,
-        confirm: fields.confirm ?? false,
-      };
-    }
-    return customPresets;
+    legacyCustomPresets = JSON.parse(legacyCustomPresetsRaw ?? "{}");
   } catch {
-    return {};
+    legacyCustomPresets = {};
   }
+
+  const migrated = normalizeSelectionTransformPresetStore({
+    schemaVersion: 1,
+    starterCustomizations: legacyCustomizations,
+    customPresets: legacyCustomPresets,
+  });
+  storage.setItem(PRESET_STORE_STORAGE_KEY, JSON.stringify(migrated));
+  return migrated;
 }
 
-function writeStoredCustomPresets(customPresets: StoredCustomPresets): void {
+function readPresetStore(): SelectionTransformPresetStore {
+  return hostOwnedPresetStore ?? readBrowserPresetStore();
+}
+
+function writePresetStore(store: SelectionTransformPresetStore): void {
+  const normalized = normalizeSelectionTransformPresetStore(store);
   if (hostOwnedPresetStore) {
-    hostOwnedPresetStore = {
-      ...hostOwnedPresetStore,
-      customPresets,
-    };
+    hostOwnedPresetStore = normalized;
     return;
   }
-
-  const storage = getPresetStorage();
-  if (!storage) {
-    return;
-  }
-
-  storage.setItem(CUSTOM_PRESETS_STORAGE_KEY, JSON.stringify(customPresets));
+  getPresetStorage()?.setItem(PRESET_STORE_STORAGE_KEY, JSON.stringify(normalized));
 }
 
-export function hydrateSelectionTransformPresetStore(
-  store: Partial<SelectionTransformPresetStore> | undefined,
-): SelectionTransformPresetStore {
+export function hydrateSelectionTransformPresetStore(store: unknown): SelectionTransformPresetStore {
   hostOwnedPresetStore = normalizeSelectionTransformPresetStore(store);
   return hostOwnedPresetStore;
 }
 
 export function dumpSelectionTransformPresetStore(): SelectionTransformPresetStore {
-  return normalizeSelectionTransformPresetStore(hostOwnedPresetStore ?? {
-    schemaVersion: 1,
-    starterCustomizations: readStoredPresetCustomizations(),
-    customPresets: readStoredCustomPresets(),
-  });
-}
-
-export function normalizeSelectionTransformPresetStore(
-  store: Partial<SelectionTransformPresetStore> | undefined,
-): SelectionTransformPresetStore {
-  const starterCustomizations = store?.starterCustomizations && typeof store.starterCustomizations === "object"
-    ? store.starterCustomizations
-    : {};
-  const customPresets = store?.customPresets && typeof store.customPresets === "object"
-    ? store.customPresets
-    : {};
-
-  return {
-    schemaVersion: 1,
-    starterCustomizations,
-    customPresets,
-  };
+  return normalizeSelectionTransformPresetStore(readPresetStore());
 }
 
 function slugifyPresetName(name: string): string {
@@ -395,130 +372,85 @@ function slugifyPresetName(name: string): string {
     .slice(0, 36) || "preset";
 }
 
-function mergePresetDefinition(presetId: SelectionTransformPresetId): SelectionTransformPresetDefinition {
-  if (isStarterPresetId(presetId)) {
-    const base = presetDefinitions[presetId];
-    const customization = readStoredPresetCustomizations()[presetId];
-    return customization ? { ...base, ...customization, id: presetId } : base;
-  }
-
-  const customPreset = readStoredCustomPresets()[presetId];
-  if (customPreset) {
-    return customPreset;
-  }
-
-  throw new Error(`Unknown selection transform preset: ${presetId}`);
-}
-
 export function listSelectionTransformPresets(): SelectionTransformPresetDefinition[] {
-  return [
-    ...selectionTransformPresetIds.map((presetId) => mergePresetDefinition(presetId)),
-    ...Object.values(readStoredCustomPresets()),
-  ].filter((preset) => preset.enabled !== false);
+  return Object.values(readPresetStore().presets).filter((preset) => preset.enabled !== false);
 }
 
 export function listSelectionTransformPresetAdminItems(): SelectionTransformPresetAdminItem[] {
-  const customizations = readStoredPresetCustomizations();
-  const customPresets = readStoredCustomPresets();
-  return [
-    ...selectionTransformPresetIds.map((presetId) => ({
-      ...mergePresetDefinition(presetId),
-      isCustomized: Boolean(customizations[presetId]),
-      canDelete: false,
-    })),
-    ...Object.values(customPresets).map((preset) => ({
-      ...preset,
-      isCustomized: true,
-      canDelete: true,
-    })),
-  ];
+  return Object.values(readPresetStore().presets);
 }
 
-export function createSelectionTransformCustomPreset(input?: Partial<SelectionTransformPresetEditableFields>): SelectionTransformPresetDefinition {
-  const customPresets = readStoredCustomPresets();
+export function createSelectionTransformPreset(
+  input?: Partial<SelectionTransformPresetEditableFields>,
+): SelectionTransformPresetDefinition {
+  const store = readPresetStore();
   const name = input?.name?.trim() || "New preset";
-  const baseId = `custom-${slugifyPresetName(name)}`;
+  const baseId = slugifyPresetName(name);
   let id = baseId;
   let suffix = 2;
-  while (customPresets[id] || isStarterPresetId(id)) {
+  while (store.presets[id]) {
     id = `${baseId}-${suffix}`;
     suffix += 1;
   }
 
-  const pickerKey = input?.pickerKey?.trim().slice(0, 1).toUpperCase() || "N";
   const preset: SelectionTransformPresetDefinition = {
     id,
     name,
     body: input?.body?.trim() || "Rewrite the text according to this preset. Return only the transformed text, no explanations.",
     hotkey: input?.hotkey?.trim() || "",
-    pickerKey,
+    pickerKey: input?.pickerKey?.trim().slice(0, 1).toUpperCase() || "N",
     provider: input?.provider ?? "openrouter",
     model: input?.model ?? null,
     enabled: input?.enabled ?? true,
     confirm: input?.confirm ?? false,
   };
-  customPresets[id] = preset;
-  writeStoredCustomPresets(customPresets);
+  writePresetStore({ ...store, presets: { ...store.presets, [id]: preset } });
   return preset;
 }
 
-export function deleteSelectionTransformCustomPreset(presetId: SelectionTransformPresetId): void {
-  if (isStarterPresetId(presetId)) {
-    return;
-  }
-
-  const customPresets = readStoredCustomPresets();
-  delete customPresets[presetId];
-  writeStoredCustomPresets(customPresets);
+export function deleteSelectionTransformPreset(presetId: SelectionTransformPresetId): void {
+  const store = readPresetStore();
+  const presets = { ...store.presets };
+  delete presets[presetId];
+  writePresetStore({ ...store, presets });
 }
 
-export function saveSelectionTransformPresetCustomization(
+export function saveSelectionTransformPreset(
   presetId: SelectionTransformPresetId,
   fields: Partial<SelectionTransformPresetEditableFields>,
 ): SelectionTransformPresetDefinition {
-  const customization = sanitizePresetCustomization(fields);
-  if (!customization) {
-    return resetSelectionTransformPresetCustomization(presetId);
+  const store = readPresetStore();
+  const current = store.presets[presetId];
+  if (!current) {
+    throw new Error(`Unknown selection transform preset: ${presetId}`);
   }
 
-  if (!isStarterPresetId(presetId)) {
-    const customPresets = readStoredCustomPresets();
-    const current = customPresets[presetId] ?? createSelectionTransformCustomPreset(fields);
-    const updated = { ...current, ...customization, id: current.id };
-    customPresets[updated.id] = updated;
-    writeStoredCustomPresets(customPresets);
-    return updated;
-  }
-
-  const customizations = readStoredPresetCustomizations();
-  customizations[presetId] = customization;
-  writeStoredPresetCustomizations(customizations);
-  return mergePresetDefinition(presetId);
-}
-
-export function resetSelectionTransformPresetCustomization(
-  presetId: SelectionTransformPresetId,
-): SelectionTransformPresetDefinition {
-  if (!isStarterPresetId(presetId)) {
-    return mergePresetDefinition(presetId);
-  }
-
-  const customizations = readStoredPresetCustomizations();
-  delete customizations[presetId];
-  writeStoredPresetCustomizations(customizations);
-  return presetDefinitions[presetId];
+  const updated = { ...current, ...sanitizePresetFields(fields), id: presetId };
+  writePresetStore({ ...store, presets: { ...store.presets, [presetId]: updated } });
+  return updated;
 }
 
 export function getSelectionTransformPreset(
   presetId: SelectionTransformPresetId,
 ): SelectionTransformPresetDefinition {
-  return mergePresetDefinition(presetId);
+  const preset = readPresetStore().presets[presetId];
+  if (!preset) {
+    throw new Error(`Unknown selection transform preset: ${presetId}`);
+  }
+  return preset;
 }
 
 export function isSelectionTransformPresetId(
   presetId: string | null | undefined,
 ): presetId is SelectionTransformPresetId {
-  return Boolean(presetId && (isStarterPresetId(presetId) || readStoredCustomPresets()[presetId]));
+  return Boolean(presetId && readPresetStore().presets[presetId]);
+}
+
+export function isSelectionTransformPresetAvailable(
+  presetId: string | null | undefined,
+): presetId is SelectionTransformPresetId {
+  const preset = presetId ? readPresetStore().presets[presetId] : undefined;
+  return Boolean(preset && preset.enabled !== false);
 }
 
 export function selectionTransformPresetIdFromPickerKey(

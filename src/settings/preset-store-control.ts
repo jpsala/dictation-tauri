@@ -3,8 +3,7 @@ import {
   dumpSelectionTransformPresetStore,
   hydrateSelectionTransformPresetStore,
   listSelectionTransformPresetAdminItems,
-  saveSelectionTransformPresetCustomization,
-  selectionTransformPresetIds,
+  saveSelectionTransformPreset,
   type SelectionTransformPresetEditableFields,
   type SelectionTransformPresetStore,
 } from "../selection-transform";
@@ -90,20 +89,25 @@ function cloudPresetToEditableFields(defaultPreset: CloudSelectionPresetDefault)
 }
 
 export function applyCloudSelectionPresetDefaults(defaults: CloudSelectionPresetDefault[]): number {
-  const starterIds = new Set<string>(selectionTransformPresetIds);
+  const existingIds = new Set(listSelectionTransformPresetAdminItems().map((preset) => preset.id));
   let applied = 0;
   for (const defaultPreset of defaults) {
-    if (!starterIds.has(defaultPreset.id)) {
+    if (!existingIds.has(defaultPreset.id)) {
       continue;
     }
     const fields = cloudPresetToEditableFields(defaultPreset);
     if (!Object.keys(fields).length) {
       continue;
     }
-    saveSelectionTransformPresetCustomization(defaultPreset.id, fields);
+    saveSelectionTransformPreset(defaultPreset.id, fields);
     applied += 1;
   }
   return applied;
+}
+
+function presetStoreNeedsPersistence(store: unknown): boolean {
+  const input = asRecord(store);
+  return input?.schemaVersion !== 2 || input.seedRequired === true;
 }
 
 export async function loadSelectionPresetStore(): Promise<SelectionTransformPresetStore | undefined> {
@@ -111,8 +115,14 @@ export async function loadSelectionPresetStore(): Promise<SelectionTransformPres
     return undefined;
   }
 
-  const store = await invoke<Partial<SelectionTransformPresetStore>>("get_selection_presets_store");
-  return hydrateSelectionTransformPresetStore(store);
+  const rawStore = await invoke<unknown>("get_selection_presets_store");
+  const store = hydrateSelectionTransformPresetStore(rawStore);
+  if (!presetStoreNeedsPersistence(rawStore)) {
+    return store;
+  }
+
+  const saved = await invoke<unknown>("save_selection_presets_store", { store });
+  return hydrateSelectionTransformPresetStore(saved);
 }
 
 export async function saveSelectionPresetStore(): Promise<SelectionTransformPresetStore | undefined> {
@@ -121,7 +131,7 @@ export async function saveSelectionPresetStore(): Promise<SelectionTransformPres
   }
 
   const store = dumpSelectionTransformPresetStore();
-  const saved = await invoke<Partial<SelectionTransformPresetStore>>("save_selection_presets_store", { store });
+  const saved = await invoke<unknown>("save_selection_presets_store", { store });
   return hydrateSelectionTransformPresetStore(saved);
 }
 

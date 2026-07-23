@@ -79,7 +79,18 @@ pub fn capture_selection_context() -> SelectionCaptureOutcome {
 
 #[tauri::command]
 pub fn capture_selection_context_for_target(frame_hwnd: String) -> SelectionCaptureOutcome {
-    platform::capture_selection_context_for_target(frame_hwnd)
+    platform::capture_selection_context_for_target(frame_hwnd, false)
+}
+
+#[tauri::command]
+pub fn capture_selection_context_for_target_with_clipboard(
+    frame_hwnd: String,
+) -> SelectionCaptureOutcome {
+    platform::capture_selection_context_for_target(frame_hwnd, true)
+}
+
+fn selection_clipboard_roundtrip_allowed(force: bool, configured: bool) -> bool {
+    force || configured
 }
 
 fn no_selection(
@@ -168,7 +179,7 @@ mod platform {
             return uia_outcome;
         }
 
-        let outcome = if selection_clipboard_roundtrip_enabled() {
+        let outcome = if selection_clipboard_roundtrip_enabled(false) {
             match capture_selected_text_with_clipboard_roundtrip(hwnd, target_snapshot.clone()) {
                 Some(outcome) => outcome,
                 None => uia_outcome,
@@ -180,7 +191,10 @@ mod platform {
         outcome
     }
 
-    pub fn capture_selection_context_for_target(frame_hwnd: String) -> SelectionCaptureOutcome {
+    pub fn capture_selection_context_for_target(
+        frame_hwnd: String,
+        force_clipboard_fallback: bool,
+    ) -> SelectionCaptureOutcome {
         let hwnd = match parse_hwnd(&frame_hwnd) {
             Some(hwnd) if unsafe { IsWindow(hwnd) } != 0 => hwnd,
             _ => {
@@ -199,10 +213,12 @@ mod platform {
             thread::sleep(Duration::from_millis(90));
         }
         let target_snapshot = redacted_target_snapshot(hwnd);
+        let clipboard_roundtrip_enabled =
+            selection_clipboard_roundtrip_enabled(force_clipboard_fallback);
         let outcome = match capture_selected_text(hwnd, target_snapshot.clone()) {
             Ok(outcome) if outcome.status == SelectionCaptureStatus::Ok => outcome,
             Ok(outcome) => {
-                if selection_clipboard_roundtrip_enabled() {
+                if clipboard_roundtrip_enabled {
                     match capture_selected_text_with_clipboard_roundtrip(hwnd, target_snapshot) {
                         Some(clipboard_outcome) => clipboard_outcome,
                         None => outcome,
@@ -212,7 +228,7 @@ mod platform {
                 }
             }
             Err(reason) => {
-                if selection_clipboard_roundtrip_enabled() {
+                if clipboard_roundtrip_enabled {
                     match capture_selected_text_with_clipboard_roundtrip(
                         hwnd,
                         target_snapshot.clone(),
@@ -264,82 +280,83 @@ mod platform {
         hwnd: windows_sys::Win32::Foundation::HWND,
         target_snapshot: SelectionTargetSnapshot,
     ) -> Result<SelectionCaptureOutcome, String> {
-        let automation: IUIAutomation =
-            CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
-                .map_err(|error| format!("UI Automation is unavailable: {error}"))?;
-        let focused = automation
-            .GetFocusedElement()
-            .map_err(|error| format!("Focused UI Automation element is unavailable: {error}"))?;
+        unsafe {
+            let automation: IUIAutomation =
+                CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
+                    .map_err(|error| format!("UI Automation is unavailable: {error}"))?;
+            let focused = automation.GetFocusedElement().map_err(|error| {
+                format!("Focused UI Automation element is unavailable: {error}")
+            })?;
 
-        let mut target_pid = 0u32;
-        GetWindowThreadProcessId(hwnd, &mut target_pid);
-        let focused_pid = focused.CurrentProcessId().unwrap_or_default().max(0) as u32;
-        if target_pid != 0 && focused_pid != 0 && target_pid != focused_pid {
-            eprintln!(
+            let mut target_pid = 0u32;
+            GetWindowThreadProcessId(hwnd, &mut target_pid);
+            let focused_pid = focused.CurrentProcessId().unwrap_or_default().max(0) as u32;
+            if target_pid != 0 && focused_pid != 0 && target_pid != focused_pid {
+                eprintln!(
                 "[dictation-tauri][selection-capture] focused element pid differs from target pid; continuing for multi-process UIA target"
             );
-        }
-
-        let text_pattern = match focused
-            .GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)
-        {
-            Ok(pattern) => pattern,
-            Err(_) => {
-                return Ok(SelectionCaptureOutcome {
-                    status: SelectionCaptureStatus::UnsupportedTarget,
-                    selection: None,
-                    target_snapshot: Some(target_snapshot),
-                    redacted: true,
-                    truncated: false,
-                    reason: Some(
-                        "Foreground target does not expose UI Automation TextPattern.".to_string(),
-                    ),
-                });
             }
-        };
 
-        let ranges = text_pattern
-            .GetSelection()
-            .map_err(|error| format!("UI Automation selection range could not be read: {error}"))?;
-        let range_count = ranges.Length().unwrap_or_default();
-        if range_count <= 0 {
-            return Ok(no_selection(
-                Some(target_snapshot),
-                "UI Automation reported no selected text ranges.",
-            ));
-        }
+            let text_pattern =
+                match focused.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId) {
+                    Ok(pattern) => pattern,
+                    Err(_) => {
+                        return Ok(SelectionCaptureOutcome {
+                            status: SelectionCaptureStatus::UnsupportedTarget,
+                            selection: None,
+                            target_snapshot: Some(target_snapshot),
+                            redacted: true,
+                            truncated: false,
+                            reason: Some(
+                                "Foreground target does not expose UI Automation TextPattern."
+                                    .to_string(),
+                            ),
+                        });
+                    }
+                };
 
-        let mut text = String::new();
-        for index in 0..range_count {
-            if let Ok(range) = ranges.GetElement(index) {
-                if let Ok(fragment) = range.GetText((MAX_SELECTION_CAPTURE_CHARS + 1) as i32) {
-                    text.push_str(&fragment.to_string());
+            let ranges = text_pattern.GetSelection().map_err(|error| {
+                format!("UI Automation selection range could not be read: {error}")
+            })?;
+            let range_count = ranges.Length().unwrap_or_default();
+            if range_count <= 0 {
+                return Ok(no_selection(
+                    Some(target_snapshot),
+                    "UI Automation reported no selected text ranges.",
+                ));
+            }
+
+            let mut text = String::new();
+            for index in 0..range_count {
+                if let Ok(range) = ranges.GetElement(index) {
+                    if let Ok(fragment) = range.GetText((MAX_SELECTION_CAPTURE_CHARS + 1) as i32) {
+                        text.push_str(&fragment.to_string());
+                    }
+                }
+                if text.chars().count() > MAX_SELECTION_CAPTURE_CHARS {
+                    break;
                 }
             }
-            if text.chars().count() > MAX_SELECTION_CAPTURE_CHARS {
-                break;
+
+            let normalized = text.trim().to_string();
+            if normalized.is_empty() {
+                return Ok(no_selection(
+                    Some(target_snapshot),
+                    "UI Automation selection text was empty.",
+                ));
             }
-        }
 
-        let normalized = text.trim().to_string();
-        if normalized.is_empty() {
-            return Ok(no_selection(
-                Some(target_snapshot),
-                "UI Automation selection text was empty.",
-            ));
-        }
+            let truncated = normalized.chars().count() > MAX_SELECTION_CAPTURE_CHARS;
+            let selected_text = if truncated {
+                normalized
+                    .chars()
+                    .take(MAX_SELECTION_CAPTURE_CHARS)
+                    .collect()
+            } else {
+                normalized
+            };
 
-        let truncated = normalized.chars().count() > MAX_SELECTION_CAPTURE_CHARS;
-        let selected_text = if truncated {
-            normalized
-                .chars()
-                .take(MAX_SELECTION_CAPTURE_CHARS)
-                .collect()
-        } else {
-            normalized
-        };
-
-        Ok(SelectionCaptureOutcome {
+            Ok(SelectionCaptureOutcome {
             status: SelectionCaptureStatus::Ok,
             selection: Some(HostSelectionContext {
                 selection_id: "host-selection-uia".to_string(),
@@ -356,41 +373,56 @@ mod platform {
             truncated,
             reason: Some("Selected text captured through UI Automation TextPattern without clipboard, keyboard, focus, or paste side effects.".to_string()),
         })
+        }
     }
 
-    fn selection_clipboard_roundtrip_enabled() -> bool {
-        matches!(
+    fn selection_clipboard_roundtrip_enabled(force: bool) -> bool {
+        let configured = matches!(
             std::env::var("DICTATION_TAURI_ALLOW_SELECTION_CLIPBOARD_FALLBACK")
                 .unwrap_or_default()
                 .trim()
                 .to_ascii_lowercase()
                 .as_str(),
             "1" | "true" | "yes" | "on"
-        )
+        );
+        super::selection_clipboard_roundtrip_allowed(force, configured)
     }
 
     fn capture_selected_text_with_clipboard_roundtrip(
-        _hwnd: windows_sys::Win32::Foundation::HWND,
+        hwnd: windows_sys::Win32::Foundation::HWND,
         target_snapshot: SelectionTargetSnapshot,
     ) -> Option<SelectionCaptureOutcome> {
         let previous_clipboard = read_clipboard_text();
         let sentinel = format!("__fixvox_selection_capture_{}__", std::process::id());
-        let _ = write_clipboard_text(&sentinel);
-        release_modifier_keys().ok()?;
-        send_ctrl_c().ok()?;
-        release_modifier_keys().ok()?;
-        thread::sleep(Duration::from_millis(180));
-        let copied = read_clipboard_text()?.trim().to_string();
+        let mut copied = None;
+
+        for attempt in 0..2 {
+            if attempt > 0 {
+                focus_window(hwnd);
+                thread::sleep(Duration::from_millis(90));
+            }
+            let _ = write_clipboard_text(&sentinel);
+            if release_modifier_keys().is_err()
+                || send_ctrl_c().is_err()
+                || release_modifier_keys().is_err()
+            {
+                continue;
+            }
+            thread::sleep(Duration::from_millis(180));
+            let candidate = read_clipboard_text().unwrap_or_default().trim().to_string();
+            if !candidate.is_empty() && candidate != sentinel {
+                copied = Some(candidate);
+                break;
+            }
+        }
+
         if let Some(previous) = previous_clipboard {
             let _ = write_clipboard_text(&previous);
         } else {
             let _ = clear_clipboard_text();
         }
 
-        if copied.is_empty() || copied == sentinel {
-            return None;
-        }
-
+        let copied = copied?;
         let truncated = copied.chars().count() > MAX_SELECTION_CAPTURE_CHARS;
         let selected_text = if truncated {
             copied.chars().take(MAX_SELECTION_CAPTURE_CHARS).collect()
@@ -655,7 +687,10 @@ mod platform {
         }
     }
 
-    pub fn capture_selection_context_for_target(_frame_hwnd: String) -> SelectionCaptureOutcome {
+    pub fn capture_selection_context_for_target(
+        _frame_hwnd: String,
+        _force_clipboard_fallback: bool,
+    ) -> SelectionCaptureOutcome {
         capture_selection_context()
     }
 }
@@ -678,6 +713,13 @@ mod tests {
                 allows_clipboard_roundtrip: true,
             }
         );
+    }
+
+    #[test]
+    fn picker_can_force_clipboard_roundtrip_without_enabling_global_fallback() {
+        assert!(!selection_clipboard_roundtrip_allowed(false, false));
+        assert!(selection_clipboard_roundtrip_allowed(true, false));
+        assert!(selection_clipboard_roundtrip_allowed(false, true));
     }
 
     #[test]

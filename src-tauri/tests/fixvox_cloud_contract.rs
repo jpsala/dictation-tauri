@@ -10,6 +10,40 @@ fn fixture<T: for<'de> Deserialize<'de>>(json: &str) -> T {
     serde_json::from_str(json).expect("contract fixture should parse")
 }
 
+fn product_bootstrap_response(device_id: &str, profile_key: &str) -> serde_json::Value {
+    serde_json::json!({
+        "ok": true,
+        "data": {
+            "binding": { "deviceId": device_id, "status": "active" },
+            "context": {
+                "profile": { "key": profile_key, "version": 1, "revision": 1 },
+                "capabilities": {
+                    "transcription": true,
+                    "postprocess": true,
+                    "selectionTransform": true,
+                    "assistant": true,
+                    "feedback": true,
+                    "adminSettings": false
+                },
+                "limits": { "quotaClass": "metered" },
+                "actions": [],
+                "authority": { "mode": "cloudflare-authority", "revision": 1 }
+            }
+        }
+    })
+}
+
+fn source_section<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
+    let from = source
+        .find(start)
+        .expect("source section start should exist");
+    let to = source[from + start.len()..]
+        .find(end)
+        .map(|offset| from + start.len() + offset)
+        .expect("source section end should exist");
+    &source[from..to]
+}
+
 fn unique_temp_state_path(test_name: &str) -> std::path::PathBuf {
     let suffix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -101,6 +135,71 @@ fn parses_fixvox_contract_fixtures_without_network() {
         chat.choices[0].message.content,
         "fixture cleaned transcript"
     );
+}
+
+#[test]
+fn current_tauri_routes_use_canonical_product_boundaries_and_retain_named_aliases() {
+    let cloud = include_str!("../src/fixvox_cloud.rs");
+    let runtime = include_str!("../src/runtime_transcription.rs");
+
+    let registration = source_section(
+        cloud,
+        "async fn register_or_refresh_device_with_reqwest(",
+        "async fn link_signed_in_session_device_with_reqwest(",
+    );
+    assert!(registration.contains("bootstrap_device_with_reqwest"));
+    assert!(!registration.contains("register_device_with_reqwest(&"));
+
+    let auth_poll = source_section(
+        cloud,
+        "pub(crate) async fn poll_fixvox_cloud_login_with_env(",
+        "pub(crate) fn get_fixvox_cloud_status_with_env(",
+    );
+    assert!(auth_poll.contains("/product/v1/desktop/auth/sessions/"));
+    assert!(!auth_poll.contains("/desktop/login/status"));
+    assert!(!auth_poll.contains("/desktop/login/link-device"));
+
+    let auth_start = source_section(
+        cloud,
+        "pub(crate) async fn start_fixvox_cloud_login_with_env(",
+        "fn policy_allows_admin_settings(",
+    );
+    assert!(auth_start.contains("/product/v1/desktop/auth/sessions"));
+    assert!(!auth_start.contains("build_fixvox_login_verification_url"));
+
+    let stt_preview = source_section(
+        cloud,
+        "pub(crate) fn build_managed_stt_request_preview(",
+        "pub(crate) fn build_managed_chat_completion_request_preview(",
+    );
+    assert!(stt_preview.contains("/product/v1/runtime/transcriptions"));
+    assert!(stt_preview.contains("/v1/audio/transcriptions"));
+    assert!(stt_preview.contains("PREFERRED_FIXVOX_BACKEND_URL"));
+
+    let action_preview = source_section(
+        cloud,
+        "pub(crate) fn build_managed_chat_completion_request_preview(",
+        "pub(crate) fn parse_managed_stt_json_response(",
+    );
+    assert!(action_preview.contains("/product/v1/runtime/actions"));
+    assert!(action_preview.contains("/v1/chat/completions"));
+    assert!(action_preview.contains("PREFERRED_FIXVOX_BACKEND_URL"));
+    assert!(action_preview.contains("selectedText"));
+    assert!(action_preview.contains("instruction"));
+    assert!(action_preview.contains("conversationSummary"));
+
+    let canonical_runtime = source_section(
+        runtime,
+        "async fn transcribe_captured_audio_with_provider_call(",
+        "fn read_host_runtime_config(",
+    );
+    assert!(canonical_runtime.contains("transcribe_fixvox_managed_audio"));
+    assert!(!canonical_runtime.contains("preflight_fixvox_managed_transcription"));
+    assert!(!canonical_runtime.contains("preflight_endpoint"));
+
+    assert!(cloud.contains("/v2/device/activate"));
+    assert!(cloud.contains("/v2/execution/preflight"));
+    assert!(cloud.contains("/desktop/login/status"));
 }
 
 #[test]
@@ -348,9 +447,7 @@ fn register_command_helper_persists_policy_snapshot_and_redacts_ids() {
     let client = FakeRegisterClient {
         endpoint: RefCell::new(None),
         body: RefCell::new(None),
-        response: fixture(include_str!(
-            "../../specs/009-fixvox-cloud-runtime-port/fixtures/register.response.json"
-        )),
+        response: product_bootstrap_response("dev_test_1234567890abcdef", "alpha-basic"),
     };
 
     let status = register_fixvox_device_with_client_and_env(&client, &|key| match key {
@@ -362,7 +459,7 @@ fn register_command_helper_persists_policy_snapshot_and_redacts_ids() {
 
     assert_eq!(
         client.endpoint.borrow().as_deref(),
-        Some("https://auth-fixvox.jpsala.dev/v2/device/register")
+        Some("https://auth-fixvox.jpsala.dev/product/v1/desktop/bootstrap")
     );
     let body = client.body.borrow();
     let body = body.as_ref().expect("register body should be captured");
@@ -373,7 +470,7 @@ fn register_command_helper_persists_policy_snapshot_and_redacts_ids() {
         Some("dev_test_1234567890abcdef")
     );
     assert_eq!(status.policy_id.as_deref(), Some("alpha-basic"));
-    assert_eq!(status.policy_label.as_deref(), Some("Alpha Basic"));
+    assert_eq!(status.policy_label.as_deref(), Some("alpha-basic"));
     assert_eq!(status.transport_policy.as_ref().unwrap()["mode"], "managed");
 
     let raw = std::fs::read_to_string(&state_path).expect("state should be written");
@@ -401,9 +498,7 @@ fn activate_helper_posts_invite_code_and_persists_snapshot_without_network() {
                 "policyId": "alpha-full",
                 "policyLabel": "Alpha Full"
             }),
-            fixture(include_str!(
-                "../../specs/009-fixvox-cloud-runtime-port/fixtures/register.response.json"
-            )),
+            product_bootstrap_response("dev_test_1234567890abcdef", "alpha-full"),
         ]),
     };
 
@@ -423,15 +518,14 @@ fn activate_helper_posts_invite_code_and_persists_snapshot_without_network() {
         endpoints.as_slice(),
         [
             "https://auth-fixvox.jpsala.dev/v2/device/activate",
-            "https://auth-fixvox.jpsala.dev/v2/device/register",
+            "https://auth-fixvox.jpsala.dev/product/v1/desktop/bootstrap",
         ]
     );
     let bodies = client.bodies.borrow();
     assert_eq!(bodies[0]["installId"], "install_activate_helper_123456");
     assert_eq!(bodies[0]["inviteCode"], "FIXVOX-INVITE-123");
-    assert_eq!(bodies[1]["deviceId"], "dev_test_1234567890abcdef");
     assert!(status.device_registered);
-    assert_eq!(status.policy_id.as_deref(), Some("alpha-basic"));
+    assert_eq!(status.policy_id.as_deref(), Some("alpha-full"));
     assert!(!format!("{status:?}").contains("dev_test_1234567890abcdef"));
 
     let raw = std::fs::read_to_string(&state_path).expect("state should be written");
@@ -463,9 +557,7 @@ fn refresh_policy_helper_reuses_register_contract_without_network() {
     let client = FakeRegisterClient {
         endpoint: RefCell::new(None),
         body: RefCell::new(None),
-        response: fixture(include_str!(
-            "../../specs/009-fixvox-cloud-runtime-port/fixtures/register.response.json"
-        )),
+        response: product_bootstrap_response("dev_existing_refresh_abcdef", "alpha-basic"),
     };
 
     let status = refresh_fixvox_policy_with_client_and_env(&client, &|key| match key {
@@ -476,7 +568,7 @@ fn refresh_policy_helper_reuses_register_contract_without_network() {
 
     let body = client.body.borrow();
     let body = body.as_ref().expect("refresh body should be captured");
-    assert_eq!(body["deviceId"], "dev_existing_refresh_abcdef");
+    assert_eq!(body["device"]["platform"], "windows");
     assert_eq!(status.policy_id.as_deref(), Some("alpha-basic"));
     assert!(status.device_registered);
 
@@ -506,34 +598,7 @@ fn refresh_policy_persists_full_runtime_policy_payload_for_host_resolution() {
     let client = FakeRegisterClient {
         endpoint: RefCell::new(None),
         body: RefCell::new(None),
-        response: serde_json::json!({
-            "ok": true,
-            "deviceId": "dev_existing_runtime_policy_abcdef",
-            "activated": true,
-            "policyId": "pro",
-            "policyLabel": "Pro",
-            "auth": { "required": false, "providers": [] },
-            "features": { "speech": true, "chat": true, "managedTranscription": true },
-            "defaults": { "sttModel": "whisper-large-v3" },
-            "limits": { "transcriptionSecondsPerDay": 3600 },
-            "telemetry": { "level": "basic" },
-            "transportPolicy": { "mode": "managed", "speechProvider": "groq" },
-            "transcript": {
-                "provider": "groq",
-                "model": "whisper-large-v3-turbo",
-                "prompt": "redacted technical Spanish STT prompt"
-            },
-            "voicePolicy": {
-                "enableSttPrompt": true,
-                "enableRawPostProcess": false,
-                "postProcessPrompt": "redacted postprocess prompt"
-            },
-            "voiceRouting": {
-                "label": "pro-stt-only",
-                "runtime": { "sttPromptEnabled": true, "postProcessEnabled": false },
-                "speech": { "provider": "groq", "model": "whisper-large-v3-turbo" }
-            }
-        }),
+        response: product_bootstrap_response("dev_existing_runtime_policy_abcdef", "pro"),
     };
 
     let status = refresh_fixvox_policy_with_client_and_env(&client, &|key| match key {
@@ -547,12 +612,10 @@ fn refresh_policy_persists_full_runtime_policy_payload_for_host_resolution() {
         .as_ref()
         .and_then(|snapshot| snapshot.runtime_policy.as_ref())
         .expect("runtime policy should be persisted for host-owned resolution");
-    assert_eq!(
-        runtime_policy["transcript"]["model"],
-        "whisper-large-v3-turbo"
-    );
-    assert_eq!(runtime_policy["voicePolicy"]["enableRawPostProcess"], false);
-    assert_eq!(runtime_policy["voiceRouting"]["label"], "pro-stt-only");
+    assert_eq!(runtime_policy["profile"]["key"], "pro");
+    assert_eq!(runtime_policy["capabilities"]["transcription"], true);
+    assert!(runtime_policy.get("provider").is_none());
+    assert!(runtime_policy.get("model").is_none());
 
     let restored = read_device_state(&state_path)
         .expect("state should be readable")
@@ -562,11 +625,8 @@ fn refresh_policy_persists_full_runtime_policy_payload_for_host_resolution() {
         .as_ref()
         .and_then(|snapshot| snapshot.runtime_policy.as_ref())
         .expect("persisted state should include runtime policy");
-    assert_eq!(persisted_runtime_policy["transcript"]["provider"], "groq");
-    assert_eq!(
-        persisted_runtime_policy["voiceRouting"]["speech"]["model"],
-        "whisper-large-v3-turbo"
-    );
+    assert_eq!(persisted_runtime_policy["profile"]["key"], "pro");
+    assert_eq!(persisted_runtime_policy["capabilities"]["assistant"], true);
 
     let _ = std::fs::remove_file(state_path);
 }
@@ -685,7 +745,33 @@ fn managed_stt_uses_device_id_header_and_never_vendor_bearer() {
 }
 
 #[test]
-fn managed_chat_postprocess_uses_device_id_header_and_never_vendor_bearer() {
+fn managed_stt_uses_canonical_product_boundary_for_self_hosted_backends() {
+    let preview = build_managed_stt_request_preview(
+        FixvoxCloudConfig {
+            backend_base_url: "http://127.0.0.1:8788".to_string(),
+            device_id: Some("dev_test_1234567890abcdef".to_string()),
+        },
+        ManagedSttInput {
+            audio_file_name: "capture.wav".to_string(),
+            model: "server-owned".to_string(),
+            language: Some("es".to_string()),
+            prompt: None,
+        },
+    )
+    .expect("self-hosted managed STT preview should be constructable without network");
+
+    assert_eq!(
+        preview.endpoint,
+        "http://127.0.0.1:8788/product/v1/runtime/transcriptions",
+    );
+    assert_eq!(
+        preview.multipart_fields,
+        vec!["metadata".to_string(), "audio".to_string()],
+    );
+}
+
+#[test]
+fn cloudflare_managed_chat_uses_temporary_alias_without_vendor_bearer() {
     let preview = build_managed_chat_completion_request_preview(
         FixvoxCloudConfig {
             backend_base_url: PREFERRED_FIXVOX_BACKEND_URL.to_string(),
@@ -693,13 +779,13 @@ fn managed_chat_postprocess_uses_device_id_header_and_never_vendor_bearer() {
         },
         ManagedChatInput {
             transcript: "hola mundo".to_string(),
-            system_prompt: "Clean up the transcript.".to_string(),
-            model: "openai/gpt-oss-120b".to_string(),
-            max_tokens: Some(512),
-            engine_kind: Some(ManagedChatEngineKind::Postprocess),
+            instruction: Some("correct spelling".to_string()),
+            preset_key: Some("corregir-texto".to_string()),
+            conversation_summary: None,
+            engine_kind: Some(ManagedChatEngineKind::SelectionTransform),
         },
     )
-    .expect("managed chat request preview should be constructable without network");
+    .expect("Cloudflare compatibility preview should be constructable without network");
 
     assert_eq!(
         preview.endpoint,
@@ -712,17 +798,46 @@ fn managed_chat_postprocess_uses_device_id_header_and_never_vendor_bearer() {
     assert!(preview
         .headers
         .iter()
-        .any(|(name, value)| name == "X-Fixvox-Engine-Kind" && value == "postprocess"));
+        .any(|(name, value)| name == "X-Fixvox-Engine-Kind" && value == "selectionTransform"));
     assert!(!preview.has_authorization_header);
     assert!(preview
         .headers
         .iter()
         .all(|(name, _)| !name.eq_ignore_ascii_case("authorization")));
-    assert_eq!(preview.body["model"], "openai/gpt-oss-120b");
-    assert_eq!(preview.body["messages"][0]["role"], "system");
-    assert_eq!(preview.body["messages"][1]["content"], "hola mundo");
-    assert_eq!(preview.body["max_tokens"], 512);
+    assert_eq!(preview.body["model"], "server-owned");
     assert_eq!(preview.body["stream"], false);
+    assert!(preview.body["messages"][1]["content"]
+        .as_str()
+        .expect("legacy user message")
+        .contains("hola mundo"));
+}
+
+#[test]
+fn self_hosted_managed_chat_uses_canonical_typed_action() {
+    let preview = build_managed_chat_completion_request_preview(
+        FixvoxCloudConfig {
+            backend_base_url: "http://127.0.0.1:8788".to_string(),
+            device_id: Some("dev_test_1234567890abcdef".to_string()),
+        },
+        ManagedChatInput {
+            transcript: "hola mundo".to_string(),
+            instruction: Some("correct spelling".to_string()),
+            preset_key: Some("corregir-texto".to_string()),
+            conversation_summary: None,
+            engine_kind: Some(ManagedChatEngineKind::SelectionTransform),
+        },
+    )
+    .expect("self-hosted typed action preview should be constructable without network");
+
+    assert_eq!(
+        preview.endpoint,
+        "http://127.0.0.1:8788/product/v1/runtime/actions",
+    );
+    assert_eq!(preview.body["kind"], "selection_transform");
+    assert_eq!(preview.body["input"]["selectedText"], "hola mundo");
+    assert_eq!(preview.body["input"]["instruction"], "correct spelling");
+    assert!(preview.body.get("provider").is_none());
+    assert!(preview.body.get("model").is_none());
 }
 
 #[test]
@@ -749,33 +864,31 @@ fn managed_mode_fails_closed_instead_of_silent_direct_groq_fallback() {
 
 #[test]
 fn parses_managed_stt_response_body_without_network() {
-    let parsed = parse_managed_stt_json_response(include_str!(
-        "../../specs/009-fixvox-cloud-runtime-port/fixtures/stt.response.json"
-    ))
-    .expect("managed STT response should parse from fixture JSON");
+    let parsed = parse_managed_stt_json_response(
+        r#"{"ok":true,"data":{"operationId":"fixture","text":"fixture managed transcript","usage":{"kind":"stt","charged":true}}}"#,
+    )
+    .expect("canonical managed STT response should parse from fixture JSON");
 
     assert_eq!(parsed.text, "fixture managed transcript");
-    assert_eq!(parsed.model.as_deref(), Some("whisper-large-v3"));
+    assert_eq!(parsed.model, None);
 
-    let missing_text = parse_managed_stt_json_response("{\"model\":\"whisper-large-v3\"}")
+    let missing_text = parse_managed_stt_json_response("{\"ok\":true,\"data\":{}}")
         .expect_err("managed STT response without text should fail closed");
     assert_eq!(missing_text.code, "FIXVOX_STT_RESPONSE_TEXT_MISSING");
 }
 
 #[test]
 fn parses_managed_chat_response_body_without_network() {
-    let parsed = parse_managed_chat_json_response(include_str!(
-        "../../specs/009-fixvox-cloud-runtime-port/fixtures/chat.response.json"
-    ))
-    .expect("managed chat response should parse from fixture JSON");
+    let parsed = parse_managed_chat_json_response(
+        r#"{"ok":true,"data":{"operationId":"fixture","kind":"postprocess","output":{"text":"fixture cleaned transcript"}}}"#,
+    )
+    .expect("canonical managed action response should parse from fixture JSON");
 
     assert_eq!(parsed.output, "fixture cleaned transcript");
-    assert_eq!(parsed.model.as_deref(), Some("openai/gpt-oss-120b"));
+    assert_eq!(parsed.model, None);
 
-    let missing_text = parse_managed_chat_json_response(
-        "{\"model\":\"openai/gpt-oss-120b\",\"choices\":[{\"message\":{}}]}",
-    )
-    .expect_err("managed chat response without output should fail closed");
+    let missing_text = parse_managed_chat_json_response("{\"ok\":true,\"data\":{\"output\":{}}}")
+        .expect_err("managed chat response without output should fail closed");
     assert_eq!(missing_text.code, "FIXVOX_CHAT_RESPONSE_TEXT_MISSING");
 }
 
@@ -793,6 +906,12 @@ fn maps_fixvox_proxy_headers_into_typed_metadata() {
         ("X-Fixvox-Proxy-Parse-Ms", "3"),
         ("X-Fixvox-Proxy-Usage-Ms", "4"),
         ("X-Fixvox-Proxy-Upstream-Ms", "125"),
+        ("X-Fixvox-Proxy-Engine-Binding-Ms", "9.4"),
+        ("X-Fixvox-Proxy-Prompt-Resolution-Ms", "1.6"),
+        ("X-Fixvox-Proxy-Budget-Config-Ms", "2.2"),
+        ("X-Fixvox-Proxy-Budget-Events-Ms", "6.8"),
+        ("X-Fixvox-Proxy-Multipart-Ms", "3.1"),
+        ("X-Fixvox-Proxy-Budget-Ms", "7"),
         ("X-Fixvox-Proxy-Init-Ms", "1"),
         ("X-Fixvox-Proxy-Total-Ms", "140"),
         ("Server-Timing", "fixvox;dur=140"),
@@ -818,7 +937,33 @@ fn maps_fixvox_proxy_headers_into_typed_metadata() {
     assert_eq!(metadata.proxy_parse_ms, Some(3));
     assert_eq!(metadata.proxy_usage_ms, Some(4));
     assert_eq!(metadata.proxy_upstream_ms, Some(125));
+    assert_eq!(metadata.proxy_engine_binding_ms, Some(9));
+    assert_eq!(metadata.proxy_prompt_resolution_ms, Some(2));
+    assert_eq!(metadata.proxy_budget_config_ms, Some(2));
+    assert_eq!(metadata.proxy_budget_events_ms, Some(7));
+    assert_eq!(metadata.proxy_multipart_ms, Some(3));
+    assert_eq!(metadata.proxy_budget_ms, Some(7));
     assert_eq!(metadata.proxy_init_ms, Some(1));
     assert_eq!(metadata.proxy_total_ms, Some(140));
     assert_eq!(metadata.server_timing.as_deref(), Some("fixvox;dur=140"));
+}
+
+#[test]
+fn ignores_missing_or_invalid_fixvox_proxy_timing_headers() {
+    let metadata = parse_fixvox_response_metadata(&[
+        ("X-Fixvox-Proxy-Engine-Binding-Ms", "not-a-number"),
+        ("X-Fixvox-Proxy-Prompt-Resolution-Ms", "NaN"),
+        ("X-Fixvox-Proxy-Budget-Config-Ms", "-1"),
+        ("X-Fixvox-Proxy-Budget-Events-Ms", "inf"),
+        ("X-Fixvox-Proxy-Multipart-Ms", ""),
+        ("X-Fixvox-Proxy-Total-Ms", "184467440737095516160"),
+    ]);
+
+    assert_eq!(metadata.proxy_engine_binding_ms, None);
+    assert_eq!(metadata.proxy_prompt_resolution_ms, None);
+    assert_eq!(metadata.proxy_budget_config_ms, None);
+    assert_eq!(metadata.proxy_budget_events_ms, None);
+    assert_eq!(metadata.proxy_multipart_ms, None);
+    assert_eq!(metadata.proxy_total_ms, None);
+    assert_eq!(metadata.proxy_parse_ms, None);
 }

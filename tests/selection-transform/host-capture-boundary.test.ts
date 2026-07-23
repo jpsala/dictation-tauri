@@ -1,8 +1,10 @@
+// @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   hostSelectionCaptureCommand,
   hostSelectionCaptureForTargetCommand,
+  hostSelectionCaptureForTargetWithClipboardCommand,
   hostSelectionCaptureRoute,
   routeSelectionCaptureOutcome,
   selectionCaptureStatuses,
@@ -24,6 +26,9 @@ describe("host selection capture boundary", () => {
   it("declares the selected route as host-owned, UI Automation first, with clipboard fallback", () => {
     expect(hostSelectionCaptureCommand).toBe("capture_selection_context");
     expect(hostSelectionCaptureForTargetCommand).toBe("capture_selection_context_for_target");
+    expect(hostSelectionCaptureForTargetWithClipboardCommand).toBe(
+      "capture_selection_context_for_target_with_clipboard",
+    );
     expect(hostSelectionCaptureRoute).toEqual({
       owner: "tauri_host",
       primaryStrategy: "windows_ui_automation_then_clipboard_roundtrip",
@@ -91,8 +96,11 @@ describe("host selection capture boundary", () => {
 
     expect(hostSource).toContain("pub fn capture_selection_context()");
     expect(hostSource).toContain("pub fn capture_selection_context_for_target");
+    expect(hostSource).toContain("pub fn capture_selection_context_for_target_with_clipboard");
     expect(libSource).toContain("selection_capture::capture_selection_context");
     expect(libSource).toContain("selection_capture::capture_selection_context_for_target");
+    expect(libSource).toContain("selection_capture::capture_selection_context_for_target_with_clipboard");
+    expect(appSource).toContain("hostSelectionCaptureForTargetWithClipboardCommand");
     expect(appSource).not.toContain("capture_selection_context");
   });
 

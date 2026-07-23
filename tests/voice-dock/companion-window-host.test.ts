@@ -11,7 +11,12 @@ describe("Companion host window", () => {
     expect(source).toContain("WindowEvent::CloseRequested");
     expect(source).toContain("api.prevent_close()");
     expect(source).toContain("companion_window.hide()");
-    expect(source).toContain("window.set_size(tauri::LogicalSize::new(width as f64, height as f64))");
+    expect(source).toContain("position_window_above_anchor");
+    expect(source).toMatch(/dock\s*\.current_monitor\(\)/);
+    expect(source).toContain("monitor.work_area()");
+    expect(source).toContain("tauri::PhysicalSize::new");
+    expect(source).toContain("tauri::PhysicalPosition::new");
+    expect(source).not.toContain("tauri::LogicalPosition::new");
     expect(source).toContain("COMPANION_WINDOW_WIDTH");
     expect(source).toContain("COMPANION_WINDOW_HEIGHT");
     expect(config).toContain('"label": "dock-companion"');

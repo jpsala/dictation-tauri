@@ -238,33 +238,67 @@ describe("SettingsSurface", () => {
     expect(help).not.toContain("provider");
   });
 
-  it("renders local preset administration for starter prompt overrides", () => {
+  it("renders compact preset controls with accessible icon actions", () => {
     const html = renderToStaticMarkup(<SettingsSurface initialSection="presets" />);
+    const withCloudDefaults = renderToStaticMarkup(<SettingsSurface
+      initialSection="presets"
+      initialCloudStatus={{
+        backendBaseUrl: "redacted",
+        statePath: "redacted",
+        installIdPresent: true,
+        deviceRegistered: true,
+        lastRegisterOk: true,
+        policySnapshot: {
+          capabilities: {
+            canUseManagedTranscription: true,
+            canSeeAdvancedSettings: true,
+            canUseDebugTools: false,
+          },
+          runtimePolicy: {
+            defaults: {
+              userSettingsDefaults: {
+                selectionPresets: {
+                  items: [{ id: "corregir-texto", label: "Corregir texto", promptContent: "Corregí el texto." }],
+                },
+              },
+            },
+          },
+          fetchedAt: "2026-07-21T00:00:00Z",
+          trust: "fresh",
+          stale: false,
+        },
+        redacted: true,
+      }}
+    />);
 
     expect(html).toContain("Presets");
-    expect(html).toContain("Editá los presets disponibles y agregá presets locales para Alt+Q");
+    expect(html).toContain("Acciones disponibles para tu cuenta.");
     expect(html).toContain("Como yo (español)");
     expect(html).toContain("Corregir texto");
     expect(html).toContain("Fix Writing");
     expect(html).toContain("Like me (English)");
-    expect(html).toContain("Importar valores disponibles");
-    expect(html).toContain("Agregar preset");
-    expect(html).toContain("Editar el preset seleccionado");
+    expect(html).toContain('aria-label="Agregar preset"');
+    expect(html).toContain('aria-label="Duplicar preset"');
+    expect(html).toContain('aria-label="Eliminar preset"');
+    expect(html).not.toContain('aria-label="Importar valores disponibles"');
+    expect(withCloudDefaults).toContain('aria-label="Importar valores disponibles"');
     expect(html).toContain("Nombre");
-    expect(html).toContain("Tecla del selector");
+    expect(html).toContain("Tecla");
     expect(html).toContain("Atajo");
+    expect(html).toContain("Disponible en Alt+Q");
+    expect(html).toContain("Pedir confirmación");
+    expect(html).toContain("Activado");
+    expect(html).toContain("Guardar cambios");
+    expect(html).toContain("Cambios guardados");
+    expect(html).not.toContain("Editar el preset seleccionado");
+    expect(html).not.toContain("como-yo-es");
+    expect(html).not.toContain("Restablecer incluido");
+    expect(html).not.toContain("Preset incluido");
+    expect(html).not.toContain("Personalizado");
     expect(html).not.toContain("Managed engine");
     expect(html).not.toContain("Configured in Control Room");
     expect(html).not.toContain("Preset provider");
     expect(html).not.toContain("Preset model");
-    expect(html).toContain("Sin confirmación");
-    expect(html).toContain("Duplicar");
-    expect(html).toContain("Guardar cambios");
-    expect(html).toContain("Restablecer incluido");
-    expect(html).toContain("Preset incluido");
-    expect(html).toContain("Datos locales de la aplicación");
-    expect(html).toContain("Sin valores para importar");
-    expect(html).toContain("Alt+Q se actualiza en el próximo uso");
     expect(html).not.toContain("raw transcript");
     expect(html).not.toContain("token");
   });
@@ -293,10 +327,11 @@ describe("SettingsSurface", () => {
     expect(source).toContain("applyTauriActionHotkeyRegistration");
     expect(source).not.toContain("essentialsTabs");
     expect(source).not.toContain("role=\"tablist\"");
-    expect(source).toContain("createSelectionTransformCustomPreset");
-    expect(source).toContain("deleteSelectionTransformCustomPreset");
-    expect(source).toContain("saveSelectionTransformPresetCustomization");
-    expect(source).toContain("resetSelectionTransformPresetCustomization");
+    expect(source).toContain("createSelectionTransformPreset");
+    expect(source).toContain("deleteSelectionTransformPreset");
+    expect(source).toContain("window.confirm");
+    expect(source).toContain("saveSelectionTransformPreset");
+    expect(source).not.toContain("resetSelectionTransformPresetCustomization");
     expect(source).toContain("extractCloudSelectionPresetDefaults");
     expect(source).toContain("importCloudSelectionPresetDefaults");
     expect(source).not.toContain("close_settings_window");

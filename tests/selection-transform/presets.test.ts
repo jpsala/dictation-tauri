@@ -1,14 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import {
   buildPresetStructuredInput,
-  createSelectionTransformCustomPreset,
-  deleteSelectionTransformCustomPreset,
+  createSelectionTransformPreset,
+  deleteSelectionTransformPreset,
+  dumpSelectionTransformPresetStore,
   getSelectionTransformPreset,
+  hydrateSelectionTransformPresetStore,
+  isSelectionTransformPresetAvailable,
   isSelectionTransformPresetId,
   listSelectionTransformPresetAdminItems,
   listSelectionTransformPresets,
-  resetSelectionTransformPresetCustomization,
-  saveSelectionTransformPresetCustomization,
+  saveSelectionTransformPreset,
   selectionTransformInstructionForPreset,
   selectionTransformPresetDisplayName,
   selectionTransformPresetIdFromPickerKey,
@@ -16,27 +18,12 @@ import {
   selectionTransformPresetPickerKey,
 } from "../../src/selection-transform";
 
-function installLocalStorageMock() {
-  const values = new Map<string, string>();
-  const storage = {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => values.set(key, value),
-    removeItem: (key: string) => values.delete(key),
-    clear: () => values.clear(),
-    key: (index: number) => Array.from(values.keys())[index] ?? null,
-    get length() {
-      return values.size;
-    },
-  } as Storage;
-  Object.defineProperty(globalThis, "localStorage", {
-    value: storage,
-    configurable: true,
-  });
-  return storage;
-}
-
 describe("selection transform presets", () => {
-  it("exposes the current Fixvox starter preset set for the dock and companion", () => {
+  beforeEach(() => {
+    hydrateSelectionTransformPresetStore({ schemaVersion: 2, seedRequired: true, presets: {} });
+  });
+
+  it("seeds examples for a first installation", () => {
     expect(selectionTransformPresetIds).toEqual([
       "como-yo-es",
       "corregir-texto",
@@ -47,7 +34,7 @@ describe("selection transform presets", () => {
     expect(isSelectionTransformPresetId("translate")).toBe(false);
   });
 
-  it("models Fixvox preset definitions with body, hotkey, and picker key", () => {
+  it("models preset definitions with body, hotkey, and picker key", () => {
     expect(listSelectionTransformPresets()).toMatchObject([
       { id: "como-yo-es", name: "Como yo (español)", hotkey: "Alt+T, Y", pickerKey: "Y" },
       { id: "corregir-texto", name: "Corregir texto", hotkey: "Alt+T, C", pickerKey: "C" },
@@ -74,15 +61,11 @@ describe("selection transform presets", () => {
     const likeMeEnglishInstruction = selectionTransformInstructionForPreset({ presetId: "like-me-en" });
     expect(likeMeEnglishInstruction).toContain("Rewrite this text as JP would write it in English");
     expect(likeMeEnglishInstruction).toContain("Always return English text");
-    expect(
-      selectionTransformInstructionForPreset({ presetId: "fix-writing" }),
-    ).toContain("[PRESET_TEMPLATE]");
+    expect(selectionTransformInstructionForPreset({ presetId: "fix-writing" })).toContain("[PRESET_TEMPLATE]");
   });
 
-  it("allows local admin customizations for starter presets", () => {
-    installLocalStorageMock();
-
-    saveSelectionTransformPresetCustomization("like-me-en", {
+  it("edits seeded examples through the same API as every other preset", () => {
+    saveSelectionTransformPreset("like-me-en", {
       name: "Like JP in English",
       pickerKey: "j",
       body: "Always return English, JP style.",
@@ -96,16 +79,10 @@ describe("selection transform presets", () => {
     expect(selectionTransformInstructionForPreset({ presetId: "like-me-en" })).toContain(
       "Always return English, JP style.",
     );
-    expect(listSelectionTransformPresetAdminItems().find((preset) => preset.id === "like-me-en")?.isCustomized).toBe(true);
-
-    resetSelectionTransformPresetCustomization("like-me-en");
-    expect(getSelectionTransformPreset("like-me-en").name).toBe("Like me (English)");
   });
 
-  it("adds and deletes local custom presets", () => {
-    installLocalStorageMock();
-
-    const customPreset = createSelectionTransformCustomPreset({
+  it("creates and deletes presets without a separate custom category", () => {
+    const preset = createSelectionTransformPreset({
       name: "Slack reply",
       pickerKey: "S",
       body: "Make this a short Slack reply.",
@@ -114,24 +91,73 @@ describe("selection transform presets", () => {
       confirm: true,
     });
 
-    expect(customPreset.id).toMatch(/^custom-slack-reply/);
-    expect(isSelectionTransformPresetId(customPreset.id)).toBe(true);
-    expect(listSelectionTransformPresets().map((preset) => preset.id)).toContain(customPreset.id);
-    expect(getSelectionTransformPreset(customPreset.id)).toMatchObject({
+    expect(preset.id).toBe("slack-reply");
+    expect(getSelectionTransformPreset(preset.id)).toMatchObject({
       provider: "openrouter",
       model: "test-model",
       confirm: true,
     });
-    expect(selectionTransformInstructionForPreset({ presetId: customPreset.id })).toContain(
+    expect(selectionTransformInstructionForPreset({ presetId: preset.id })).toContain(
       "Make this a short Slack reply.",
     );
-    expect(listSelectionTransformPresetAdminItems().find((preset) => preset.id === customPreset.id)?.canDelete).toBe(true);
 
-    deleteSelectionTransformCustomPreset(customPreset.id);
-    expect(isSelectionTransformPresetId(customPreset.id)).toBe(false);
+    deleteSelectionTransformPreset(preset.id);
+    expect(isSelectionTransformPresetId(preset.id)).toBe(false);
+    expect(isSelectionTransformPresetAvailable(preset.id)).toBe(false);
   });
 
-  it("builds the Fixvox-style structured input contract", () => {
+  it("deletes an initially seeded example permanently from an initialized store", () => {
+    deleteSelectionTransformPreset("corregir-texto");
+    const persisted = dumpSelectionTransformPresetStore();
+
+    hydrateSelectionTransformPresetStore(persisted);
+
+    expect(isSelectionTransformPresetId("corregir-texto")).toBe(false);
+    expect(isSelectionTransformPresetAvailable("corregir-texto")).toBe(false);
+    expect(listSelectionTransformPresetAdminItems().map((preset) => preset.id)).not.toContain("corregir-texto");
+  });
+
+  it("keeps disabled presets in administration but removes them from runtime lists", () => {
+    saveSelectionTransformPreset("corregir-texto", { enabled: false });
+
+    expect(listSelectionTransformPresetAdminItems().find((preset) => preset.id === "corregir-texto")?.enabled).toBe(false);
+    expect(listSelectionTransformPresets().map((preset) => preset.id)).not.toContain("corregir-texto");
+    expect(isSelectionTransformPresetId("corregir-texto")).toBe(true);
+    expect(isSelectionTransformPresetAvailable("corregir-texto")).toBe(false);
+  });
+
+  it("migrates the v1 starter and custom split into one v2 preset map", () => {
+    const migrated = hydrateSelectionTransformPresetStore({
+      schemaVersion: 1,
+      starterCustomizations: {
+        "corregir-texto": { name: "Corrección migrada", enabled: false },
+      },
+      customPresets: {
+        "custom-summary": {
+          id: "custom-summary",
+          name: "Resumen",
+          body: "Resumí el texto.",
+          hotkey: "",
+          pickerKey: "R",
+          enabled: true,
+          confirm: false,
+        },
+      },
+    });
+
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.presets["corregir-texto"]).toMatchObject({ name: "Corrección migrada", enabled: false });
+    expect(migrated.presets["custom-summary"]).toMatchObject({ name: "Resumen", pickerKey: "R" });
+  });
+
+  it("preserves a valid empty v2 store without reseeding examples", () => {
+    hydrateSelectionTransformPresetStore({ schemaVersion: 2, presets: {} });
+
+    expect(listSelectionTransformPresetAdminItems()).toEqual([]);
+    expect(dumpSelectionTransformPresetStore()).toEqual({ schemaVersion: 2, presets: {} });
+  });
+
+  it("builds the structured input contract", () => {
     const input = buildPresetStructuredInput({
       presetId: "corregir-texto",
       sourceText: "hola amigo",

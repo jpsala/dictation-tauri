@@ -117,9 +117,11 @@ describe("dock companion view", () => {
     expect(html).toContain("Apply a preset to the selected text.");
   });
 
-  it("routes picker choices by whether selected text exists", () => {
-    expect(resolvePresetPickerAction("selected paragraph")).toBe("transform_selection");
-    expect(resolvePresetPickerAction("   ")).toBe("activate_dictation_preset");
+  it("routes picker choices by selected, definitely empty, or uncertain capture", () => {
+    expect(resolvePresetPickerAction("selected paragraph", "ok")).toBe("transform_selection");
+    expect(resolvePresetPickerAction("   ", "no_selection")).toBe("activate_dictation_preset");
+    expect(resolvePresetPickerAction(undefined, "failed")).toBe("selection_capture_failed");
+    expect(resolvePresetPickerAction(undefined, "unsupported_target")).toBe("selection_capture_failed");
     expect(resolvePresetPickerAction(undefined)).toBe("activate_dictation_preset");
   });
 
@@ -143,17 +145,28 @@ describe("dock companion view", () => {
     );
 
     expect(source).toContain("function readStoredActivePreset");
+    expect(source).toContain("isSelectionTransformPresetAvailable(presetId)");
     expect(storedPresetFlow).not.toContain("normalizeDockPresetId");
     expect(storedPresetFlow).toContain("storedPreset?.presetId?.trim()");
     expect(source).toContain("function storeActivePreset");
     expect(source).toContain("storeActivePreset(nextPreset)");
     expect(source).toContain("useRef<DockActivePreset | undefined>(readStoredActivePreset())");
     expect(transcribeFlow).toContain("await loadSelectionPresetStore()");
+    expect(transcribeFlow).toContain("const storedPresetId = activePresetRef.current?.presetId");
+    expect(transcribeFlow).toContain("const activePresetId = normalizeDockPresetId(storedPresetId)");
+    expect(transcribeFlow).toContain("else if (storedPresetId)");
+    expect(transcribeFlow).toContain("clearActivePreset()");
+    expect(transcribeFlow.indexOf("clearActivePreset()")).toBeLessThan(
+      transcribeFlow.indexOf("resolveDictationPostProcessPolicy"),
+    );
     expect(pickerFlow).toContain("await loadSelectionPresetStore()");
+    expect(pickerFlow).toContain('action === "selection_capture_failed"');
     expect(pickerFlow).toContain('action === "activate_dictation_preset"');
     expect(pickerFlow).toContain("selectActivePreset(presetId)");
     expect(pickerFlow).toContain("clearActivePreset()");
-    expect(pickerFlow.indexOf("clearActivePreset()")).toBeGreaterThan(
+    expect(pickerFlow).toContain("No preset was activated.");
+    expect(source).toContain("hostSelectionCaptureForTargetWithClipboardCommand");
+    expect(pickerFlow.lastIndexOf("clearActivePreset()")).toBeGreaterThan(
       pickerFlow.indexOf('action === "activate_dictation_preset"'),
     );
     expect(pickerFlow).toContain('targetAffinity: "saved"');

@@ -42,11 +42,10 @@ import {
   type UserPreferences,
 } from "./user-preferences-control";
 import {
-  createSelectionTransformCustomPreset,
-  deleteSelectionTransformCustomPreset,
+  createSelectionTransformPreset,
+  deleteSelectionTransformPreset,
   listSelectionTransformPresetAdminItems,
-  resetSelectionTransformPresetCustomization,
-  saveSelectionTransformPresetCustomization,
+  saveSelectionTransformPreset,
   type SelectionTransformPresetAdminItem,
 } from "../selection-transform";
 import {
@@ -101,6 +100,19 @@ type SettingsSurfaceProps = {
 
 const HOST_HOTKEY_CAPTURE_EVENT = "desktop-control://hotkey-capture";
 
+type SettingsIconName = "plus" | "download" | "copy" | "trash";
+
+function SettingsIcon({ name }: { name: SettingsIconName }) {
+  return (
+    <svg className="settings-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {name === "plus" ? <><path d="M12 5v14" /><path d="M5 12h14" /></> : null}
+      {name === "download" ? <><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></> : null}
+      {name === "copy" ? <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" /></> : null}
+      {name === "trash" ? <><path d="M4 7h16" /><path d="M9 7V4h6v3" /><path d="m7 7 1 13h8l1-13" /><path d="M10 11v5" /><path d="M14 11v5" /></> : null}
+    </svg>
+  );
+}
+
 export function SettingsSurface({ initialSection = "general", initialCloudStatus, initialAuthSessionStatus }: SettingsSurfaceProps = {}) {
   const tauriRuntime = isTauri();
   const [dictationShortcut, setDictationShortcut] = useState("Alt+Space");
@@ -146,7 +158,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
   const [presetItems, setPresetItems] = useState<SelectionTransformPresetAdminItem[]>(() =>
     listSelectionTransformPresetAdminItems(),
   );
-  const [selectedPresetId, setSelectedPresetId] = useState(presetItems[0]?.id ?? "como-yo-es");
+  const [selectedPresetId, setSelectedPresetId] = useState(presetItems[0]?.id ?? "");
   const [presetNameDraft, setPresetNameDraft] = useState(() => presetItems[0]?.name ?? "");
   const [presetPickerKeyDraft, setPresetPickerKeyDraft] = useState(() => presetItems[0]?.pickerKey ?? "");
   const [presetHotkeyDraft, setPresetHotkeyDraft] = useState(() => presetItems[0]?.hotkey ?? "");
@@ -157,9 +169,11 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
   const [presetDraft, setPresetDraft] = useState(() => presetItems[0]?.body ?? "");
   const [presetNotice, setPresetNotice] = useState<EditorNotice>({
     tone: "idle",
-    message: "Edit starter preset prompts locally. The picker uses the saved prompt immediately.",
+    message: "Editá cualquier preset. El selector usa los cambios guardados en el próximo uso.",
   });
-  const [cloudPresetDefaults, setCloudPresetDefaults] = useState<CloudSelectionPresetDefault[]>([]);
+  const [cloudPresetDefaults, setCloudPresetDefaults] = useState<CloudSelectionPresetDefault[]>(() =>
+    extractCloudSelectionPresetDefaults(initialCloudStatus),
+  );
   const captureArmedRef = useRef(false);
   const accountAutoSelectDoneRef = useRef(false);
   const settingsAccess = cloudStatus
@@ -816,17 +830,15 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     const nextItems = listSelectionTransformPresetAdminItems();
     setPresetItems(nextItems);
     const nextSelected = nextItems.find((preset) => preset.id === nextSelectedId) ?? nextItems[0];
-    if (nextSelected) {
-      setSelectedPresetId(nextSelected.id);
-      setPresetNameDraft(nextSelected.name);
-      setPresetPickerKeyDraft(nextSelected.pickerKey);
-      setPresetHotkeyDraft(nextSelected.hotkey ?? "");
-      setPresetProviderDraft(nextSelected.provider ?? "");
-      setPresetModelDraft(nextSelected.model ?? "");
-      setPresetEnabledDraft(nextSelected.enabled !== false);
-      setPresetConfirmDraft(nextSelected.confirm === true);
-      setPresetDraft(nextSelected.body);
-    }
+    setSelectedPresetId(nextSelected?.id ?? "");
+    setPresetNameDraft(nextSelected?.name ?? "");
+    setPresetPickerKeyDraft(nextSelected?.pickerKey ?? "");
+    setPresetHotkeyDraft(nextSelected?.hotkey ?? "");
+    setPresetProviderDraft(nextSelected?.provider ?? "");
+    setPresetModelDraft(nextSelected?.model ?? "");
+    setPresetEnabledDraft(nextSelected?.enabled !== false);
+    setPresetConfirmDraft(nextSelected?.confirm === true);
+    setPresetDraft(nextSelected?.body ?? "");
   }
 
   async function persistPresetStore() {
@@ -854,7 +866,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
         tone: result.applied > 0 ? "success" : "warning",
         message: result.applied > 0
           ? `Imported ${result.applied} Cloud preset defaults into local app data.`
-          : "Cloud preset defaults did not match editable starter presets.",
+          : "Los valores disponibles no coincidieron con ningún preset existente.",
       });
     } catch (error) {
       setPresetNotice({ tone: "danger", message: formatHotkeyEditReason(error) });
@@ -875,12 +887,8 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     setPresetConfirmDraft(nextPreset?.confirm === true);
     setPresetDraft(nextPreset?.body ?? "");
     setPresetNotice({
-      tone: nextPreset?.isCustomized ? "success" : "idle",
-      message: nextPreset?.canDelete
-        ? "Custom preset selected. You can edit, save, or delete it."
-        : nextPreset?.isCustomized
-          ? "This starter preset has local edits. Save again to update or reset to bundled default."
-          : "Bundled starter preset selected. Edit the prompt body and save to override locally. Starters cannot be deleted.",
+      tone: "idle",
+      message: "Preset seleccionado. Podés editarlo, desactivarlo, duplicarlo o eliminarlo.",
     });
   }
 
@@ -895,7 +903,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
 
     setBusyAction("preset");
     try {
-      saveSelectionTransformPresetCustomization(selectedPreset.id, {
+      saveSelectionTransformPreset(selectedPreset.id, {
         name: presetNameDraft,
         hotkey: presetHotkeyDraft,
         pickerKey: presetPickerKeyDraft,
@@ -916,16 +924,16 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     }
   }
 
-  function addCustomPreset() {
+  function addPreset() {
     setBusyAction("preset");
     try {
-      const nextPreset = createSelectionTransformCustomPreset({
-        name: "New preset",
+      const nextPreset = createSelectionTransformPreset({
+        name: "Nuevo preset",
         pickerKey: "N",
       });
       void persistPresetStore();
       refreshPresetItems(nextPreset.id);
-      setPresetNotice({ tone: "success", message: "Custom preset created locally and selected. You can edit, save, or delete this preset." });
+      setPresetNotice({ tone: "success", message: "Preset creado y seleccionado." });
     } finally {
       setBusyAction(undefined);
     }
@@ -938,8 +946,8 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
 
     setBusyAction("preset");
     try {
-      const nextPreset = createSelectionTransformCustomPreset({
-        name: `${selectedPreset.name} copy`,
+      const nextPreset = createSelectionTransformPreset({
+        name: `${selectedPreset.name} copia`,
         pickerKey: selectedPreset.pickerKey,
         hotkey: selectedPreset.hotkey,
         provider: selectedPreset.provider,
@@ -950,40 +958,23 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       });
       void persistPresetStore();
       refreshPresetItems(nextPreset.id);
-      setPresetNotice({ tone: "success", message: `${selectedPreset.name} duplicated as a custom preset.` });
+      setPresetNotice({ tone: "success", message: `${selectedPreset.name} duplicado.` });
     } finally {
       setBusyAction(undefined);
     }
   }
 
   function deleteSelectedPreset() {
-    if (!selectedPreset?.canDelete) {
-      setPresetNotice({ tone: "warning", message: "Starter presets cannot be deleted. Reset them instead." });
+    if (!selectedPreset || !window.confirm(`¿Eliminar el preset “${selectedPreset.name}”? Esta acción no se puede deshacer.`)) {
       return;
     }
 
     setBusyAction("preset");
     try {
-      deleteSelectionTransformCustomPreset(selectedPreset.id);
+      deleteSelectionTransformPreset(selectedPreset.id);
       void persistPresetStore();
-      refreshPresetItems("como-yo-es");
-      setPresetNotice({ tone: "idle", message: `${selectedPreset.name} deleted locally.` });
-    } finally {
-      setBusyAction(undefined);
-    }
-  }
-
-  function resetPresetDraft() {
-    if (!selectedPreset) {
-      return;
-    }
-
-    setBusyAction("preset");
-    try {
-      resetSelectionTransformPresetCustomization(selectedPreset.id);
-      void persistPresetStore();
-      refreshPresetItems(selectedPreset.id);
-      setPresetNotice({ tone: "idle", message: `${selectedPreset.name} reset to bundled starter prompt.` });
+      refreshPresetItems("");
+      setPresetNotice({ tone: "idle", message: `${selectedPreset.name} eliminado.` });
     } finally {
       setBusyAction(undefined);
     }
@@ -1250,31 +1241,32 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
           </div>
         </section>
         ) : effectiveSection === "presets" ? (
-        <section className="settings-panel settings-presets-panel" aria-labelledby="settings-presets-title">
-          <div className="settings-panel-header">
-            <div>
-              <h2 id="settings-presets-title">Presets</h2>
-              <p>Editá los presets disponibles y agregá presets locales para Alt+Q.</p>
-            </div>
+        <section className="settings-panel settings-presets-panel" aria-label="Administrar presets">
+          <div className="settings-preset-toolbar">
+            <span className="settings-panel-count">{presetItems.length} presets</span>
             <div className="settings-panel-header-actions">
+              {cloudPresetDefaults.length ? (
+                <button
+                  type="button"
+                  className="settings-icon-button"
+                  disabled={Boolean(busyAction)}
+                  onClick={() => void importCloudPresetDefaults()}
+                  aria-label="Importar valores disponibles"
+                  title="Importar valores disponibles"
+                >
+                  <SettingsIcon name="download" />
+                </button>
+              ) : null}
               <button
                 type="button"
-                className="settings-editor-button settings-editor-button-secondary"
-                disabled={Boolean(busyAction) || !cloudPresetDefaults.length}
-                onClick={() => void importCloudPresetDefaults()}
-                title={cloudPresetDefaults.length ? "Import preset defaults from the current redacted Cloud policy snapshot." : "No Cloud preset defaults found in the current policy snapshot."}
-              >
-                {busyAction === "preset" ? "Importando" : "Importar valores disponibles"}
-              </button>
-              <button
-                type="button"
-                className="settings-editor-button settings-editor-button-secondary"
+                className="settings-icon-button"
                 disabled={Boolean(busyAction) || !settingsAccess.canEditPresets}
-                onClick={addCustomPreset}
+                onClick={addPreset}
+                aria-label="Agregar preset"
+                title="Agregar preset"
               >
-                Agregar preset
+                <SettingsIcon name="plus" />
               </button>
-              <span className="settings-panel-count">{presetItems.length} presets</span>
             </div>
           </div>
 
@@ -1285,153 +1277,147 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
           ) : null}
 
           <div className="settings-preset-admin-grid">
-            <div className="settings-hotkey-list settings-preset-admin-list" aria-label="Preset list">
-              {presetItems.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  className="settings-hotkey-row settings-preset-row"
-                  data-selected={preset.id === selectedPreset?.id}
-                  onClick={() => selectPresetForEditing(preset.id)}
-                >
-                  <div className="settings-hotkey-copy">
+            {presetItems.length ? (
+              <div className="settings-preset-admin-list" aria-label="Lista de presets">
+                {presetItems.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className="settings-preset-row"
+                    data-selected={preset.id === selectedPreset?.id}
+                    onClick={() => selectPresetForEditing(preset.id)}
+                  >
                     <strong>{preset.name}</strong>
-                    <span>{preset.id}</span>
-                  </div>
-                  <div className="settings-hotkey-value" aria-label={`${preset.name} preset state`}>
-                    <kbd>{preset.pickerKey}</kbd>
-                      <small>{preset.canDelete ? "custom" : preset.isCustomized ? "edited" : "starter"}</small>
-                  </div>
-                </button>
-              ))}
-            </div>
+                    <span className="settings-preset-row-meta">
+                      <kbd>{preset.pickerKey}</kbd>
+                      <span data-enabled={preset.enabled !== false}>{preset.enabled === false ? "Desactivado" : "Activado"}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="settings-preset-empty">
+                <strong>No hay presets.</strong>
+                <span>Agregá uno para usarlo con Alt+Q.</span>
+              </div>
+            )}
 
-            <details className="settings-preset-details">
-              <summary>Editar el preset seleccionado</summary>
-              <section className="settings-hotkey-editor settings-preset-editor" aria-labelledby="settings-preset-editor-title">
-              <div className="settings-hotkey-editor-topline">
-                <div className="settings-hotkey-editor-copy">
-                  <div className="settings-native-plan-heading">
-                    <h3 id="settings-preset-editor-title">{selectedPreset?.name ?? "Preset"}</h3>
-                    <span>{selectedPreset?.isCustomized ? "Personalizado" : "Incluido"}</span>
+            {selectedPreset ? (
+              <section className="settings-preset-editor" aria-labelledby="settings-preset-editor-title">
+                <header className="settings-preset-editor-header">
+                  <div>
+                    <h3 id="settings-preset-editor-title">{selectedPreset.name}</h3>
                   </div>
-                  <p>Tecla del selector: {selectedPreset?.pickerKey ?? "—"}</p>
+                  <div className="settings-preset-editor-icon-actions">
+                    <button
+                      type="button"
+                      className="settings-icon-button"
+                      disabled={Boolean(busyAction) || !settingsAccess.canEditPresets}
+                      onClick={duplicateSelectedPreset}
+                      aria-label="Duplicar preset"
+                      title="Duplicar preset"
+                    >
+                      <SettingsIcon name="copy" />
+                    </button>
+                    <button
+                      type="button"
+                      className="settings-icon-button settings-icon-button-danger"
+                      disabled={Boolean(busyAction) || !settingsAccess.canEditPresets}
+                      onClick={deleteSelectedPreset}
+                      aria-label="Eliminar preset"
+                      title="Eliminar preset"
+                    >
+                      <SettingsIcon name="trash" />
+                    </button>
+                  </div>
+                </header>
+
+                <div className="settings-preset-metadata-grid">
+                  <label className="settings-preset-field">
+                    <span>Nombre</span>
+                    <input
+                      value={presetNameDraft}
+                      disabled={!settingsAccess.canEditPresets}
+                      onChange={(event) => setPresetNameDraft(event.target.value)}
+                      aria-label="Nombre del preset"
+                    />
+                  </label>
+                  <label className="settings-preset-field settings-preset-field-short">
+                    <span>Tecla</span>
+                    <input
+                      value={presetPickerKeyDraft}
+                      maxLength={1}
+                      disabled={!settingsAccess.canEditPresets}
+                      onChange={(event) => setPresetPickerKeyDraft(event.target.value.toUpperCase().slice(0, 1))}
+                      aria-label="Tecla del selector del preset"
+                    />
+                  </label>
+                  <label className="settings-preset-field">
+                    <span>Atajo</span>
+                    <input
+                      value={presetHotkeyDraft}
+                      disabled={!settingsAccess.canEditPresets}
+                      onChange={(event) => setPresetHotkeyDraft(event.target.value)}
+                      aria-label="Atajo del preset"
+                      placeholder="Alt+T, N"
+                    />
+                  </label>
                 </div>
-              </div>
 
-              <div className="settings-preset-metadata-grid">
+                <div className="settings-preset-options">
+                  <div className="settings-preset-option" title="Si lo desactivás, deja de aparecer en Alt+Q.">
+                    <strong>Disponible en Alt+Q</strong>
+                    <button
+                      type="button"
+                      className="settings-toggle"
+                      role="switch"
+                      aria-label="Disponible en Alt+Q"
+                      aria-checked={presetEnabledDraft}
+                      disabled={!settingsAccess.canEditPresets}
+                      onClick={() => setPresetEnabledDraft(!presetEnabledDraft)}
+                    />
+                  </div>
+                  <div className="settings-preset-option" title="Solicita confirmación antes de ejecutar este preset.">
+                    <strong>Pedir confirmación</strong>
+                    <button
+                      type="button"
+                      className="settings-toggle"
+                      role="switch"
+                      aria-label="Pedir confirmación"
+                      aria-checked={presetConfirmDraft}
+                      disabled={!settingsAccess.canEditPresets}
+                      onClick={() => setPresetConfirmDraft(!presetConfirmDraft)}
+                    />
+                  </div>
+                </div>
+
                 <label className="settings-preset-field">
-                  <span>Nombre</span>
-                  <input
-                    value={presetNameDraft}
+                  <span>Instrucción</span>
+                  <textarea
+                    className="settings-preset-textarea"
+                    value={presetDraft}
                     disabled={!settingsAccess.canEditPresets}
-                    onChange={(event) => setPresetNameDraft(event.target.value)}
-                    aria-label="Nombre del preset"
+                    onChange={(event) => setPresetDraft(event.target.value)}
+                    spellCheck={false}
+                    aria-label="Instrucción del preset"
                   />
                 </label>
-                <label className="settings-preset-field settings-preset-field-short">
-                  <span>Tecla del selector</span>
-                  <input
-                    value={presetPickerKeyDraft}
-                    maxLength={1}
-                    disabled={!settingsAccess.canEditPresets}
-                    onChange={(event) => setPresetPickerKeyDraft(event.target.value.toUpperCase().slice(0, 1))}
-                    aria-label="Tecla del selector del preset"
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="settings-toggle settings-preset-enabled-toggle"
-                  role="switch"
-                  aria-checked={presetEnabledDraft}
-                  disabled={!settingsAccess.canEditPresets}
-                  onClick={() => setPresetEnabledDraft(!presetEnabledDraft)}
-                >
-                  <span className="sr-only">{presetEnabledDraft ? "Activado" : "Desactivado"}</span>
-                </button>
-              </div>
 
-              <div className="settings-preset-metadata-grid settings-preset-metadata-grid-secondary">
-                <label className="settings-preset-field">
-                  <span>Atajo</span>
-                  <input
-                    value={presetHotkeyDraft}
-                    disabled={!settingsAccess.canEditPresets}
-                    onChange={(event) => setPresetHotkeyDraft(event.target.value)}
-                    aria-label="Atajo del preset"
-                    placeholder="Alt+T, N"
-                  />
-                </label>
-              </div>
-
-              <div className="settings-preset-metadata-grid settings-preset-metadata-grid-actions">
-                <button
-                  type="button"
-                  className="settings-toggle settings-preset-enabled-toggle"
-                  role="switch"
-                  aria-checked={presetConfirmDraft}
-                  disabled={!settingsAccess.canEditPresets}
-                  onClick={() => setPresetConfirmDraft(!presetConfirmDraft)}
-                >
-                  <span className="sr-only">{presetConfirmDraft ? "Pedir confirmación" : "Sin confirmación"}</span>
-                </button>
-              </div>
-
-              <textarea
-                className="settings-preset-textarea"
-                value={presetDraft}
-                disabled={!settingsAccess.canEditPresets}
-                onChange={(event) => setPresetDraft(event.target.value)}
-                spellCheck={false}
-                aria-label="Instrucción del preset"
-              />
-
-              <div className="settings-hotkey-editor-actions">
-                <button
-                  type="button"
-                  className="settings-editor-button settings-editor-button-secondary"
-                  disabled={Boolean(busyAction) || !selectedPreset || !settingsAccess.canEditPresets}
-                  onClick={duplicateSelectedPreset}
-                >
-                  Duplicar
-                </button>
-                <button
-                  type="button"
-                  className="settings-editor-button settings-editor-button-secondary"
-                  disabled={Boolean(busyAction) || selectedPreset?.canDelete || !selectedPreset?.isCustomized || !settingsAccess.canEditPresets}
-                  onClick={resetPresetDraft}
-                  title={selectedPreset?.canDelete ? "Custom presets do not have a bundled starter to reset." : undefined}
-                >
-                  Restablecer incluido
-                </button>
-                <button
-                  type="button"
-                  className="settings-editor-button settings-editor-button-secondary"
-                  disabled={Boolean(busyAction) || !selectedPreset?.canDelete || !settingsAccess.canEditPresets}
-                  onClick={deleteSelectedPreset}
-                  title={selectedPreset?.canDelete ? "Delete this local custom preset." : "Starter presets are locked. Add a custom preset to delete it later."}
-                >
-                  {selectedPreset?.canDelete ? "Eliminar preset" : "Preset incluido"}
-                </button>
-                <button
-                  type="button"
-                  className="settings-editor-button settings-editor-button-primary"
-                  disabled={Boolean(busyAction) || !selectedPreset || !presetDraftChanged || !settingsAccess.canEditPresets}
-                  onClick={savePresetDraft}
-                >
-                  {busyAction === "preset" ? "Guardando" : "Guardar cambios"}
-                </button>
-              </div>
-
-              <div className="settings-hotkey-editor-feedback" data-tone={presetNotice.tone}>
-                <span>{presetDraftChanged ? "Cambios sin guardar" : "Cambios guardados"}</span>
-                <span>Datos locales de la aplicación</span>
-                <span>{cloudPresetDefaults.length ? `${cloudPresetDefaults.length} valores disponibles` : "Sin valores para importar"}</span>
-                <span>Alt+Q se actualiza en el próximo uso</span>
-                <strong>{presetNotice.message}</strong>
-              </div>
+                <footer className="settings-preset-editor-footer">
+                  <div className="settings-hotkey-editor-feedback" data-tone={presetNotice.tone} aria-live="polite">
+                    <strong>{presetDraftChanged ? "Cambios sin guardar" : presetNotice.tone === "idle" ? "Cambios guardados" : presetNotice.message}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="settings-editor-button settings-editor-button-primary"
+                    disabled={Boolean(busyAction) || !presetDraftChanged || !settingsAccess.canEditPresets}
+                    onClick={savePresetDraft}
+                  >
+                    {busyAction === "preset" ? "Guardando" : "Guardar cambios"}
+                  </button>
+                </footer>
               </section>
-            </details>
+            ) : null}
           </div>
         </section>
         ) : effectiveSection === "account" ? (

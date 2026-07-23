@@ -59,7 +59,8 @@ import {
 import {
   hostSelectionCaptureCommand,
   hostSelectionCaptureForTargetCommand,
-  isSelectionTransformPresetId,
+  hostSelectionCaptureForTargetWithClipboardCommand,
+  isSelectionTransformPresetAvailable,
   latestResultFromPipelineSummary,
   listSelectionTransformPresets,
   routeSelectionCaptureOutcome,
@@ -69,6 +70,7 @@ import {
   selectionTransformPresetPickerKey,
   transformSelectedTextWithHost,
   type SelectionCaptureOutcome,
+  type SelectionCaptureStatus,
   type SelectionContext,
 } from "./selection-transform";
 import { PipelineService } from "./pipeline/service";
@@ -789,13 +791,19 @@ function createHistoryEntryFromSummary(
 }
 
 function normalizeDockPresetId(presetId: string | null | undefined): DockCompanionPresetId | undefined {
-  return isSelectionTransformPresetId(presetId) ? presetId : undefined;
+  return isSelectionTransformPresetAvailable(presetId) ? presetId : undefined;
 }
 
 export function resolvePresetPickerAction(
   selectedText: string | null | undefined,
-): "transform_selection" | "activate_dictation_preset" {
-  return selectedText?.trim() ? "transform_selection" : "activate_dictation_preset";
+  captureStatus?: SelectionCaptureStatus,
+): "transform_selection" | "activate_dictation_preset" | "selection_capture_failed" {
+  if (selectedText?.trim()) {
+    return "transform_selection";
+  }
+  return captureStatus && captureStatus !== "no_selection"
+    ? "selection_capture_failed"
+    : "activate_dictation_preset";
 }
 
 function presetDisplayName(presetId: DockCompanionPresetId): string {
@@ -1590,7 +1598,7 @@ export function CompanionSurfaceView({
           {snapshot.assistant.surface?.kind === "optionPicker" ? (
             <div className="dock-preset-picker-list" role="listbox" aria-label={snapshot.assistant.surface.title}>
               {snapshot.assistant.surface.options.map((option) => {
-                const presetId = isSelectionTransformPresetId(option.id) ? option.id : undefined;
+                const presetId = isSelectionTransformPresetAvailable(option.id) ? option.id : undefined;
                 return (
                   <button
                     key={option.id}
@@ -1815,6 +1823,7 @@ export function DockSurface() {
   const stopDeliveryTargetRef = useRef<TauriDesktopDeliveryTarget | undefined>(undefined);
   const activePresetRef = useRef<DockActivePreset | undefined>(readStoredActivePreset());
   const selectionContextRef = useRef<SelectionContext | undefined>(undefined);
+  const presetPickerSelectionCaptureStatusRef = useRef<SelectionCaptureStatus | undefined>(undefined);
   const dockDragRef = useRef<{
     startScreenX: number;
     startScreenY: number;
@@ -2198,16 +2207,21 @@ export function DockSurface() {
       : await captureTauriDesktopDeliveryTarget(invoke);
   }
 
-  async function rememberSelectionTransformContext() {
+  async function rememberSelectionTransformContext(
+    options: { forceTargetClipboardFallback?: boolean } = {},
+  ): Promise<SelectionCaptureOutcome | undefined> {
     selectionContextRef.current = undefined;
     if (!isTauri()) {
-      return;
+      return undefined;
     }
 
     try {
       const target = savedDeliveryTargetRef.current;
+      const targetCommand = options.forceTargetClipboardFallback
+        ? hostSelectionCaptureForTargetWithClipboardCommand
+        : hostSelectionCaptureForTargetCommand;
       const outcome = target?.frameHwnd
-        ? await invoke<SelectionCaptureOutcome>(hostSelectionCaptureForTargetCommand, {
+        ? await invoke<SelectionCaptureOutcome>(targetCommand, {
             frameHwnd: target.frameHwnd,
           })
         : await invoke<SelectionCaptureOutcome>(hostSelectionCaptureCommand);
@@ -2215,8 +2229,10 @@ export function DockSurface() {
       selectionContextRef.current = route.kind === "selection_transform"
         ? route.selection
         : undefined;
+      return outcome;
     } catch {
       selectionContextRef.current = undefined;
+      return undefined;
     }
   }
 
@@ -2919,40 +2935,46 @@ export function DockSurface() {
   }
 
   async function openPresetPicker(targetSnapshot?: TauriDesktopDeliveryTarget) {
+    presetPickerSelectionCaptureStatusRef.current = isTauri() ? "failed" : undefined;
     if (isTauri()) {
       savedDeliveryTargetRef.current = targetSnapshot?.inputLike
         ? targetSnapshot
         : await captureTauriDesktopDeliveryTarget(invoke);
-      await rememberSelectionTransformContext();
+      const outcome = await rememberSelectionTransformContext({
+        forceTargetClipboardFallback: true,
+      });
+      presetPickerSelectionCaptureStatusRef.current = outcome?.status ?? "failed";
     }
+
+    const hasSelection = Boolean(selectionContextRef.current?.selectedText?.trim());
+    const selectionStatus = hasSelection
+      ? "selected"
+      : presetPickerSelectionCaptureStatusRef.current === "no_selection" || !isTauri()
+        ? "none"
+        : "uncertain";
+    const message = hasSelection
+      ? "Action picker captured selected text for a preset transform."
+      : selectionStatus === "none"
+        ? "Action picker is ready. Choose a preset to keep active for future dictation."
+        : "Selected text could not be captured safely. Choosing a preset will not activate a persistent mode.";
 
     recordPresetPickerMainDebug({
       lastAction: "opened",
       hadTarget: Boolean(savedDeliveryTargetRef.current?.inputLike),
-      selectionStatus: selectionContextRef.current?.selectedText?.trim() ? "selected" : "none",
+      selectionStatus,
+      captureStatus: presetPickerSelectionCaptureStatusRef.current ?? null,
     });
 
     setResultHistoryOpen(false);
     setSettingsPanelOpen(true);
     setDesktopRecoveryAction(undefined);
-    setCapture({
-      state: "idle",
-      message: selectionContextRef.current?.selectedText?.trim()
-        ? "Action picker captured selected text for a preset transform."
-        : "Action picker is ready. Choose a preset to keep active for future dictation.",
-    });
+    setCapture({ state: "idle", message });
     if (isTauri()) {
       window.setTimeout(() => {
         void invoke("focus_preset_picker").catch(() => undefined);
       }, 120);
     }
-    setPipelineUi({
-      status: "idle",
-      message: selectionContextRef.current?.selectedText?.trim()
-        ? "Action picker captured selected text for a preset transform."
-        : "Action picker is ready. Choose a preset to keep active for future dictation.",
-      summary: pipelineUi.summary,
-    });
+    setPipelineUi({ status: "idle", message, summary: pipelineUi.summary });
   }
 
   async function runPickerPreset(presetId: DockCompanionPresetId) {
@@ -2965,15 +2987,26 @@ export function DockSurface() {
     }
 
     const selectedText = selectionContextRef.current?.selectedText?.trim();
-    const action = resolvePresetPickerAction(selectedText);
+    const captureStatus = presetPickerSelectionCaptureStatusRef.current;
+    const action = resolvePresetPickerAction(selectedText, captureStatus);
     recordPresetPickerMainDebug({
       lastAction: action,
       presetId,
+      captureStatus: captureStatus ?? null,
       selectedTextLength: selectedText?.length ?? 0,
     });
+    if (action === "selection_capture_failed") {
+      clearActivePreset();
+      presetPickerSelectionCaptureStatusRef.current = undefined;
+      const message = "Selected text could not be captured safely. No preset was activated.";
+      setCapture({ state: "idle", message });
+      setPipelineUi({ status: "error", message, summary: pipelineUi.summary });
+      return;
+    }
     if (action === "activate_dictation_preset") {
       selectActivePreset(presetId);
       selectionContextRef.current = undefined;
+      presetPickerSelectionCaptureStatusRef.current = undefined;
       const message = `${presetDisplayName(presetId)} is active for future dictation.`;
       setCapture({ state: "idle", message });
       setPipelineUi({ status: "idle", message, summary: pipelineUi.summary });
@@ -3063,6 +3096,9 @@ export function DockSurface() {
           : "Preset transform failed; selected text was not replaced.",
         summary: pipelineUi.summary,
       });
+    } finally {
+      selectionContextRef.current = undefined;
+      presetPickerSelectionCaptureStatusRef.current = undefined;
     }
   }
 

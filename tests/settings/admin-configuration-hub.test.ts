@@ -36,7 +36,8 @@ describe("Admin Configuration hub", () => {
     const serverSource = readFileSync("admin/fixvox-web/server.mjs", "utf8");
     expect(serverSource).toContain("'/api/admin/profiles/apply'");
     expect(serverSource).toContain("ADMIN_PUBLISH_API_KEY");
-    expect(serverSource).toContain("actorKey: rbacPrincipalKeyForEmail");
+    expect(serverSource).toContain("const principalKey = rbacPrincipalKeyForSession(session)");
+    expect(serverSource).toContain("const brokeredBody = { ...applyPayload, actorKey: principalKey }");
     expect(serverSource).toContain("'/api/admin/roles'");
   });
 

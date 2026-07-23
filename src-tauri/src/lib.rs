@@ -98,6 +98,7 @@ pub fn run() {
             desktop_control::drain_desktop_control_hotkey_events,
             selection_capture::capture_selection_context,
             selection_capture::capture_selection_context_for_target,
+            selection_capture::capture_selection_context_for_target_with_clipboard,
             selection_presets::get_selection_presets_store,
             selection_presets::save_selection_presets_store,
             result_history::append_result_history_entry,

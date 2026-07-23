@@ -257,6 +257,55 @@ pub(crate) struct DeviceRegisterResponseFixture {
 pub(crate) type DeviceRegisterSnapshot = DeviceRegisterResponseFixture;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+struct ProductEnvelope<T> {
+    ok: bool,
+    data: T,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductDesktopBinding {
+    device_id: String,
+    status: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+struct ProductDesktopBootstrapData {
+    binding: ProductDesktopBinding,
+    context: serde_json::Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductAuthSessionStartData {
+    handoff_id: String,
+    verification_uri: String,
+    expires_at: String,
+    poll_after_seconds: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductAuthSessionStatusData {
+    status: String,
+    claim_proof: Option<String>,
+    expires_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProductNativeSession {
+    token: String,
+    expires_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+struct ProductAuthSessionClaimData {
+    session: ProductNativeSession,
+    context: serde_json::Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DeviceActivateResponseFixture {
     pub(crate) ok: bool,
@@ -413,6 +462,7 @@ pub(crate) struct ManagedSttRequestPreview {
 pub(crate) enum ManagedChatEngineKind {
     Postprocess,
     SelectionTransform,
+    Assistant,
 }
 
 impl ManagedChatEngineKind {
@@ -420,6 +470,7 @@ impl ManagedChatEngineKind {
         match self {
             Self::Postprocess => "postprocess",
             Self::SelectionTransform => "selectionTransform",
+            Self::Assistant => "assistant",
         }
     }
 }
@@ -427,9 +478,9 @@ impl ManagedChatEngineKind {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ManagedChatInput {
     pub(crate) transcript: String,
-    pub(crate) system_prompt: String,
-    pub(crate) model: String,
-    pub(crate) max_tokens: Option<u64>,
+    pub(crate) instruction: Option<String>,
+    pub(crate) preset_key: Option<String>,
+    pub(crate) conversation_summary: Option<String>,
     pub(crate) engine_kind: Option<ManagedChatEngineKind>,
 }
 
@@ -490,6 +541,12 @@ pub(crate) struct FixvoxResponseMetadata {
     pub(crate) proxy_parse_ms: Option<u64>,
     pub(crate) proxy_usage_ms: Option<u64>,
     pub(crate) proxy_upstream_ms: Option<u64>,
+    pub(crate) proxy_engine_binding_ms: Option<u64>,
+    pub(crate) proxy_prompt_resolution_ms: Option<u64>,
+    pub(crate) proxy_budget_config_ms: Option<u64>,
+    pub(crate) proxy_budget_events_ms: Option<u64>,
+    pub(crate) proxy_multipart_ms: Option<u64>,
+    pub(crate) proxy_budget_ms: Option<u64>,
     pub(crate) proxy_init_ms: Option<u64>,
     pub(crate) proxy_total_ms: Option<u64>,
     pub(crate) server_timing: Option<String>,
@@ -558,6 +615,62 @@ pub(crate) fn build_device_register_request(
         hostname: input.hostname.trim().to_string(),
         ts: input.ts.trim().to_string(),
     })
+}
+
+fn build_product_bootstrap_body(
+    input: DeviceRegisterInput,
+    invite_code: Option<String>,
+) -> Result<serde_json::Value, FixvoxCloudError> {
+    let register = build_device_register_request(input)?;
+    let mut body = serde_json::json!({
+        "installId": register.install_id,
+        "device": {
+            "platform": "windows",
+            "appVersion": register.version,
+        }
+    });
+    if let Some(invite_code) = invite_code.and_then(|value| clean_env_value(Some(value))) {
+        body["inviteCode"] = serde_json::Value::String(invite_code);
+    }
+    Ok(body)
+}
+
+fn parse_product_bootstrap(
+    value: serde_json::Value,
+) -> Result<ProductDesktopBootstrapData, FixvoxCloudError> {
+    let envelope: ProductEnvelope<ProductDesktopBootstrapData> = serde_json::from_value(value)
+        .map_err(|_| {
+            error(
+                "FIXVOX_PRODUCT_BOOTSTRAP_RESPONSE_INVALID",
+                "Fixvox product bootstrap response did not match the expected contract.",
+            )
+        })?;
+    if !envelope.ok
+        || envelope.data.binding.device_id.trim().is_empty()
+        || !matches!(
+            envelope.data.binding.status.as_str(),
+            "active" | "login_required" | "blocked"
+        )
+    {
+        return Err(error(
+            "FIXVOX_PRODUCT_BOOTSTRAP_RESPONSE_INVALID",
+            "Fixvox product bootstrap response did not match the expected contract.",
+        ));
+    }
+    Ok(envelope.data)
+}
+
+fn bootstrap_device_with_client(
+    client: &dyn DeviceRegisterHttpClient,
+    config: &FixvoxCloudRuntimeConfig,
+    input: DeviceRegisterInput,
+    invite_code: Option<String>,
+) -> Result<ProductDesktopBootstrapData, FixvoxCloudError> {
+    let response = client.post_json(
+        &join_url(&config.backend_base_url, "/product/v1/desktop/bootstrap"),
+        build_product_bootstrap_body(input, invite_code)?,
+    )?;
+    parse_product_bootstrap(response)
 }
 
 pub(crate) fn build_desktop_login_device_link_request(
@@ -844,6 +957,101 @@ pub(crate) fn build_device_state_from_register(
         policy_snapshot: Some(policy_snapshot),
         auth_policy,
     }
+}
+
+fn build_device_state_from_product_context(
+    config: &FixvoxCloudRuntimeConfig,
+    device_id: &str,
+    context: &serde_json::Value,
+    signed_in: bool,
+) -> Result<FixvoxDeviceState, FixvoxCloudError> {
+    let profile_key = context
+        .pointer("/profile/key")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| clean_env_value(Some(value.to_string())))
+        .ok_or_else(|| {
+            error(
+                "FIXVOX_PRODUCT_CONTEXT_INVALID",
+                "Fixvox product context did not include a profile key.",
+            )
+        })?;
+    let capability = |key: &str| {
+        context
+            .get("capabilities")
+            .and_then(|value| value.get(key))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    };
+    let transcription = capability("transcription");
+    let postprocess = capability("postprocess");
+    let selection_transform = capability("selectionTransform");
+    let assistant = capability("assistant");
+    let feedback = capability("feedback");
+    let admin_settings = capability("adminSettings");
+    let mut capabilities = Vec::new();
+    if transcription {
+        capabilities.extend(["dictation".to_string(), "managed_stt".to_string()]);
+    }
+    if postprocess {
+        capabilities.push("postprocess".to_string());
+    }
+    if postprocess || selection_transform || assistant {
+        capabilities.push("managed_llm".to_string());
+    }
+    if selection_transform {
+        capabilities.push("selection_transform".to_string());
+    }
+    if assistant {
+        capabilities.push("assistant_actions".to_string());
+    }
+    if feedback {
+        capabilities.push("feedback".to_string());
+    }
+    if admin_settings {
+        capabilities.push("admin_settings".to_string());
+    }
+    let product_capabilities = FixvoxPolicyCapabilities {
+        can_use_managed_transcription: transcription,
+        can_see_advanced_settings: postprocess
+            || selection_transform
+            || assistant
+            || admin_settings,
+        can_use_debug_tools: false,
+    };
+    let transport_policy = serde_json::json!({ "mode": "managed", "contract": "product-v1" });
+    let policy_snapshot = FixvoxPolicySnapshot {
+        policy_id: Some(profile_key.clone()),
+        policy_label: Some(profile_key.clone()),
+        features: context.get("capabilities").cloned(),
+        capabilities: product_capabilities.clone(),
+        transport_policy: Some(transport_policy.clone()),
+        runtime_policy: Some(context.clone()),
+        fetched_at: current_unix_timestamp_string(),
+        trust: "confirmed".to_string(),
+        stale: false,
+        error: None,
+    };
+    Ok(FixvoxDeviceState {
+        install_id: config.install_id.clone(),
+        device_id: Some(device_id.to_string()),
+        last_register_ok: true,
+        last_register_error_code: None,
+        last_register_error_message: None,
+        policy_id: Some(profile_key.clone()),
+        policy_label: Some(profile_key.clone()),
+        transport_policy: Some(transport_policy),
+        policy_snapshot: Some(policy_snapshot),
+        auth_policy: Some(FixvoxAuthPolicyStatus {
+            access_mode: if signed_in { "signed_in" } else { "device" }.to_string(),
+            user_redacted: None,
+            group_label: None,
+            policy_template_id: Some(profile_key.clone()),
+            policy_template_label: Some(profile_key),
+            capabilities,
+            limits: context.get("limits").cloned(),
+            redacted: true,
+        }),
+    })
 }
 
 pub(crate) fn build_device_state_from_register_error(
@@ -1657,66 +1865,137 @@ pub(crate) async fn poll_fixvox_cloud_login_with_env(
     let Some(mut state) = read_auth_session_state(&path)? else {
         return Ok(build_auth_session_status(path, None));
     };
-
     if state.status != "pending" {
-        if state.status == "signed_in" && !device_state_has_signed_in_auth_policy(env_lookup)? {
-            link_signed_in_session_device_with_reqwest(env_lookup, &state).await?;
-        }
         return Ok(build_auth_session_status(path, Some(&state)));
     }
 
-    let status_url = build_fixvox_login_status_url(&backend_base_url, &state.state_nonce);
+    let status_url = join_url(
+        &backend_base_url,
+        &format!("/product/v1/desktop/auth/sessions/{}", state.state_nonce),
+    );
     let client = fixvox_http_client()?;
     let response = client.get(status_url).send().await.map_err(|_| {
         error(
             "FIXVOX_LOGIN_STATUS_FAILED",
-            "Fixvox Cloud login status could not be reached.",
+            "Fixvox product login status could not be reached.",
         )
     })?;
-
     if response.status().as_u16() == 404 {
         state.status = "expired".to_string();
         persist_auth_session_state(&path, &state)?;
         return Ok(build_auth_session_status(path, Some(&state)));
     }
-
     if !response.status().is_success() {
         return Err(error(
             "FIXVOX_LOGIN_STATUS_FAILED",
-            "Fixvox Cloud login status returned an error.",
+            "Fixvox product login status returned an error.",
         ));
     }
-
-    let poll_status: FixvoxCloudLoginPollStatus = response.json().await.map_err(|_| {
-        error(
+    let envelope: ProductEnvelope<ProductAuthSessionStatusData> =
+        response.json().await.map_err(|_| {
+            error(
+                "FIXVOX_LOGIN_STATUS_INVALID",
+                "Fixvox product login status did not match the expected contract.",
+            )
+        })?;
+    if !envelope.ok {
+        return Err(error(
             "FIXVOX_LOGIN_STATUS_INVALID",
-            "Fixvox Cloud login status did not match the expected contract.",
-        )
-    })?;
-
-    match poll_status.status.as_str() {
-        "success" => {
-            state.status = "signed_in".to_string();
-            state.user_id = poll_status.user_redacted.clone();
-            state.user_email = None;
-            state.expires_at = None;
-            persist_auth_session_state(&path, &state)?;
-            if !device_state_has_signed_in_auth_policy(env_lookup)? {
-                link_signed_in_session_device_with_reqwest(env_lookup, &state).await?;
+            "Fixvox product login status did not match the expected contract.",
+        ));
+    }
+    state.expires_at = Some(envelope.data.expires_at.clone());
+    match envelope.data.status.as_str() {
+        "approved" => {
+            let claim_proof = envelope.data.claim_proof.ok_or_else(|| {
+                error(
+                    "FIXVOX_LOGIN_CLAIM_MISSING",
+                    "Fixvox product login approval did not include a claim proof.",
+                )
+            })?;
+            let (device_path, device_state, _) = resolve_or_create_device_state(env_lookup)?;
+            let device_id = device_state.device_id.clone().ok_or_else(|| {
+                error(
+                    "FIXVOX_DEVICE_ID_MISSING",
+                    "Fixvox product login requires a bootstrapped device.",
+                )
+            })?;
+            let claim_url = join_url(
+                &backend_base_url,
+                &format!(
+                    "/product/v1/desktop/auth/sessions/{}/claim",
+                    state.state_nonce
+                ),
+            );
+            let claim_response = client
+                .post(claim_url)
+                .header("X-Fixvox-Install-Id", device_state.install_id.clone())
+                .json(&serde_json::json!({
+                    "deviceId": device_id,
+                    "claimProof": claim_proof,
+                }))
+                .send()
+                .await
+                .map_err(|_| {
+                    error(
+                        "FIXVOX_LOGIN_CLAIM_FAILED",
+                        "Fixvox product login claim could not be reached.",
+                    )
+                })?;
+            if !claim_response.status().is_success() {
+                return Err(error(
+                    "FIXVOX_LOGIN_CLAIM_REJECTED",
+                    "Fixvox product login claim was rejected.",
+                ));
             }
+            let claim: ProductEnvelope<ProductAuthSessionClaimData> =
+                claim_response.json().await.map_err(|_| {
+                    error(
+                        "FIXVOX_LOGIN_CLAIM_INVALID",
+                        "Fixvox product login claim did not match the expected contract.",
+                    )
+                })?;
+            if !claim.ok || claim.data.session.token.trim().is_empty() {
+                return Err(error(
+                    "FIXVOX_LOGIN_CLAIM_INVALID",
+                    "Fixvox product login claim did not match the expected contract.",
+                ));
+            }
+            let config = FixvoxCloudRuntimeConfig {
+                backend_base_url: backend_base_url.clone(),
+                install_id: device_state.install_id,
+                device_id: Some(device_id.clone()),
+            };
+            let next_device_state = build_device_state_from_product_context(
+                &config,
+                &device_id,
+                &claim.data.context,
+                true,
+            )?;
+            persist_device_state(&device_path, &next_device_state)?;
+            state.status = "signed_in".to_string();
+            state.user_id = None;
+            state.user_email = None;
+            state.session_secret = Some(claim.data.session.token);
+            state.expires_at = Some(claim.data.session.expires_at);
+            persist_auth_session_state(&path, &state)?;
         }
-        "error" => {
+        "denied" => {
             state.status = "error".to_string();
             persist_auth_session_state(&path, &state)?;
         }
-        "pending" => {}
-        "not_found" => {
+        "expired" => {
             state.status = "expired".to_string();
             persist_auth_session_state(&path, &state)?;
         }
-        _ => {}
+        "pending" => {}
+        _ => {
+            return Err(error(
+                "FIXVOX_LOGIN_STATUS_INVALID",
+                "Fixvox product login status did not match the expected contract.",
+            ));
+        }
     }
-
     Ok(build_auth_session_status(path, Some(&state)))
 }
 
@@ -1770,39 +2049,77 @@ pub(crate) fn activate_fixvox_device_with_client_and_env(
     activate_device_with_client_and_env(client, env_lookup, invite_code)
 }
 
-pub(crate) fn start_fixvox_cloud_login_with_env(
+pub(crate) async fn start_fixvox_cloud_login_with_env(
     env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
     open_external_browser: bool,
 ) -> Result<FixvoxCloudLoginStartStatus, FixvoxCloudError> {
-    let backend_base_url = resolve_backend_base_url(env_lookup)?;
+    let (.., device_state, backend_base_url) = resolve_or_create_device_state(env_lookup)?;
+    let device_id = device_state.device_id.ok_or_else(|| {
+        error(
+            "FIXVOX_DEVICE_ID_MISSING",
+            "Fixvox product login requires a bootstrapped device.",
+        )
+    })?;
+    let response = fixvox_http_client()?
+        .post(join_url(
+            &backend_base_url,
+            "/product/v1/desktop/auth/sessions",
+        ))
+        .json(&serde_json::json!({
+            "deviceId": device_id,
+            "returnTo": "fixvox-tauri",
+        }))
+        .send()
+        .await
+        .map_err(|_| {
+            error(
+                "FIXVOX_LOGIN_START_FAILED",
+                "Fixvox product login could not be reached.",
+            )
+        })?;
+    if !response.status().is_success() {
+        return Err(error(
+            "FIXVOX_LOGIN_START_REJECTED",
+            "Fixvox product login start was rejected.",
+        ));
+    }
+    let envelope: ProductEnvelope<ProductAuthSessionStartData> =
+        response.json().await.map_err(|_| {
+            error(
+                "FIXVOX_LOGIN_START_INVALID",
+                "Fixvox product login start did not match the expected contract.",
+            )
+        })?;
+    let data = envelope.data;
+    let verification_url =
+        validate_product_verification_uri(&backend_base_url, &data.verification_uri)?;
+    if !envelope.ok || data.handoff_id.trim().is_empty() {
+        return Err(error(
+            "FIXVOX_LOGIN_START_INVALID",
+            "Fixvox product login start did not match the expected contract.",
+        ));
+    }
     let session_path = resolve_auth_session_state_path(env_lookup)?;
-    let state_nonce = generate_login_state_nonce();
-    let session_id = generate_login_session_id();
-    let verification_url = build_fixvox_login_verification_url(&backend_base_url, &state_nonce);
-
     let session_state = FixvoxAuthSessionState {
         status: "pending".to_string(),
-        flow: "device_code_polling".to_string(),
-        session_id: session_id.clone(),
-        state_nonce: state_nonce.clone(),
+        flow: "product_auth_handoff".to_string(),
+        session_id: data.handoff_id.clone(),
+        state_nonce: data.handoff_id.clone(),
         user_id: None,
         user_email: None,
         session_secret: None,
         refresh_secret: None,
         issued_at: current_unix_timestamp_string(),
-        expires_at: Some((current_unix_timestamp() + 600).to_string()),
+        expires_at: Some(data.expires_at),
     };
     persist_auth_session_state(&session_path, &session_state)?;
-
     if open_external_browser {
         open_external_browser_url(&verification_url)?;
     }
-
-    Ok(build_fixvox_login_start_status(
-        &session_id,
-        &state_nonce,
-        open_external_browser,
-    ))
+    let mut status =
+        build_fixvox_login_start_status(&data.handoff_id, &data.handoff_id, open_external_browser);
+    status.polling_interval_seconds = data.poll_after_seconds.max(1);
+    Ok(status)
 }
 
 pub(crate) fn policy_allows_admin_settings() -> bool {
@@ -1855,10 +2172,10 @@ pub async fn activate_fixvox_device(
 }
 
 #[tauri::command]
-pub fn start_fixvox_cloud_login(
+pub async fn start_fixvox_cloud_login(
     open_external_browser: Option<bool>,
 ) -> Result<FixvoxCloudLoginStartStatus, FixvoxCloudError> {
-    start_fixvox_cloud_login_with_env(&read_env_value, open_external_browser.unwrap_or(false))
+    start_fixvox_cloud_login_with_env(&read_env_value, open_external_browser.unwrap_or(false)).await
 }
 
 fn register_or_refresh_device_with_client(
@@ -1872,15 +2189,20 @@ fn register_or_refresh_device_with_client(
         device_id: state.device_id.clone(),
     };
     let input = build_device_register_input(&config, env_lookup);
-    let snapshot = match register_device_with_client(client, &config, input) {
-        Ok(snapshot) => snapshot,
+    let product = match bootstrap_device_with_client(client, &config, input, None) {
+        Ok(product) => product,
         Err(register_error) => {
             let error_state = build_device_state_from_register_error(&config, &register_error);
             persist_device_state(&path, &error_state)?;
             return Err(register_error);
         }
     };
-    let next_state = build_device_state_from_register(&config, &snapshot);
+    let next_state = build_device_state_from_product_context(
+        &config,
+        &product.binding.device_id,
+        &product.context,
+        false,
+    )?;
     persist_device_state(&path, &next_state)?;
 
     Ok(build_cloud_status(
@@ -1912,16 +2234,22 @@ fn activate_device_with_client_and_env(
     persist_device_state(&path, &activation_state)?;
 
     let register_input = build_device_register_input(&activated_config, env_lookup);
-    let snapshot = match register_device_with_client(client, &activated_config, register_input) {
-        Ok(snapshot) => snapshot,
-        Err(register_error) => {
-            let error_state =
-                build_device_state_from_register_error(&activated_config, &register_error);
-            persist_device_state(&path, &error_state)?;
-            return Err(register_error);
-        }
-    };
-    let next_state = build_device_state_from_register(&activated_config, &snapshot);
+    let product =
+        match bootstrap_device_with_client(client, &activated_config, register_input, None) {
+            Ok(product) => product,
+            Err(register_error) => {
+                let error_state =
+                    build_device_state_from_register_error(&activated_config, &register_error);
+                persist_device_state(&path, &error_state)?;
+                return Err(register_error);
+            }
+        };
+    let next_state = build_device_state_from_product_context(
+        &activated_config,
+        &product.binding.device_id,
+        &product.context,
+        false,
+    )?;
     persist_device_state(&path, &next_state)?;
 
     Ok(build_cloud_status(
@@ -1977,6 +2305,40 @@ fn link_signed_in_session_device_with_client(
     ))
 }
 
+async fn bootstrap_device_with_reqwest(
+    config: &FixvoxCloudRuntimeConfig,
+    input: DeviceRegisterInput,
+    invite_code: Option<String>,
+) -> Result<ProductDesktopBootstrapData, FixvoxCloudError> {
+    let response = fixvox_http_client()?
+        .post(join_url(
+            &config.backend_base_url,
+            "/product/v1/desktop/bootstrap",
+        ))
+        .json(&build_product_bootstrap_body(input, invite_code)?)
+        .send()
+        .await
+        .map_err(|_| {
+            error(
+                "FIXVOX_PRODUCT_BOOTSTRAP_UNAVAILABLE",
+                "Fixvox product bootstrap could not be reached.",
+            )
+        })?;
+    if !response.status().is_success() {
+        return Err(error(
+            "FIXVOX_PRODUCT_BOOTSTRAP_REJECTED",
+            "Fixvox product bootstrap rejected the device request.",
+        ));
+    }
+    let value = response.json::<serde_json::Value>().await.map_err(|_| {
+        error(
+            "FIXVOX_PRODUCT_BOOTSTRAP_RESPONSE_INVALID",
+            "Fixvox product bootstrap response did not match the expected contract.",
+        )
+    })?;
+    parse_product_bootstrap(value)
+}
+
 async fn register_or_refresh_device_with_reqwest(
     env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
 ) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
@@ -1987,15 +2349,20 @@ async fn register_or_refresh_device_with_reqwest(
         device_id: state.device_id.clone(),
     };
     let input = build_device_register_input(&config, env_lookup);
-    let snapshot = match register_device_with_reqwest(&config, input).await {
-        Ok(snapshot) => snapshot,
+    let product = match bootstrap_device_with_reqwest(&config, input, None).await {
+        Ok(product) => product,
         Err(register_error) => {
             let error_state = build_device_state_from_register_error(&config, &register_error);
             persist_device_state(&path, &error_state)?;
             return Err(register_error);
         }
     };
-    let next_state = build_device_state_from_register(&config, &snapshot);
+    let next_state = build_device_state_from_product_context(
+        &config,
+        &product.binding.device_id,
+        &product.context,
+        false,
+    )?;
     persist_device_state(&path, &next_state)?;
 
     Ok(build_cloud_status(
@@ -2076,8 +2443,9 @@ async fn activate_device_with_reqwest(
     persist_device_state(&path, &activation_state)?;
 
     let register_input = build_device_register_input(&activated_config, env_lookup);
-    let snapshot = match register_device_with_reqwest(&activated_config, register_input).await {
-        Ok(snapshot) => snapshot,
+    let product = match bootstrap_device_with_reqwest(&activated_config, register_input, None).await
+    {
+        Ok(product) => product,
         Err(register_error) => {
             let error_state =
                 build_device_state_from_register_error(&activated_config, &register_error);
@@ -2085,7 +2453,12 @@ async fn activate_device_with_reqwest(
             return Err(register_error);
         }
     };
-    let next_state = build_device_state_from_register(&activated_config, &snapshot);
+    let next_state = build_device_state_from_product_context(
+        &activated_config,
+        &product.binding.device_id,
+        &product.context,
+        false,
+    )?;
     persist_device_state(&path, &next_state)?;
 
     Ok(build_cloud_status(
@@ -2394,31 +2767,42 @@ pub(crate) fn build_managed_stt_request_preview(
             )
         })?;
 
-    let mut multipart_fields = vec!["file".to_string(), "model".to_string()];
-    if input
-        .language
-        .as_ref()
-        .and_then(|value| clean_env_value(Some(value.clone())))
-        .filter(|value| !value.eq_ignore_ascii_case("auto"))
-        .is_some()
-    {
-        multipart_fields.push("language".to_string());
-    }
-    if input
-        .prompt
-        .as_ref()
-        .and_then(|value| clean_env_value(Some(value.clone())))
-        .is_some()
-    {
-        multipart_fields.push("prompt".to_string());
-    }
-    multipart_fields.push("response_format".to_string());
-    multipart_fields.push("timestamp_granularities[]".to_string());
-    multipart_fields.push("timestamp_granularities[]".to_string());
-    multipart_fields.push("temperature".to_string());
+    let cloudflare_authority =
+        trim_trailing_slashes(&config.backend_base_url) == PREFERRED_FIXVOX_BACKEND_URL;
+    let (endpoint_path, multipart_fields) = if cloudflare_authority {
+        let mut fields = vec!["file".to_string(), "model".to_string()];
+        if input
+            .language
+            .as_ref()
+            .and_then(|value| clean_env_value(Some(value.clone())))
+            .filter(|value| !value.eq_ignore_ascii_case("auto"))
+            .is_some()
+        {
+            fields.push("language".to_string());
+        }
+        if input
+            .prompt
+            .as_ref()
+            .and_then(|value| clean_env_value(Some(value.clone())))
+            .is_some()
+        {
+            fields.push("prompt".to_string());
+        }
+        fields.push("response_format".to_string());
+        fields.push("timestamp_granularities[]".to_string());
+        fields.push("timestamp_granularities[]".to_string());
+        fields.push("temperature".to_string());
+        ("/v1/audio/transcriptions", fields)
+    } else {
+        // The self-hosted product boundary owns provider/model/prompt selection.
+        (
+            "/product/v1/runtime/transcriptions",
+            vec!["metadata".to_string(), "audio".to_string()],
+        )
+    };
 
     Ok(ManagedSttRequestPreview {
-        endpoint: join_url(&config.backend_base_url, "/v1/audio/transcriptions"),
+        endpoint: join_url(&config.backend_base_url, endpoint_path),
         headers: vec![("X-Device-Id".to_string(), device_id)],
         has_authorization_header: false,
         multipart_fields,
@@ -2444,45 +2828,115 @@ pub(crate) fn build_managed_chat_completion_request_preview(
             "Managed Fixvox post-processing requires transcript text.",
         )
     })?;
-    let system_prompt = clean_env_value(Some(input.system_prompt)).ok_or_else(|| {
-        error(
-            "FIXVOX_CHAT_PROMPT_MISSING",
-            "Managed Fixvox post-processing requires a system prompt.",
-        )
-    })?;
-    let model = clean_env_value(Some(input.model)).ok_or_else(|| {
-        error(
-            "FIXVOX_CHAT_MODEL_MISSING",
-            "Managed Fixvox post-processing requires a model.",
-        )
-    })?;
+    let engine_kind = input
+        .engine_kind
+        .unwrap_or(ManagedChatEngineKind::Assistant);
+    let uses_cloudflare_compat = config
+        .backend_base_url
+        .trim_end_matches('/')
+        .eq_ignore_ascii_case(PREFERRED_FIXVOX_BACKEND_URL);
 
-    let mut body = serde_json::json!({
-        "model": model,
-        "messages": [
-            { "role": "system", "content": system_prompt },
-            { "role": "user", "content": transcript }
-        ],
-        "stream": false
-    });
-
-    if let Some(max_tokens) = input.max_tokens.filter(|value| *value > 0) {
-        body["max_tokens"] = serde_json::json!(max_tokens);
+    if uses_cloudflare_compat {
+        let (system_prompt, user_message) = match engine_kind {
+            ManagedChatEngineKind::Postprocess => (
+                "Apply the server-owned post-processing policy. Output only the final text."
+                    .to_string(),
+                transcript,
+            ),
+            ManagedChatEngineKind::SelectionTransform => {
+                let instruction = clean_env_value(input.instruction).ok_or_else(|| {
+                    error(
+                        "FIXVOX_SELECTION_TRANSFORM_INSTRUCTION_MISSING",
+                        "Managed Fixvox selection transform requires an instruction.",
+                    )
+                })?;
+                let preset = input
+                    .preset_key
+                    .and_then(|value| clean_env_value(Some(value)))
+                    .unwrap_or_else(|| "natural_instruction".to_string());
+                (
+                    "Transform the selected text according to the instruction. Output only the replacement text."
+                        .to_string(),
+                    format!(
+                        "Preset: {preset}\nInstruction:\n{instruction}\n\nSelected text:\n{transcript}"
+                    ),
+                )
+            }
+            ManagedChatEngineKind::Assistant => {
+                let summary = input
+                    .conversation_summary
+                    .and_then(|value| clean_env_value(Some(value)))
+                    .unwrap_or_default();
+                (
+                    "Answer as the server-owned Fixvox assistant.".to_string(),
+                    if summary.is_empty() {
+                        transcript
+                    } else {
+                        format!("Conversation summary:\n{summary}\n\nUser:\n{transcript}")
+                    },
+                )
+            }
+        };
+        let headers = vec![
+            ("Content-Type".to_string(), "application/json".to_string()),
+            ("X-Device-Id".to_string(), device_id),
+            (
+                "X-Fixvox-Engine-Kind".to_string(),
+                engine_kind.as_header_value().to_string(),
+            ),
+        ];
+        return Ok(ManagedChatRequestPreview {
+            endpoint: join_url(&config.backend_base_url, "/v1/chat/completions"),
+            headers,
+            has_authorization_header: false,
+            body: serde_json::json!({
+                "model": "server-owned",
+                "messages": [
+                    { "role": "system", "content": system_prompt },
+                    { "role": "user", "content": user_message }
+                ],
+                "stream": false
+            }),
+        });
     }
 
-    let mut headers = vec![
+    let kind = match engine_kind {
+        ManagedChatEngineKind::Postprocess => "postprocess",
+        ManagedChatEngineKind::SelectionTransform => "selection_transform",
+        ManagedChatEngineKind::Assistant => "assistant",
+    };
+    let input_body = match engine_kind {
+        ManagedChatEngineKind::Postprocess => serde_json::json!({ "transcript": transcript }),
+        ManagedChatEngineKind::SelectionTransform => {
+            let instruction = clean_env_value(input.instruction).ok_or_else(|| {
+                error(
+                    "FIXVOX_SELECTION_TRANSFORM_INSTRUCTION_MISSING",
+                    "Managed Fixvox selection transform requires an instruction.",
+                )
+            })?;
+            serde_json::json!({
+                "selectedText": transcript,
+                "instruction": instruction,
+                "presetKey": input.preset_key.and_then(|value| clean_env_value(Some(value)))
+            })
+        }
+        ManagedChatEngineKind::Assistant => serde_json::json!({
+            "utterance": transcript,
+            "conversationSummary": input.conversation_summary.and_then(|value| clean_env_value(Some(value)))
+        }),
+    };
+    let body = serde_json::json!({
+        "operationId": format!("desktop-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()),
+        "kind": kind,
+        "input": input_body
+    });
+    let headers = vec![
         ("Content-Type".to_string(), "application/json".to_string()),
         ("X-Device-Id".to_string(), device_id),
     ];
-    if let Some(engine_kind) = input.engine_kind {
-        headers.push((
-            "X-Fixvox-Engine-Kind".to_string(),
-            engine_kind.as_header_value().to_string(),
-        ));
-    }
 
     Ok(ManagedChatRequestPreview {
-        endpoint: join_url(&config.backend_base_url, "/v1/chat/completions"),
+        endpoint: join_url(&config.backend_base_url, "/product/v1/runtime/actions"),
         headers,
         has_authorization_header: false,
         body,
@@ -2523,54 +2977,57 @@ pub(crate) fn choose_transcription_transport(
 pub(crate) fn parse_managed_stt_json_response(
     body: &str,
 ) -> Result<ManagedSttParsedResponse, FixvoxCloudError> {
-    let parsed: ManagedSttResponseBody = serde_json::from_str(body).map_err(|_| {
+    let parsed: serde_json::Value = serde_json::from_str(body).map_err(|_| {
         error(
             "FIXVOX_STT_RESPONSE_PARSE_FAILED",
             "Fixvox managed transcription response did not match the expected JSON contract.",
         )
     })?;
-
-    let text = parsed
-        .text
-        .and_then(|value| clean_env_value(Some(value)))
+    let data = parsed.get("data").unwrap_or(&parsed);
+    let text = data
+        .get("text")
+        .and_then(|value| value.as_str())
+        .and_then(|value| clean_env_value(Some(value.to_string())))
         .ok_or_else(|| {
             error(
                 "FIXVOX_STT_RESPONSE_TEXT_MISSING",
                 "Fixvox managed transcription response did not include transcript text.",
             )
         })?;
-
-    Ok(ManagedSttParsedResponse {
-        text,
-        model: parsed.model.and_then(|value| clean_env_value(Some(value))),
-    })
+    Ok(ManagedSttParsedResponse { text, model: None })
 }
 
 pub(crate) fn parse_managed_chat_json_response(
     body: &str,
 ) -> Result<ManagedChatParsedResponse, FixvoxCloudError> {
-    let parsed: ManagedChatResponseBody = serde_json::from_str(body).map_err(|_| {
+    let parsed: serde_json::Value = serde_json::from_str(body).map_err(|_| {
         error(
             "FIXVOX_CHAT_RESPONSE_PARSE_FAILED",
             "Fixvox managed chat response did not match the expected JSON contract.",
         )
     })?;
-
-    let output = parsed
-        .choices
-        .first()
-        .and_then(|choice| choice.message.content.clone())
-        .and_then(|value| clean_env_value(Some(value)))
+    let canonical = parsed.get("data").and_then(|data| data.get("output"));
+    let output = canonical
+        .and_then(|value| value.get("text").or_else(|| value.get("reply")))
+        .and_then(|value| value.as_str())
+        .or_else(|| {
+            parsed
+                .get("choices")
+                .and_then(|value| value.get(0))
+                .and_then(|value| value.get("message"))
+                .and_then(|value| value.get("content"))
+                .and_then(|value| value.as_str())
+        })
+        .and_then(|value| clean_env_value(Some(value.to_string())))
         .ok_or_else(|| {
             error(
                 "FIXVOX_CHAT_RESPONSE_TEXT_MISSING",
                 "Fixvox managed chat response did not include output text.",
             )
         })?;
-
     Ok(ManagedChatParsedResponse {
         output,
-        model: parsed.model.and_then(|value| clean_env_value(Some(value))),
+        model: None,
     })
 }
 
@@ -2584,6 +3041,12 @@ pub(crate) fn parse_fixvox_response_metadata(headers: &[(&str, &str)]) -> Fixvox
     };
     let parse_u64 =
         |name: &str| -> Option<u64> { header(name).and_then(|value| value.parse().ok()) };
+    let parse_timing_ms = |name: &str| -> Option<u64> {
+        header(name)
+            .and_then(|value| value.parse::<f64>().ok())
+            .filter(|value| value.is_finite() && *value >= 0.0 && *value <= u64::MAX as f64)
+            .map(|value| value.round() as u64)
+    };
 
     FixvoxResponseMetadata {
         fixvox_request_id: header("X-Fixvox-Request-Id"),
@@ -2594,11 +3057,17 @@ pub(crate) fn parse_fixvox_response_metadata(headers: &[(&str, &str)]) -> Fixvox
         remaining: parse_u64("X-Fixvox-Remaining"),
         reset_at: header("X-Fixvox-Reset-At"),
         usage_key: header("X-Fixvox-Usage-Key"),
-        proxy_parse_ms: parse_u64("X-Fixvox-Proxy-Parse-Ms"),
-        proxy_usage_ms: parse_u64("X-Fixvox-Proxy-Usage-Ms"),
-        proxy_upstream_ms: parse_u64("X-Fixvox-Proxy-Upstream-Ms"),
-        proxy_init_ms: parse_u64("X-Fixvox-Proxy-Init-Ms"),
-        proxy_total_ms: parse_u64("X-Fixvox-Proxy-Total-Ms"),
+        proxy_parse_ms: parse_timing_ms("X-Fixvox-Proxy-Parse-Ms"),
+        proxy_usage_ms: parse_timing_ms("X-Fixvox-Proxy-Usage-Ms"),
+        proxy_upstream_ms: parse_timing_ms("X-Fixvox-Proxy-Upstream-Ms"),
+        proxy_engine_binding_ms: parse_timing_ms("X-Fixvox-Proxy-Engine-Binding-Ms"),
+        proxy_prompt_resolution_ms: parse_timing_ms("X-Fixvox-Proxy-Prompt-Resolution-Ms"),
+        proxy_budget_config_ms: parse_timing_ms("X-Fixvox-Proxy-Budget-Config-Ms"),
+        proxy_budget_events_ms: parse_timing_ms("X-Fixvox-Proxy-Budget-Events-Ms"),
+        proxy_multipart_ms: parse_timing_ms("X-Fixvox-Proxy-Multipart-Ms"),
+        proxy_budget_ms: parse_timing_ms("X-Fixvox-Proxy-Budget-Ms"),
+        proxy_init_ms: parse_timing_ms("X-Fixvox-Proxy-Init-Ms"),
+        proxy_total_ms: parse_timing_ms("X-Fixvox-Proxy-Total-Ms"),
         server_timing: header("Server-Timing"),
     }
 }
@@ -2620,6 +3089,40 @@ fn trim_trailing_slashes(value: &str) -> String {
 
 fn join_url(base_url: &str, path: &str) -> String {
     format!("{}{}", trim_trailing_slashes(base_url), path)
+}
+
+fn validate_product_verification_uri(
+    base_url: &str,
+    verification_uri: &str,
+) -> Result<String, FixvoxCloudError> {
+    let base = reqwest::Url::parse(base_url).map_err(|_| {
+        error(
+            "FIXVOX_LOGIN_START_INVALID",
+            "Fixvox product login origin was invalid.",
+        )
+    })?;
+    let verification = reqwest::Url::parse(verification_uri).map_err(|_| {
+        error(
+            "FIXVOX_LOGIN_START_INVALID",
+            "Fixvox product login verification URI was invalid.",
+        )
+    })?;
+    let same_origin = base.scheme() == verification.scheme()
+        && base.host_str() == verification.host_str()
+        && base.port_or_known_default() == verification.port_or_known_default();
+    if !same_origin
+        || !verification
+            .path()
+            .starts_with("/product/v1/desktop/auth/browser/")
+        || !verification.username().is_empty()
+        || verification.password().is_some()
+    {
+        return Err(error(
+            "FIXVOX_LOGIN_START_INVALID",
+            "Fixvox product login verification URI was not trusted.",
+        ));
+    }
+    Ok(verification.to_string())
 }
 
 fn build_fixvox_login_verification_url(base_url: &str, state_nonce: &str) -> String {
@@ -2695,10 +3198,10 @@ fn build_fixvox_login_start_status(
     browser_opened: bool,
 ) -> FixvoxCloudLoginStartStatus {
     FixvoxCloudLoginStartStatus {
-        flow: "device_code_polling".to_string(),
+        flow: "product_auth_handoff".to_string(),
         verification_url_redacted: join_url(
             PREFERRED_FIXVOX_BACKEND_URL,
-            "/desktop/login?flow=device-code&client=fixvox-tauri&state=redacted",
+            "/product/v1/desktop/auth/browser/redacted",
         ),
         browser_opened,
         polling_interval_seconds: 3,
@@ -3033,6 +3536,30 @@ mod tests {
         assert!(!serialized.contains("user_sensitive_1234567890"));
         assert!(!serialized.contains("fxv_session_sensitive_1234567890"));
         assert!(!serialized.contains("fxv_state_sensitive_1234567890"));
+    }
+
+    #[test]
+    fn product_auth_verification_uri_requires_the_configured_origin() {
+        let trusted = validate_product_verification_uri(
+            "https://auth.fixture.test",
+            "https://auth.fixture.test/product/v1/desktop/auth/browser/handoff",
+        )
+        .expect("same-origin product auth URI should be accepted");
+        assert_eq!(
+            trusted,
+            "https://auth.fixture.test/product/v1/desktop/auth/browser/handoff"
+        );
+        let rejected = validate_product_verification_uri(
+            "https://auth.fixture.test",
+            "https://evil.fixture.test/product/v1/desktop/auth/browser/handoff",
+        )
+        .expect_err("cross-origin auth URI must fail closed");
+        assert_eq!(rejected.code, "FIXVOX_LOGIN_START_INVALID");
+        let status = build_fixvox_login_start_status("session", "handoff", false);
+        assert_eq!(status.flow, "product_auth_handoff");
+        assert!(status
+            .verification_url_redacted
+            .ends_with("/product/v1/desktop/auth/browser/redacted"));
     }
 
     fn setup_test_root(label: &str) -> PathBuf {
