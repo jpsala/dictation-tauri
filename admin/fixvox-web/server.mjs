@@ -37,12 +37,20 @@ const ADMIN_ENV = process.env.FIXVOX_ADMIN_ENV || (ADMIN_BASE_URL.includes('127.
 const sessions = new Map()
 const mockProfileDrafts = new Map()
 const mockProfileHistories = new Map()
-const mockRoleBindings = new Map([['jpsala@gmail.com', 'owner']])
+const mockLinkedPrincipals = [
+  { principalKey: rbacPrincipalKeyForSubject('mock-jpsala-google-sub'), emailRedacted: 'j…@gmail.com', accountHandle: accountHandleForGoogleSubject('mock-jpsala-google-sub') },
+  { principalKey: rbacPrincipalKeyForSubject('mock-alpha-google-sub'), emailRedacted: 'a…@example.com', accountHandle: 'acc_alpha_team' },
+  { principalKey: rbacPrincipalKeyForSubject('mock-trial-google-sub'), emailRedacted: 't…@example.com', accountHandle: 'acc_trial_user' },
+]
+const mockRoleBindings = new Map([[mockLinkedPrincipals[0].principalKey, 'owner']])
 const mockAuditRecords = []
 
-loadEnvFile(path.join(repoRoot, 'cloud', 'fixvox-proxy', '.dev.vars'))
-loadEnvFile(path.join(process.env.HOME || '', '.config', 'dictation-tauri', 'admin.env'))
-loadEnvFile(path.join(process.env.HOME || '', '.config', 'dictation-tauri', 'admin-web.env'))
+const SKIP_ENV_FILES = process.env.FIXVOX_ADMIN_SKIP_ENV_FILES === '1'
+if (!SKIP_ENV_FILES) {
+  loadEnvFile(path.join(repoRoot, 'cloud', 'fixvox-proxy', '.dev.vars'))
+  loadEnvFile(path.join(process.env.HOME || '', '.config', 'dictation-tauri', 'admin.env'))
+  loadEnvFile(path.join(process.env.HOME || '', '.config', 'dictation-tauri', 'admin-web.env'))
+}
 const WEB_TOKEN = process.env.FIXVOX_ADMIN_WEB_TOKEN || process.env.FIXVOX_ADMIN_PASSWORD || ''
 const GOOGLE_CLIENT_ID = process.env.FIXVOX_ADMIN_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLOUD_CLIENT_ID || ''
 const GOOGLE_CLIENT_SECRET = process.env.FIXVOX_ADMIN_GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLOUD_CLIENT_SECRET || ''
@@ -50,7 +58,18 @@ const ALLOWED_EMAILS = new Set(String(process.env.FIXVOX_ADMIN_ALLOWED_EMAILS ||
 const RBAC_BOOTSTRAP_OWNER_EMAIL = normalizeGoogleEmail(process.env.FIXVOX_ADMIN_BOOTSTRAP_OWNER_EMAIL || 'jpsala@gmail.com')
 const PRIVILEGED_OAUTH_MAX_AGE_MS = 10 * 60 * 1000
 const MOCK_MODE = process.env.FIXVOX_ADMIN_MOCK === '1'
+const LOCAL_AUTH_FIXTURE = process.env.FIXVOX_ADMIN_LOCAL_AUTH_FIXTURE === '1'
 const ADMIN_CREDENTIAL_ENV_KEYS = ['ADMIN_API_KEY', 'ADMIN_VIEW_API_KEY', 'ADMIN_EDIT_API_KEY', 'ADMIN_PUBLISH_API_KEY']
+function localLoopbackBackend() {
+  try { return ADMIN_ENV === 'local' && ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(ADMIN_BASE_URL).hostname) }
+  catch { return false }
+}
+if (LOCAL_AUTH_FIXTURE && !localLoopbackBackend()) {
+  throw new Error('Local auth fixture is restricted to the local loopback backend.')
+}
+if (SKIP_ENV_FILES && !MOCK_MODE && !localLoopbackBackend()) {
+  throw new Error('Skipping Admin env files is restricted to mock mode or a local loopback backend.')
+}
 
 function piProcessEnv() {
   if (REMOTE_AGENT_ENABLED) {
@@ -251,30 +270,45 @@ function mockAuditPayload() {
 }
 function mockRolePayload() {
   return {
-    bindings: [...mockRoleBindings.entries()].map(([email, role]) => ({ emailRedacted: redactAdminEmail(email), role })).sort((left, right) => left.emailRedacted.localeCompare(right.emailRedacted)),
+    principals: mockLinkedPrincipals.map((principal) => ({ ...principal, role: mockRoleBindings.get(principal.principalKey) || null })),
+    bindings: mockLinkedPrincipals.flatMap((principal) => {
+      const role = mockRoleBindings.get(principal.principalKey)
+      return role ? [{ principalKey: principal.principalKey, emailRedacted: principal.emailRedacted, role }] : []
+    }),
   }
 }
 function mockSetRoleBinding(body, actorEmail) {
-  const subjectEmail = normalizeGoogleEmail(body.subjectEmail)
+  const principalKey = String(body.principalKey || '')
   const role = String(body.role || '')
+  const actorKey = mockLinkedPrincipals.find((principal) => principal.emailRedacted === redactAdminEmail(actorEmail))?.principalKey || ''
+  if (!mockLinkedPrincipals.some((principal) => principal.principalKey === principalKey)) throw Object.assign(new Error('listed linked principal required'), { status: 400 })
   if (!['viewer', 'editor', 'publisher', 'owner'].includes(role)) throw Object.assign(new Error('invalid role'), { status: 400 })
-  if (mockRoleBindings.get(normalizeGoogleEmail(actorEmail)) !== 'owner') throw Object.assign(new Error('owner role required'), { status: 403 })
-  if (mockRoleBindings.get(subjectEmail) === 'owner' && role !== 'owner' && [...mockRoleBindings.values()].filter((value) => value === 'owner').length === 1) throw Object.assign(new Error('cannot demote the final owner'), { status: 403 })
-  mockRoleBindings.set(subjectEmail, role)
+  if (mockRoleBindings.get(actorKey) !== 'owner') throw Object.assign(new Error('owner role required'), { status: 403 })
+  if (mockRoleBindings.get(principalKey) === 'owner' && role !== 'owner' && [...mockRoleBindings.values()].filter((value) => value === 'owner').length === 1) throw Object.assign(new Error('cannot demote the final owner'), { status: 403 })
+  mockRoleBindings.set(principalKey, role)
+  mockAuditRecords.push({ action: 'role.set', principalKey, result: 'success', timestamp: new Date().toISOString() })
   return mockRolePayload()
 }
 function mockRemoveRoleBinding(body, actorEmail) {
-  const subjectEmail = normalizeGoogleEmail(body.subjectEmail)
-  if (mockRoleBindings.get(normalizeGoogleEmail(actorEmail)) !== 'owner') throw Object.assign(new Error('owner role required'), { status: 403 })
-  if (mockRoleBindings.get(subjectEmail) === 'owner' && [...mockRoleBindings.values()].filter((value) => value === 'owner').length === 1) throw Object.assign(new Error('cannot remove the final owner'), { status: 403 })
-  mockRoleBindings.delete(subjectEmail)
+  const principalKey = String(body.principalKey || '')
+  const actorKey = mockLinkedPrincipals.find((principal) => principal.emailRedacted === redactAdminEmail(actorEmail))?.principalKey || ''
+  if (!mockLinkedPrincipals.some((principal) => principal.principalKey === principalKey)) throw Object.assign(new Error('listed linked principal required'), { status: 400 })
+  if (mockRoleBindings.get(actorKey) !== 'owner') throw Object.assign(new Error('owner role required'), { status: 403 })
+  if (mockRoleBindings.get(principalKey) === 'owner' && [...mockRoleBindings.values()].filter((value) => value === 'owner').length === 1) throw Object.assign(new Error('cannot remove the final owner'), { status: 403 })
+  mockRoleBindings.delete(principalKey)
+  mockAuditRecords.push({ action: 'role.remove', principalKey, result: 'success', timestamp: new Date().toISOString() })
   return mockRolePayload()
 }
-function rbacPrincipalKeyForEmail(email) {
-  return `arp_${crypto.createHash('sha256').update(`admin-role:${normalizeGoogleEmail(email)}`).digest('hex')}`
+function rbacPrincipalKeyForSubject(subject) {
+  const value = String(subject || '').trim()
+  if (!value) throw new Error('Google subject inválido.')
+  return `arp_${crypto.createHash('sha256').update(value).digest('hex')}`
+}
+function rbacPrincipalKeyForSession(session) {
+  return rbacPrincipalKeyForSubject(session?.sub)
 }
 function readSession(req) {
-  if (MOCK_MODE) {
+  if (MOCK_MODE || LOCAL_AUTH_FIXTURE) {
     const email = normalizeGoogleEmail(process.env.FIXVOX_ADMIN_MOCK_EMAIL || 'jpsala@gmail.com')
     return {
       provider: 'google',
@@ -364,7 +398,7 @@ function adminPublishCredential() {
 function profileApplyError(error) {
   const status = Number(error?.status) || 500
   const upstreamCode = error?.payload?.error?.code
-  if (status === 409 && upstreamCode === 'profile_version_stale') {
+  if (status === 409 && (upstreamCode === 'profile_version_stale' || upstreamCode === 'stale_revision')) {
     return { status: 409, body: { ok: false, error: { code: 'profile_version_stale', message: 'La versión del perfil cambió. Recargá y revisá los cambios.' } } }
   }
   if (status >= 500 || error?.code === 'profile_apply_unavailable') {
@@ -389,8 +423,8 @@ function legacyDraftInventory(profiles) {
     }))
 }
 
-async function proxyAdmin(pathname, method = 'GET', body, credential = adminCredential(method === 'GET' ? 'view' : 'edit')) {
-  const headers = { Authorization: `Bearer ${credential}` }
+async function proxyAdmin(pathname, method = 'GET', body, credential = adminCredential(method === 'GET' ? 'view' : 'edit'), serverContext = {}) {
+  const headers = { Authorization: `Bearer ${credential}`, ...serverContext }
   if (body !== undefined) headers['content-type'] = 'application/json'
   const response = await fetch(`${ADMIN_BASE_URL}${pathname}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
   const text = await response.text()
@@ -405,9 +439,13 @@ async function resolveServerRole(session) {
     if (email === RBAC_BOOTSTRAP_OWNER_EMAIL) return 'owner'
     const configuredRole = String(process.env.FIXVOX_ADMIN_MOCK_ROLE || '').trim()
     if (['viewer', 'editor', 'publisher', 'owner'].includes(configuredRole)) return configuredRole
-    return mockRoleBindings.get(email) || null
+    return mockRoleBindings.get(rbacPrincipalKeyForSession(session)) || null
   }
-  const principalKey = rbacPrincipalKeyForEmail(session.email)
+  const principalKey = rbacPrincipalKeyForSession(session)
+  if (ADMIN_ENV === 'local') {
+    const payload = await proxyAdmin('/product/v1/control-room/session', 'GET', undefined, adminCredential('view'), { 'x-fixvox-principal-key': principalKey })
+    return ['viewer', 'editor', 'publisher', 'owner'].includes(payload?.role) ? payload.role : null
+  }
   const query = new URLSearchParams({ bootstrapOwnerEmail: RBAC_BOOTSTRAP_OWNER_EMAIL, principalKey })
   const payload = await proxyAdmin(`/admin/control-plane/roles/resolve?${query}`)
   return ['viewer', 'editor', 'publisher', 'owner'].includes(payload?.role) ? payload.role : null
@@ -1128,29 +1166,35 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/admin/roles' && req.method === 'GET') {
       await requireGoogleRole(req, ['viewer', 'editor', 'publisher', 'owner'])
       if (MOCK_MODE) return sendJson(res, 200, mockRolePayload())
-      return sendJson(res, 200, await proxyAdmin(`/admin/control-plane/roles?bootstrapOwnerEmail=${encodeURIComponent(RBAC_BOOTSTRAP_OWNER_EMAIL)}`))
+      const session = readSession(req)
+      return sendJson(res, 200, await proxyAdmin('/product/v1/control-room/roles', 'GET', undefined, adminCredential('view'), { 'x-fixvox-principal-key': rbacPrincipalKeyForSession(session) }))
     }
     if (url.pathname === '/api/admin/roles' && req.method === 'POST') {
       const principal = await requireRecentGoogleRole(req, ['owner'])
       const body = JSON.parse(await readBody(req) || '{}')
-      const brokeredBody = { ...body, actorEmail: principal.email, bootstrapOwnerEmail: RBAC_BOOTSTRAP_OWNER_EMAIL }
+      if (Object.keys(body).some((key) => !['principalKey', 'role'].includes(key))) return sendJson(res, 400, { ok: false, error: { message: 'Invalid role command.' } })
+      const brokeredBody = { principalKey: String(body.principalKey || ''), role: String(body.role || '') }
       if (MOCK_MODE) return sendJson(res, 200, mockSetRoleBinding(brokeredBody, principal.email))
-      return sendJson(res, 200, await proxyAdmin('/admin/control-plane/roles', 'POST', brokeredBody))
+      const session = readSession(req)
+      return sendJson(res, 200, await proxyAdmin(`/product/v1/control-room/roles/${encodeURIComponent(brokeredBody.principalKey)}`, 'PUT', { role: brokeredBody.role }, adminPublishCredential(), { 'x-fixvox-principal-key': rbacPrincipalKeyForSession(session), 'x-fixvox-recent-google-at': new Date(session.authenticatedAt).toISOString() }))
     }
     if (url.pathname === '/api/admin/roles/remove' && req.method === 'POST') {
       const principal = await requireRecentGoogleRole(req, ['owner'])
       const body = JSON.parse(await readBody(req) || '{}')
-      const brokeredBody = { ...body, actorEmail: principal.email, bootstrapOwnerEmail: RBAC_BOOTSTRAP_OWNER_EMAIL }
+      if (Object.keys(body).some((key) => key !== 'principalKey')) return sendJson(res, 400, { ok: false, error: { message: 'Invalid role command.' } })
+      const brokeredBody = { principalKey: String(body.principalKey || '') }
       if (MOCK_MODE) return sendJson(res, 200, mockRemoveRoleBinding(brokeredBody, principal.email))
-      return sendJson(res, 200, await proxyAdmin('/admin/control-plane/roles/remove', 'POST', brokeredBody))
+      const session = readSession(req)
+      return sendJson(res, 200, await proxyAdmin(`/product/v1/control-room/roles/${encodeURIComponent(brokeredBody.principalKey)}`, 'DELETE', undefined, adminPublishCredential(), { 'x-fixvox-principal-key': rbacPrincipalKeyForSession(session), 'x-fixvox-recent-google-at': new Date(session.authenticatedAt).toISOString() }))
     }
     if (url.pathname === '/api/admin/env') {
       const session = readSession(req)
       return sendJson(res, 200, {
         ok: true,
-        environment: MOCK_MODE ? 'local-mock' : ADMIN_ENV,
-        production: !MOCK_MODE && ADMIN_ENV === 'production',
+        environment: MOCK_MODE ? 'local-mock' : LOCAL_AUTH_FIXTURE ? 'local-fixture' : ADMIN_ENV,
+        production: !MOCK_MODE && !LOCAL_AUTH_FIXTURE && ADMIN_ENV === 'production',
         mock: MOCK_MODE,
+        localAuthFixture: LOCAL_AUTH_FIXTURE,
         adminBaseUrl: MOCK_MODE ? 'mock://fixvox-admin' : ADMIN_BASE_URL,
         piCwd: PI_CWD,
         piMode: UNRESTRICTED_OWNER_MODE ? 'unrestricted-owner' : REMOTE_AGENT_ENABLED ? 'isolated' : 'standard',
@@ -1221,9 +1265,9 @@ const server = http.createServer(async (req, res) => {
     if (MOCK_MODE && url.pathname === '/api/admin/profiles/drafts' && req.method === 'DELETE') return sendJson(res, 200, mockDiscardProfileDraft(JSON.parse(await readBody(req) || '{}')))
     if (MOCK_MODE && url.pathname === '/api/admin/profiles/preview' && req.method === 'GET') return sendJson(res, 200, mockPreviewProfile(url.searchParams))
     if (MOCK_MODE && !process.env.FIXVOX_ADMIN_BASE_URL && (url.pathname === '/api/admin/profiles/publish' || url.pathname === '/api/admin/profiles/rollback') && req.method === 'POST') {
-      const principal = await requireRecentGoogleRole(req, ['publisher', 'owner'])
+      await requireRecentGoogleRole(req, ['publisher', 'owner'])
       const body = JSON.parse(await readBody(req) || '{}')
-      const brokeredBody = { ...body, actorKey: rbacPrincipalKeyForEmail(principal.email) }
+      const brokeredBody = { ...body, actorKey: rbacPrincipalKeyForSession(readSession(req)) }
       try {
         return sendJson(res, 200, url.pathname.endsWith('/publish') ? mockPublishProfile(brokeredBody) : mockRollbackProfile(brokeredBody))
       } catch (error) {
@@ -1262,10 +1306,37 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, await proxyAdmin(`/admin/control-plane/profiles/preview?${query}`))
     }
     if (url.pathname === '/api/admin/profiles/apply' && req.method === 'POST') {
-      const principal = await requireRecentGoogleRole(req, ['publisher', 'owner'])
+      await requireRecentGoogleRole(req, ['publisher', 'owner'])
       try {
         const { actor, actorKey, ...applyPayload } = JSON.parse(await readBody(req) || '{}')
-        const brokeredBody = { ...applyPayload, actorKey: rbacPrincipalKeyForEmail(principal.email) }
+        const session = readSession(req)
+        const principalKey = rbacPrincipalKeyForSession(session)
+        if (LOCAL_AUTH_FIXTURE && !MOCK_MODE) {
+          const profileId = String(applyPayload.profileId || '').trim()
+          const expectedActiveVersion = Number(applyPayload.expectedActiveVersion)
+          if (!profileId || !Number.isInteger(expectedActiveVersion) || applyPayload.confirmation !== `APPLY ${profileId} v${expectedActiveVersion}`) {
+            throw Object.assign(new Error('Invalid profile apply confirmation.'), { status: 400 })
+          }
+          const serverContext = { 'x-fixvox-principal-key': principalKey, 'x-fixvox-recent-google-at': new Date(session.authenticatedAt).toISOString() }
+          const current = await proxyAdmin('/product/v1/control-room/profiles', 'GET', undefined, adminCredential('view'), serverContext)
+          const profile = current?.profiles?.find((candidate) => candidate?.profileId === profileId)
+          if (!profile || profile.published?.version !== expectedActiveVersion) {
+            throw Object.assign(new Error('Stale profile revision.'), { status: 409, payload: { error: { code: 'stale_revision' } } })
+          }
+          const expectedRevision = Number(profile.revision)
+          const canonical = await proxyAdmin(
+            `/product/v1/control-room/profiles/${encodeURIComponent(profileId)}/apply`,
+            'POST',
+            { expectedRevision, definition: applyPayload.definition, confirmation: { action: 'apply', profileKey: profileId, expectedRevision, phrase: `APPLY ${profileId} REV ${expectedRevision}` } },
+            adminPublishCredential(),
+            serverContext,
+          )
+          const refreshed = await proxyAdmin('/product/v1/control-room/profiles', 'GET', undefined, adminCredential('view'), serverContext)
+          const updated = refreshed?.profiles?.find((candidate) => candidate?.profileId === profileId)
+          if (!updated) throw Object.assign(new Error('Profile projection unavailable.'), { status: 503 })
+          return sendJson(res, 200, { ...updated, audit: canonical?.data?.audit ?? null, idempotentReplay: canonical?.data?.idempotentReplay === true })
+        }
+        const brokeredBody = { ...applyPayload, actorKey: principalKey }
         const payload = await proxyAdmin(
           '/admin/control-plane/profiles/apply',
           'POST',
@@ -1279,15 +1350,48 @@ const server = http.createServer(async (req, res) => {
       }
     }
     if ((url.pathname === '/api/admin/profiles/publish' || url.pathname === '/api/admin/profiles/rollback') && req.method === 'POST') {
-      const principal = await requireRecentGoogleRole(req, ['publisher', 'owner'])
-      const body = JSON.parse(await readBody(req) || '{}')
-      const brokeredBody = { ...body, actorKey: rbacPrincipalKeyForEmail(principal.email) }
-      return sendJson(res, 200, await proxyAdmin(
-        url.pathname === '/api/admin/profiles/publish' ? '/admin/control-plane/profiles/publish' : '/admin/control-plane/profiles/rollback',
-        'POST',
-        brokeredBody,
-        process.env.ADMIN_PUBLISH_API_KEY || '',
-      ))
+      await requireRecentGoogleRole(req, ['publisher', 'owner'])
+      try {
+        const body = JSON.parse(await readBody(req) || '{}')
+        const session = readSession(req)
+        const principalKey = rbacPrincipalKeyForSession(session)
+        if (LOCAL_AUTH_FIXTURE && !MOCK_MODE && url.pathname === '/api/admin/profiles/rollback') {
+          const profileId = String(body.profileId || '').trim()
+          const targetVersion = Number(body.version)
+          const expectedActiveVersion = Number(body.expectedActiveVersion)
+          if (!profileId || !Number.isInteger(targetVersion) || !Number.isInteger(expectedActiveVersion) || body.confirmation !== `ROLLBACK ${profileId} to v${targetVersion}`) {
+            throw Object.assign(new Error('Invalid profile rollback confirmation.'), { status: 400 })
+          }
+          const serverContext = { 'x-fixvox-principal-key': principalKey, 'x-fixvox-recent-google-at': new Date(session.authenticatedAt).toISOString() }
+          const current = await proxyAdmin('/product/v1/control-room/profiles', 'GET', undefined, adminCredential('view'), serverContext)
+          const profile = current?.profiles?.find((candidate) => candidate?.profileId === profileId)
+          if (!profile || profile.published?.version !== expectedActiveVersion) {
+            throw Object.assign(new Error('Stale profile revision.'), { status: 409, payload: { error: { code: 'stale_revision' } } })
+          }
+          const expectedRevision = Number(profile.revision)
+          const canonical = await proxyAdmin(
+            `/product/v1/control-room/profiles/${encodeURIComponent(profileId)}/rollback`,
+            'POST',
+            { targetVersion, expectedRevision, confirmation: { action: 'rollback', profileKey: profileId, targetVersion, expectedRevision, phrase: `ROLLBACK ${profileId} TO ${targetVersion} REV ${expectedRevision}` } },
+            adminPublishCredential(),
+            serverContext,
+          )
+          const refreshed = await proxyAdmin('/product/v1/control-room/profiles', 'GET', undefined, adminCredential('view'), serverContext)
+          const updated = refreshed?.profiles?.find((candidate) => candidate?.profileId === profileId)
+          if (!updated) throw Object.assign(new Error('Profile projection unavailable.'), { status: 503 })
+          return sendJson(res, 200, { ...updated, audit: canonical?.data?.audit ?? null, idempotentReplay: canonical?.data?.idempotentReplay === true })
+        }
+        const brokeredBody = { ...body, actorKey: principalKey }
+        return sendJson(res, 200, await proxyAdmin(
+          url.pathname === '/api/admin/profiles/publish' ? '/admin/control-plane/profiles/publish' : '/admin/control-plane/profiles/rollback',
+          'POST',
+          brokeredBody,
+          adminPublishCredential(),
+        ))
+      } catch (error) {
+        const mapped = profileApplyError(error)
+        return sendJson(res, mapped.status, mapped.body)
+      }
     }
     if (url.pathname === '/api/admin/audit' && req.method === 'GET') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/audit'))
     if (url.pathname === '/api/admin/accounts') {

@@ -13,7 +13,7 @@ const baseUrl = `http://127.0.0.1:${port}`
 async function withServer(env, run) {
   const child = spawn(process.execPath, ['server.mjs'], {
     cwd: new URL('.', import.meta.url),
-    env: { ...process.env, FIXVOX_ADMIN_MOCK: '1', FIXVOX_ADMIN_HOST: '127.0.0.1', FIXVOX_ADMIN_PORT: String(port), ...env },
+    env: { ...process.env, FIXVOX_ADMIN_SKIP_ENV_FILES: '1', FIXVOX_ADMIN_MOCK: '1', FIXVOX_ADMIN_HOST: '127.0.0.1', FIXVOX_ADMIN_PORT: String(port), ...env },
     stdio: 'ignore',
   })
   try {
@@ -53,8 +53,103 @@ test('server RBAC accepts a verified Google session without recent reauthenticat
   })
 })
 
+test('local auth fixture reaches the canonical loopback backend without enabling mock data', async () => {
+  const requests = []
+  const backend = http.createServer((req, res) => {
+    requests.push({ method: req.method, url: req.url, authorization: req.headers.authorization, principalKey: req.headers['x-fixvox-principal-key'] })
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ ok: true, role: 'owner' }))
+  })
+  await new Promise((resolve) => backend.listen(18988, '127.0.0.1', resolve))
+  try {
+    await withServer({
+      FIXVOX_ADMIN_MOCK: '0',
+      FIXVOX_ADMIN_ENV: 'local',
+      FIXVOX_ADMIN_LOCAL_AUTH_FIXTURE: '1',
+      FIXVOX_ADMIN_BASE_URL: 'http://127.0.0.1:18988',
+      ADMIN_VIEW_API_KEY: 'local-view-fixture',
+    }, async () => {
+      const response = await fetch(`${baseUrl}/api/admin/rbac`)
+      assert.equal(response.status, 200)
+      assert.deepEqual(await response.json(), { ok: true, role: 'owner' })
+    })
+    assert.equal(requests.length, 1)
+    assert.equal(requests[0].url, '/product/v1/control-room/session')
+    assert.equal(requests[0].authorization, 'Bearer local-view-fixture')
+    assert.match(requests[0].principalKey, /^arp_[a-f0-9]{64}$/)
+  } finally {
+    backend.close()
+    await once(backend, 'close')
+  }
+})
+
+test('local profile apply BFF maps the browser command to the canonical backend', async () => {
+  const requests = []
+  let applied = false
+  let rolledBack = false
+  const definition = { schemaVersion: 1, label: 'Local profile', access: { capabilities: ['dictation'] }, runtime: { transcription: { engineId: 'local-stt' }, postprocess: { engineId: 'local-chat' }, selectionTransform: { engineId: 'local-selection' } }, limits: { mode: 'block' }, userControls: {}, defaults: {} }
+  const backend = http.createServer((req, res) => {
+    let raw = ''
+    req.on('data', (chunk) => { raw += chunk.toString() })
+    req.on('end', () => {
+      let parsedBody = null
+      try { parsedBody = raw ? JSON.parse(raw) : null } catch { parsedBody = { invalid: true } }
+      requests.push({ method: req.method, url: req.url, headers: req.headers, body: parsedBody })
+      res.writeHead(200, { 'content-type': 'application/json' })
+      if (req.url === '/product/v1/control-room/session') return res.end(JSON.stringify({ ok: true, role: 'owner' }))
+      if (req.url === '/product/v1/control-room/profiles/local/apply') { applied = true; return res.end(JSON.stringify({ ok: true, data: { audit: { id: 'audit-local', action: 'apply', result: 'success' } } })) }
+      if (req.url === '/product/v1/control-room/profiles/local/rollback') { rolledBack = true; return res.end(JSON.stringify({ ok: true, data: { audit: { id: 'audit-rollback', action: 'rollback', result: 'success' } } })) }
+      if (req.url === '/product/v1/control-room/profiles') {
+        let version = 1
+        let revision = 0
+        if (applied) { version = 2; revision = 1 }
+        if (rolledBack) { version = 3; revision = 2 }
+        const label = applied && !rolledBack ? 'Local profile v2' : 'Local profile'
+        return res.end(JSON.stringify({ ok: true, profiles: [{ profileId: 'local', label, revision, published: { ...definition, label, version, status: 'published' }, draft: null, history: [] }] }))
+      }
+      res.statusCode = 404
+      res.end(JSON.stringify({ error: { code: 'not_found' } }))
+    })
+  })
+  await new Promise((resolve) => backend.listen(18988, '127.0.0.1', resolve))
+  try {
+    await withServer({ FIXVOX_ADMIN_MOCK: '0', FIXVOX_ADMIN_ENV: 'local', FIXVOX_ADMIN_LOCAL_AUTH_FIXTURE: '1', FIXVOX_ADMIN_BASE_URL: 'http://127.0.0.1:18988', ADMIN_VIEW_API_KEY: 'local-view', ADMIN_PUBLISH_API_KEY: 'local-publish' }, async () => {
+      const response = await fetch(`${baseUrl}/api/admin/profiles/apply`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId: 'local', expectedActiveVersion: 1, definition: { ...definition, label: 'Local profile v2' }, confirmation: 'APPLY local v1', actorKey: 'attacker' }) })
+      assert.equal(response.status, 200)
+      assert.equal((await response.json()).published.version, 2)
+      const rollback = await fetch(`${baseUrl}/api/admin/profiles/rollback`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profileId: 'local', version: 1, expectedActiveVersion: 2, confirmation: 'ROLLBACK local to v1', actorKey: 'attacker' }) })
+      assert.equal(rollback.status, 200)
+      assert.equal((await rollback.json()).published.version, 3)
+    })
+    const apply = requests.find((request) => request.url === '/product/v1/control-room/profiles/local/apply')
+    assert.equal(apply.headers.authorization, 'Bearer local-publish')
+    assert.match(apply.headers['x-fixvox-principal-key'], /^arp_[a-f0-9]{64}$/)
+    assert.ok(apply.headers['x-fixvox-recent-google-at'])
+    assert.deepEqual(apply.body.confirmation, { action: 'apply', profileKey: 'local', expectedRevision: 0, phrase: 'APPLY local REV 0' })
+    assert.equal(apply.body.actorKey, undefined)
+    const rollback = requests.find((request) => request.url === '/product/v1/control-room/profiles/local/rollback')
+    assert.deepEqual(rollback.body, { targetVersion: 1, expectedRevision: 1, confirmation: { action: 'rollback', profileKey: 'local', targetVersion: 1, expectedRevision: 1, phrase: 'ROLLBACK local TO 1 REV 1' } })
+  } finally {
+    backend.close()
+    await once(backend, 'close')
+  }
+})
+
+test('local auth fixture fails closed outside loopback local mode', async () => {
+  const child = spawn(process.execPath, ['server.mjs'], {
+    cwd: new URL('.', import.meta.url),
+    env: { ...process.env, FIXVOX_ADMIN_SKIP_ENV_FILES: '1', FIXVOX_ADMIN_MOCK: '0', FIXVOX_ADMIN_ENV: 'production', FIXVOX_ADMIN_LOCAL_AUTH_FIXTURE: '1', FIXVOX_ADMIN_BASE_URL: 'https://auth-fixvox.jpsala.dev' },
+    stdio: ['ignore', 'ignore', 'pipe'],
+  })
+  let stderr = ''
+  child.stderr.on('data', (chunk) => { stderr += chunk.toString() })
+  const [code] = await once(child, 'exit')
+  assert.notEqual(code, 0)
+  assert.match(stderr, /restricted to the local loopback backend/)
+})
+
 test('isolated and unrestricted Pi modes are mutually exclusive', async () => {
-  const child = spawn(process.execPath, ['server.mjs'], { cwd: new URL('.', import.meta.url), env: { ...process.env, FIXVOX_ADMIN_MOCK: '1', PI_CHAT_UNRESTRICTED_OWNER: '1', PI_CHAT_REMOTE_AGENT_ENABLED: '1' }, stdio: ['ignore', 'ignore', 'pipe'] })
+  const child = spawn(process.execPath, ['server.mjs'], { cwd: new URL('.', import.meta.url), env: { ...process.env, FIXVOX_ADMIN_SKIP_ENV_FILES: '1', FIXVOX_ADMIN_MOCK: '1', PI_CHAT_UNRESTRICTED_OWNER: '1', PI_CHAT_REMOTE_AGENT_ENABLED: '1' }, stdio: ['ignore', 'ignore', 'pipe'] })
   let stderr = ''
   child.stderr.on('data', (chunk) => { stderr += chunk.toString() })
   const [code] = await once(child, 'exit')
@@ -88,25 +183,37 @@ test('recent owner gets an exact unwrapped prompt in unrestricted mode', async (
   })
 })
 
-test('owner Settings routes manage roles while returning only redacted bindings', async () => {
+test('owner Settings roles accept only an opaque listed linked principal', async () => {
   await withServer({}, async () => {
+    const listed = await (await fetch(`${baseUrl}/api/admin/roles`)).json()
+    const candidate = listed.principals.find((principal) => principal.emailRedacted === 'a…@example.com')
+    const owner = listed.principals.find((principal) => principal.role === 'owner')
+    assert.match(candidate.principalKey, /^arp_[a-f0-9]{64}$/)
+    assert.doesNotMatch(JSON.stringify(listed), /alpha@example\.com|jpsala@gmail\.com/)
+    const freeEmail = await fetch(`${baseUrl}/api/admin/roles`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ subjectEmail: 'attacker@example.com', role: 'owner' }),
+    })
+    assert.equal(freeEmail.status, 400)
+    const arbitrary = await fetch(`${baseUrl}/api/admin/roles`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ principalKey: 'arp_not_listed', role: 'owner' }),
+    })
+    assert.equal(arbitrary.status, 400)
     const created = await fetch(`${baseUrl}/api/admin/roles`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ subjectEmail: 'publisher@example.com', role: 'publisher' }),
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ principalKey: candidate.principalKey, role: 'publisher' }),
     })
     assert.equal(created.status, 200)
-    assert.match(JSON.stringify(await created.json()), /p…@example\.com/)
+    assert.match(JSON.stringify(await created.json()), /a…@example\.com/)
     const removed = await fetch(`${baseUrl}/api/admin/roles/remove`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ subjectEmail: 'publisher@example.com' }),
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ principalKey: candidate.principalKey }),
     })
     assert.equal(removed.status, 200)
     const finalOwner = await fetch(`${baseUrl}/api/admin/roles/remove`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ subjectEmail: 'jpsala@gmail.com' }),
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ principalKey: owner.principalKey }),
     })
     assert.equal(finalOwner.status, 403)
   })
@@ -223,6 +330,8 @@ test('legacy token sessions cannot start or command the Pi subprocess', async ()
   try {
     await withServer({
       FIXVOX_ADMIN_MOCK: '0',
+      FIXVOX_ADMIN_ENV: 'local',
+      FIXVOX_ADMIN_BASE_URL: 'http://127.0.0.1:18988',
       FIXVOX_ADMIN_WEB_TOKEN: 'local-token',
       FIXVOX_ADMIN_PASSWORD: 'local-token',
       ADMIN_PUBLISH_API_KEY: 'publish-secret',
@@ -453,13 +562,15 @@ test('Pi Chat renders only assistant messages and waits until the RPC run settle
   assert.match(promptBridge, /event\.type\s*===\s*'agent_settled'\)\s*finish/)
 })
 
-test('Pi Chat narrow layout stacks activity without horizontal overflow', async () => {
+test('Pi Chat owns the viewport and hides activity without affecting other Admin views', async () => {
+  const appSource = await fs.readFile(new URL('./public/app.js', import.meta.url), 'utf8')
   const styles = await fs.readFile(new URL('./public/styles.css', import.meta.url), 'utf8')
-  const finalResponsiveRule = styles.lastIndexOf('@media (max-width: 1180px)')
-  const finalTwoColumnRule = styles.lastIndexOf('.pi-grid { grid-template-columns: minmax(0, 1fr) 340px; }')
+  const chatShellRule = styles.indexOf('/* Pi Chat viewport shell:')
 
-  assert.ok(finalResponsiveRule > finalTwoColumnRule)
-  assert.match(styles.slice(finalResponsiveRule), /\.pi-grid\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/)
-  assert.match(styles.slice(finalResponsiveRule), /\.activity-card\s*\{[^}]*overflow:\s*visible/)
-  assert.match(styles, /\.admin-main,\s*\.pi-page,\s*\.pi-grid,\s*\.chat-card,\s*\.activity-card\s*\{\s*min-width:\s*0/)
+  assert.match(appSource, /document\.body\.dataset\.adminView\s*=\s*state\.activeView/)
+  assert.ok(chatShellRule >= 0)
+  assert.match(styles.slice(chatShellRule), /body\[data-admin-view="chat"\]\s*\{[^}]*height:\s*100dvh;[^}]*overflow:\s*hidden;/)
+  assert.match(styles.slice(chatShellRule), /body\[data-admin-view="chat"\]\s+\.activity-card\s*\{\s*display:\s*none;/)
+  assert.match(styles.slice(chatShellRule), /body\[data-admin-view="chat"\]\s+\.pi-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/)
+  assert.doesNotMatch(styles.slice(chatShellRule), /body:not\(\[data-admin-view="chat"\]\)/)
 })

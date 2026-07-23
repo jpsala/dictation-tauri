@@ -48,15 +48,17 @@ try {
   await page.setViewportSize({ width: 871, height: 625 })
   const narrowLayout = await page.evaluate(() => {
     const drawer = document.querySelector('.admin-drawer')?.getBoundingClientRect()
-    const chat = document.querySelector('.chat-card')?.getBoundingClientRect()
-    const activity = document.querySelector('.activity-card')?.getBoundingClientRect()
+    const composer = document.querySelector('#composer')?.getBoundingClientRect()
+    const activity = document.querySelector('.activity-card')
     return {
       noPageOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      noDocumentScroll: document.documentElement.scrollHeight <= document.documentElement.clientHeight,
       drawerVisible: Boolean(drawer && drawer.left >= 0 && drawer.right <= document.documentElement.clientWidth),
-      activityStacked: Boolean(chat && activity && activity.top >= chat.bottom),
+      composerVisible: Boolean(composer && composer.top >= 0 && composer.bottom <= window.innerHeight),
+      activityHidden: activity ? getComputedStyle(activity).display === 'none' : false,
     }
   })
-  assert.deepEqual(narrowLayout, { noPageOverflow: true, drawerVisible: true, activityStacked: true })
+  assert.deepEqual(narrowLayout, { noPageOverflow: true, noDocumentScroll: true, drawerVisible: true, composerVisible: true, activityHidden: true })
   await page.setViewportSize({ width: 1440, height: 950 })
   await page.getByTitle('Sistema avanzado').click()
   await page.getByRole('button', { name: 'Perfiles', exact: true }).click()

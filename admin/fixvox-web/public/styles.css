@@ -86,3 +86,143 @@ body, .admin-layout { background: var(--product-bg); color: var(--product-ink); 
     word-break: break-word;
   }
 }
+
+/* Pi Chat viewport shell: conversation owns the viewport; other Admin views stay unchanged. */
+body[data-admin-view="chat"] {
+  height: 100dvh;
+  overflow: hidden;
+}
+body[data-admin-view="chat"] #app,
+body[data-admin-view="chat"] .admin-layout {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+body[data-admin-view="chat"] .admin-drawer {
+  height: 100dvh;
+  min-height: 0;
+}
+body[data-admin-view="chat"] .admin-main {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px;
+}
+body[data-admin-view="chat"] .pi-page {
+  height: 100%;
+  min-height: 0;
+  gap: 8px;
+}
+body[data-admin-view="chat"] .pi-header {
+  flex: 0 0 48px;
+  min-height: 48px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+body[data-admin-view="chat"] .pi-header h1 {
+  font-size: 1rem;
+  line-height: 1.3;
+}
+body[data-admin-view="chat"] .pi-header p {
+  display: none;
+}
+body[data-admin-view="chat"] .title-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+body[data-admin-view="chat"] .pi-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+body[data-admin-view="chat"] .chat-card {
+  height: 100%;
+  min-height: 0;
+  border-radius: 8px;
+  box-shadow: none;
+}
+body[data-admin-view="chat"] .activity-card {
+  display: none;
+}
+body[data-admin-view="chat"] .card-strip > div,
+body[data-admin-view="chat"] #main-subtitle,
+body[data-admin-view="chat"] #cwd-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body[data-admin-view="chat"] .messages {
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+body[data-admin-view="chat"] .composer {
+  position: sticky;
+  z-index: 2;
+  bottom: 0;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 760px) {
+  body[data-admin-view="chat"] .admin-layout {
+    display: flex;
+    flex-direction: column;
+  }
+  body[data-admin-view="chat"] .admin-drawer {
+    width: 100%;
+    height: 52px;
+    flex: 0 0 52px;
+    border-right: 0;
+    border-bottom: 1px solid var(--product-border);
+  }
+  body[data-admin-view="chat"] .drawer-brand,
+  body[data-admin-view="chat"] .drawer-user {
+    display: none;
+  }
+  body[data-admin-view="chat"] .drawer-list {
+    height: 52px;
+    display: flex;
+    flex-direction: row;
+    gap: 2px;
+    overflow-x: auto;
+    padding: 4px 6px;
+  }
+  body[data-admin-view="chat"] .drawer-item {
+    min-height: 44px;
+    flex: 0 0 44px;
+    justify-content: center;
+    padding: 0;
+  }
+  body[data-admin-view="chat"] .drawer-text {
+    display: none;
+  }
+  body[data-admin-view="chat"] .admin-main {
+    height: calc(100dvh - 52px);
+    padding: 8px;
+  }
+  body[data-admin-view="chat"] .pi-header {
+    flex-direction: row;
+    align-items: center;
+    flex-basis: 48px;
+    min-height: 48px;
+    padding: 5px 8px;
+  }
+  body[data-admin-view="chat"] .pi-header .chips {
+    max-width: 58%;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    overflow: hidden;
+  }
+  body[data-admin-view="chat"] .pi-header .chip:not(.primary) {
+    display: none;
+  }
+  body[data-admin-view="chat"] #cwd-label {
+    display: none;
+  }
+  body[data-admin-view="chat"] .composer {
+    align-items: center;
+  }
+}

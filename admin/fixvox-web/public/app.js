@@ -572,15 +572,15 @@ async function refreshEffectiveProfilesAfterProfileMutation() { state.accountsDa
 function auditForProfileMutation(action, profileId) { return [...(state.audit?.records || [])].reverse().find((record) => record.action === action && record.profileId === profileId && record.result === 'success') || null }
 async function saveRoleBinding(form) {
   const body = Object.fromEntries(new FormData(form).entries())
-  await jsonFetch('/api/admin/roles', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ subjectEmail: body.subjectEmail, role: body.role }) })
+  await jsonFetch('/api/admin/roles', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ principalKey: body.principalKey, role: body.role }) })
   await loadAdmin('settings')
-  state.status = `Rol actualizado: ${body.subjectEmail}`
+  state.status = 'Rol actualizado para la cuenta enlazada.'
 }
 async function removeRoleBinding(form) {
   const body = Object.fromEntries(new FormData(form).entries())
-  await jsonFetch('/api/admin/roles/remove', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ subjectEmail: body.subjectEmail }) })
+  await jsonFetch('/api/admin/roles/remove', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ principalKey: body.principalKey }) })
   await loadAdmin('settings')
-  state.status = `Binding removido: ${body.subjectEmail}`
+  state.status = 'Binding removido para la cuenta enlazada.'
 }
 function previewAccountPolicy(accountHandle, policyId) {
   state.pendingAccountPolicy = { accountHandle, policyId }
@@ -609,6 +609,7 @@ async function assignDevicePolicy(deviceId, currentPolicy) {
 
 function renderAll() {
   if (!app.dataset.ready) renderShell()
+  document.body.dataset.adminView = state.activeView
   renderSidebar(); renderHeader(); renderHealthWarning(); renderMessages(); renderUiRequests(); renderActivity(); renderAdminData(); wireDynamicEvents()
 }
 function renderShell() {
@@ -1039,10 +1040,11 @@ function renderProfileMutationOutcome(profileId) {
 function renderSettingsWorkbench() {
   const data = state.adminData || {}
   const bindings = Array.isArray(data.bindings) ? data.bindings : []
+  const principals = Array.isArray(data.principals) ? data.principals : []
   const role = state.rbac?.role || 'sin rol'
   const owner = role === 'owner'
   const auditRecords = Array.isArray(state.audit?.records) ? state.audit.records.slice(-8).reverse() : []
-  return `<div class="admin-workbench settings-workbench"><div class="workbench-head"><div><span class="eyebrow">Settings / Access</span><h2>Role bindings</h2><p>Google OAuth identifica al operador; RBAC server-side decide la autoridad. Las respuestas solo muestran emails redacted.</p></div><span class="chip ${owner ? 'ok' : 'warn'}">${esc(role)}</span></div><section class="settings-role-panel"><div class="panel-head"><div><h3>Bindings actuales</h3><p>${bindings.length} identidades · el último owner no puede eliminarse ni degradarse.</p></div></div><div class="role-binding-list">${bindings.map((binding) => `<article class="role-binding-row"><strong>${esc(binding.emailRedacted)}</strong><span class="chip ${binding.role === 'owner' ? 'primary' : ''}">${esc(binding.role)}</span></article>`).join('') || '<p class="muted">No hay bindings visibles.</p>'}</div></section><section class="settings-role-panel audit-panel"><div class="panel-head"><div><h3>Audit reciente</h3><p>Publish y rollback quedan registrados con actor redacted y versiones.</p></div></div>${auditRecords.length ? `<div class="audit-list">${auditRecords.map((record) => `<article class="audit-row"><strong>${esc(record.action)} · ${esc(record.profileId)}</strong><span>v${esc(record.sourceVersion ?? '—')} → v${esc(record.targetVersion ?? '—')}</span><small>${esc(record.result)} · ${esc(formatDateTime(record.timestamp))}</small></article>`).join('')}</div>` : '<p class="muted">Sin mutaciones auditadas.</p>'}</section>${owner ? `<section class="settings-role-panel"><div class="panel-head"><div><h3>Administrar acceso</h3><p>Escribí el email Google verificado del operador. El Worker persiste solo el principal hasheado.</p></div></div><form data-save-role class="role-form"><label><span>Email Google</span><input name="subjectEmail" type="email" autocomplete="off" required placeholder="operator@example.com"></label><label><span>Rol</span><select name="role"><option value="viewer">viewer</option><option value="editor">editor</option><option value="publisher">publisher</option><option value="owner">owner</option></select></label><button class="button small primary" type="submit">Guardar rol</button></form><form data-remove-role class="role-form"><label><span>Remover binding</span><input name="subjectEmail" type="email" autocomplete="off" required placeholder="operator@example.com"></label><button class="button small danger" type="submit">Remover</button></form></section>` : '<section class="alert warning"><strong>Solo owner gestiona roles.</strong><p>Podés consultar bindings redacted, pero no mutarlos.</p></section>'}</div>`
+  return `<div class="admin-workbench settings-workbench"><div class="workbench-head"><div><span class="eyebrow">Settings / Access</span><h2>Role bindings</h2><p>Google OAuth identifica al operador; RBAC server-side decide la autoridad. Las respuestas solo muestran emails redacted.</p></div><span class="chip ${owner ? 'ok' : 'warn'}">${esc(role)}</span></div><section class="settings-role-panel"><div class="panel-head"><div><h3>Bindings actuales</h3><p>${bindings.length} identidades · el último owner no puede eliminarse ni degradarse.</p></div></div><div class="role-binding-list">${bindings.map((binding) => `<article class="role-binding-row"><strong>${esc(binding.emailRedacted)}</strong><span class="chip ${binding.role === 'owner' ? 'primary' : ''}">${esc(binding.role)}</span></article>`).join('') || '<p class="muted">No hay bindings visibles.</p>'}</div></section><section class="settings-role-panel audit-panel"><div class="panel-head"><div><h3>Audit reciente</h3><p>Publish y rollback quedan registrados con actor redacted y versiones.</p></div></div>${auditRecords.length ? `<div class="audit-list">${auditRecords.map((record) => `<article class="audit-row"><strong>${esc(record.action)} · ${esc(record.profileId)}</strong><span>v${esc(record.sourceVersion ?? '—')} → v${esc(record.targetVersion ?? '—')}</span><small>${esc(record.result)} · ${esc(formatDateTime(record.timestamp))}</small></article>`).join('')}</div>` : '<p class="muted">Sin mutaciones auditadas.</p>'}</section>${owner ? `<section class="settings-role-panel"><div class="panel-head"><div><h3>Administrar acceso</h3><p>Seleccioná una cuenta Google ya enlazada. El email redacted es sólo una ayuda visual y nunca autoridad.</p></div></div><form data-save-role class="role-form"><label><span>Cuenta enlazada</span><select name="principalKey" required>${principals.map((principal) => `<option value="${esc(principal.principalKey)}">${esc(principal.emailRedacted || principal.accountHandle || 'Cuenta enlazada')} · ${esc(principal.role || 'sin rol')}</option>`).join('')}</select></label><label><span>Rol</span><select name="role"><option value="viewer">viewer</option><option value="editor">editor</option><option value="publisher">publisher</option><option value="owner">owner</option></select></label><button class="button small primary" type="submit">Guardar rol</button></form><form data-remove-role class="role-form"><label><span>Remover binding</span><select name="principalKey" required>${bindings.map((binding) => `<option value="${esc(binding.principalKey)}">${esc(binding.emailRedacted || 'Cuenta enlazada')} · ${esc(binding.role)}</option>`).join('')}</select></label><button class="button small danger" type="submit">Remover</button></form></section>` : '<section class="alert warning"><strong>Solo owner gestiona roles.</strong><p>Podés consultar bindings redacted, pero no mutarlos.</p></section>'}</div>`
 }
 function renderAuditWorkbench(data) {
   const records = Array.isArray(data.records) ? [...data.records].reverse() : []
