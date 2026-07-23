@@ -2556,7 +2556,7 @@ async function previewProfilePricing(
     ["postprocess", definition.runtime.postprocess],
     ["selectionTransform", definition.runtime.selectionTransform],
   ];
-  const rows = await Promise.all(operations.map(async ([operation, runtime]) => {
+  const rows = await Promise.all(operations.map(async ([operation, runtime]): Promise<ControlPlaneAdminProfilePreview["pricing"]["targets"][number]> => {
     const engine = engines.find((candidate) => candidate.id === runtime.engineId && candidate.kind === operation);
     const provider = engine?.provider ?? "";
     const model = engine?.model ?? "";
