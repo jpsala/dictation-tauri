@@ -124,6 +124,24 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
       return cors(request, error("not_found", 404));
     }
 
+    if (request.method === "POST" && url.pathname === "/admin/control-plane/accounts/policy") {
+      if (!permitted(actual, "edit")) return cors(request, error("forbidden", 403));
+      try {
+        const command = await body(request);
+        if (Object.keys(command).some((key) => !["accountHandle", "policyId", "policyLabel"].includes(key))) throw new Error("invalid_account_policy");
+        const accountHandle = typeof command.accountHandle === "string" ? command.accountHandle.trim() : "";
+        const policyId = typeof command.policyId === "string" ? command.policyId.trim() : "";
+        if (!accountHandle || !policyId) throw new Error("invalid_account_policy");
+        const actorRefHash = await hash(`static-admin:${actual.capability}`);
+        return cors(request, json(await deps.repository.assignAccountPolicy({ accountHandle, policyId, actorRefHash })));
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : "";
+        if (message === "account_not_found" || message === "profile_not_found") return cors(request, error("not_found", 404));
+        if (message === "account_ambiguous") return cors(request, error("conflict", 409));
+        if (message === "invalid_account_policy" || message === "invalid_body") return cors(request, error("invalid_request", 400));
+        return cors(request, error("service_unavailable", 503));
+      }
+    }
     if (request.method !== "GET") return cors(request, error("not_implemented", 501));
     const page = { limit: limit(url), cursor: url.searchParams.get("cursor") };
     let response: unknown;

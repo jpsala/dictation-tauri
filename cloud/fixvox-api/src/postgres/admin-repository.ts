@@ -349,6 +349,52 @@ export class PostgresAdminRepository {
     };
   }
 
+  async assignAccountPolicy(input: { accountHandle: string; policyId: string; actorRefHash: string }) {
+    const accountHandle = input.accountHandle.trim();
+    const policyId = input.policyId.trim();
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(accountHandle) || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(policyId)) throw new Error("invalid_account_policy");
+    return this.sql.begin(async (tx) => {
+      const accounts = await tx.unsafe<{ id: string }>("SELECT id::text FROM accounts WHERE handle = $1 FOR UPDATE", [accountHandle]);
+      if (accounts.length === 0) throw new Error("account_not_found");
+      if (accounts.length !== 1) throw new Error("account_ambiguous");
+      const profiles = await tx.unsafe<{ id: string; label: string }>(`
+        SELECT p.id::text, p.label FROM profiles p
+        JOIN profile_versions pv ON pv.profile_id = p.id AND pv.version = p.active_published_version
+        WHERE p.profile_id = $1 AND pv.status = 'published'
+      `, [policyId]);
+      if (!profiles[0]) throw new Error("profile_not_found");
+      const current = await tx.unsafe<{ id: string; profile_id: string }>(`
+        SELECT pa.id::text, p.profile_id FROM policy_assignments pa JOIN profiles p ON p.id = pa.profile_id
+        WHERE pa.target_type = 'account' AND pa.target_id = $1::uuid AND pa.active FOR UPDATE OF pa
+      `, [accounts[0].id]);
+      const alreadyAssigned = current[0]?.profile_id === policyId;
+      if (!alreadyAssigned) {
+        await tx.unsafe("UPDATE policy_assignments SET active = false, updated_at = now() WHERE target_type = 'account' AND target_id = $1::uuid AND active", [accounts[0].id]);
+        await tx.unsafe(`
+          INSERT INTO policy_assignments (target_type, target_id, profile_id, priority, source)
+          VALUES ('account', $1::uuid, $2::uuid, 30, 'control-room')
+        `, [accounts[0].id, profiles[0].id]);
+      }
+      const devices = await tx.unsafe<{ id: string }>(`
+        UPDATE devices SET policy_id = $2, policy_label = $3, updated_at = now()
+        WHERE account_id = $1::uuid AND (policy_id IS DISTINCT FROM $2 OR policy_label IS DISTINCT FROM $3)
+        RETURNING id::text
+      `, [accounts[0].id, policyId, profiles[0].label]);
+      if (!alreadyAssigned) {
+        await tx.unsafe(`
+          INSERT INTO audit_records (actor_ref_hash, action, target_type, target_ref_hash, result, safe_metadata)
+          VALUES ($1, 'account.profile.assign', 'account', encode(digest($2, 'sha256'), 'hex'), 'success', $3::jsonb)
+        `, [input.actorRefHash, accountHandle, JSON.stringify({ schemaVersion: 1, profileId: policyId, previousProfileId: current[0]?.profile_id ?? null, devicesUpdated: devices.length })]);
+      }
+      return {
+        ok: true as const,
+        devicesUpdated: devices.length,
+        idempotentReplay: alreadyAssigned,
+        account: { accountHandle, policyId, policyLabel: profiles[0].label },
+      };
+    });
+  }
+
   validateSafeMetrics(value: Record<string, unknown> | undefined): Record<string, string> {
     const candidate = value ?? { schemaVersion: 1 };
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate) || candidate.schemaVersion !== 1) throw new Error("safe_metrics_invalid");

@@ -4,6 +4,11 @@ import { DeviceBindingConflictError } from "./control-plane-repository.ts";
 
 export const RECENT_GOOGLE_AUTH_MS = 10 * 60 * 1000;
 
+export function accountHandleForSubjectHash(subjectHash: string): string {
+  if (!/^[a-f0-9]{64}$/.test(subjectHash)) throw new Error("oauth_subject_hash_invalid");
+  return `acc_${subjectHash.slice(0, 16)}`;
+}
+
 type OAuthRow = {
   provider: string;
   protected_metadata: string | null;
@@ -147,12 +152,15 @@ export class PostgresAuthSessionRepository {
         if (existing[0]) throw new DeviceBindingConflictError();
         return null;
       }
+      const accountHandle = accountHandleForSubjectHash(session.subject_hash);
       const accounts = await tx.unsafe<{ id: string }>(`
         INSERT INTO accounts (provider, provider_subject_hash, handle, display_label)
-        VALUES ('google', $1, 'google-redacted', 'Google user')
-        ON CONFLICT (provider, provider_subject_hash) DO UPDATE SET updated_at = now()
+        VALUES ('google', $1, $2, 'Google user')
+        ON CONFLICT (provider, provider_subject_hash) DO UPDATE SET
+          handle = CASE WHEN accounts.handle = 'google-redacted' THEN EXCLUDED.handle ELSE accounts.handle END,
+          updated_at = now()
         RETURNING id::text
-      `, [session.subject_hash]);
+      `, [session.subject_hash, accountHandle]);
       if (devices[0].account_id && devices[0].account_id !== accounts[0].id) throw new DeviceBindingConflictError();
       await tx.unsafe("UPDATE devices SET account_id = $2::uuid, updated_at = now() WHERE id = $1::uuid", [devices[0].id, accounts[0].id]);
       const claimed = await tx.unsafe(`UPDATE desktop_login_sessions SET status = 'claimed', claimed_at = now(), account_id = $2::uuid, updated_at = now() WHERE session_hash = $1 AND claimed_at IS NULL RETURNING session_hash`, [input.sessionHash, accounts[0].id]);

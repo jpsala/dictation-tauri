@@ -42,6 +42,32 @@ describe("Bun API adapter", () => {
     expect(await (await handler(new Request("https://fixture.test/ready"))).json()).toEqual({ ok: true, database: true, schema: true, jobs: true, authorityMode: "cloudflare-authority" });
   });
 
+  test("assigns a published profile to an account through the protected compatibility route", async () => {
+    const deps = createDependencies();
+    let command: unknown;
+    deps.admin = {
+      keys: { edit: "fixture-edit-key" },
+      repository: {
+        async assignAccountPolicy(input: unknown) {
+          command = input;
+          return { ok: true, devicesUpdated: 2, idempotentReplay: false, account: { accountHandle: "acc_aaaaaaaaaaaaaaaa", policyId: "pro", policyLabel: "Pro" } };
+        },
+      } as never,
+      profileCommands: {} as never,
+    };
+    const response = await createApiHandler(deps)(new Request("https://fixture.test/admin/control-plane/accounts/policy", {
+      method: "POST",
+      headers: { authorization: "Bearer fixture-edit-key", "content-type": "application/json" },
+      body: JSON.stringify({ accountHandle: "acc_aaaaaaaaaaaaaaaa", policyId: "pro", policyLabel: "Pro" }),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, devicesUpdated: 2, idempotentReplay: false, account: { accountHandle: "acc_aaaaaaaaaaaaaaaa", policyId: "pro", policyLabel: "Pro" } });
+    const assigned = command as { accountHandle: string; policyId: string; actorRefHash: string };
+    expect(assigned.accountHandle).toBe("acc_aaaaaaaaaaaaaaaa");
+    expect(assigned.policyId).toBe("pro");
+    expect(assigned.actorRefHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
   test("binds a device and routes provider calls without persisting or logging content", async () => {
     const lines: string[] = [];
     const handler = createApiHandler(createDependencies(lines));
@@ -375,14 +401,17 @@ describe("Bun API adapter", () => {
     const deps = createDependencies();
     deps.config.googleOAuth = { clientId: "fixture-google-client", clientSecret: "fixture-google-secret" };
     let sessionHash = "";
+    let completedOAuth = 0;
     deps.auth = {
       async createDesktopHandoff(input) { sessionHash = input.sessionHash; },
       async readDesktopHandoff() { return { sessionHash, expiresAt: new Date("2026-01-01T00:05:00.000Z") }; },
       async readDesktopStatus(input) { return input === sessionHash ? { status: "completed", expiresAt: new Date("2026-01-01T00:05:00.000Z"), completedAt: new Date("2026-01-01T00:01:00.000Z") } : null; },
       async createOAuthState() {}, async attachDesktopOAuthState() { return true; }, async readOAuthState() { return null; },
-      async readOAuthResult() { return null; }, async consumeOAuthState() { return null; }, async completeOAuthState() { return true; },
+      async readOAuthResult() { return null; }, async consumeOAuthState() { return { provider: "google", protectedMetadata: "{}" }; },
+      async completeOAuthState() { completedOAuth += 1; return true; },
       async failOAuthState() { return true; }, async claimDesktopDevice() { return { deviceId: "fixture-device-001", accountId: "redacted" }; },
     };
+    deps.oauth = { async exchangeAndVerify() { return { subject: "fixture-google-subject", verifiedAt: new Date("2026-01-01T00:01:00.000Z") }; } };
     const handler = createApiHandler(deps);
     const started = await handler(new Request("https://fixture.test/product/v1/desktop/auth/sessions", {
       method: "POST", headers: { "content-type": "application/json" },
@@ -401,6 +430,13 @@ describe("Bun API adapter", () => {
     expect(authorizeUrl.searchParams.get("scope")).toBe("openid email profile");
     expect(authorizeUrl.searchParams.get("prompt")).toBe("select_account");
     expect(Boolean(authorizeUrl.searchParams.get("state"))).toBe(true);
+    const callback = await handler(new Request(`https://fixture.test/callback?state=${authorizeUrl.searchParams.get("state")}&code=fixture-code`));
+    const callbackBody = await callback.text();
+    expect(callback.status).toBe(200);
+    expect(callbackBody).toContain("Inicio de sesión completado");
+    expect(callbackBody).toContain("volver a Fixvox");
+    expect(callbackBody).not.toContain("fixture-code");
+    expect(completedOAuth).toBe(1);
     const status = await handler(new Request(`https://fixture.test/product/v1/desktop/auth/sessions/${startData.handoffId}`));
     const statusData = (await status.json() as { data: { status: string; claimProof: string } }).data;
     expect(statusData.status).toBe("approved");

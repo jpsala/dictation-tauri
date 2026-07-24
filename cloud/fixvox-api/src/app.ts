@@ -148,6 +148,37 @@ function boundRequestBody(request: Request, maxBytes: number): Request {
   return new Request(request, { body: limited });
 }
 
+function oauthResultPage(outcome: "completed" | "denied" | "failed" | "expired", status = 200): Response {
+  const content = {
+    completed: ["Inicio de sesión completado", "Ya podés cerrar esta pestaña y volver a Fixvox."],
+    denied: ["Inicio de sesión cancelado", "Volvé a Fixvox para intentarlo nuevamente."],
+    failed: ["No se pudo completar el inicio de sesión", "Volvé a Fixvox e intentá nuevamente."],
+    expired: ["Este inicio de sesión venció", "Volvé a Fixvox para comenzar uno nuevo."],
+  }[outcome];
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${content[0]}</title><style>body{margin:0;background:#f6f7f9;color:#18202a;font:16px/1.5 system-ui,sans-serif}main{max-width:34rem;margin:12vh auto;padding:2rem;border:1px solid #d9dee5;border-radius:1rem;background:#fff;box-shadow:0 1rem 3rem #18202a14}h1{margin:0 0 .75rem;font-size:1.5rem}p{margin:0;color:#52606d}</style></head><body><main><h1>${content[0]}</h1><p>${content[1]}</p></main></body></html>`;
+  return new Response(html, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
+async function finishOAuthCallback(url: URL, deps: ApiDependencies): Promise<Response> {
+  const state = url.searchParams.get("state")?.trim() ?? "";
+  if (!state || !deps.auth || !deps.oauth) return oauthResultPage("expired", 400);
+  const stateHash = await sha256(state);
+  const claimed = await deps.auth.consumeOAuthState(stateHash);
+  if (!claimed) return oauthResultPage("expired", 400);
+  if (url.searchParams.get("error")) {
+    await deps.auth.failOAuthState(stateHash, "oauth_denied");
+    return oauthResultPage("denied");
+  }
+  try {
+    const identity = await deps.oauth.exchangeAndVerify({ code: url.searchParams.get("code")?.trim() ?? "" });
+    const completed = await deps.auth.completeOAuthState(stateHash, await sha256(identity.subject), identity.verifiedAt);
+    return oauthResultPage(completed ? "completed" : "failed");
+  } catch {
+    await deps.auth.failOAuthState(stateHash, "token_exchange_failed");
+    return oauthResultPage("failed");
+  }
+}
+
 export function createApiHandler(deps: ApiDependencies): (request: Request) => Promise<Response> {
   const logger = deps.logger ?? createAllowlistLogger();
   const now = deps.now ?? (() => new Date());
@@ -270,17 +301,7 @@ async function dispatch(
     }
   }
   if (request.method === "GET" && url.pathname === "/product/v1/auth/oauth/callback") {
-    const state = url.searchParams.get("state")?.trim() ?? "";
-    if (!state || !deps.auth || !deps.oauth) return new Response("<!doctype html><title>Expired login</title>", { status: 400, headers: { "content-type": "text/html; charset=utf-8" } });
-    const stateHash = await sha256(state);
-    const claimed = await deps.auth.consumeOAuthState(stateHash);
-    if (!claimed) return new Response("<!doctype html><title>Expired login</title>", { status: 400, headers: { "content-type": "text/html; charset=utf-8" } });
-    if (url.searchParams.get("error")) await deps.auth.failOAuthState(stateHash, "oauth_denied");
-    else {
-      try { const identity = await deps.oauth.exchangeAndVerify({ code: url.searchParams.get("code")?.trim() ?? "" }); await deps.auth.completeOAuthState(stateHash, await sha256(identity.subject), identity.verifiedAt); }
-      catch { await deps.auth.failOAuthState(stateHash, "token_exchange_failed"); }
-    }
-    return new Response("<!doctype html><title>Fixvox login result</title>", { headers: { "content-type": "text/html; charset=utf-8" } });
+    return finishOAuthCallback(url, deps);
   }
   if (request.method === "GET" && url.pathname === "/desktop/login") {
     if (!deps.auth) throw new HttpError(503, "service_unavailable");
@@ -347,17 +368,7 @@ async function dispatch(
     return json({ status: result.status === "completed" ? "success" : result.status, state, deviceId });
   }
   if (request.method === "GET" && url.pathname === "/callback") {
-    const state = url.searchParams.get("state")?.trim() ?? "";
-    if (!state || !deps.auth || !deps.oauth) return new Response("<!doctype html><title>Expired login</title>", { headers: { "content-type": "text/html; charset=utf-8" } });
-    const stateHash = await sha256(state);
-    const claimed = await deps.auth.consumeOAuthState(stateHash);
-    if (!claimed) return new Response("<!doctype html><title>Expired login</title>", { status: 400, headers: { "content-type": "text/html; charset=utf-8" } });
-    if (url.searchParams.get("error")) await deps.auth.failOAuthState(stateHash, "oauth_denied");
-    else {
-      try { const identity = await deps.oauth.exchangeAndVerify({ code: url.searchParams.get("code")?.trim() ?? "" }); await deps.auth.completeOAuthState(stateHash, await sha256(identity.subject), identity.verifiedAt); }
-      catch { await deps.auth.failOAuthState(stateHash, "token_exchange_failed"); }
-    }
-    return new Response("<!doctype html><title>Fixvox login result</title>", { headers: { "content-type": "text/html; charset=utf-8" } });
+    return finishOAuthCallback(url, deps);
   }
   if (request.method === "POST" && url.pathname === "/product/v1/desktop/bootstrap") {
     const body = await readJson(request, deps.config.maxRequestBytes);

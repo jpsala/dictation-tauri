@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-24T17:15:38.653Z
+Generated: 2026-07-24T17:49:38.882Z
 
 ## Topics
 
@@ -42,6 +42,7 @@ Generated: 2026-07-24T17:15:38.653Z
 - paused: [Bounded Taskflow Implementation Spike](../tracks/bounded-taskflow-implementation-spike.md)
 - complete: [Clean Install Readiness And Account UX](../tracks/clean-install-readiness-and-account-ux.md)
 - complete: [Cloudflare Proxy Latency Optimization](../tracks/cloudflare-proxy-latency-optimization.md)
+- active: [Fixvox Account Profile Inheritance Hotfix](../tracks/fixvox-account-profile-inheritance-hotfix.md)
 - complete: [Fixvox Admin Configuration Hub](../tracks/fixvox-admin-configuration-hub.md)
 - stable: [Fixvox Admin Profile Composer](../tracks/fixvox-admin-profile-composer.md)
 - superseded: [Fixvox Admin Web + Pi Chat](../tracks/fixvox-admin-web-pi-chat.md)

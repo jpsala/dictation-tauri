@@ -121,11 +121,15 @@ describe("PostgreSQL control-plane repositories", () => {
     `);
     await sql.unsafe("UPDATE devices SET account_id = $2::uuid WHERE id = $1::uuid", [device.id, accounts[0].id]);
     await createPublishedProfile("starter", "Starter");
-    const proId = await createPublishedProfile("pro", "Pro");
-    await sql.unsafe(`
-      INSERT INTO policy_assignments (target_type, target_id, profile_id, priority, source)
-      VALUES ('account', $1::uuid, $2::uuid, 10, 'account')
-    `, [accounts[0].id, proId]);
+    await createPublishedProfile("pro", "Pro");
+    const admin = new PostgresAdminRepository(sql);
+    expect(await admin.assignAccountPolicy({ accountHandle: "acct", policyId: "pro", actorRefHash: "actor-redacted" })).toEqual({
+      ok: true,
+      devicesUpdated: 1,
+      idempotentReplay: false,
+      account: { accountHandle: "acct", policyId: "pro", policyLabel: "Pro" },
+    });
+    expect((await admin.assignAccountPolicy({ accountHandle: "acct", policyId: "pro", actorRefHash: "actor-redacted" })).idempotentReplay).toBe(true);
 
     expect(await repository.resolveEffectiveProfile({ deviceId: "device", fallbackProfileId: "starter" })).toEqual({
       profileId: "pro",
@@ -374,9 +378,10 @@ describe("PostgreSQL control-plane repositories", () => {
     expect(events[0].count).toBe("1");
   });
 
-  test("persists only hashed OAuth handles, consumes callbacks once, and claims a desktop device once", async () => {
+  test("persists only hashed OAuth handles, claims once, and reuses the account profile on another computer", async () => {
     const control = new PostgresControlPlaneRepository(sql);
     const auth = new PostgresAuthSessionRepository(sql);
+    const subjectHash = "a".repeat(64);
     const device = await control.bindDevice({ installIdHash: "install-hash", generatedDeviceId: "auth-device" });
     const expiresAt = new Date(Date.now() + 60_000);
     await auth.createDesktopHandoff({ sessionHash: "desktop-state-hash", handoffHash: "handoff-hash", expiresAt });
@@ -385,12 +390,30 @@ describe("PostgreSQL control-plane repositories", () => {
     expect(JSON.stringify(await sql.unsafe("SELECT state_hash, session_hash, handoff_hash FROM oauth_states, desktop_login_sessions"))).not.toContain("raw-state");
     const callbacks = await Promise.all([auth.consumeOAuthState("oauth-state-hash"), auth.consumeOAuthState("oauth-state-hash")]);
     expect(callbacks.filter(Boolean)).toHaveLength(1);
-    expect(await auth.completeOAuthState("oauth-state-hash", "subject-hash", new Date())).toBe(true);
+    expect(await auth.completeOAuthState("oauth-state-hash", subjectHash, new Date())).toBe(true);
     const claims = await Promise.all([
       auth.claimDesktopDevice({ sessionHash: "desktop-state-hash", deviceId: device.deviceId, installIdHash: "install-hash" }),
       auth.claimDesktopDevice({ sessionHash: "desktop-state-hash", deviceId: device.deviceId, installIdHash: "install-hash" }),
     ]);
     expect(claims.filter(Boolean)).toHaveLength(1);
+    const accounts = await sql.unsafe<{ id: string; handle: string }>("SELECT id::text, handle FROM accounts");
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].handle).toBe("acc_aaaaaaaaaaaaaaaa");
+
+    const proId = await createPublishedProfile("pro", "Pro");
+    await sql.unsafe("INSERT INTO policy_assignments (target_type, target_id, profile_id, priority, source) VALUES ('account', $1::uuid, $2::uuid, 30, 'test')", [accounts[0].id, proId]);
+    const secondDevice = await control.bindDevice({ installIdHash: "second-install-hash", generatedDeviceId: "second-auth-device" });
+    await auth.createDesktopHandoff({ sessionHash: "second-desktop-state-hash", handoffHash: "second-handoff-hash", expiresAt });
+    await auth.createOAuthState({ stateHash: "second-oauth-state-hash", provider: "google", protectedMetadata: "{}", expiresAt });
+    expect(await auth.attachDesktopOAuthState("second-desktop-state-hash", "second-oauth-state-hash")).toBe(true);
+    expect(await auth.consumeOAuthState("second-oauth-state-hash")).not.toEqual(null);
+    expect(await auth.completeOAuthState("second-oauth-state-hash", subjectHash, new Date())).toBe(true);
+    expect(await auth.claimDesktopDevice({ sessionHash: "second-desktop-state-hash", deviceId: secondDevice.deviceId, installIdHash: "second-install-hash" })).not.toEqual(null);
+    expect(await sql.unsafe("SELECT id FROM accounts")).toHaveLength(1);
+    const effective = await control.resolveEffectiveProfile({ deviceId: secondDevice.deviceId, fallbackProfileId: "basic" });
+    expect(effective?.profileId).toBe("pro");
+    expect(effective?.source).toBe("account");
+
     const verificationNow = new Date();
     expect(auth.isRecentGoogleVerification(new Date(verificationNow.getTime() - RECENT_GOOGLE_AUTH_MS), verificationNow)).toBe(true);
     expect(auth.isRecentGoogleVerification(new Date(verificationNow.getTime() - RECENT_GOOGLE_AUTH_MS - 1), verificationNow)).toBe(false);
