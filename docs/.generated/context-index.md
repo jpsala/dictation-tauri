@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-24T03:11:12.330Z
+Generated: 2026-07-24T15:57:40.873Z
 
 ## Topics
 
@@ -45,6 +45,7 @@ Generated: 2026-07-24T03:11:12.330Z
 - complete: [Fixvox Admin Configuration Hub](../tracks/fixvox-admin-configuration-hub.md)
 - stable: [Fixvox Admin Profile Composer](../tracks/fixvox-admin-profile-composer.md)
 - superseded: [Fixvox Admin Web + Pi Chat](../tracks/fixvox-admin-web-pi-chat.md)
+- complete: [Fixvox Clean Install — Device Bootstrap Hotfix](../tracks/fixvox-clean-install-device-bootstrap-hotfix-brief.md)
 - complete: [Fixvox Lulu Assistant Parity Refactor](../tracks/fixvox-lulu-assistant-parity-refactor.md)
 - complete: [Fixvox Lulu Assistant Safe Architecture Plan](../tracks/fixvox-lulu-assistant-safe-architecture-plan.md)
 - active: [Fixvox Product-First Self-Hosted Contract Plan](../tracks/fixvox-product-first-self-hosted-contract-plan.md)

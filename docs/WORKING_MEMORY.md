@@ -7,13 +7,13 @@ Router operativo corto. El detalle durable vive en topics, tracks, specs y decis
 ## Foco Único De Ejecución
 
 - **Estado:** `complete`.
-- **Referencia:** `docs/tracks/fixvox-tauri-cloud-release.md`.
-- **Siguiente acción:** instalar el prerelease `fixvox-tauri-v0.1.0-20260724030810` en la otra PC autorizada y validar primer launch/dictado.
+- **Referencia:** `docs/tracks/fixvox-clean-install-device-bootstrap-hotfix-brief.md`.
+- **Siguiente acción:** Abrir un nuevo `/flow` cuando haya un objetivo distinto.
 
 ## Estado Vivo
 
 - Dictation Tauri y Control Room son el producto canónico. Cloudflare conserva front door, TLS y authority; el VPS sirve el hot path y `fixvox-proxy` queda como rollback sin Custom Domain. `C:/dev/fixvox` queda sólo como referencia para comportamiento Fixvox-like.
-- Spec 019 completó A-E y Gate F quedó completo: restart, rollback provider-loopback-compatible y restore aislado verdes. Current `4075da53c365a8b1`; rollback probado `73c764c8c679dc40`; schema 6, markers 1/1, provider configurado, loopback y `cloudflare-authority`. `66652…`, `90ca…` y `c0deb…` siguen preservados como releases anteriores; `9afa…` no es ready sobre schema 6. Cloudflare conserva authority y el hot path llega al VPS por Tunnel dedicado.
+- Spec 019 completó A-E y Gate F quedó completo: restart, rollback provider-loopback-compatible y restore aislado verdes. Current `68eae40e974909c5`; rollback inmediato `4075da53c365a8b1`; schema 6, markers 1/1, providers y OAuth Google configurados, bind loopback y `cloudflare-authority`. `73c7…`, `66652…`, `90ca…` y `c0deb…` siguen preservados; `9afa…` no es ready sobre schema 6. Cloudflare conserva front door/TLS y el hot path llega al VPS por Tunnel dedicado.
 - El desktop instalado mantiene compatibilidad `CF-DESKTOP`: artifacts release bajo app data y STT por el mismo alias público, ahora servido por VPS/PostgreSQL; la confirmación humana final del dictado queda pendiente.
 - Pi Chat Trusted Owner remoto quedó operativo. Conversation-first Batch 1 está completo; Batch 2 queda postergado mientras Checkpoint F sea el foco. Infraestructura estable: `docs/tracks/pi-prod-workspace.md`.
 - Standard Product UX completó implementación local. Operaciones de otra PC, provider, release o rollout viven detrás de `docs/tracks/standard-product-ux-external-operation-gate-plan.md`.
@@ -32,6 +32,7 @@ Router operativo corto. El detalle durable vive en topics, tracks, specs y decis
 - Cutover provider-free final completo: receipt/log STT previo validados sin otra llamada provider; CNAME, Tunnel y unit `/usr/local/bin/cloudflared` activos; 3× health `fixvox-api` en `19.124 s`, readiness/preflight 200, Worker invocations 0, KV delta 0, VPS restarts 0 y Custom Domain Worker ausente.
 - Desktop prewarm completo: cliente reqwest compartido y `/health` best-effort al iniciar captura redujeron la prueba fría real de `1625 ms` a `687 ms`; health ocurrió `12.25 s` antes de STT, test focal 1/1 y cargo/LSP verdes. Commit `3f0804e` pusheado con los cinco commits locales previos.
 - Prerelease Windows publicado desde worktree limpio en `fixvox-tauri-v0.1.0-20260724030810`: NSIS unsigned `29,553,376` bytes, SHA-256 `32738e2e…aefec`, redescarga idéntica. URL directa: `https://github.com/jpsala/fixvox-releases/releases/download/fixvox-tauri-v0.1.0-20260724030810/Fixvox-Tauri-Setup.exe`.
+- El bloqueo clean install/upgrade por `device_not_registered` quedó corregido y publicado: desktop `a99a493`, prerelease `fixvox-tauri-v0.1.0-20260724125602`, SHA-256 `53115e…bd2a`; Pages deployment `0e00217a`. La PC con upgrade viejo expuso dos fallos VPS posteriores: public base loopback y OAuth incompleto/mock. Producción quedó reparada con backups `0600`, secretos por SSH stdin y release API `68eae40e974909c5` desde source `faf1985`: login start 200, URL Google completa, `prompt=select_account`, callback canónico y exchange/UserInfo real sin persistir tokens. Tests 38/38, provider calls 0 y validación humana final verde.
 
 ## Tracks Activas
 

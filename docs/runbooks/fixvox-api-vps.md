@@ -1,12 +1,12 @@
 ---
 status: active
-updated: 2026-07-22
+updated: 2026-07-24
 track: docs/tracks/fixvox-self-hosted-checkpoint-f-vps-loopback-plan.md
 ---
 
 # Runbook — Fixvox API VPS Loopback
 
-Checkpoint F2, F3R5, F4 and local F5R1 are complete. Provider-loopback R1-R3/P1-P3 now runs immutable release `4075da53c365a8b1` on schema 6, provider-configured and only on `127.0.0.1:8790`; markers historical/canary are 1/1 and immediate rollback is `66652d0fa6073c26`. `90ca…`/`c0deb…` remain earlier schema-6-compatible rollbacks. F5R2 is superseded; F5R3-F5R4/F6 require replan. Cloudflare remains authority/hot path.
+The permanent direct-runtime cutover now routes `auth-fixvox.jpsala.dev` through the dedicated Cloudflare Tunnel to the loopback-only VPS service. Runtime release `68eae40e974909c5` adds complete Google OAuth and preserves `4075da53c365a8b1` as immediate code rollback. PostgreSQL remains schema 6 and the logical `authorityMode` stays `cloudflare-authority` for compatibility; the Worker Custom Domain is absent and is no longer the hot path.
 
 The operational mirror is `C:/dev/infra/docs/runbooks/fixvox-api-vps.md`. If either runbook disagrees with the other or with the selected track, stop before execution.
 
@@ -18,7 +18,7 @@ The operational mirror is `C:/dev/infra/docs/runbooks/fixvox-api-vps.md`. If eit
 | API bind | `127.0.0.1:8790` only; `8787` remains Admin BFF |
 | Runtime | `/home/jpsal/.bun/bin/bun` |
 | Releases | `/home/jpsal/opt/fixvox-api/releases/<release-id>` + atomic `current` symlink |
-| Current / immediate rollback | `4075da53c365a8b1` / `66652d0fa6073c26` |
+| Current / immediate rollback | `68eae40e974909c5` / `4075da53c365a8b1` |
 | Earlier schema 6 rollbacks | `90ca26a7e3bd6f50`, then `c0deb60ab0f39b3a` |
 | Staging | `/home/jpsal/staging/fixvox-api` |
 | Protected config | `/home/jpsal/.config/dictation-tauri/fixvox-api.env`, mode `0600` |
@@ -27,7 +27,7 @@ The operational mirror is `C:/dev/infra/docs/runbooks/fixvox-api-vps.md`. If eit
 | Wrappers | `/home/jpsal/.local/bin/fixvox-api-*` |
 | Backups | `/home/jpsal/backups/fixvox-api`, mode `0700` |
 | PostgreSQL | Ubuntu host-managed PostgreSQL 16; DB `fixvox`; schema 6; roles `fixvox_migrator` and `fixvox_api` |
-| Authority / providers | `cloudflare-authority`; `FIXVOX_API_MOCK_PROVIDERS=false`; Groq key protected in env `0600` |
+| Routing / authority / providers | Dedicated Tunnel → VPS; logical `cloudflare-authority`; providers real; Groq and Google OAuth credentials protected in env `0600` |
 
 Never inspect, reuse, mutate, or depend on PostgreSQL containers or volumes belonging to Coolify or Zulip. Never deploy from or mutate `/home/jpsal/dev/dictation-tauri`.
 
@@ -110,7 +110,9 @@ Committed files contain names only, never values. Runtime/migration configuratio
 - `FIXVOX_API_MOCK_PROVIDERS`;
 - `FIXVOX_API_REQUEST_TIMEOUT_MS`;
 - `FIXVOX_API_MAX_REQUEST_BYTES`;
-- `FIXVOX_BACKUP_AGE_RECIPIENT`.
+- `FIXVOX_BACKUP_AGE_RECIPIENT`;
+- `GOOGLE_CLOUD_CLIENT_ID`;
+- `GOOGLE_CLOUD_CLIENT_SECRET`.
 
 F2 bootstrap secrets are supplied through an already-open protected file descriptor, never command arguments or output. Allowed input labels are `migrator_password`, `runtime_password`, `migration_database_url`, `runtime_database_url`, and `backup_age_recipient`. Do not paste values into shell history, docs, chat, or logs.
 
@@ -128,6 +130,14 @@ WorkingDirectory=/home/jpsal/opt/fixvox-api/current
 EnvironmentFile=/home/jpsal/.config/dictation-tauri/fixvox-api.env
 Restart=on-failure
 ```
+
+The service still binds only to loopback, but `FIXVOX_API_PUBLIC_BASE_URL` must
+be exactly `https://auth-fixvox.jpsala.dev`. A loopback public base breaks
+browser handoff and must fail release verification. Production Google OAuth
+requires both credential names above; partial configuration fails closed. The
+authorization request uses `/callback`, `response_type=code`, scope
+`openid email profile` and `prompt=select_account`; token material is exchanged
+server-side, verified through Google UserInfo and never persisted.
 
 Expected checks after their matching gates:
 
@@ -195,6 +205,35 @@ Persistent provider/canary work now lives in `docs/tracks/vps-persistent-provide
 **Provider-free canary harness P2 (2026-07-22):** The local-only harness is pinned to `4075da53c365a8b1`, uses a distinct action/operation, validates service/listener/schema/profile/engines/pricing/markers and bounded synthetic WAV, serializes the append-only marker with advisory lock `91827403`, inserts it before one transcription request, forbids retries, redacts receipt content and limits cleanup to synthetic identity/ledger state. Harness 6/6 and focused app/provider/harness 30/30 passed with syntax/LSP clean. No real secret, VPS, transfer, provider call, canary, routing/DNS/Tunnel or authority mutation occurred.
 
 **One host-local canary P3 (2026-07-22):** After fixture/DB checks, a diagnostic provider-free preflight exposed an allowlisted runner env omission (`canary_service_inactive`); marker, request and provider calls remained 0. A clean preflight with user-systemd DBus/XDG env returned 200 and cleaned its synthetic bootstrap. Real mode then ran exactly once: marker inserted before the request, transcription/provider calls 1, HTTP 200, expected match true and ledger settled. Independent verification left current `4075da53…`, rollback `66652…`, schema 6, markers 1/1, provider configured, restarts 0, loopback, health/readiness/Admin 200 and Cloudflare authority; identity/binding/reservation 0 and secret/transcript absent from journal/receipt. Remote harness/WAV/staging were removed. Receipt SHA-256 `08736c19f38570298ba70eee5f2a6c6e2a9442341b6f6dc6bbdf3ae52dc91761`. No routing, DNS/Tunnel or authority change. P4 requires a separate plan/gate.
+
+## Direct Cutover And OAuth Repair — 2026-07-24
+
+- Cutover final replaced the Worker Custom Domain with a dedicated Tunnel/CNAME,
+  stabilized three public health checks and left Worker invocations and KV delta
+  at zero. VPS remains loopback-only behind the Tunnel.
+- A clean-install/upgrade validation first exposed a stale device binding. The
+  desktop hotfix bootstraps provider-free before readiness, login and STT and
+  was published as `fixvox-tauri-v0.1.0-20260724125602`.
+- The next login failed closed because the VPS still generated
+  `verificationUri` from `http://127.0.0.1:8790`. Production config was backed
+  up at mode `0600`, changed atomically to the canonical public base and
+  restarted once; health/readiness and browser origin checks passed.
+- Google then exposed the incomplete VPS OAuth implementation. Source commit
+  `faf1985` adds the complete account-select request, confidential code exchange
+  and verified UserInfo identity without token persistence. API unit `38/38`,
+  TypeScript and assets smoke passed.
+- Deterministic runtime bundle `68eae40e974909c5` has archive SHA-256
+  `68eae40e974909c500db3523e33a5f788e034e39d9192904cb9baa119295647d`.
+  Candidate boot passed before promotion. Google credentials moved only through
+  SSH stdin into the protected env, with backup
+  `fixvox-api.env.before-google-oauth-20260724T140601Z`.
+- Promotion and one restart left one listener, `NRestarts=0`, public and local
+  health/readiness 200, login start 200, complete Google parameters,
+  `prompt=select_account` and canonical `/callback`. Staging was removed and no
+  STT/provider request was issued. JP then confirmed account selection and login
+  worked on the previously affected PC.
+- Redacted local receipt:
+  `artifacts/oauth-hotfix/20260724-vps-google-oauth/production-receipt.json`.
 
 ## Stop Conditions
 
