@@ -23,7 +23,7 @@ describe("HTTP provider adapter", () => {
       kind: "chat",
       request: new Request("https://api.fixture.test/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json", "x-device-id": "fixture-device-001" }, body: "{}" }),
       signal: AbortSignal.timeout(1_000),
-      policy: { profileId: "fixture", engine: { provider: "fixture", model: "fixture-model" } },
+      policy: { profileId: "fixture", capability: "assistant", engine: { provider: "fixture", model: "fixture-model" } },
     });
     expect(response.status).toBe(200);
     expect(calls).toHaveLength(1);
@@ -41,14 +41,20 @@ describe("HTTP provider adapter", () => {
     });
     const response = await proxy.proxy({
       kind: "chat",
-      request: new Request("https://api.fixture.test/product/v1/runtime/actions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: [] }) }),
+      request: new Request("https://api.fixture.test/product/v1/runtime/actions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: [{ role: "system", content: "caller prompt" }, { role: "user", content: "raw transcript" }] }) }),
       signal: AbortSignal.timeout(1_000),
-      policy: { profileId: "fixture", engine: { provider: "groq", model: "llama-3.3-70b-versatile" } },
+      policy: { profileId: "fixture", capability: "postprocess", engine: { provider: "groq", model: "llama-3.3-70b-versatile" } },
     });
     expect(response.status).toBe(200);
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe("https://api.groq.com/openai/v1/chat/completions");
-    expect(await calls[0].json()).toEqual({ messages: [], model: "llama-3.3-70b-versatile" });
+    const chatPayload = await calls[0].json() as { model: string; messages: Array<{ role: string; content: string }> };
+    expect(chatPayload.model).toBe("llama-3.3-70b-versatile");
+    expect(chatPayload.messages[0].role).toBe("system");
+    expect(chatPayload.messages[0].content).toContain("transcription post-processor");
+    expect(chatPayload.messages[0].content).toContain("Spanish questions");
+    expect(chatPayload.messages[0].content).toContain("explicit spoken corrections");
+    expect(chatPayload.messages[0].content).not.toContain("caller prompt");
 
     const source = new FormData();
     source.set("metadata", JSON.stringify({ operationId: "fixture-operation", durationMs: 1000, language: "es" }));
@@ -57,7 +63,7 @@ describe("HTTP provider adapter", () => {
       kind: "audio",
       request: new Request("https://api.fixture.test/product/v1/runtime/transcriptions", { method: "POST", headers: { "x-device-id": "fixture-device-001" }, body: source }),
       signal: AbortSignal.timeout(1_000),
-      policy: { profileId: "fixture", engine: { provider: "groq", model: "whisper-large-v3-turbo" } },
+      policy: { profileId: "fixture", capability: "transcription", engine: { provider: "groq", model: "whisper-large-v3-turbo" } },
     });
     expect(audioResponse.status).toBe(200);
     expect(calls).toHaveLength(2);
@@ -65,9 +71,14 @@ describe("HTTP provider adapter", () => {
     expect(calls[1].headers.get("x-device-id")).toBe(null);
     expect(calls[1].headers.get("authorization")).toBe("Bearer fixture-groq-key");
     const upstream = await calls[1].formData();
-    expect([...upstream.keys()].sort()).toEqual(["file", "language", "model"]);
+    expect([...upstream.keys()].sort()).toEqual(["file", "language", "model", "prompt", "response_format", "temperature", "timestamp_granularities[]", "timestamp_granularities[]"]);
     expect(upstream.get("model")).toBe("whisper-large-v3-turbo");
     expect(upstream.get("language")).toBe("es");
+    expect(String(upstream.get("prompt"))).toContain("Transcribí en español rioplatense");
+    expect(String(upstream.get("prompt"))).toContain("comandos, paquetes, modelos, archivos, URLs");
+    expect(upstream.get("response_format")).toBe("verbose_json");
+    expect(upstream.getAll("timestamp_granularities[]")).toEqual(["word", "segment"]);
+    expect(upstream.get("temperature")).toBe("0");
     const file = upstream.get("file");
     expect(file instanceof Blob).toBe(true);
     expect(file instanceof Blob ? file.size : 0).toBe(3);

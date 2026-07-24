@@ -47,6 +47,19 @@ Estado 2026-07-11 (`018` completo): audio runtime parity cubre VAD/no-speech loc
 
 Correccion 2026-06-29: `013` cerro parity de primitivos y materializacion, pero no garantiza parity del **runtime efectivo**. En la maquina de JP, Fixvox real resuelve desde policy/cache `pro`: STT `groq/whisper-large-v3-turbo`, prompt tecnico de transcripcion y `enableRawPostProcess=false`. Dictation Tauri todavia puede caer a `whisper-large-v3`, no envia todos los campos Fixvox del request STT y fuerza postprocess desde React. Por lo tanto, hasta completar `docs/tracks/fixvox-effective-runtime-parity.md`, no afirmar que el flujo real Tauri trabaja igual que Fixvox.
 
+Correccion local 2026-07-24: el boundary self-hosted materializa
+internamente el cuerpo del `promptId` seleccionado por profile y lo entrega al
+provider sin exponerlo al desktop. STT vuelve a enviar `prompt`,
+`temperature=0`, `verbose_json` y granularidades word/segment; postprocess
+reemplaza cualquier system prompt del caller por un baseline server-owned para
+puntuacion, preguntas en español, correcciones habladas, fillers y terminos
+tecnicos, seguido del prompt administrable. Tests unitarios y PostgreSQL cubren
+el request upstream y la materializacion. Release productiva
+`89750e99f55f7d01`: health/readiness local y publico 200, context 200,
+`NRestarts=0`; rollback inmediato `e835f7f678b528c8`. Como PostgreSQL
+productivo no contiene filas de prompt, el runtime usa el fallback code-owned
+Fixvox-compatible sin exponer prompts ni transcript al desktop.
+
 Validacion 2026-06-25: el flujo fue probado con CUA visible y con TTS local controlado. Managed STT + postprocess y el runtime real Tauri/Rust pasaron casos redacted de fillers/correcciones, identificadores tecnicos y pregunta neutral con signos `¿...?` cuando STT reconoce la pregunta. Caveat durable: una frase TTS mexicana con forma argentina `sentis` no reconocio `como/sentis` en STT; el postprocess no debe inventar una pregunta si la transcripcion no conserva suficiente señal. Para robustecer ese caso, investigar STT language/prompt/prosody o fixtures de voz humana antes de cambiar el sanitizer.
 
 El runtime debe tener una frontera propia:

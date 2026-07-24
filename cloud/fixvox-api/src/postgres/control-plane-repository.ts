@@ -1,5 +1,7 @@
 /// <reference path="../bun-runtime.d.ts" />
 
+import { BUILTIN_PROMPTS } from "../../../fixvox-core/src/control-plane/catalog.ts";
+
 export class DeviceBindingConflictError extends Error {
   constructor() {
     super("device_binding_conflict");
@@ -66,17 +68,25 @@ async function materializeProductRuntime(sql: Bun.SQL, definition: Record<string
   if (Object.keys(runtime).length === 0) return definition;
   const operations = Object.fromEntries(["transcription", "postprocess", "selectionTransform"].map((kind) => [kind, record(runtime[kind])]));
   const engineIds = [...new Set(Object.values(operations).map((operation) => String(operation.engineId ?? operation.engineKey ?? "").trim()).filter(Boolean))];
+  const promptIds = [...new Set(Object.values(operations).map((operation) => String(operation.promptId ?? operation.promptKey ?? "").trim()).filter(Boolean))];
   if (engineIds.length === 0) throw new Error("profile_definition_invalid");
-  const placeholders = engineIds.map((_, index) => `$${index + 1}`).join(", ");
-  const rows = await sql.unsafe<{ engine_id: string; provider: string; model: string }>(`SELECT engine_id, provider, model FROM engines WHERE enabled AND engine_id IN (${placeholders})`, engineIds);
-  const byId = new Map(rows.map((row) => [row.engine_id, row]));
+  const enginePlaceholders = engineIds.map((_, index) => `$${index + 1}`).join(", ");
+  const engineRows = await sql.unsafe<{ engine_id: string; provider: string; model: string }>(`SELECT engine_id, provider, model FROM engines WHERE enabled AND engine_id IN (${enginePlaceholders})`, engineIds);
+  const promptRows = promptIds.length > 0
+    ? await sql.unsafe<{ prompt_id: string; body: string }>(`SELECT prompt_id, body FROM prompts WHERE enabled AND prompt_id IN (${promptIds.map((_, index) => `$${index + 1}`).join(", ")})`, promptIds)
+    : [];
+  const engineById = new Map(engineRows.map((row) => [row.engine_id, row]));
+  const promptById = new Map(BUILTIN_PROMPTS.map((prompt) => [prompt.id, prompt.body]));
+  for (const row of promptRows) promptById.set(row.prompt_id, row.body);
   const engine = (kind: keyof typeof operations): Record<string, unknown> => {
     const operation = operations[kind];
     const id = String(operation.engineId ?? operation.engineKey ?? "").trim();
-    const selected = byId.get(id);
+    const selected = engineById.get(id);
     if (!selected) throw new Error("profile_engine_unavailable");
     const promptId = String(operation.promptId ?? operation.promptKey ?? "").trim();
-    return { id, provider: selected.provider, model: selected.model, ...(promptId ? { promptId } : {}) };
+    const prompt = promptId ? promptById.get(promptId) : undefined;
+    if (promptId && prompt === undefined) throw new Error("profile_prompt_unavailable");
+    return { id, provider: selected.provider, model: selected.model, ...(promptId ? { promptId, prompt } : {}) };
   };
   const access = record(definition.access);
   const limits = record(definition.limits);

@@ -106,7 +106,7 @@ describe("Bun API adapter", () => {
       body: JSON.stringify({ provider: "forbidden", model: "forbidden", messages: [] }),
     }));
     expect(response.status).toBe(200);
-    expect(policy).toEqual({ profileId: "basic", engine: { provider: "mock", model: "chat-policy" } });
+    expect(policy).toEqual({ profileId: "basic", capability: "postprocess", engine: { provider: "mock", model: "chat-policy" } });
   });
 
   test("preserves Worker-shaped desktop-link and unknown-route errors", async () => {
@@ -326,7 +326,7 @@ describe("Bun API adapter", () => {
     expect(forwarded).toContain('\\"instruction\\":\\"shorten\\"');
     expect(forwarded).toContain('\\"presetKey\\":\\"corregir-texto\\"');
     expect(forwarded).not.toContain("client-model");
-    expect(policy).toEqual({ profileId: "basic", engine: { provider: "mock", model: "chat-policy" } });
+    expect(policy).toEqual({ profileId: "basic", capability: "selection_transform", engine: { provider: "mock", model: "chat-policy" } });
   });
 
   test("idempotent replay never dispatches or consumes twice", async () => {

@@ -166,10 +166,10 @@ describe("PostgreSQL control-plane repositories", () => {
       capabilities: ["dictation", "postprocess", "selection_transform", "assistant_actions"],
       quota: { profile: "pro-unlimited" },
       engines: {
-        transcription: { id: "product-stt", provider: "mock-stt", model: "stt-model", promptId: "product-stt-prompt" },
-        postprocess: { id: "product-chat", provider: "mock-chat", model: "chat-model", promptId: "product-chat-prompt" },
-        selectionTransform: { id: "product-selection", provider: "mock-selection", model: "selection-model", promptId: "product-selection-prompt" },
-        assistant: { id: "product-selection", provider: "mock-selection", model: "selection-model", promptId: "product-selection-prompt" },
+        transcription: { id: "product-stt", provider: "mock-stt", model: "stt-model", promptId: "product-stt-prompt", prompt: "fixture" },
+        postprocess: { id: "product-chat", provider: "mock-chat", model: "chat-model", promptId: "product-chat-prompt", prompt: "fixture" },
+        selectionTransform: { id: "product-selection", provider: "mock-selection", model: "selection-model", promptId: "product-selection-prompt", prompt: "fixture" },
+        assistant: { id: "product-selection", provider: "mock-selection", model: "selection-model", promptId: "product-selection-prompt", prompt: "fixture" },
       },
     });
     const projected = (await new PostgresAdminRepository(sql).profiles()).find((profile) => profile.profileId === "product");
@@ -436,7 +436,7 @@ describe("PostgreSQL control-plane repositories", () => {
     });
     expect(decision.reservationId).toBe(null);
     const manifest = await createBackupManifest(sql, new Date("2026-07-15T00:00:00.000Z"));
-    expect(manifest.schemaVersion).toBe(5);
+    expect(manifest.schemaVersion).toBe(6);
     expect(manifest.authority).toEqual({ mode: "cloudflare-authority", revision: 0 });
     expect(manifest.counts.usage_reservations).toBe(0);
     expect(JSON.stringify(manifest)).not.toMatch(/subject-hash|audio|transcript/i);

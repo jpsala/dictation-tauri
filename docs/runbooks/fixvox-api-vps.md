@@ -6,7 +6,7 @@ track: docs/tracks/fixvox-self-hosted-checkpoint-f-vps-loopback-plan.md
 
 # Runbook — Fixvox API VPS Loopback
 
-The permanent direct-runtime cutover now routes `auth-fixvox.jpsala.dev` through the dedicated Cloudflare Tunnel to the loopback-only VPS service. Runtime release `e835f7f678b528c8` adds canonical account-profile inheritance and a visible OAuth callback; `68eae40e974909c5` is the immediate rollback. PostgreSQL remains schema 6 and the logical `authorityMode` stays `cloudflare-authority` for compatibility; the Worker Custom Domain is absent and is no longer the hot path.
+The permanent direct-runtime cutover now routes `auth-fixvox.jpsala.dev` through the dedicated Cloudflare Tunnel to the loopback-only VPS service. Runtime release `89750e99f55f7d01` restores Fixvox-compatible STT and postprocess prompts; `e835f7f678b528c8` is the immediate rollback. PostgreSQL remains schema 6 and the logical `authorityMode` stays `cloudflare-authority` for compatibility; the Worker Custom Domain is absent and is no longer the hot path.
 
 The operational mirror is `C:/dev/infra/docs/runbooks/fixvox-api-vps.md`. If either runbook disagrees with the other or with the selected track, stop before execution.
 
@@ -18,7 +18,7 @@ The operational mirror is `C:/dev/infra/docs/runbooks/fixvox-api-vps.md`. If eit
 | API bind | `127.0.0.1:8790` only; `8787` remains Admin BFF |
 | Runtime | `/home/jpsal/.bun/bin/bun` |
 | Releases | `/home/jpsal/opt/fixvox-api/releases/<release-id>` + atomic `current` symlink |
-| Current / immediate rollback | `e835f7f678b528c8` / `68eae40e974909c5` |
+| Current / immediate rollback | `89750e99f55f7d01` / `e835f7f678b528c8` |
 | Earlier schema 6 rollbacks | `90ca26a7e3bd6f50`, then `c0deb60ab0f39b3a` |
 | Staging | `/home/jpsal/staging/fixvox-api` |
 | Protected config | `/home/jpsal/.config/dictation-tauri/fixvox-api.env`, mode `0600` |
@@ -254,6 +254,29 @@ Persistent provider/canary work now lives in `docs/tracks/vps-persistent-provide
   public/local health and readiness 200, account profile `pro` with
   `source=account`, visible callback with `no-store`, no provider events and
   clean staging. Immediate rollback is `68eae40e974909c5`.
+
+## Prompt Runtime Parity — 2026-07-24
+
+- Fixvox anterior confirmó que su mejor puntuación y reconocimiento provenían
+  de `whisper-large-v3-turbo` con prompt técnico, `temperature=0` y
+  `verbose_json`; el boundary VPS reconstruía el multipart sin esos campos.
+- El API ahora materializa prompts administrables cuando existen y usa un
+  fallback code-owned Fixvox-compatible cuando el profile o PostgreSQL no
+  contiene prompt. Postprocess reemplaza el system prompt del caller por un
+  baseline server-owned para puntuación española, correcciones habladas,
+  fillers y términos técnicos.
+- El primer candidate `c33d2d3d56197093` se revirtió a
+  `e835f7f678b528c8` al detectar `prompts=0` en producción. No hubo mutación de
+  PostgreSQL. El segundo candidate agregó el fallback y pasó 39 tests unitarios,
+  17 PostgreSQL, LSP, boot aislado provider-configured y context 200.
+- Release final `89750e99f55f7d01`, SHA-256
+  `89750e99f55f7d0144a59bed349205bf0203f2c7f1fa94644cc1a0dda52c5b82`.
+  Servicio activo, `NRestarts=0`, listener único loopback, health/readiness
+  local y público 200, authority `cloudflare-authority`, staging limpio y cero
+  provider calls iniciadas por la operación. Rollback inmediato:
+  `e835f7f678b528c8`.
+- Receipt redacted local:
+  `artifacts/fixvox-api-prompt-parity/20260724T195642Z-prompt-fallback/production-receipt.json`.
 
 ## Stop Conditions
 

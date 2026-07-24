@@ -691,7 +691,7 @@ async function executeRuntime(input: {
     dispatched = true;
     let response: Response;
     try {
-      response = await deps.providers.proxy({ kind: input.engineKind, request: input.providerRequest, signal: AbortSignal.timeout(deps.config.requestTimeoutMs), policy: { profileId: identity.profile.profileId, engine } });
+      response = await deps.providers.proxy({ kind: input.engineKind, request: input.providerRequest, signal: AbortSignal.timeout(deps.config.requestTimeoutMs), policy: { profileId: identity.profile.profileId, capability: input.capability, engine } });
     } catch {
       await releaseShadow();
       emitShadow();
