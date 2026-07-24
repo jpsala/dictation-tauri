@@ -269,7 +269,8 @@ Persistent provider/canary work now lives in `docs/tracks/vps-persistent-provide
   `e835f7f678b528c8` al detectar `prompts=0` en producción. No hubo mutación de
   PostgreSQL. El segundo candidate agregó el fallback y pasó 39 tests unitarios,
   17 PostgreSQL, LSP, boot aislado provider-configured y context 200.
-- Release final `89750e99f55f7d01`, SHA-256
+- Source commiteado y pusheado en `4db04f8`; el rebuild determinístico desde
+  ese commit reproduce la release `89750e99f55f7d01`, SHA-256
   `89750e99f55f7d0144a59bed349205bf0203f2c7f1fa94644cc1a0dda52c5b82`.
   Servicio activo, `NRestarts=0`, listener único loopback, health/readiness
   local y público 200, authority `cloudflare-authority`, staging limpio y cero
