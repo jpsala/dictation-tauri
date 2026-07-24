@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
     process::Command,
+    sync::OnceLock,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -342,8 +343,14 @@ pub(crate) trait DeviceRegisterHttpClient {
     ) -> Result<serde_json::Value, FixvoxCloudError>;
 }
 
+static FIXVOX_HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
 pub(crate) fn fixvox_http_client() -> Result<reqwest::Client, FixvoxCloudError> {
-    reqwest::Client::builder()
+    if let Some(client) = FIXVOX_HTTP_CLIENT.get() {
+        return Ok(client.clone());
+    }
+
+    let client = reqwest::Client::builder()
         .user_agent(FIXVOX_TAURI_USER_AGENT)
         .build()
         .map_err(|_| {
@@ -351,7 +358,9 @@ pub(crate) fn fixvox_http_client() -> Result<reqwest::Client, FixvoxCloudError> 
                 "FIXVOX_HTTP_CLIENT_FAILED",
                 "Fixvox HTTP client could not be initialized.",
             )
-        })
+        })?;
+
+    Ok(FIXVOX_HTTP_CLIENT.get_or_init(|| client).clone())
 }
 
 pub(crate) trait PreflightHttpClient {

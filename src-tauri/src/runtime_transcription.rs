@@ -577,10 +577,41 @@ pub async fn run_assistant_chat(request: HostAssistantChatRequest) -> HostAssist
     run_assistant_chat_with_managed_chat(request, &read_host_env_value).await
 }
 
+async fn prewarm_fixvox_connection(backend_base_url: &str) -> Result<(), RedactedHostRuntimeError> {
+    let client = fixvox_cloud::fixvox_http_client()
+        .map_err(|reason| error(&reason.code, &reason.message))?;
+    let endpoint = format!("{}/health", backend_base_url.trim_end_matches('/'));
+    let response = client
+        .get(endpoint)
+        .timeout(Duration::from_secs(2))
+        .send()
+        .await
+        .map_err(|_| {
+            error(
+                "FIXVOX_PREWARM_FAILED",
+                "Fixvox connection prewarm could not reach the managed runtime.",
+            )
+        })?;
+    if !response.status().is_success() {
+        return Err(error(
+            "FIXVOX_PREWARM_FAILED",
+            "Fixvox connection prewarm returned an error.",
+        ));
+    }
+    response.bytes().await.map_err(|_| {
+        error(
+            "FIXVOX_PREWARM_FAILED",
+            "Fixvox connection prewarm response could not be read.",
+        )
+    })?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn prewarm_fixvox_managed_transcription() -> Result<(), RedactedHostRuntimeError> {
-    // Canonical runtime admission is authoritative immediately before dispatch;
-    // desktop preflight/prewarm is intentionally a no-op.
+    if let Ok(backend_base_url) = fixvox_cloud::resolve_backend_base_url(&read_host_env_value) {
+        let _ = prewarm_fixvox_connection(&backend_base_url).await;
+    }
     Ok(())
 }
 
@@ -3982,6 +4013,67 @@ mod tests {
             .get_or_init(|| Mutex::new(()))
             .lock()
             .expect("preflight test lock should not be poisoned")
+    }
+
+    #[test]
+    fn prewarm_reuses_the_shared_http_connection_and_only_calls_health() {
+        use std::io::{Read, Write};
+        use std::net::{TcpListener, TcpStream};
+
+        fn read_request(stream: &mut TcpStream) -> String {
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 1024];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let count = stream
+                    .read(&mut chunk)
+                    .expect("prewarm request should be readable");
+                assert!(count > 0, "prewarm connection closed before the request");
+                request.extend_from_slice(&chunk[..count]);
+            }
+            String::from_utf8(request).expect("prewarm request should be UTF-8")
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("test listener should bind");
+        let address = listener
+            .local_addr()
+            .expect("test listener should expose its address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("prewarm should connect");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .expect("test timeout should apply");
+            let first = read_request(&mut stream);
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\nConnection: keep-alive\r\n\r\n{\"ok\":true}",
+                )
+                .expect("first health response should write");
+            let second = read_request(&mut stream);
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}",
+                )
+                .expect("second health response should write");
+            [first, second]
+        });
+
+        tauri::async_runtime::block_on(async {
+            let backend = format!("http://{address}");
+            prewarm_fixvox_connection(&backend)
+                .await
+                .expect("first prewarm should succeed");
+            prewarm_fixvox_connection(&backend)
+                .await
+                .expect("second prewarm should reuse the connection");
+        });
+
+        for request in server.join().expect("test server should finish") {
+            assert!(request.starts_with("GET /health HTTP/1.1\r\n"));
+            assert!(request.to_ascii_lowercase().contains(
+                &format!("user-agent: {}", fixvox_cloud::FIXVOX_TAURI_USER_AGENT)
+                    .to_ascii_lowercase(),
+            ));
+        }
     }
 
     #[test]
