@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta
+      name="description"
+      content="Fixvox is a focused Windows dictation app. Speak naturally and place clear text in the app where you are already working."
+    />
+    <link rel="icon" type="image/png" href="/fixvox-mark.png" />
+    <title>Fixvox | Dictation for Windows</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Fixvox home">
+        <img src="/fixvox-mark.png" alt="" width="32" height="32" />
+        <span>Fixvox</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#demo">Demo</a>
+        <a href="#setup">Setup</a>
+        <a href="#plan">Plan</a>
+      </nav>
+      <a class="button button-small button-secondary" href="mailto:founder@fixvox.com?subject=Fixvox%20paid%20alpha">Join alpha</a>
+    </header>
+
+    <main id="top">
+      <section class="hero section-shell">
+        <div class="hero-copy">
+          <p class="status-label">Windows paid alpha · $7/month</p>
+          <h1>Dictate where you already write.</h1>
+          <p class="hero-lede">
+            Fixvox gives Windows a compact voice dock. Press the shortcut, speak naturally, and place clear text in the app that already has your attention.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="mailto:founder@fixvox.com?subject=Fixvox%20paid%20alpha">Join the paid alpha</a>
+            <a class="button button-secondary installer-link" href="#installer-status">Download for Windows</a>
+          </div>
+          <dl class="hero-facts" aria-label="Product facts">
+            <div><dt>Platform</dt><dd>Windows 10 and 11</dd></div>
+            <div><dt>Setup</dt><dd>Google account first</dd></div>
+            <div><dt>Support</dt><dd>Founder assisted</dd></div>
+          </dl>
+        </div>
+
+        <div class="product-stage" aria-label="Fixvox account setup and voice dock preview">
+          <div class="app-frame">
+            <div class="app-frame-bar">
+              <span><img src="/fixvox-mark.png" alt="" width="20" height="20" /> Fixvox Settings</span>
+              <span>Account</span>
+            </div>
+            <img
+              class="account-shot"
+              src="/fixvox-account.png"
+              alt="Fixvox account settings showing Google sign-in before dictation"
+              width="752"
+              height="480"
+            />
+          </div>
+          <button class="voice-dock" type="button" aria-label="Try the Fixvox voice dock" data-state="idle">
+            <span class="dock-dots" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </span>
+            <span class="dock-state">Click to try the dock</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="trust-strip" aria-label="Common writing surfaces">
+        <span>Messages and replies</span>
+        <span>Documents and notes</span>
+        <span>Forms, tickets and comments</span>
+      </section>
+
+      <section class="demo section-shell" id="demo">
+        <div class="section-copy">
+          <p class="status-label">Live text demo</p>
+          <h2>Speak roughly. Keep the useful text.</h2>
+          <p>
+            The first public workflow stays focused on direct dictation. No separate editor, no transcript dashboard, and no claim that text was delivered when Windows could not confirm it.
+          </p>
+        </div>
+        <div class="demo-panel">
+          <div class="demo-tabs" role="tablist" aria-label="Dictation examples">
+            <button type="button" role="tab" aria-selected="true" data-demo="reply">Reply</button>
+            <button type="button" role="tab" aria-selected="false" data-demo="note">Work note</button>
+            <button type="button" role="tab" aria-selected="false" data-demo="comment">Code comment</button>
+          </div>
+          <div class="demo-grid">
+            <div>
+              <span class="demo-label">You say</span>
+              <p id="demo-input">"thanks i can review this after lunch and send notes before end of day"</p>
+            </div>
+            <div class="demo-output">
+              <span class="demo-label">Fixvox writes</span>
+              <p id="demo-output">Thanks, I can review this after lunch and send notes before end of day.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="setup-section" id="setup">
+        <div class="section-shell setup-layout">
+          <div class="setup-visual">
+            <img
+              src="/fixvox-onboarding.png"
+              alt="Fixvox initial setup asking the user to continue with Google"
+              width="900"
+              height="500"
+            />
+          </div>
+          <div class="section-copy">
+            <p class="status-label">First run</p>
+            <h2>Ready means the account and this computer are confirmed.</h2>
+            <ol class="setup-steps">
+              <li><span>1</span><div><strong>Install Fixvox</strong><p>Use the Windows installer from the current Tauri release.</p></div></li>
+              <li><span>2</span><div><strong>Connect your account</strong><p>Google sign-in links the computer automatically.</p></div></li>
+              <li><span>3</span><div><strong>Choose microphone and shortcut</strong><p>Finish setup, then dictate from any supported text field.</p></div></li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section class="plan section-shell" id="plan">
+        <div class="plan-copy">
+          <p class="status-label">Alpha plan</p>
+          <h2>Start with focused Windows dictation.</h2>
+          <p>Pay monthly, get direct setup help, and shape the product with real use while the alpha remains small.</p>
+        </div>
+        <div class="plan-panel">
+          <p class="plan-price"><strong>$7</strong><span>/month</span></p>
+          <ul>
+            <li>Compact voice dock and keyboard shortcut</li>
+            <li>Cleanup for natural speech</li>
+            <li>Account-first setup and device linking</li>
+            <li>Clear recovery when delivery is uncertain</li>
+          </ul>
+          <a class="button button-primary" href="mailto:founder@fixvox.com?subject=Fixvox%20paid%20alpha">Join for $7/month</a>
+          <a class="installer-link plan-download" href="#installer-status">Already activated? Download Fixvox</a>
+          <p class="installer-status" id="installer-status" role="status">
+            The corrected Tauri installer is awaiting publication. The production page will keep its current download until the new asset is verified.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <a class="brand" href="#top"><img src="/fixvox-mark.png" alt="" width="28" height="28" /><span>Fixvox</span></a>
+      <span>Windows dictation · Paid alpha · <span id="footer-year">2026</span></span>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

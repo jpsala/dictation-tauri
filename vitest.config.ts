@@ -18,6 +18,7 @@ export default defineConfig({
       "tests/settings/**/*.test.tsx",
       "tests/onboarding/**/*.test.ts",
       "tests/onboarding/**/*.test.tsx",
+      "tests/site/**/*.test.ts",
       "tests/cloud-contract/**/*.test.ts",
     ],
     passWithNoTests: false,
