@@ -112,4 +112,4 @@ Hacer una auditoría docs/UI provider-free de todos los strings y estados visibl
 
 - Screenshot reportado por JP: companion `Review only` después de selection transform rechazado.
 - `docs/tracks/standard-product-ux-redesign/copy-and-error-contract.md` ya define Spanish-first, una acción primaria y ocultamiento de términos internos; esta track debe cerrar la brecha entre ese contrato y las superficies reales.
-- El hardening local del incidente eliminó paste-last para selection failure y agregó un estado específico, pero sigue pendiente una revisión integral y una release posterior.
+- El hardening puntual del incidente eliminó paste-last para selection failure y agregó un estado específico; quedó publicado en `fixvox-tauri-v0.1.0-20260724171409`. La revisión integral y la unificación Spanish-first siguen pendientes.

@@ -211,8 +211,8 @@ Archivos relevantes:
 - Se creo y publico el perfil productivo `pro` mediante el repository command auditable y se asigno solo al device afectado; backup previo, health/readiness y servicios quedaron verdes. El registro provider-free resolvio `pro` con `selection_transform` y `managed_llm`.
 - JP repitio la transformacion sin reiniciar la app y confirmo reemplazo exitoso. El historial local registro `selection_transform` con `paste_sent`; no se persistio ni reporto texto crudo.
 - El estado auth local sigue sin account linkage canonico y conserva un snapshot `basic` viejo mientras el runtime server-owned ya aplica `pro`; no usar ese cache para denegar una capacidad recien concedida. El cliente mapea el `403 engine_not_allowed/capability_disabled` del servidor a un error redacted especifico.
-- Recovery local pendiente de release ahora muestra `Selected text unchanged`, conserva Copy transcript y elimina `Paste last (safe)` en fallos de selection transform para no reemplazar la seleccion con la instruccion dictada.
-- Checks: voice dock/companion/app-delivery `45/45`, Rust focal `1/1`, build y cargo check verdes. Cambios sin commit, push ni release.
+- Recovery publicado muestra `Selected text unchanged`, conserva Copy transcript y elimina `Paste last (safe)` en fallos de selection transform para no reemplazar la seleccion con la instruccion dictada.
+- Source `aaeb496` pusheado; release Windows pasó 47 archivos/249 tests focales, frontend, Rust fmt/check/test compile y NSIS. Prerelease `fixvox-tauri-v0.1.0-20260724171409`, SHA-256 local/publicado/redescargado `b79d531ea963c7d1dceaff150a36f2da3d727400417b7fead2dbbec85e9dcabe`.
 
 ## Preguntas Abiertas Reducidas
 
