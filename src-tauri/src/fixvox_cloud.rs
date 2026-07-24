@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
     process::Command,
-    sync::OnceLock,
+    sync::{Mutex, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -25,6 +25,13 @@ pub(crate) struct FixvoxCloudRuntimeConfig {
     pub(crate) backend_base_url: String,
     pub(crate) install_id: String,
     pub(crate) device_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FixvoxDeviceConfirmation {
+    backend_base_url: String,
+    install_id: String,
+    device_id: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -344,6 +351,8 @@ pub(crate) trait DeviceRegisterHttpClient {
 }
 
 static FIXVOX_HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+static FIXVOX_DEVICE_CONFIRMATION: OnceLock<Mutex<Option<FixvoxDeviceConfirmation>>> =
+    OnceLock::new();
 
 pub(crate) fn fixvox_http_client() -> Result<reqwest::Client, FixvoxCloudError> {
     if let Some(client) = FIXVOX_HTTP_CLIENT.get() {
@@ -1810,6 +1819,64 @@ fn has_signed_in_local_context(
             .unwrap_or(false)
 }
 
+pub(crate) fn should_preserve_confirmed_signed_in(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+    previous: &FixvoxDeviceState,
+    confirmed_device_id: &str,
+) -> bool {
+    if previous.device_id.as_deref() != Some(confirmed_device_id) {
+        return false;
+    }
+
+    let auth_session = resolve_auth_session_state_path(env_lookup)
+        .ok()
+        .and_then(|path| read_auth_session_state(&path).ok())
+        .flatten();
+    has_signed_in_local_context(Some(previous), auth_session.as_ref())
+}
+
+fn device_confirmation_matches(backend_base_url: &str, state: &FixvoxDeviceState) -> bool {
+    let Some(device_id) = state.device_id.as_deref() else {
+        return false;
+    };
+    FIXVOX_DEVICE_CONFIRMATION
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()
+        .and_then(|confirmation| confirmation.clone())
+        .is_some_and(|confirmation| {
+            confirmation.backend_base_url == backend_base_url
+                && confirmation.install_id == state.install_id
+                && confirmation.device_id == device_id
+                && state.last_register_ok
+        })
+}
+
+fn remember_device_confirmation(backend_base_url: &str, state: &FixvoxDeviceState) {
+    let Some(device_id) = state.device_id.as_ref() else {
+        return;
+    };
+    if let Ok(mut confirmation) = FIXVOX_DEVICE_CONFIRMATION
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+    {
+        *confirmation = Some(FixvoxDeviceConfirmation {
+            backend_base_url: backend_base_url.to_string(),
+            install_id: state.install_id.clone(),
+            device_id: device_id.clone(),
+        });
+    }
+}
+
+fn forget_device_confirmation() {
+    if let Ok(mut confirmation) = FIXVOX_DEVICE_CONFIRMATION
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+    {
+        *confirmation = None;
+    }
+}
+
 fn build_setup_readiness(phase: &str) -> FixvoxSetupReadiness {
     FixvoxSetupReadiness {
         schema_version: FIXVOX_SETUP_READINESS_SCHEMA_VERSION,
@@ -2062,6 +2129,7 @@ pub(crate) async fn start_fixvox_cloud_login_with_env(
     env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
     open_external_browser: bool,
 ) -> Result<FixvoxCloudLoginStartStatus, FixvoxCloudError> {
+    register_or_refresh_device_with_reqwest(env_lookup).await?;
     let (.., device_state, backend_base_url) = resolve_or_create_device_state(env_lookup)?;
     let device_id = device_state.device_id.ok_or_else(|| {
         error(
@@ -2144,12 +2212,13 @@ pub(crate) fn policy_allows_admin_settings() -> bool {
 }
 
 #[tauri::command]
-pub fn get_fixvox_cloud_status() -> Result<FixvoxCloudStatus, FixvoxCloudError> {
-    get_fixvox_cloud_status_with_env(&read_env_value)
+pub async fn get_fixvox_cloud_status() -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    ensure_fixvox_device_bootstrapped_with_reqwest(&read_env_value).await
 }
 
 #[tauri::command]
-pub fn get_fixvox_setup_readiness() -> Result<FixvoxSetupReadiness, FixvoxCloudError> {
+pub async fn get_fixvox_setup_readiness() -> Result<FixvoxSetupReadiness, FixvoxCloudError> {
+    ensure_fixvox_device_bootstrapped_with_reqwest(&read_env_value).await?;
     get_fixvox_setup_readiness_with_env(&read_env_value)
 }
 
@@ -2206,11 +2275,13 @@ fn register_or_refresh_device_with_client(
             return Err(register_error);
         }
     };
+    let preserve_signed_in =
+        should_preserve_confirmed_signed_in(env_lookup, &state, &product.binding.device_id);
     let next_state = build_device_state_from_product_context(
         &config,
         &product.binding.device_id,
         &product.context,
-        false,
+        preserve_signed_in,
     )?;
     persist_device_state(&path, &next_state)?;
 
@@ -2348,6 +2419,17 @@ async fn bootstrap_device_with_reqwest(
     parse_product_bootstrap(value)
 }
 
+pub(crate) async fn ensure_fixvox_device_bootstrapped_with_reqwest(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
+    let (path, state, backend_base_url) = resolve_or_create_device_state(env_lookup)?;
+    if device_confirmation_matches(&backend_base_url, &state) {
+        return Ok(build_cloud_status(path, state, backend_base_url));
+    }
+
+    register_or_refresh_device_with_reqwest(env_lookup).await
+}
+
 async fn register_or_refresh_device_with_reqwest(
     env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
 ) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
@@ -2357,6 +2439,7 @@ async fn register_or_refresh_device_with_reqwest(
         install_id: state.install_id.clone(),
         device_id: state.device_id.clone(),
     };
+    forget_device_confirmation();
     let input = build_device_register_input(&config, env_lookup);
     let product = match bootstrap_device_with_reqwest(&config, input, None).await {
         Ok(product) => product,
@@ -2366,13 +2449,16 @@ async fn register_or_refresh_device_with_reqwest(
             return Err(register_error);
         }
     };
+    let preserve_signed_in =
+        should_preserve_confirmed_signed_in(env_lookup, &state, &product.binding.device_id);
     let next_state = build_device_state_from_product_context(
         &config,
         &product.binding.device_id,
         &product.context,
-        false,
+        preserve_signed_in,
     )?;
     persist_device_state(&path, &next_state)?;
+    remember_device_confirmation(&config.backend_base_url, &next_state);
 
     Ok(build_cloud_status(
         path,

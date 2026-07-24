@@ -1301,6 +1301,20 @@ async fn transcribe_captured_audio_with_provider_call(
     let managed_config = if use_direct_byok {
         None
     } else {
+        if let Err(reason) =
+            fixvox_cloud::ensure_fixvox_device_bootstrapped_with_reqwest(env_lookup).await
+        {
+            return HostTranscriptionResponse::SetupError {
+                error: error(&reason.code, &reason.message),
+                provider: Some("fixvox-cloud".to_string()),
+                model: request
+                    .model
+                    .clone()
+                    .or_else(|| Some(DEFAULT_MODEL.to_string())),
+                retryable: true,
+                redacted: true,
+            };
+        }
         match read_managed_runtime_config(env_lookup, &request) {
             Ok(config) => Some(config),
             Err(reason) => {

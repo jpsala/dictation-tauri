@@ -3,6 +3,7 @@ import {
   deriveFixvoxAuthPolicyView,
   deriveFixvoxCloudHealth,
   formatFixvoxStateLocation,
+  isFixvoxAccountReady,
   resolveSettingsAccess,
   shouldConfirmFixvoxCloudOperation,
   summarizeFixvoxCloudProblem,
@@ -234,6 +235,35 @@ describe("Fixvox cloud settings contract", () => {
     });
     expect(view.capabilityLabel).toContain("managed dictation");
     expect(JSON.stringify(view)).not.toContain("user_1234567890abcdef");
+  });
+
+  it("fails closed when a linked local account lacks current backend confirmation", () => {
+    const staleLocalStatus: FixvoxCloudStatus = {
+      backendBaseUrl: "https://auth-fixvox.jpsala.dev",
+      statePath: "redacted",
+      installIdPresent: true,
+      deviceRegistered: true,
+      lastRegisterOk: false,
+      authPolicy: {
+        accessMode: "signed_in",
+        capabilities: ["managed_stt"],
+        redacted: true,
+      },
+      capabilities: {
+        canUseManagedTranscription: true,
+        canSeeAdvancedSettings: false,
+        canUseDebugTools: false,
+      },
+      redacted: true,
+    };
+
+    expect(isFixvoxAccountReady(staleLocalStatus)).toBe(false);
+    expect(deriveFixvoxCloudHealth(staleLocalStatus)).toMatchObject({
+      tone: "danger",
+      badge: "Requiere atención",
+      activationLabel: "Por confirmar",
+      managedLabel: "Bloqueado",
+    });
   });
 
   it("keeps real cloud operations behind explicit user confirmation", () => {

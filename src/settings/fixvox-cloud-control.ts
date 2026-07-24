@@ -65,6 +65,7 @@ export type SettingsAccess = {
 
 export function isFixvoxAccountReady(status: FixvoxCloudStatus | undefined): boolean {
   return status?.deviceRegistered === true &&
+    status.lastRegisterOk === true &&
     status.authPolicy?.accessMode === "signed_in" &&
     status.capabilities?.canUseManagedTranscription === true;
 }
@@ -286,6 +287,19 @@ export function deriveFixvoxCloudHealth(status: FixvoxCloudStatus | undefined): 
       policyLabel,
       managedLabel: managed ? "Disponible con datos guardados" : "Bloqueado",
       nextAction: "Volvé a comprobar antes del próximo dictado.",
+    };
+  }
+
+  if (status.lastRegisterOk !== true) {
+    return {
+      tone: "danger",
+      badge: "Requiere atención",
+      headline: "No pudimos confirmar esta computadora",
+      detail: "El estado guardado no coincide todavía con el servicio.",
+      activationLabel: "Por confirmar",
+      policyLabel,
+      managedLabel: "Bloqueado",
+      nextAction: "Volvé a comprobar. Si continúa, revisá la conexión.",
     };
   }
 

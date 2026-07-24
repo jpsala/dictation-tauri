@@ -24,6 +24,7 @@ function cloudStatusIsReady(value: unknown): boolean {
   const capabilities = status.capabilities;
   return status.redacted === true &&
     status.deviceRegistered === true &&
+    status.lastRegisterOk === true &&
     Boolean(authPolicy && typeof authPolicy === "object" && (authPolicy as Record<string, unknown>).accessMode === "signed_in") &&
     Boolean(capabilities && typeof capabilities === "object" && (capabilities as Record<string, unknown>).canUseManagedTranscription === true);
 }

@@ -27,6 +27,7 @@ describe("Tauri account readiness gate", () => {
       if (command === "get_fixvox_cloud_status") {
         return {
           deviceRegistered: true,
+          lastRegisterOk: true,
           authPolicy: { accessMode: "signed_in" },
           capabilities: { canUseManagedTranscription: true },
           redacted: true,
@@ -46,6 +47,7 @@ describe("Tauri account readiness gate", () => {
       if (command === "get_fixvox_cloud_status") {
         return {
           deviceRegistered: false,
+          lastRegisterOk: false,
           authPolicy: { accessMode: "signed_out" },
           capabilities: { canUseManagedTranscription: false },
           redacted: true,

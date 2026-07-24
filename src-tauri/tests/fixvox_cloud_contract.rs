@@ -164,6 +164,7 @@ fn current_tauri_routes_use_canonical_product_boundaries_and_retain_named_aliase
         "pub(crate) async fn start_fixvox_cloud_login_with_env(",
         "fn policy_allows_admin_settings(",
     );
+    assert!(auth_start.contains("register_or_refresh_device_with_reqwest(env_lookup).await?"));
     assert!(auth_start.contains("/product/v1/desktop/auth/sessions"));
     assert!(!auth_start.contains("build_fixvox_login_verification_url"));
 
@@ -193,7 +194,22 @@ fn current_tauri_routes_use_canonical_product_boundaries_and_retain_named_aliase
         "async fn transcribe_captured_audio_with_provider_call(",
         "fn read_host_runtime_config(",
     );
+    assert!(canonical_runtime.contains("ensure_fixvox_device_bootstrapped_with_reqwest"));
     assert!(canonical_runtime.contains("transcribe_fixvox_managed_audio"));
+    assert!(
+        canonical_runtime
+            .find("ensure_fixvox_device_bootstrapped_with_reqwest")
+            .unwrap()
+            < canonical_runtime
+                .find("transcribe_fixvox_managed_audio")
+                .unwrap()
+    );
+    assert_eq!(
+        canonical_runtime
+            .matches("transcribe_fixvox_managed_audio(")
+            .count(),
+        1
+    );
     assert!(!canonical_runtime.contains("preflight_fixvox_managed_transcription"));
     assert!(!canonical_runtime.contains("preflight_endpoint"));
 
@@ -478,6 +494,113 @@ fn register_command_helper_persists_policy_snapshot_and_redacts_ids() {
     assert!(!format!("{status:?}").contains("dev_test_1234567890abcdef"));
 
     let _ = std::fs::remove_file(state_path);
+}
+
+#[test]
+fn repairs_device_not_registered_before_runtime_without_provider_calls_or_retries() {
+    let appdata_root = unique_temp_state_path("fixvox-device-repair-root");
+    let state_path = appdata_root
+        .join("dictation-tauri")
+        .join("fixvox-device-state.json");
+    let auth_path = appdata_root
+        .join("dictation-tauri")
+        .join("fixvox-auth-session.v1.json");
+    let appdata_root = appdata_root.to_string_lossy().to_string();
+    persist_device_state(
+        &state_path,
+        &FixvoxDeviceState {
+            install_id: "install_repair_123456".to_string(),
+            device_id: Some("dev_missing_from_backend".to_string()),
+            last_register_ok: true,
+            last_register_error_code: None,
+            last_register_error_message: None,
+            policy_id: Some("pro".to_string()),
+            policy_label: Some("Pro".to_string()),
+            transport_policy: None,
+            policy_snapshot: None,
+            auth_policy: Some(FixvoxAuthPolicyStatus {
+                access_mode: "signed_in".to_string(),
+                user_redacted: None,
+                group_label: None,
+                policy_template_id: Some("pro".to_string()),
+                policy_template_label: Some("Pro".to_string()),
+                capabilities: vec!["managed_stt".to_string()],
+                limits: None,
+                redacted: true,
+            }),
+        },
+    )
+    .expect("stale local device state should persist");
+    persist_auth_session_state(
+        &auth_path,
+        &FixvoxAuthSessionState {
+            status: "signed_in".to_string(),
+            flow: "product_auth_handoff".to_string(),
+            session_id: "redacted-session".to_string(),
+            state_nonce: "redacted-state".to_string(),
+            user_id: None,
+            user_email: None,
+            session_secret: None,
+            refresh_secret: None,
+            issued_at: "2026-07-24T00:00:00Z".to_string(),
+            expires_at: None,
+        },
+    )
+    .expect("stale local auth state should persist");
+    let client = FakeRegisterClient {
+        endpoint: RefCell::new(None),
+        body: RefCell::new(None),
+        response: product_bootstrap_response("dev_repaired_backend", "basic"),
+    };
+    let env = |key: &str| match key {
+        "APPDATA" => Some(appdata_root.clone()),
+        _ => None,
+    };
+    let stale_state = read_device_state(&state_path)
+        .expect("stale state should be readable")
+        .expect("stale state should exist");
+    assert!(should_preserve_confirmed_signed_in(
+        &env,
+        &stale_state,
+        "dev_missing_from_backend"
+    ));
+    assert!(!should_preserve_confirmed_signed_in(
+        &env,
+        &stale_state,
+        "dev_repaired_backend"
+    ));
+
+    let status = register_fixvox_device_with_client_and_env(&client, &env)
+        .expect("provider-free bootstrap should repair the backend binding");
+
+    assert_eq!(
+        client.endpoint.borrow().as_deref(),
+        Some("https://auth-fixvox.jpsala.dev/product/v1/desktop/bootstrap")
+    );
+    let body = client.body.borrow();
+    let body = body.as_ref().expect("bootstrap body should be captured");
+    assert_eq!(body["installId"], "install_repair_123456");
+    assert!(!body.to_string().contains("dev_missing_from_backend"));
+    assert!(!client
+        .endpoint
+        .borrow()
+        .as_deref()
+        .unwrap_or_default()
+        .contains("transcriptions"));
+    assert_eq!(
+        status
+            .auth_policy
+            .as_ref()
+            .map(|policy| policy.access_mode.as_str()),
+        Some("device")
+    );
+    let repaired = read_device_state(&state_path)
+        .expect("repaired state should be readable")
+        .expect("repaired state should exist");
+    assert_eq!(repaired.device_id.as_deref(), Some("dev_repaired_backend"));
+    assert!(repaired.last_register_ok);
+
+    let _ = std::fs::remove_dir_all(appdata_root);
 }
 
 #[test]
