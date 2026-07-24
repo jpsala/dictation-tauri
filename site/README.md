@@ -1,7 +1,15 @@
 # Fixvox Pages site
 
-This directory is the source owner for the public Fixvox landing page. It will
-replace the legacy build currently served at `https://fixvox.pages.dev`.
+This directory owns the public Fixvox landing page served at
+`https://fixvox.pages.dev`.
+
+## Current production
+
+- Source deployment commit: `6ba7f54a8484e8702682debbd160bca5d73ec205`.
+- Cloudflare Pages deployment: `https://0e00217a.fixvox.pages.dev`.
+- Installer release: `fixvox-tauri-v0.1.0-20260724125602`.
+- Installer SHA-256:
+  `53115eb673f2b9e72a6782c151a29a122675d2dcaf34a68dbb3e3e048510bd2a`.
 
 ## Local commands
 
