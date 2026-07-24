@@ -12,6 +12,7 @@ import {
   getTranscriptReview,
   mapPipelineEvidenceToDesktopEvidence,
   resolveDictationPostProcessPolicy,
+  selectionTransformFailureReason,
 } from "../../src/App";
 import type { DesktopRuntimeResult } from "../../src/desktop-control/controller";
 import type { SimulatedRunSummary } from "../../src/pipeline/types";
@@ -377,6 +378,15 @@ describe("App delivery fallback", () => {
     });
   });
 
+  it("explains policy-denied selection editing without exposing internal routing", () => {
+    expect(selectionTransformFailureReason("FIXVOX_CAPABILITY_NOT_ALLOWED")).toBe(
+      "Selected text was not changed because this account does not include selection editing. The dictated instruction remains available to copy.",
+    );
+    expect(selectionTransformFailureReason("FIXVOX_POLICY_STALE")).toContain(
+      "Refresh account access in Settings",
+    );
+  });
+
   it("classifies transform failure after STT as selection-transform recovery", () => {
     const recovered = applySelectionTransformFailureToRuntimeResult({
       runtime: {
@@ -388,17 +398,17 @@ describe("App delivery fallback", () => {
     const summary = recovered.summary as SimulatedRunSummary;
 
     expect(recovered.deliveryStrategy).toBe("review_only");
-    expect(recovered.deliveryReason).toContain("Selection transform failed");
+    expect(recovered.deliveryReason).toContain("Selected text was not changed");
     expect(summary.terminalState).toBe("done");
     expect(summary.error).toMatchObject({
       phase: "selection_transform",
-      message: expect.stringContaining("Selection transform failed"),
+      message: expect.stringContaining("Selection editing failed"),
     });
     expect(summary.error?.phase).not.toBe("transcribing");
     expect(summary.deliveryEvidence).toMatchObject({
       status: "available",
       output: "transcript remains visible",
-      reason: expect.stringContaining("transcript is available"),
+      reason: expect.stringContaining("dictated instruction remains available"),
     });
     expect(summary.runtimeTelemetryStages).toEqual(
       expect.arrayContaining([

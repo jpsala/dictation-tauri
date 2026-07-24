@@ -144,6 +144,34 @@ describe("VoiceDock UI", () => {
     expectNoAction(html, "Retry");
   });
 
+  it("shows a specific selection failure and never offers paste-last for the dictated instruction", () => {
+    const { html } = renderDock(
+      createVoiceDockState(
+        session({
+          state: "reviewing",
+          delivery: {
+            status: "available",
+            strategy: "review_only",
+            output: "dictated instruction",
+            message: "Selected text was not changed.",
+          },
+        }),
+        {
+          canPasteLastSafe: true,
+          selectionTransformFailed: true,
+          selectionTransformFailureMessage:
+            "Selected text was not changed because this account does not include selection editing. The dictated instruction remains available to copy.",
+        },
+      ),
+    );
+
+    expect(html).toContain("Selection unavailable");
+    expect(html).toContain("Selected text unchanged");
+    expect(html).toContain("this account does not include selection editing");
+    expectAction(html, "Copy transcript");
+    expectNoAction(html, "Paste last (safe)");
+  });
+
   it("renders failed recovery actions and lets cancellation settle quietly", () => {
     const failed = renderDock(
       createVoiceDockState(

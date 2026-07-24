@@ -110,9 +110,88 @@ interface Env {
   DISCORD_SUPPORT_SCAN_ENABLED?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_SUPPORT_ENABLED?: string;
+  FIXVOX_VPS_CANARY_ORIGIN_URL?: string;
+  FIXVOX_VPS_ACCESS_CLIENT_ID?: string;
+  FIXVOX_VPS_ACCESS_CLIENT_SECRET?: string;
   USAGE: KvNamespaceLike;
   USAGE_COUNTERS: DurableObjectNamespace<UsageCounterDurableObject>;
   CONTROL_PLANE_PUBLISH_LOCKS: DurableObjectNamespace<ControlPlanePublishDurableObject>;
+}
+
+const VPS_ROUTING_CANARY_KEY = "control:vps-routing-canary:v1";
+const VPS_ROUTING_CANARY_HEADER = "x-fixvox-vps-canary";
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function maybeRouteVpsCanary(
+  env: Env,
+  request: Request,
+  deviceId: string,
+  fetchImpl: typeof fetch,
+): Promise<Response | null> {
+  const rawConfig = await env.USAGE.get(VPS_ROUTING_CANARY_KEY);
+  if (!rawConfig) return null;
+
+  let config: { enabled?: unknown; deviceSha256?: unknown };
+  try {
+    config = JSON.parse(rawConfig) as { enabled?: unknown; deviceSha256?: unknown };
+  } catch {
+    return json({ error: { message: "vps_canary_config_invalid" } }, 503);
+  }
+  if (config.enabled !== true) return null;
+
+  const expectedDeviceHash = typeof config.deviceSha256 === "string" ? config.deviceSha256 : "";
+  if (!/^[a-f0-9]{64}$/.test(expectedDeviceHash)) {
+    return json({ error: { message: "vps_canary_config_invalid" } }, 503);
+  }
+  if (await sha256Hex(deviceId) !== expectedDeviceHash) return null;
+
+  const originValue = env.FIXVOX_VPS_CANARY_ORIGIN_URL?.trim();
+  const accessClientId = env.FIXVOX_VPS_ACCESS_CLIENT_ID?.trim();
+  const accessClientSecret = env.FIXVOX_VPS_ACCESS_CLIENT_SECRET?.trim();
+  if (!originValue || !accessClientId || !accessClientSecret) {
+    return json({ error: { message: "vps_canary_origin_unavailable" } }, 503);
+  }
+  let origin: URL;
+  try {
+    origin = new URL(originValue);
+  } catch {
+    return json({ error: { message: "vps_canary_origin_invalid" } }, 503);
+  }
+  if (
+    origin.protocol !== "https:"
+    || origin.hostname !== "fixvox-vps-origin.jpsala.dev"
+    || origin.port
+    || origin.pathname !== "/"
+    || origin.username
+    || origin.password
+    || origin.search
+    || origin.hash
+  ) {
+    return json({ error: { message: "vps_canary_origin_invalid" } }, 503);
+  }
+
+  const headers = new Headers(request.headers);
+  for (const name of [VPS_ROUTING_CANARY_HEADER, "host", "cookie", "cf-connecting-ip", "cf-ipcountry", "cf-ray", "x-forwarded-for", "x-forwarded-proto", "content-length"]) {
+    headers.delete(name);
+  }
+  headers.set("CF-Access-Client-Id", accessClientId);
+  headers.set("CF-Access-Client-Secret", accessClientSecret);
+  const target = new URL("/v1/audio/transcriptions", origin);
+  const upstream = await fetchImpl(target, {
+    method: "POST",
+    headers,
+    body: request.body,
+    redirect: "manual",
+    signal: AbortSignal.timeout(15_000),
+  });
+  const responseHeaders = new Headers(upstream.headers);
+  responseHeaders.delete("set-cookie");
+  responseHeaders.set("X-Fixvox-Runtime-Route", "vps-canary");
+  return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });
 }
 
 function normalizeInviteCode(value: string | undefined): string | null {
@@ -1419,6 +1498,9 @@ export default {
       if (!deviceId) {
         return missingDeviceIdResponse();
       }
+
+      const vpsCanaryResponse = await maybeRouteVpsCanary(env, request, deviceId, providerClient.fetch);
+      if (vpsCanaryResponse) return vpsCanaryResponse;
 
       const requestStartedAt = handlerStartedAt;
       let upstreamRequest = request;

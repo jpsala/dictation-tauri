@@ -152,6 +152,39 @@ describe("voice dock visual semantics", () => {
     });
   });
 
+  it("keeps failed selection editing fail-closed and removes paste-last", () => {
+    const state = createVoiceDockState(
+        session({
+          state: "reviewing",
+          delivery: {
+            status: "available",
+            strategy: "review_only",
+            output: "dictated instruction",
+            message: "Selected text was not changed.",
+          },
+        }),
+        {
+          canPasteLastSafe: true,
+          selectionTransformFailed: true,
+          selectionTransformFailureMessage:
+            "Selected text was not changed because this account does not include selection editing. The dictated instruction remains available to copy.",
+        },
+      );
+
+    expect(state).toMatchObject({
+      phase: "review",
+      statusText: "Selection unavailable",
+      canCopy: true,
+      canPasteLastSafe: false,
+      recovery: {
+        kind: "copy",
+        title: "Selected text unchanged",
+        primaryAction: "copy",
+      },
+    });
+    expect(state.recovery?.secondaryAction).toBeUndefined();
+  });
+
   it("keeps assistant/Lulu review out of transcript recovery and residual ready chips", () => {
     expect(
       createVoiceDockState(

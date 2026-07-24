@@ -205,6 +205,15 @@ Archivos relevantes:
 - `src-tauri/src/companion_window.rs` (`watch_preset_picker_focus`).
 - `src/voice-dock/VoiceDock.tsx` y `visual-semantics.ts` (badge persistente y clear accesible durante todos los estados).
 
+## Update 2026-07-24: Policy Denial Y Recovery Fail-Closed
+
+- Dogfood instalado reprodujo seleccion + dictado en `Review only`: STT habia terminado, pero el perfil efectivo productivo `basic` no incluia `selection_transform`, aunque el engine de selection ya existia.
+- Se creo y publico el perfil productivo `pro` mediante el repository command auditable y se asigno solo al device afectado; backup previo, health/readiness y servicios quedaron verdes. El registro provider-free resolvio `pro` con `selection_transform` y `managed_llm`.
+- JP repitio la transformacion sin reiniciar la app y confirmo reemplazo exitoso. El historial local registro `selection_transform` con `paste_sent`; no se persistio ni reporto texto crudo.
+- El estado auth local sigue sin account linkage canonico y conserva un snapshot `basic` viejo mientras el runtime server-owned ya aplica `pro`; no usar ese cache para denegar una capacidad recien concedida. El cliente mapea el `403 engine_not_allowed/capability_disabled` del servidor a un error redacted especifico.
+- Recovery local pendiente de release ahora muestra `Selected text unchanged`, conserva Copy transcript y elimina `Paste last (safe)` en fallos de selection transform para no reemplazar la seleccion con la instruccion dictada.
+- Checks: voice dock/companion/app-delivery `45/45`, Rust focal `1/1`, build y cargo check verdes. Cambios sin commit, push ni release.
+
 ## Preguntas Abiertas Reducidas
 
 - Como se expone en Settings/Policy si `reviewBeforeDelivery` debe poder volver a modo review antes de replace?

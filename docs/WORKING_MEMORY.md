@@ -6,15 +6,15 @@ Router operativo corto. El detalle durable vive en topics, tracks, specs y decis
 
 ## Foco Único De Ejecución
 
-- **Estado:** `complete`.
-- **Referencia:** `docs/tracks/fixvox-clean-install-device-bootstrap-hotfix-brief.md`.
-- **Siguiente acción:** Abrir un nuevo `/flow` cuando haya un objetivo distinto.
+- **Estado:** `needs_planning`.
+- **Siguiente acción:** En el próximo `/flow`, abrir `docs/tracks/user-facing-error-experience-review.md`, auditar provider-free los estados visibles de Dock + Companion y presentar el contrato de experiencia antes de editar implementación.
 
 ## Estado Vivo
 
 - Dictation Tauri y Control Room son el producto canónico. Cloudflare conserva front door, TLS y authority; el VPS sirve el hot path y `fixvox-proxy` queda como rollback sin Custom Domain. `C:/dev/fixvox` queda sólo como referencia para comportamiento Fixvox-like.
 - Spec 019 completó A-E y Gate F quedó completo: restart, rollback provider-loopback-compatible y restore aislado verdes. Current `68eae40e974909c5`; rollback inmediato `4075da53c365a8b1`; schema 6, markers 1/1, providers y OAuth Google configurados, bind loopback y `cloudflare-authority`. `73c7…`, `66652…`, `90ca…` y `c0deb…` siguen preservados; `9afa…` no es ready sobre schema 6. Cloudflare conserva front door/TLS y el hot path llega al VPS por Tunnel dedicado.
 - El desktop instalado mantiene compatibilidad `CF-DESKTOP`: artifacts release bajo app data y STT por el mismo alias público, ahora servido por VPS/PostgreSQL; la confirmación humana final del dictado queda pendiente.
+- Selection transform funciona nuevamente para JP. El hardening local de recovery sigue sin release y la revisión integral de errores visibles queda pendiente en `docs/tracks/user-facing-error-experience-review.md`; persisten como deuda separada el account linkage y el cache local de acceso.
 - Pi Chat Trusted Owner remoto quedó operativo. Conversation-first Batch 1 está completo; Batch 2 queda postergado mientras Checkpoint F sea el foco. Infraestructura estable: `docs/tracks/pi-prod-workspace.md`.
 - Standard Product UX completó implementación local. Operaciones de otra PC, provider, release o rollout viven detrás de `docs/tracks/standard-product-ux-external-operation-gate-plan.md`.
 - Instrumentación productiva autorizada quedó activa en Worker `e8c642c3-6543-4794-8f32-b763a48c105a`, desplegada desde un worktree limpio byte-parity con la base productiva; rollback exacto: versión 158 `df416730-61b8-4222-ab5f-282879251db9`. Tres STT reales aislaron todo el overhead Worker: budget events `1326/326/421 ms`, engine `107/95/88`, prompt `44/47/71`, budget config `49/44/66`, multipart `15/14/19`; parse/usage `0`. En warm, budget events explica 62.7% de `595.5 ms` promedio de overhead.
@@ -59,6 +59,7 @@ Router operativo corto. El detalle durable vive en topics, tracks, specs y decis
 | `pi-chat-conversation-first-ux.md` | Batch 1 completo; Batch 2 queda postergado. |
 | `standard-product-ux-external-operation-gate-plan.md` | Única puerta para operaciones externas. |
 | `app-audit-autonomous-implementation-plan.md` | Residual pendiente de decidir: cerrar o pausar. |
+| `user-facing-error-experience-review.md` | Pending high: auditar y rediseñar errores/recovery visibles antes de nueva implementación o release. |
 | `fixvox-registered-users-opportunities.md` | Roadmap pendiente de decidir o consolidar. |
 
 ## Lectura Por Frente

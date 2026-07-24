@@ -79,4 +79,6 @@ export type DockVisualOptions = {
   activePreset?: DockActivePreset;
   assistantModeEnabled?: boolean;
   resultSource?: "dictation" | "selection_transform" | "assistant";
+  selectionTransformFailed?: boolean;
+  selectionTransformFailureMessage?: string;
 };

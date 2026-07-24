@@ -24,7 +24,10 @@ export function createVoiceDockState(
   const hasOutput = hasDeliveryOutput(input);
   const inserted = deliveryWasInserted(getDelivery(input));
   const assistantResult = options.resultSource === "assistant";
-  const canPasteLastSafe = Boolean(options.canPasteLastSafe && hasOutput && !inserted && !assistantResult);
+  const selectionTransformFailed = options.selectionTransformFailed === true;
+  const canPasteLastSafe = Boolean(
+    options.canPasteLastSafe && hasOutput && !inserted && !assistantResult && !selectionTransformFailed,
+  );
   const canCopy = hasOutput && !inserted && !assistantResult;
   const canRetry = phase === "failed" || phase === "cancelled";
   const canStop = phase === "arming" || phase === "recording";
@@ -35,8 +38,10 @@ export function createVoiceDockState(
     canCopy,
     canPasteLastSafe,
     assistantResult,
+    selectionTransformFailed,
+    selectionTransformFailureMessage: options.selectionTransformFailureMessage,
   });
-  const status = getStatus(input, phase, { assistantResult });
+  const status = getStatus(input, phase, { assistantResult, selectionTransformFailed });
 
   return {
     phase,
@@ -112,10 +117,22 @@ function createRecoveryState(
     canCopy: boolean;
     canPasteLastSafe: boolean;
     assistantResult?: boolean;
+    selectionTransformFailed?: boolean;
+    selectionTransformFailureMessage?: string;
   },
 ): DockRecoveryState | undefined {
   if (phase === "review" && actions.assistantResult) {
     return undefined;
+  }
+
+  if (phase === "review" && actions.selectionTransformFailed) {
+    return {
+      kind: "copy",
+      title: "Selected text unchanged",
+      message: actions.selectionTransformFailureMessage ??
+        "Selection editing is unavailable. Nothing was replaced; the dictated instruction remains available to copy.",
+      primaryAction: actions.canCopy ? "copy" : undefined,
+    };
   }
 
   if (phase === "review" && actions.canCopy) {
@@ -184,7 +201,7 @@ function createRecoveryState(
 function getStatus(
   input: DockInputState,
   phase: VoiceDockPhase,
-  options: { assistantResult?: boolean } = {},
+  options: { assistantResult?: boolean; selectionTransformFailed?: boolean } = {},
 ): { text: string; detail?: string } {
   switch (phase) {
     case "idle":
@@ -196,6 +213,9 @@ function getStatus(
     case "processing":
       return { text: "Processing", detail: "Transcribing and preparing review." };
     case "review":
+      if (options.selectionTransformFailed) {
+        return { text: "Selection unavailable", detail: "Selected text was not changed. Copy the dictated instruction or update account access." };
+      }
       if (input.state !== "idle" && input.delivery?.status === "paste_observed") {
         return { text: "Paste verified", detail: "paste_observed: observer verified target insertion." };
       }

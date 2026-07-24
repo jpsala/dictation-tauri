@@ -481,6 +481,18 @@ export function applySelectionTransformOutputToRuntimeResult(input: {
   };
 }
 
+export function selectionTransformFailureReason(code?: string): string {
+  if (code === "FIXVOX_CAPABILITY_NOT_ALLOWED") {
+    return "Selected text was not changed because this account does not include selection editing. The dictated instruction remains available to copy.";
+  }
+
+  if (["FIXVOX_POLICY_MISSING", "FIXVOX_POLICY_STALE", "FIXVOX_POLICY_UNTRUSTED"].includes(code ?? "")) {
+    return "Selected text was not changed because account access could not be confirmed. Refresh account access in Settings, then try again. The dictated instruction remains available to copy.";
+  }
+
+  return "Selection editing failed after transcription. Selected text was not changed; the dictated instruction remains available to copy.";
+}
+
 export function applySelectionTransformFailureToRuntimeResult(input: {
   runtime: DesktopRuntimeResult;
   code?: string;
@@ -491,7 +503,7 @@ export function applySelectionTransformFailureToRuntimeResult(input: {
     return input.runtime;
   }
 
-  const reason = input.reason ?? "Selection transform failed after transcription; transcript is available for review and manual copy.";
+  const reason = input.reason ?? selectionTransformFailureReason(input.code);
   const summary = isSimulatedRunSummary(input.runtime.summary)
     ? {
         ...input.runtime.summary,
@@ -2269,7 +2281,7 @@ export function DockSurface() {
           return applySelectionTransformFailureToRuntimeResult({
             runtime: input.runtime,
             code: response.error.code,
-            reason: `Selection transform failed (${response.error.code}); dictated transcript is available for review and manual copy.`,
+            reason: selectionTransformFailureReason(response.error.code),
           });
         }
         return applySelectionTransformOutputToRuntimeResult({
@@ -2320,7 +2332,7 @@ export function DockSurface() {
         return applySelectionTransformFailureToRuntimeResult({
           runtime: input.runtime,
           code: response.error.code,
-          reason: `Selection transform failed (${response.error.code}); dictated transcript is available for review and manual copy.`,
+          reason: selectionTransformFailureReason(response.error.code),
         });
       } catch {
         return applySelectionTransformFailureToRuntimeResult({
@@ -2732,6 +2744,10 @@ export function DockSurface() {
       activePreset,
       resultSource: getDockResultSourceForPipelineUiResult(pipelineUiResult),
       assistantModeEnabled: pipelineUiResult.kind === "assistant" && !assistantHandledBySurface,
+      selectionTransformFailed: pipelineUi.summary?.error?.phase === "selection_transform",
+      selectionTransformFailureMessage: pipelineUi.summary?.error?.phase === "selection_transform"
+        ? pipelineUi.summary.error.message
+        : undefined,
       vuLevel: capture.state === "recording" ? dockVu.level : pipelineUi.status === "running" ? 0.42 : 0,
       vuBands: createDockVuBands(capture.state, pipelineUi.status, dockVu.bands),
     },

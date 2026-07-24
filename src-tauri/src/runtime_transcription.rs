@@ -934,10 +934,7 @@ async fn transform_selected_text_with_managed_chat(
             status.as_u16()
         );
         return HostSelectionTransformResponse::ProviderError {
-            error: error(
-                "FIXVOX_SELECTION_TRANSFORM_REQUEST_REJECTED",
-                "Fixvox managed selection transform was rejected by the cloud service.",
-            ),
+            error: selection_transform_rejection_error(status.as_u16(), &body),
             retryable: status.as_u16() >= 500,
             redacted: true,
         };
@@ -1010,6 +1007,46 @@ fn build_assistant_chat_history_block(history: &[HostAssistantChatMessage]) -> S
     format!(
         "Recent local Quick Chat context (oldest to newest, redacted UI text only):\n<ASSISTANT_HISTORY>\n{}\n</ASSISTANT_HISTORY>\n\n",
         lines.join("\n")
+    )
+}
+
+fn selection_transform_rejection_error(status: u16, body: &str) -> RedactedHostRuntimeError {
+    let rejection_code = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("error")
+                .and_then(|error| {
+                    error.as_str().map(str::to_string).or_else(|| {
+                        error
+                            .get("code")
+                            .and_then(serde_json::Value::as_str)
+                            .map(str::to_string)
+                    })
+                })
+                .or_else(|| {
+                    value
+                        .get("reason")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string)
+                })
+        });
+
+    if status == 403
+        && matches!(
+            rejection_code.as_deref(),
+            Some("engine_not_allowed" | "capability_disabled")
+        )
+    {
+        return error(
+            "FIXVOX_CAPABILITY_NOT_ALLOWED",
+            "Fixvox policy does not allow selection editing for this device.",
+        );
+    }
+
+    error(
+        "FIXVOX_SELECTION_TRANSFORM_REQUEST_REJECTED",
+        "Fixvox managed selection transform was rejected by the cloud service.",
     )
 }
 
@@ -4507,6 +4544,21 @@ mod tests {
 
         assert_eq!(denied.code, "FIXVOX_CAPABILITY_NOT_ALLOWED");
         assert!(!denied.message.to_ascii_lowercase().contains("gsk"));
+    }
+
+    #[test]
+    fn selection_transform_maps_server_policy_denial_without_trusting_cached_policy() {
+        let legacy = selection_transform_rejection_error(
+            403,
+            r#"{"error":"engine_not_allowed","reason":"engine_not_allowed"}"#,
+        );
+        let canonical =
+            selection_transform_rejection_error(403, r#"{"error":{"code":"capability_disabled"}}"#);
+        let other = selection_transform_rejection_error(503, r#"{"error":"service_unavailable"}"#);
+
+        assert_eq!(legacy.code, "FIXVOX_CAPABILITY_NOT_ALLOWED");
+        assert_eq!(canonical.code, "FIXVOX_CAPABILITY_NOT_ALLOWED");
+        assert_eq!(other.code, "FIXVOX_SELECTION_TRANSFORM_REQUEST_REJECTED");
     }
 
     #[test]

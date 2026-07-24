@@ -1836,6 +1836,76 @@ describe("managed execution preflight", () => {
     }
   });
 
+  test("VPS routing canary routes the consumed header-free request only for the allowlisted identity", async () => {
+    const store = new MemoryKv();
+    const canary = await registerDevice(store, {
+      installId: "install-vps-routing-canary",
+      deviceId: "device-vps-routing-canary",
+    });
+    const nonCanary = await registerDevice(store, {
+      installId: "install-vps-routing-non-canary",
+      deviceId: "device-vps-routing-non-canary",
+    });
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canary.deviceId));
+    const deviceSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    await store.put("control:vps-routing-canary:v1", JSON.stringify({ enabled: true, deviceSha256 }));
+    const env = {
+      ...createEnv(store),
+      FIXVOX_VPS_CANARY_ORIGIN_URL: "https://fixvox-vps-origin.jpsala.dev",
+      FIXVOX_VPS_ACCESS_CLIENT_ID: "fixture-access-id",
+      FIXVOX_VPS_ACCESS_CLIENT_SECRET: "fixture-access-secret",
+    };
+
+    const originalFetch = globalThis.fetch;
+    const upstreams: string[] = [];
+    let forwardedSafely = false;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      upstreams.push(url);
+      const headers = new Headers(init?.headers);
+      if (url === "https://fixvox-vps-origin.jpsala.dev/v1/audio/transcriptions") {
+        forwardedSafely = headers.get("CF-Access-Client-Id") === "fixture-access-id"
+          && headers.get("CF-Access-Client-Secret") === "fixture-access-secret"
+          && headers.get("X-Fixvox-Vps-Canary") === null
+          && headers.get("X-Device-Id") === canary.deviceId;
+        return Response.json({ text: "vps route" });
+      }
+      return Response.json({ text: "worker route" });
+    }) as typeof fetch;
+
+    const request = (deviceId: string) => {
+      const form = new FormData();
+      form.set("file", new Blob([new Uint8Array([1, 2, 3])], { type: "audio/wav" }), "audio.wav");
+      form.set("model", "caller-whisper");
+      form.set("response_format", "verbose_json");
+      return new Request("https://example.com/v1/audio/transcriptions", {
+        method: "POST",
+        headers: { "X-Device-Id": deviceId },
+        body: form,
+      });
+    };
+
+    try {
+      const routed = await worker.fetch(request(canary.deviceId), env as never, { waitUntil() {} } as unknown as ExecutionContext);
+      expect(routed.status).toBe(200);
+      expect(routed.headers.get("X-Fixvox-Runtime-Route")).toBe("vps-canary");
+      expect(await routed.json()).toEqual({ text: "vps route" });
+
+      const stayedOnWorker = await worker.fetch(request(nonCanary.deviceId), env as never, { waitUntil() {} } as unknown as ExecutionContext);
+      expect(stayedOnWorker.status).toBe(200);
+      expect(stayedOnWorker.headers.get("X-Fixvox-Runtime-Route")).toBeNull();
+      expect(await stayedOnWorker.json()).toEqual({ text: "worker route" });
+
+      expect(upstreams).toEqual([
+        "https://fixvox-vps-origin.jpsala.dev/v1/audio/transcriptions",
+        "https://api.groq.com/openai/v1/audio/transcriptions",
+      ]);
+      expect(forwardedSafely).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("audio block budget attributes delayed event reads without exceeding the scan contract", async () => {
     const store = new DelayedCountingKv();
     const registration = await registerDevice(store, {
