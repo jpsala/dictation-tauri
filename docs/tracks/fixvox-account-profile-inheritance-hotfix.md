@@ -1,5 +1,5 @@
 ---
-status: active
+status: complete
 started: 2026-07-24
 updated: 2026-07-24
 priority: critical
@@ -89,8 +89,25 @@ health/readiness siguieron 200.
 - LSP focal: limpio.
 - `git diff --check`: limpio.
 
-## Pendiente De Cierre
+## Resultado
 
-Construir el bundle runtime desde un commit limpio, promoverlo con rollback,
-verificar callback visible provider-free, account projection, health/readiness y
-que la otra PC refresque a `Pro` al reiniciar Fixvox.
+- Source pusheado en `62a5519`; bundle determinístico
+  `e835f7f678b528c8`, SHA-256
+  `e835f7f678b528c827b9d961254926a016973512ddc99e84e6cc6a329c49f378`.
+- Candidate aislado pasó health/readiness sobre schema 6 antes de promoción.
+- Promoción atómica y restart quedaron verdes con rollback inmediato
+  `68eae40e974909c5`, `NRestarts=0` y un único listener loopback.
+- Se restauraron las credenciales protegidas edit/publish del API copiándolas
+  desde el env admin `0600` al env runtime `0600`, con backup `0600`; ningún
+  valor apareció en output, archivos versionados o logs.
+- La ruta account-policy respondió idempotente y actualizó la proyección del
+  dispositivo ya vinculado. Admin proyecta una cuenta, profile `pro`,
+  `source=account`, un device y handle opaco válido.
+- Callback local y público responden la página visible Spanish-first con
+  `Cache-Control: no-store`; la prueba sin state devuelve 400 esperado sin
+  ejecutar OAuth.
+- DB confirma `account → pro`, device projection `Pro` y audit redacted; no hay
+  provider events. Health/readiness públicos y locales siguen 200.
+- Staging limpio; backup cifrado DB y backup del env quedan disponibles para
+  rollback. La otra PC debe reiniciar Fixvox una vez para invalidar el cache en
+  memoria y refrescar el contexto account-wide.

@@ -6,7 +6,7 @@ track: docs/tracks/fixvox-self-hosted-checkpoint-f-vps-loopback-plan.md
 
 # Runbook — Fixvox API VPS Loopback
 
-The permanent direct-runtime cutover now routes `auth-fixvox.jpsala.dev` through the dedicated Cloudflare Tunnel to the loopback-only VPS service. Runtime release `68eae40e974909c5` adds complete Google OAuth and preserves `4075da53c365a8b1` as immediate code rollback. PostgreSQL remains schema 6 and the logical `authorityMode` stays `cloudflare-authority` for compatibility; the Worker Custom Domain is absent and is no longer the hot path.
+The permanent direct-runtime cutover now routes `auth-fixvox.jpsala.dev` through the dedicated Cloudflare Tunnel to the loopback-only VPS service. Runtime release `e835f7f678b528c8` adds canonical account-profile inheritance and a visible OAuth callback; `68eae40e974909c5` is the immediate rollback. PostgreSQL remains schema 6 and the logical `authorityMode` stays `cloudflare-authority` for compatibility; the Worker Custom Domain is absent and is no longer the hot path.
 
 The operational mirror is `C:/dev/infra/docs/runbooks/fixvox-api-vps.md`. If either runbook disagrees with the other or with the selected track, stop before execution.
 
@@ -18,7 +18,7 @@ The operational mirror is `C:/dev/infra/docs/runbooks/fixvox-api-vps.md`. If eit
 | API bind | `127.0.0.1:8790` only; `8787` remains Admin BFF |
 | Runtime | `/home/jpsal/.bun/bin/bun` |
 | Releases | `/home/jpsal/opt/fixvox-api/releases/<release-id>` + atomic `current` symlink |
-| Current / immediate rollback | `68eae40e974909c5` / `4075da53c365a8b1` |
+| Current / immediate rollback | `e835f7f678b528c8` / `68eae40e974909c5` |
 | Earlier schema 6 rollbacks | `90ca26a7e3bd6f50`, then `c0deb60ab0f39b3a` |
 | Staging | `/home/jpsal/staging/fixvox-api` |
 | Protected config | `/home/jpsal/.config/dictation-tauri/fixvox-api.env`, mode `0600` |
@@ -234,6 +234,26 @@ Persistent provider/canary work now lives in `docs/tracks/vps-persistent-provide
   worked on the previously affected PC.
 - Redacted local receipt:
   `artifacts/oauth-hotfix/20260724-vps-google-oauth/production-receipt.json`.
+
+## Account Profile Inheritance Hotfix — 2026-07-24
+
+- A clean install on another PC completed OAuth but resolved `Basic`; production
+  inspection showed one canonical Google account with no account-level profile
+  and the old `Pro` assignment isolated on an unlinked device.
+- An encrypted F4 backup preceded a fail-closed transaction that assigned the
+  canonical account to published `Pro`, changed only its placeholder handle to
+  a stable opaque fingerprint, and appended redacted audit.
+- Source `62a5519`; deterministic release `e835f7f678b528c8`, archive SHA-256
+  `e835f7f678b528c827b9d961254926a016973512ddc99e84e6cc6a329c49f378`.
+  Candidate health/readiness passed before atomic promotion.
+- API edit/publish credentials were copied without output from the protected
+  Admin env into the protected runtime env, both `0600`; a `0600` pre-change
+  env backup remains. The account-policy compatibility route passed an
+  idempotent provider-free call and updated the linked device projection.
+- Final state: service active, `NRestarts=0`, one loopback listener, schema 6,
+  public/local health and readiness 200, account profile `pro` with
+  `source=account`, visible callback with `no-store`, no provider events and
+  clean staging. Immediate rollback is `68eae40e974909c5`.
 
 ## Stop Conditions
 
