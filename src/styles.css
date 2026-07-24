@@ -923,6 +923,18 @@ h1 {
     linear-gradient(180deg, rgb(20 25 29), rgb(10 13 16));
 }
 
+.companion-shell--notice {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 8px;
+  background: transparent;
+}
+
+.companion-shell--notice .dock-companion-card {
+  min-height: 0;
+}
+
 .dock-companion-panel {
   position: fixed;
   left: 50%;
@@ -1051,6 +1063,33 @@ h1 {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 10px;
+}
+
+.dock-companion-notice {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 12px;
+  min-height: 0;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 6px 8px rgb(0 0 0 / 30%);
+}
+
+.dock-companion-notice > strong {
+  font-size: 0.875rem;
+}
+
+.dock-companion-notice .dock-companion-actions {
+  flex-wrap: nowrap;
+  margin: 0;
+}
+
+.dock-companion-notice__hint {
+  grid-column: 1 / -1;
+  color: rgb(218 228 226 / 68%);
+  font-size: 0.7rem;
 }
 
 .dock-preset-picker {

@@ -574,6 +574,18 @@ function isSimulatedRunSummary(value: unknown): value is SimulatedRunSummary {
   return typeof value === "object" && value !== null && "terminalState" in value;
 }
 
+export function isNoSpeechOutcome(
+  summary?: SimulatedRunSummary,
+  message?: string,
+): boolean {
+  if (summary?.terminalState === "done" && !(summary.transcript ?? summary.output)?.trim()) {
+    return true;
+  }
+
+  const failure = `${message ?? ""} ${summary?.error?.message ?? ""}`;
+  return /no[- ]speech|without transcript text|no usable text/i.test(failure);
+}
+
 export function getRuntimeRecoveryAction(
   summary?: SimulatedRunSummary,
 ): RuntimeRecoveryAction | undefined {
@@ -1251,6 +1263,9 @@ export function CompanionSurfaceView({
   const [pickerPresetVersion, setPickerPresetVersion] = useState(0);
   const [presetPickerHotkeyLabel, setPresetPickerHotkeyLabel] = useState("Alt+Q");
   const [assistantDraft, setAssistantDraft] = useState("");
+  const [noticeInteracting, setNoticeInteracting] = useState(false);
+  const noticeRemainingMsRef = useRef(8000);
+  const noticeStartedAtRef = useRef<number | undefined>(undefined);
   const pickerInputRef = useRef<HTMLInputElement>(null);
   const pickerPresets = useMemo(
     () => listSelectionTransformPresets().map((preset) => {
@@ -1280,6 +1295,61 @@ export function CompanionSurfaceView({
       ].some((value) => value.toLowerCase().includes(query)))
       : pickerPresets;
   }, [pickerPresets, pickerQuery]);
+
+  useEffect(() => {
+    noticeRemainingMsRef.current = snapshot.notice?.timeoutMs ?? 8000;
+    noticeStartedAtRef.current = undefined;
+    setNoticeInteracting(false);
+  }, [snapshot.notice?.kind, snapshot.notice?.timeoutMs]);
+
+  useEffect(() => {
+    if (!snapshot.notice) {
+      return;
+    }
+
+    if (noticeInteracting) {
+      if (noticeStartedAtRef.current !== undefined) {
+        noticeRemainingMsRef.current = Math.max(
+          0,
+          noticeRemainingMsRef.current - (Date.now() - noticeStartedAtRef.current),
+        );
+        noticeStartedAtRef.current = undefined;
+      }
+      return;
+    }
+
+    noticeStartedAtRef.current = Date.now();
+    const timeout = window.setTimeout(() => {
+      noticeRemainingMsRef.current = 0;
+      noticeStartedAtRef.current = undefined;
+      onCommand?.({ source: "dock_companion", command: "dismiss_no_speech" });
+    }, noticeRemainingMsRef.current);
+
+    return () => {
+      window.clearTimeout(timeout);
+      if (noticeStartedAtRef.current !== undefined) {
+        noticeRemainingMsRef.current = Math.max(
+          0,
+          noticeRemainingMsRef.current - (Date.now() - noticeStartedAtRef.current),
+        );
+        noticeStartedAtRef.current = undefined;
+      }
+    };
+  }, [noticeInteracting, onCommand, snapshot.notice]);
+
+  useEffect(() => {
+    if (!snapshot.notice) {
+      return;
+    }
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCommand?.({ source: "dock_companion", command: "dismiss_no_speech" });
+      }
+    };
+    window.addEventListener("keydown", dismissOnEscape);
+    return () => window.removeEventListener("keydown", dismissOnEscape);
+  }, [onCommand, snapshot.notice]);
 
   useEffect(() => {
     if (!snapshot.settings.open) {
@@ -1445,6 +1515,41 @@ export function CompanionSurfaceView({
 
   return (
     <>
+      {snapshot.notice ? (
+        <section
+          className="dock-companion-card dock-companion-card--standalone dock-companion-notice"
+          data-testid="no-speech-notice"
+          role="status"
+          onMouseEnter={() => setNoticeInteracting(true)}
+          onMouseLeave={() => setNoticeInteracting(false)}
+          onFocusCapture={() => setNoticeInteracting(true)}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) {
+              setNoticeInteracting(false);
+            }
+          }}
+        >
+          <strong>{snapshot.notice.title}</strong>
+          <div className="dock-companion-actions" aria-label="No speech actions">
+            <CompanionCommandButton
+              payload={{ source: "dock_companion", command: "retry" }}
+              onCommand={onCommand}
+            >
+              Grabar de nuevo
+            </CompanionCommandButton>
+            <CompanionCommandButton
+              payload={{ source: "dock_companion", command: "dismiss_no_speech" }}
+              onCommand={onCommand}
+              className="dock-companion-close-button"
+              ariaLabel="Cerrar aviso"
+            >
+              ×
+            </CompanionCommandButton>
+          </div>
+          <span className="dock-companion-notice__hint">Esc para cerrar</span>
+        </section>
+      ) : null}
+
       {snapshot.recovery ? (
         <section className="dock-companion-card dock-companion-card--standalone">
           <div className="dock-companion-title-row">
@@ -1665,7 +1770,7 @@ export function CompanionSurfaceView({
         </section>
       ) : null}
 
-      {!snapshot.recovery && !snapshot.history.open && !snapshot.settings.open && !snapshot.assistant.open ? (
+      {!snapshot.notice && !snapshot.recovery && !snapshot.history.open && !snapshot.settings.open && !snapshot.assistant.open ? (
         <section className="dock-companion-card dock-companion-card--standalone">
           <div className="dock-companion-title-row">
             <p className="dock-companion-kicker">Companion</p>
@@ -1810,7 +1915,10 @@ function CompanionSurface({ surface }: { surface: "companion" | "preset-picker" 
   }, [surface]);
 
   return (
-    <main className="companion-shell" aria-label="Dock companion">
+    <main
+      className={`companion-shell${snapshot.notice ? " companion-shell--notice" : ""}`}
+      aria-label="Dock companion"
+    >
       <CompanionSurfaceView
         snapshot={snapshot}
         onCommand={dispatchDockCompanionCommand}
@@ -2030,6 +2138,7 @@ export function DockSurface() {
   const [resultHistoryOpen, setResultHistoryOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [dismissedAssistantRunId, setDismissedAssistantRunId] = useState<string | undefined>(undefined);
+  const [noSpeechNoticeOpen, setNoSpeechNoticeOpen] = useState(false);
   const persistedHistoryEntryIdRef = useRef<string | undefined>(undefined);
   const companionSyncKeyRef = useRef<string | undefined>(undefined);
   const hostCommandHandlerRef = useRef<
@@ -2348,7 +2457,16 @@ export function DockSurface() {
     requestDictationSoundCue(soundCuePolicyRef.current, cue);
   }
 
+  function showNoSpeechNotice() {
+    queueDictationSoundCue("no-speech");
+    setNoSpeechNoticeOpen(true);
+    setDesktopRecoveryAction(undefined);
+    setCapture({ state: "idle", message: "Listo" });
+    setPipelineUi({ status: "idle", message: "No te escuché" });
+  }
+
   async function startCapture(options: { keepCurrentContext?: boolean } = {}) {
+    setNoSpeechNoticeOpen(false);
     if (isTauri() && !(await ensureTauriDictationReadiness(invoke))) {
       setDesktopRecoveryAction(accountSetupRecoveryAction());
       setPipelineUi({
@@ -2423,6 +2541,11 @@ export function DockSurface() {
           : session.error?.message ?? "Capture failed before pipeline submission.",
         result,
       });
+
+      if (isNoSpeechOutcome(summary, session.error?.message)) {
+        showNoSpeechNotice();
+        return;
+      }
 
       if (summary?.terminalState === "done") {
         const deliveryMessage =
@@ -2517,6 +2640,11 @@ export function DockSurface() {
         createCapturedAudioPipelineRequest(capture.result),
       );
 
+      if (isNoSpeechOutcome(summary)) {
+        showNoSpeechNotice();
+        return;
+      }
+
       if (summary.terminalState === "done") {
         const deliveryMessage =
           describeDeliveryEvidence(summary.deliveryEvidence) ??
@@ -2539,6 +2667,11 @@ export function DockSurface() {
           message: "Captured run was cancelled before completion.",
           summary,
         });
+        return;
+      }
+
+      if (isNoSpeechOutcome(summary)) {
+        showNoSpeechNotice();
         return;
       }
 
@@ -2731,7 +2864,7 @@ export function DockSurface() {
           : pipelineUi.status === "cancelled"
             ? "cancelled"
             : "idle";
-  const voiceDockState = createVoiceDockState(
+  const baseVoiceDockState = createVoiceDockState(
     createDockInputFromUi({
       capture,
       pipelineUi,
@@ -2752,6 +2885,15 @@ export function DockSurface() {
       vuBands: createDockVuBands(capture.state, pipelineUi.status, dockVu.bands),
     },
   );
+  const voiceDockState = noSpeechNoticeOpen
+    ? {
+        ...baseVoiceDockState,
+        phase: "idle" as const,
+        statusText: "Listo",
+        statusDetail: "No te escuché",
+        recovery: undefined,
+      }
+    : baseVoiceDockState;
   const voiceDockHotkey = isTauri()
     ? effectiveHotkeyLabel
     : "Dock button";
@@ -2781,6 +2923,7 @@ export function DockSurface() {
     resultHistoryEntries,
     settingsPanelOpen,
     activePreset,
+    noSpeechNoticeOpen,
     presetPickerMode: selectionContextRef.current?.selectedText?.trim()
       ? "selection"
       : "dictation",
@@ -2840,7 +2983,7 @@ export function DockSurface() {
     storeDockCompanionSnapshot(companionSnapshot);
 
     const pickerVisible = companionSnapshot.settings.open;
-    const companionVisible = Boolean(companionSnapshot.recovery || companionSnapshot.history.open || companionSnapshot.assistant.open);
+    const companionVisible = Boolean(companionSnapshot.notice || companionSnapshot.recovery || companionSnapshot.history.open || companionSnapshot.assistant.open);
     const emitPickerSnapshot = () => emitTo(
       "preset-picker",
       dockCompanionStateEvent,
@@ -2854,7 +2997,10 @@ export function DockSurface() {
           void window.setTimeout(() => void emitPickerSnapshot().catch(() => undefined), 350);
         })
       : invoke("hide_preset_picker");
-    const syncCompanion = invoke(companionVisible ? "show_companion" : "hide_companion")
+    const syncCompanion = invoke(
+      companionVisible ? "show_companion" : "hide_companion",
+      companionVisible ? { transient: Boolean(companionSnapshot.notice) } : undefined,
+    )
       .then(() =>
         companionVisible
           ? emitTo("dock-companion", dockCompanionStateEvent, companionSnapshot)
@@ -2913,6 +3059,7 @@ export function DockSurface() {
     if (recoveryKey) {
       setDismissedRecoveryKey(recoveryKey);
     }
+    setNoSpeechNoticeOpen(false);
     setResultHistoryOpen(false);
     setSettingsPanelOpen(false);
     setDismissedAssistantRunId(companionSnapshot.assistant.runId);
@@ -3281,6 +3428,9 @@ export function DockSurface() {
       case "dismiss_assistant":
         setDismissedAssistantRunId(companionSnapshot.assistant.runId);
         break;
+      case "dismiss_no_speech":
+        setNoSpeechNoticeOpen(false);
+        break;
       case "send_assistant_message":
         void handleAssistantQuickChatMessage(payload.message);
         break;
@@ -3410,6 +3560,11 @@ export function DockSurface() {
         : session.error?.message ?? failureMessage,
       result,
     });
+
+    if (isNoSpeechOutcome(summary, session.error?.message)) {
+      showNoSpeechNotice();
+      return;
+    }
 
     if (summary?.terminalState === "done") {
       setPipelineUi({

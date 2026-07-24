@@ -10,6 +10,8 @@ pub const PRESET_PICKER_WINDOW_LABEL: &str = "preset-picker";
 const DOCK_WINDOW_LABEL: &str = "main";
 const COMPANION_WINDOW_WIDTH: i32 = 440;
 const COMPANION_WINDOW_HEIGHT: i32 = 420;
+const TRANSIENT_COMPANION_WINDOW_WIDTH: i32 = 300;
+const TRANSIENT_COMPANION_WINDOW_HEIGHT: i32 = 104;
 const PRESET_PICKER_WINDOW_WIDTH: i32 = 380;
 const PRESET_PICKER_WINDOW_HEIGHT: i32 = 320;
 const POSITIONED_WINDOW_GAP: i32 = 10;
@@ -84,8 +86,8 @@ pub fn configure_companion_window<R: Runtime>(app: &AppHandle<R>) {
 }
 
 #[tauri::command]
-pub fn show_companion(app: AppHandle) -> Result<(), String> {
-    show_companion_window(&app).map_err(|error| error.to_string())
+pub fn show_companion(app: AppHandle, transient: Option<bool>) -> Result<(), String> {
+    show_companion_window(&app, transient.unwrap_or(false)).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -106,6 +108,7 @@ pub fn show_preset_picker(app: AppHandle) -> Result<(), String> {
         PRESET_PICKER_WINDOW_WIDTH,
         PRESET_PICKER_WINDOW_HEIGHT,
         "preset-picker",
+        true,
     )
     .map_err(|error| error.to_string())?;
     watch_preset_picker_focus(&app);
@@ -123,14 +126,38 @@ pub fn focus_preset_picker(app: AppHandle) -> Result<(), String> {
     focus_window(&app, PRESET_PICKER_WINDOW_LABEL, "Preset Picker")
 }
 
-pub fn show_companion_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+pub fn show_companion_window<R: Runtime>(
+    app: &AppHandle<R>,
+    transient: bool,
+) -> tauri::Result<()> {
+    let window = app
+        .get_webview_window(COMPANION_WINDOW_LABEL)
+        .ok_or_else(|| tauri::Error::WindowNotFound)?;
+    window.set_decorations(!transient)?;
+    window.set_resizable(!transient)?;
+    window.set_skip_taskbar(transient)?;
+
+    let (width, height, focus_on_show) = companion_window_presentation(transient);
     show_positioned_window(
         app,
         COMPANION_WINDOW_LABEL,
-        COMPANION_WINDOW_WIDTH,
-        COMPANION_WINDOW_HEIGHT,
+        width,
+        height,
         "companion",
+        focus_on_show,
     )
+}
+
+fn companion_window_presentation(transient: bool) -> (i32, i32, bool) {
+    if transient {
+        (
+            TRANSIENT_COMPANION_WINDOW_WIDTH,
+            TRANSIENT_COMPANION_WINDOW_HEIGHT,
+            false,
+        )
+    } else {
+        (COMPANION_WINDOW_WIDTH, COMPANION_WINDOW_HEIGHT, true)
+    }
 }
 
 pub fn hide_companion_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
@@ -143,6 +170,7 @@ fn show_positioned_window<R: Runtime>(
     width: i32,
     height: i32,
     log_label: &str,
+    focus_on_show: bool,
 ) -> tauri::Result<()> {
     eprintln!("[dictation-tauri][{log_label}] show requested");
     let window = app
@@ -209,8 +237,10 @@ fn show_positioned_window<R: Runtime>(
         window.set_size(tauri::LogicalSize::new(width as f64, height as f64))?;
     }
     window.show()?;
-    let _ = window.set_focus();
-    let _ = focus_webview_child(&window);
+    if focus_on_show {
+        let _ = window.set_focus();
+        let _ = focus_webview_child(&window);
+    }
     eprintln!("[dictation-tauri][{log_label}] show ok");
     Ok(())
 }
@@ -357,6 +387,12 @@ fn attach_hide_on_close<R: Runtime>(window: WebviewWindow<R>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transient_companion_is_compact_and_does_not_take_focus_on_show() {
+        assert_eq!(companion_window_presentation(true), (300, 104, false));
+        assert_eq!(companion_window_presentation(false), (440, 420, true));
+    }
 
     fn scaled_anchor(scale_factor: f64) -> PhysicalRect {
         PhysicalRect {

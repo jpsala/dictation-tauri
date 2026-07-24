@@ -6,8 +6,9 @@ Router operativo corto. El detalle durable vive en topics, tracks, specs y decis
 
 ## Foco Único De Ejecución
 
-- **Estado:** `needs_planning`.
-- **Siguiente acción:** Reiniciar Fixvox una vez en la otra PC y confirmar visualmente `Pro`; después, en el próximo `/flow`, retomar `docs/tracks/user-facing-error-experience-review.md`.
+- **Estado:** `complete`.
+- **Plan:** `docs/tracks/user-facing-error-experience-review.md`.
+- **Próximo batch:** Ninguno; el aviso no-speech quedó cerrado.
 
 ## Estado Vivo
 
@@ -18,6 +19,7 @@ Router operativo corto. El detalle durable vive en topics, tracks, specs y decis
 - La otra PC confirmó la deuda de account linkage: OAuth terminaba pero la cuenta canónica no tenía profile y caía a `Basic`, mientras la PC original conservaba `Pro` sólo por device. La reparación definitiva quedó completa: cuenta Google canónica `Pro` account-wide, handles opacos estables, mutación Admin auditable, callback visible y runtime base `e835f7f678b528c8` preservado como rollback; resta sólo reiniciar la app en esa PC para refrescar su cache en memoria.
 - Pi Chat Trusted Owner remoto quedó operativo. Conversation-first Batch 1 está completo; Batch 2 queda postergado mientras Checkpoint F sea el foco. Infraestructura estable: `docs/tracks/pi-prod-workspace.md`.
 - Standard Product UX completó implementación local. Operaciones de otra PC, provider, release o rollout viven detrás de `docs/tracks/standard-product-ux-external-operation-gate-plan.md`.
+- La recuperación no-speech quedó cerrada: `No te escuché` aparece como aviso compacto de 8 s, no bloqueante, con retry, cierre, `Esc` y pausa por interacción; no expone error técnico ni estado `failed`.
 - Instrumentación productiva autorizada quedó activa en Worker `e8c642c3-6543-4794-8f32-b763a48c105a`, desplegada desde un worktree limpio byte-parity con la base productiva; rollback exacto: versión 158 `df416730-61b8-4222-ab5f-282879251db9`. Tres STT reales aislaron todo el overhead Worker: budget events `1326/326/421 ms`, engine `107/95/88`, prompt `44/47/71`, budget config `49/44/66`, multipart `15/14/19`; parse/usage `0`. En warm, budget events explica 62.7% de `595.5 ms` promedio de overhead.
 - Batches 2A-2B quedaron completos local/provider-free: ledger monetario O(1), upgrade PostgreSQL 5→6, backfill/checkpoint idempotente con parity UTC día/mes, shadow redacted legacy-authoritative y expiry/outbox/read-model reintentables fuera de `reserve()`. Checks focales pasaron; p95 local final observado `2.131 ms`. No se cableó provider/authority ni se tocó producción.
 - Batch 2C quedó completo local/provider-free para STT canónico: pricing PostgreSQL tipado USD/per-hour, estimación conservadora por duración, account→profile por campo, `operationId` estable, settle/release idempotente y receipt redacted; legacy conserva authority. Evidencia: core 5/5, API focal 28/28, PostgreSQL 12/12, reserve p95 `1.795 ms`, LSP limpio.
@@ -62,7 +64,7 @@ Router operativo corto. El detalle durable vive en topics, tracks, specs y decis
 | `standard-product-ux-external-operation-gate-plan.md` | Única puerta para operaciones externas. |
 | `app-audit-autonomous-implementation-plan.md` | Residual pendiente de decidir: cerrar o pausar. |
 | `fixvox-account-profile-inheritance-hotfix.md` | Completa: account-wide `Pro`, identidad estable, Admin, callback y runtime productivo verificados. |
-| `user-facing-error-experience-review.md` | Pending high: auditar y rediseñar errores/recovery visibles antes de nueva implementación o release. |
+| `user-facing-error-experience-review.md` | Completo: aviso temporal `No te escuché` implementado y verificado provider-free. |
 | `fixvox-registered-users-opportunities.md` | Roadmap pendiente de decidir o consolidar. |
 
 ## Lectura Por Frente

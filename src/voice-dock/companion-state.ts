@@ -18,7 +18,7 @@ export type DockCompanionCommandPayload =
     }
   | {
       source: "dock_companion";
-      command: "dismiss_recovery" | "dismiss_result_history" | "dismiss_settings" | "dismiss_assistant";
+      command: "dismiss_recovery" | "dismiss_result_history" | "dismiss_settings" | "dismiss_assistant" | "dismiss_no_speech";
     }
   | {
       source: "dock_companion";
@@ -76,6 +76,11 @@ export type DockCompanionSnapshot = {
     statusDetail?: string;
   };
   recovery?: DockRecoveryState;
+  notice?: {
+    kind: "no-speech";
+    title: "No te escuché";
+    timeoutMs: 8000;
+  };
   history: {
     open: boolean;
     totalCount: number;
@@ -102,6 +107,7 @@ export function createDockCompanionSnapshot(input: {
   settingsPanelOpen: boolean;
   activePreset?: DockActivePreset;
   presetPickerMode?: "selection" | "dictation";
+  noSpeechNoticeOpen?: boolean;
   assistant?: {
     open: boolean;
     runId?: string;
@@ -130,6 +136,7 @@ export function createDockCompanionSnapshot(input: {
     schemaVersion: 1,
     visible: Boolean(
       input.voiceDockState.recovery ||
+        input.noSpeechNoticeOpen ||
         input.resultHistoryOpen ||
         input.settingsPanelOpen ||
         input.assistant?.open,
@@ -140,6 +147,9 @@ export function createDockCompanionSnapshot(input: {
       statusDetail: input.voiceDockState.statusDetail,
     },
     recovery: input.voiceDockState.recovery,
+    notice: input.noSpeechNoticeOpen
+      ? { kind: "no-speech", title: "No te escuché", timeoutMs: 8000 }
+      : undefined,
     history: {
       open: input.resultHistoryOpen,
       totalCount: input.resultHistoryEntries.length,

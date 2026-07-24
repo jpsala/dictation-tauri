@@ -142,6 +142,25 @@ describe("dock companion state", () => {
     expect(snapshot.settings.open).toBe(false);
   });
 
+  it("projects no-speech as a compact transient notice instead of recovery", () => {
+    const snapshot = createDockCompanionSnapshot({
+      voiceDockState: createVoiceDockState({ state: "idle" }),
+      resultHistoryOpen: false,
+      resultHistoryEntries: [],
+      settingsPanelOpen: false,
+      noSpeechNoticeOpen: true,
+    });
+
+    expect(snapshot.visible).toBe(true);
+    expect(snapshot.status).toMatchObject({ phase: "idle" });
+    expect(snapshot.notice).toEqual({
+      kind: "no-speech",
+      title: "No te escuché",
+      timeoutMs: 8000,
+    });
+    expect(snapshot.recovery).toBeUndefined();
+  });
+
   it("stays hidden when no companion panel is requested", () => {
     const snapshot = createDockCompanionSnapshot({
       voiceDockState: createVoiceDockState({ state: "idle" }),

@@ -2,7 +2,12 @@
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { CompanionSurfaceView, getRuntimeRecoveryAction, resolvePresetPickerAction } from "../../src/App";
+import {
+  CompanionSurfaceView,
+  getRuntimeRecoveryAction,
+  isNoSpeechOutcome,
+  resolvePresetPickerAction,
+} from "../../src/App";
 import {
   createDockCompanionSnapshot,
   type DockCompanionCommandPayload,
@@ -38,6 +43,32 @@ describe("dock companion view", () => {
       reason: "Conectá tu cuenta antes de volver a dictar.",
     });
     expect(JSON.stringify(action)).not.toMatch(/device id|managed|provider|record again/i);
+  });
+
+  it("renders no-speech as a compact Spanish notice with retry, close, Escape, and timeout", () => {
+    const snapshot = createDockCompanionSnapshot({
+      voiceDockState: { ...createVoiceDockState({ state: "idle" }), statusText: "Listo" },
+      resultHistoryOpen: false,
+      resultHistoryEntries: [],
+      settingsPanelOpen: false,
+      noSpeechNoticeOpen: true,
+    });
+
+    const html = renderToStaticMarkup(<CompanionSurfaceView snapshot={snapshot} />);
+    const source = readFileSync("src/App.tsx", "utf8");
+
+    expect(html).toContain('data-testid="no-speech-notice"');
+    expect(html).toContain("No te escuché");
+    expect(html).toContain("Grabar de nuevo");
+    expect(html).toContain("Cerrar aviso");
+    expect(html).toContain("Esc para cerrar");
+    expect(html).not.toContain("Recovery");
+    expect(html).not.toContain("Needs attention");
+    expect(source).toContain("noticeRemainingMsRef.current - (Date.now() - noticeStartedAtRef.current)");
+    expect(source).toContain('event.key === "Escape"');
+    expect(isNoSpeechOutcome(undefined, "No speech detected in recording.")).toBe(true);
+    expect(isNoSpeechOutcome(undefined, "Speech provider marked recording as no speech.")).toBe(true);
+    expect(isNoSpeechOutcome(undefined, "Provider unavailable")).toBe(false);
   });
 
   it("renders recovery actions without exposing transcript text", () => {
