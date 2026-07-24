@@ -7,7 +7,7 @@ import { createAllowlistLogger, requestId, type Logger } from "./observability.t
 import { limitResponseBody, type ProviderProxy } from "./providers.ts";
 import { handleAdminRoute, type AdminRouteDependencies } from "./routes/admin.ts";
 import { buildDeviceRegisterProjection, buildExecutionPreflightProjection } from "./projections.ts";
-import type { OAuthExchange } from "./oauth.ts";
+import { buildGoogleOAuthAuthorizeUrl, type OAuthExchange } from "./oauth.ts";
 
 export type DeviceRepository = {
   bindDevice(input: { installIdHash: string; suppliedDeviceId?: string | null; generatedDeviceId: string }): Promise<{ deviceId: string; created: boolean }>;
@@ -228,6 +228,7 @@ async function dispatch(
   const desktopBrowserPathPrefix = "/product/v1/desktop/auth/browser/";
   if (request.method === "GET" && url.pathname.startsWith(desktopBrowserPathPrefix)) {
     if (!deps.auth) throw productError(503, "service_unavailable", "dependency", true);
+    if (!deps.config.googleOAuth) throw productError(503, "service_unavailable", "dependency", true);
     const handoffId = decodeURIComponent(url.pathname.slice(desktopBrowserPathPrefix.length));
     const desktop = handoffId ? await deps.auth.readDesktopHandoff(await sha256(handoffId)) : null;
     if (!desktop) return new Response("<!doctype html><title>Expired desktop login</title>", { status: 404, headers: { "content-type": "text/html; charset=utf-8" } });
@@ -235,8 +236,11 @@ async function dispatch(
     const stateHash = await sha256(state);
     await deps.auth.createOAuthState({ stateHash, provider: "google", protectedMetadata: JSON.stringify({ desktop: true }), expiresAt: desktop.expiresAt });
     if (!await deps.auth.attachDesktopOAuthState(desktop.sessionHash, stateHash)) throw productError(409, "conflict", "auth", false);
-    const redirectUri = new URL("/product/v1/auth/oauth/callback", deps.config.publicBaseUrl).toString();
-    return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirectUri)}`, 302);
+    const redirectUri = `${deps.config.publicBaseUrl.origin}/callback`;
+    return Response.redirect(buildGoogleOAuthAuthorizeUrl({
+      clientId: deps.config.googleOAuth.clientId,
+      redirectUri,
+    }, state), 302);
   }
   const desktopSessionPathPrefix = "/product/v1/desktop/auth/sessions/";
   if (url.pathname.startsWith(desktopSessionPathPrefix)) {
@@ -288,7 +292,7 @@ async function dispatch(
     return new Response(`<!doctype html><title>Fixvox Cloud sign-in is ready</title><a href="/desktop/google/start?handoff=${handoff}">Continue with Google</a>`, { headers: { "content-type": "text/html; charset=utf-8" } });
   }
   if (request.method === "GET" && url.pathname === "/desktop/google/start") {
-    if (!deps.auth) throw new HttpError(503, "service_unavailable");
+    if (!deps.auth || !deps.config.googleOAuth) throw new HttpError(503, "service_unavailable");
     const handoff = url.searchParams.get("handoff")?.trim() ?? "";
     const desktop = handoff ? await deps.auth.readDesktopHandoff(await sha256(handoff)) : null;
     if (!desktop) return new Response("<!doctype html><title>Expired desktop login</title>", { headers: { "content-type": "text/html; charset=utf-8" } });
@@ -296,8 +300,11 @@ async function dispatch(
     const stateHash = await sha256(state);
     await deps.auth.createOAuthState({ stateHash, provider: "google", protectedMetadata: JSON.stringify({ desktop: true }), expiresAt: desktop.expiresAt });
     await deps.auth.attachDesktopOAuthState(desktop.sessionHash, stateHash);
-    const redirectUri = new URL("/callback", deps.config.publicBaseUrl).toString();
-    return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirectUri)}`, 302);
+    const redirectUri = `${deps.config.publicBaseUrl.origin}/callback`;
+    return Response.redirect(buildGoogleOAuthAuthorizeUrl({
+      clientId: deps.config.googleOAuth.clientId,
+      redirectUri,
+    }, state), 302);
   }
   if (request.method === "GET" && url.pathname === "/desktop/login/status") {
     const state = url.searchParams.get("state")?.trim() ?? "";
@@ -318,14 +325,17 @@ async function dispatch(
     return json({ ok: true, deviceId: claimed.deviceId, accountId: null, auth: { required: false, providers: ["google"], accessMode: "signed_in", provider: "google", redacted: true } });
   }
   if (request.method === "GET" && url.pathname === "/auth/google/start") {
-    if (!deps.auth) throw new HttpError(503, "service_unavailable");
+    if (!deps.auth || !deps.config.googleOAuth) throw new HttpError(503, "service_unavailable");
     const deviceId = url.searchParams.get("device_id")?.trim() ?? "";
     const verifier = url.searchParams.get("code_verifier")?.trim() ?? "";
     if (!deviceId || verifier.length < 32) return json({ error: { message: !deviceId ? "Missing device_id query parameter." : "Missing or invalid code_verifier query parameter." } }, 400);
     const state = url.searchParams.get("state")?.trim() || crypto.randomUUID();
     await deps.auth.createOAuthState({ stateHash: await sha256(state), provider: "google", protectedMetadata: JSON.stringify({ deviceIdHash: await sha256(deviceId) }), expiresAt: new Date(now().getTime() + 5 * 60_000) });
-    const redirectUri = new URL("/callback", deps.config.publicBaseUrl).toString();
-    const authorizeUrl = `https://accounts.google.com/o/oauth2/v2/auth?state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    const redirectUri = `${deps.config.publicBaseUrl.origin}/callback`;
+    const authorizeUrl = buildGoogleOAuthAuthorizeUrl({
+      clientId: deps.config.googleOAuth.clientId,
+      redirectUri,
+    }, state);
     return url.searchParams.get("mode") === "json" ? json({ ok: true, state, authorizeUrl, redirectUri }) : Response.redirect(authorizeUrl, 302);
   }
   if (request.method === "GET" && url.pathname === "/auth/google/result") {

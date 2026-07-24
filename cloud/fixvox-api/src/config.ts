@@ -7,6 +7,7 @@ export type FixvoxApiConfig = {
   maxRequestBytes: number;
   mockProviders: boolean;
   providerKeys: Readonly<Record<"groq" | "openrouter", string | undefined>>;
+  googleOAuth?: Readonly<{ clientId: string; clientSecret: string }>;
   adminKeys: Readonly<Record<"view" | "edit" | "publish", string | undefined>>;
 };
 
@@ -64,6 +65,11 @@ export function loadConfig(env: Environment = Bun.env): FixvoxApiConfig {
   if (!mockProviders && !providerKeys.groq && !providerKeys.openrouter) {
     throw new Error("config_missing:provider_api_key");
   }
+  const googleClientId = optionalSecret(env, "GOOGLE_CLOUD_CLIENT_ID");
+  const googleClientSecret = optionalSecret(env, "GOOGLE_CLOUD_CLIENT_SECRET");
+  if (Boolean(googleClientId) !== Boolean(googleClientSecret)) {
+    throw new Error("config_invalid:google_oauth_credentials");
+  }
 
   return {
     databaseUrl,
@@ -75,6 +81,9 @@ export function loadConfig(env: Environment = Bun.env): FixvoxApiConfig {
     maxRequestBytes: integer(env, "FIXVOX_API_MAX_REQUEST_BYTES", 25 * 1024 * 1024, 1_024, 100 * 1024 * 1024),
     mockProviders,
     providerKeys,
+    ...(googleClientId && googleClientSecret
+      ? { googleOAuth: { clientId: googleClientId, clientSecret: googleClientSecret } }
+      : {}),
     adminKeys: {
       view: optionalSecret(env, "ADMIN_VIEW_API_KEY"),
       edit: optionalSecret(env, "ADMIN_EDIT_API_KEY"),

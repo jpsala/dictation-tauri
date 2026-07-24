@@ -113,7 +113,7 @@ systemd_quote() { local v="$1"; v="${v//\\/\\\\}"; v="${v//\"/\\\"}"; printf '"%
 {
   printf 'FIXVOX_API_DATABASE_URL=%s\n' "$(systemd_quote "$runtime_database_url")"
   printf 'FIXVOX_DATABASE_URL=%s\n' "$(systemd_quote "$runtime_database_url")"
-  printf 'FIXVOX_API_PUBLIC_BASE_URL=http://127.0.0.1:8790\n'
+  printf 'FIXVOX_API_PUBLIC_BASE_URL=https://auth-fixvox.jpsala.dev\n'
   printf 'FIXVOX_API_HOST=127.0.0.1\n'
   printf 'FIXVOX_API_PORT=8790\n'
   printf 'FIXVOX_API_MOCK_PROVIDERS=true\n'

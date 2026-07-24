@@ -47,4 +47,16 @@ describe("loadConfig", () => {
     })).toThrow("config_invalid:FIXVOX_API_PUBLIC_BASE_URL");
     expect(loadConfig({ ...base, FIXVOX_API_MOCK_PROVIDERS: "false", GROQ_API_KEY: "fixture-only" }).providerKeys.groq).toBe("fixture-only");
   });
+
+  test("accepts complete Google OAuth credentials and rejects partial configuration", () => {
+    expect(() => loadConfig({ ...base, GOOGLE_CLOUD_CLIENT_ID: "fixture-client" }))
+      .toThrow("config_invalid:google_oauth_credentials");
+    const config = loadConfig({
+      ...base,
+      GOOGLE_CLOUD_CLIENT_ID: "fixture-client",
+      GOOGLE_CLOUD_CLIENT_SECRET: "fixture-secret",
+    });
+    expect(config.googleOAuth?.clientId).toBe("fixture-client");
+    expect(config.googleOAuth?.clientSecret).toBe("fixture-secret");
+  });
 });

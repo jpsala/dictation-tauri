@@ -373,6 +373,7 @@ describe("Bun API adapter", () => {
 
   test("serves the canonical one-time desktop auth handoff without exposing OAuth authority", async () => {
     const deps = createDependencies();
+    deps.config.googleOAuth = { clientId: "fixture-google-client", clientSecret: "fixture-google-secret" };
     let sessionHash = "";
     deps.auth = {
       async createDesktopHandoff(input) { sessionHash = input.sessionHash; },
@@ -390,6 +391,16 @@ describe("Bun API adapter", () => {
     expect(started.status).toBe(200);
     const startData = (await started.json() as { data: { handoffId: string; verificationUri: string } }).data;
     expect(startData.verificationUri).toBe(`https://auth.fixture.test/product/v1/desktop/auth/browser/${startData.handoffId}`);
+    const browser = await handler(new Request(startData.verificationUri, { redirect: "manual" }));
+    expect(browser.status).toBe(302);
+    const authorizeUrl = new URL(browser.headers.get("location") ?? "");
+    expect(authorizeUrl.origin + authorizeUrl.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
+    expect(authorizeUrl.searchParams.get("client_id")).toBe("fixture-google-client");
+    expect(authorizeUrl.searchParams.get("redirect_uri")).toBe("https://auth.fixture.test/callback");
+    expect(authorizeUrl.searchParams.get("response_type")).toBe("code");
+    expect(authorizeUrl.searchParams.get("scope")).toBe("openid email profile");
+    expect(authorizeUrl.searchParams.get("prompt")).toBe("select_account");
+    expect(Boolean(authorizeUrl.searchParams.get("state"))).toBe(true);
     const status = await handler(new Request(`https://fixture.test/product/v1/desktop/auth/sessions/${startData.handoffId}`));
     const statusData = (await status.json() as { data: { status: string; claimProof: string } }).data;
     expect(statusData.status).toBe("approved");

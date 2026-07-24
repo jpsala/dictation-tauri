@@ -5,7 +5,7 @@ import { evaluatePostgresPreflight } from "./execution/preflight.ts";
 import { createConfiguredProviderProxy, createMockProviderProxy, type ProviderProxy } from "./providers.ts";
 import { PostgresAdminRepository } from "./postgres/admin-repository.ts";
 import { PostgresAuthSessionRepository } from "./postgres/auth-session-repository.ts";
-import { createMockOAuthExchange } from "./oauth.ts";
+import { createGoogleOAuthExchange, createMockOAuthExchange } from "./oauth.ts";
 import { PostgresBudgetLedgerRepository } from "./postgres/budget-ledger-repository.ts";
 import { PostgresBudgetPricingRepository } from "./postgres/budget-pricing-repository.ts";
 import { PostgresControlPlaneRepository } from "./postgres/control-plane-repository.ts";
@@ -17,6 +17,13 @@ export type ApiComposition = { config: FixvoxApiConfig; sql: Bun.SQL; handler: (
 export function composeApi(env: Record<string, string | undefined> = Bun.env, options: { logger?: Logger; providers?: ProviderProxy } = {}): ApiComposition {
   const config = loadConfig(env);
   const providers = options.providers ?? (config.mockProviders ? createMockProviderProxy() : createConfiguredProviderProxy(config.providerKeys));
+  const oauth = config.googleOAuth
+    ? createGoogleOAuthExchange({
+      ...config.googleOAuth,
+      redirectUri: `${config.publicBaseUrl.origin}/callback`,
+      timeoutMs: config.requestTimeoutMs,
+    })
+    : createMockOAuthExchange();
   const sql = new Bun.SQL(config.databaseUrl);
   const control = new PostgresControlPlaneRepository(sql);
   const quota = new PostgresUsageQuotaRepository(sql);
@@ -37,7 +44,7 @@ export function composeApi(env: Record<string, string | undefined> = Bun.env, op
     preflight: (input) => evaluatePostgresPreflight(repository, input),
     feedback: { submit: (input) => admin.appendFeedback(input) },
     auth,
-    oauth: createMockOAuthExchange(),
+    oauth,
     admin: { repository: admin, profileCommands, keys: config.adminKeys, sessions: auth },
     ...(options.logger ? { logger: options.logger } : {}),
     readiness: {

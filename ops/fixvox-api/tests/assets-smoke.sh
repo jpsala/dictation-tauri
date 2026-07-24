@@ -15,6 +15,11 @@ done
 bash -n "$OPS_DIR/lib.sh"
 grep -Fq 'REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;' "$OPS_DIR/provision.sh"
 grep -Fq 'REVOKE CONNECT ON DATABASE template1 FROM PUBLIC;' "$OPS_DIR/provision.sh"
+grep -Fq 'FIXVOX_API_PUBLIC_BASE_URL=https://auth-fixvox.jpsala.dev' "$OPS_DIR/provision.sh"
+if grep -Fq 'FIXVOX_API_PUBLIC_BASE_URL=http://127.0.0.1:8790' "$OPS_DIR/provision.sh"; then
+  echo "provision must not expose a loopback OAuth verification URL" >&2
+  exit 1
+fi
 # Assertions intentionally match literal shell source.
 # shellcheck disable=SC2016
 grep -Fq '[[ "$migrator_password" =~ ^[0-9a-f]{64}$ ]]' "$OPS_DIR/provision.sh"
