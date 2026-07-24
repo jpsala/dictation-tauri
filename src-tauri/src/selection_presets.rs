@@ -8,8 +8,8 @@ const LEGACY_SELECTION_PRESETS_FILE: &str = "selection-presets.v1.json";
 
 #[tauri::command]
 pub fn get_selection_presets_store(app: AppHandle) -> Result<Value, String> {
-    let current_path = selection_presets_path(&app, SELECTION_PRESETS_FILE)
-        .map_err(|error| error.to_string())?;
+    let current_path =
+        selection_presets_path(&app, SELECTION_PRESETS_FILE).map_err(|error| error.to_string())?;
     if current_path.exists() {
         return read_store(current_path);
     }
@@ -26,8 +26,8 @@ pub fn get_selection_presets_store(app: AppHandle) -> Result<Value, String> {
 #[tauri::command]
 pub fn save_selection_presets_store(app: AppHandle, store: Value) -> Result<Value, String> {
     let normalized = normalize_v2_store(store);
-    let path = selection_presets_path(&app, SELECTION_PRESETS_FILE)
-        .map_err(|error| error.to_string())?;
+    let path =
+        selection_presets_path(&app, SELECTION_PRESETS_FILE).map_err(|error| error.to_string())?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
