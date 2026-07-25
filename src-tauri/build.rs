@@ -18,5 +18,7 @@ fn main() {
     }
 
     println!("cargo:rerun-if-changed=build.rs");
-    tauri_build::build()
+    let attributes = tauri_build::Attributes::new()
+        .windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
+    tauri_build::try_build(attributes).expect("unable to build Tauri resources");
 }
