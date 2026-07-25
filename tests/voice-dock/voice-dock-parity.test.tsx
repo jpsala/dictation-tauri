@@ -1,8 +1,10 @@
+// @ts-expect-error Vitest runs this file in Node; the app tsconfig intentionally excludes Node types.
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { DesktopDictationSession } from "../../src/desktop-control/types";
 import { VoiceDock } from "../../src/voice-dock/VoiceDock";
+import type { DockSkinId } from "../../src/voice-dock/skins";
 import type { DockCommand, VoiceDockState } from "../../src/voice-dock/types";
 import { createVoiceDockState } from "../../src/voice-dock/visual-semantics";
 
@@ -17,9 +19,13 @@ function session(input: Partial<DesktopDictationSession>): DesktopDictationSessi
   } as DesktopDictationSession;
 }
 
-function renderDock(state: VoiceDockState): string {
+function renderDock(state: VoiceDockState, skinId: DockSkinId = "classic-7"): string {
   return renderToStaticMarkup(
-    <VoiceDock state={state} onCommand={vi.fn<(command: DockCommand) => void>()} />,
+    <VoiceDock
+      state={state}
+      skinId={skinId}
+      onCommand={vi.fn<(command: DockCommand) => void>()}
+    />,
   );
 }
 
@@ -37,7 +43,7 @@ function expectNoPasteObservedWording(html: string): void {
 }
 
 describe("VoiceDock Fixvox Skin4 parity contract", () => {
-  it("keeps the idle dock to the transparent 164x64 seven-dot launcher contract", () => {
+  it("keeps the idle dock to the transparent 164x42 seven-dot launcher contract", () => {
     const html = renderDock(createVoiceDockState({ state: "idle" }));
 
     expect(html).toContain('data-testid="voice-dock"');
@@ -51,6 +57,35 @@ describe("VoiceDock Fixvox Skin4 parity contract", () => {
     expect(html).not.toContain('class="voice-dock__actions"');
     expectNoDeveloperLeakage(html);
     expectNoPasteObservedWording(html);
+  });
+
+  it("renders Compact 5 as a separate five-dot skin without changing the classic snapshot", () => {
+    const html = renderDock(createVoiceDockState({ state: "idle" }), "compact-5");
+
+    expect(html).toContain('data-skin="compact-5"');
+    expect((html.match(/data-testid="voice-dock-vu-dot"/g) ?? []).length).toBe(5);
+    expect((html.match(/--dot-height:5px/g) ?? []).length).toBe(5);
+  });
+
+  it("renders Wispr Flow as an independent launcher with three recording controls", () => {
+    const idleHtml = renderDock(createVoiceDockState({ state: "idle" }), "wispr-flow");
+    const recordingHtml = renderDock(
+      createVoiceDockState(session({ state: "listening" })),
+      "wispr-flow",
+    );
+    const processingHtml = renderDock(
+      createVoiceDockState(session({ state: "transcribing" })),
+      "wispr-flow",
+    );
+
+    expect(idleHtml).toContain('data-skin="wispr-flow"');
+    expect(idleHtml).toContain("Click or hold Ctrl+Shift+F9 to start dictating");
+    expect((idleHtml.match(/data-testid="voice-dock-vu-dot"/g) ?? []).length).toBe(11);
+    expect(recordingHtml).toContain('data-command="stop"');
+    expect(recordingHtml).toContain('data-command="cancel"');
+    expect(recordingHtml).toContain('data-command="stop_submit"');
+    expect(processingHtml).toContain('data-phase="processing"');
+    expect(processingHtml).not.toContain('data-testid="voice-dock-companion"');
   });
 
   it("renders recording as seven live VU bars with side stop and cancel controls", () => {
@@ -112,10 +147,12 @@ describe("VoiceDock Fixvox Skin4 parity contract", () => {
   });
 
   it("keeps reduced-motion and compact shell CSS guardrails provider-free", () => {
-    expect(styles).toMatch(/html,\s*\n#root\s*{[^}]*min-width:\s*164px;[^}]*min-height:\s*64px;/s);
-    expect(styles).toMatch(/body\s*{[^}]*min-width:\s*164px;[^}]*min-height:\s*64px;[^}]*background:\s*transparent;/s);
-    expect(styles).toMatch(/\.voice-dock\s*{[^}]*width:\s*164px;[^}]*height:\s*64px;[^}]*background:\s*transparent;/s);
-    expect(styles).toMatch(/\.voice-dock__vu\s*{[^}]*gap:\s*3\.5px;[^}]*height:\s*24px;/s);
+    expect(styles).toMatch(/html,\s*\n#root\s*{[^}]*min-width:\s*98px;[^}]*min-height:\s*32px;/s);
+    expect(styles).toMatch(/body\s*{[^}]*min-width:\s*98px;[^}]*min-height:\s*32px;[^}]*background:\s*transparent;/s);
+    expect(styles).toMatch(/\.voice-panel\s*{[^}]*display:\s*grid;[^}]*place-items:\s*center;/s);
+    expect(styles).toMatch(/\.voice-dock\s*{[^}]*--dock-width:\s*132px;[^}]*--dock-height:\s*36px;[^}]*width:\s*var\(--dock-width\);[^}]*height:\s*var\(--dock-height\);/s);
+    expect(styles).toMatch(/\.voice-dock\[data-skin="classic-7"\]\s*{[^}]*--dock-width:\s*164px;[^}]*--dock-height:\s*42px;/s);
+    expect(styles).toMatch(/\.voice-dock__vu\s*{[^}]*gap:\s*var\(--dock-dot-gap\);[^}]*height:\s*var\(--dock-vu-height\);/s);
     expect(styles).toMatch(/\.voice-dock__vu-dot\s*{[^}]*--dot-neon-glow:\s*rgb\(239 68 68 \/ 82%\);[^}]*width:\s*var\(--dot-width, 4px\);[^}]*height:\s*var\(--dot-height, 5px\);[^}]*radial-gradient\(circle at 50% 16%[^}]*color-mix\(in srgb, var\(--dot-neon-color\) 28%, white\)[^}]*0 0 5px var\(--dot-neon-glow\);/s);
     expect(styles).toContain("--dot-neon-color: rgb(255 196 189)");
     expect(styles).toMatch(/\.voice-dock--idle \.voice-dock__vu-dot\s*{[^}]*opacity:\s*0\.96;[^}]*0 0 6px var\(--dot-neon-glow\);/s);
@@ -124,9 +161,12 @@ describe("VoiceDock Fixvox Skin4 parity contract", () => {
     expect(styles).toContain("--dot-hover-delay: 420ms");
     expect(styles).toContain("--voice-dock-primary-cursor: default");
     expect(styles).toMatch(/\.voice-dock__orb\s*{[^}]*cursor:\s*var\(--voice-dock-primary-cursor\);/s);
-    expect(styles).toMatch(/\.voice-dock__action::before\s*{[^}]*font-size:\s*22px;/s);
-    expect(styles).toMatch(/\.voice-dock__action\[data-side="center"\]\s*{[^}]*transform:\s*translate\(-50%, calc\(34% \+ 5px\)\);/s);
+    expect(styles).toMatch(/\.voice-dock__action::before\s*{[^}]*font-size:\s*var\(--dock-icon-size\);/s);
+    expect(styles).toMatch(/\.voice-dock__action\[data-command="stop_submit"\]::before\s*{[^}]*transform:\s*translateY\(3px\);/s);
+    expect(styles).toMatch(/\.voice-dock__action\[data-side="center"\]\s*{[^}]*left:\s*var\(--dock-action-center\);[^}]*transform:\s*translateY\(-35%\);/s);
+    expect(styles).toMatch(/\.voice-dock--recording \.voice-dock__main\s*{[^}]*transform:\s*translateX\(var\(--dock-recording-core-offset\)\);/s);
     expect(styles).toMatch(/\.voice-dock--recording \.voice-dock__vu-dot\s*{[^}]*0 0 13px rgb\(239 68 68 \/ 72%\);/s);
+    expect(styles).toContain("calc((var(--dot-height) - 5px) * 0.8 + 1px)");
     expect(styles).not.toContain("--voice-dock-mic-cursor");
     expect(styles).not.toContain("cursor: grab");
     expect(styles).not.toContain("cursor: grabbing");

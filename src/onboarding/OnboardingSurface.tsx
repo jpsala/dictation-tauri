@@ -9,7 +9,7 @@ import type {
 
 type OnboardingSurfaceProps = {
 	controller: AccountFirstController;
-	onReady?: () => void;
+	onReady?: () => void | Promise<void>;
 };
 
 type OnboardingCopy = {
@@ -86,6 +86,7 @@ export function OnboardingSurface({
 	const [snapshot, setSnapshot] = useState<AccountFirstSnapshot>(() =>
 		controller.snapshot(),
 	);
+	const [readyHandoffPending, setReadyHandoffPending] = useState(false);
 	const copy = copyByPhase[snapshot.phase];
 
 	useEffect(() => {
@@ -117,7 +118,13 @@ export function OnboardingSurface({
 
 	const runPrimary = () => {
 		if (snapshot.phase === "ready") {
-			onReady?.();
+			if (readyHandoffPending) {
+				return;
+			}
+			setReadyHandoffPending(true);
+			void Promise.resolve(onReady?.()).catch(() => {
+				setReadyHandoffPending(false);
+			});
 			return;
 		}
 
@@ -165,6 +172,7 @@ export function OnboardingSurface({
 							className="button button-primary"
 							type="button"
 							onClick={runPrimary}
+							disabled={snapshot.phase === "ready" && readyHandoffPending}
 							autoFocus
 						>
 							{copy.primary}

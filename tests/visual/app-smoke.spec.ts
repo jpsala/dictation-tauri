@@ -1,12 +1,13 @@
 import { expect, test } from "@playwright/test";
 
-test("renders the Fixvox-like seven-dot dock as the primary fake capture surface", async ({ page }) => {
+test("renders Compact 5 as the default fake capture surface", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByTestId("capture-surface")).toBeVisible();
   await expect(page.getByTestId("voice-dock")).toBeVisible();
+  await expect(page.getByTestId("voice-dock")).toHaveAttribute("data-skin", "compact-5");
   await expect(page.getByTestId("voice-dock-state-chip")).toHaveText("Ready");
-  await expect(page.getByTestId("voice-dock-vu-dot")).toHaveCount(7);
+  await expect(page.getByTestId("voice-dock-vu-dot")).toHaveCount(5);
   await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
   await expect(page.getByText("paste observed", { exact: false })).toHaveCount(0);
 });

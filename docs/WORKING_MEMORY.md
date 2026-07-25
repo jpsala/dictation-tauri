@@ -7,8 +7,8 @@ Router operativo corto. El detalle durable vive en topics, tracks, specs y decis
 ## Foco Único De Ejecución
 
 - **Estado:** `ready`.
-- **Plan:** `docs/tracks/first-run-installed-google-validation.md`.
-- **Próximo batch:** **Batch único — en la próxima PC, reconstruir el NSIS, usar `sha256sum`, revalidar el gate de PC/cuenta/reset y ejecutar una única validación instalada de Google**.
+- **Plan:** `docs/tracks/dock-skins-visual-refinement.md`.
+- **Próximo batch:** **Batch 1 — Wispr Flow visual refinement**.
 
 ## Estado Vivo
 
@@ -20,7 +20,8 @@ Router operativo corto. El detalle durable vive en topics, tracks, specs y decis
 - Pi Chat Trusted Owner remoto quedó operativo. Conversation-first Batch 1 está completo; Batch 2 queda postergado mientras Checkpoint F sea el foco. Infraestructura estable: `docs/tracks/pi-prod-workspace.md`.
 - Standard Product UX completó implementación local. Operaciones de otra PC, provider, release o rollout viven detrás de `docs/tracks/standard-product-ux-external-operation-gate-plan.md`.
 - La recuperación no-speech quedó cerrada: `No te escuché` aparece como aviso compacto de 8 s, no bloqueante, con retry, cierre, `Esc` y pausa por interacción; no expone error técnico ni estado `failed`.
-- First-run quedó completo local/provider-free: bienvenida única, Google con handoff y polling automático host-owned, sesión vencida diferenciada y confirmación `Todo listo para dictar` antes de abrir el dock con `Empezar`; 15/15 tests focales, build y 6 tests Rust verdes. La validación instalada real sigue activa en `first-run-installed-google-validation.md`: el NSIS local se construyó, pero el intento se detuvo antes de backup/reset por falta de `Get-FileHash`; no hubo OAuth ni mutaciones y la próxima PC debe reconstruir, usar `sha256sum` y reautorizar su gate.
+- Dock skins quedó en checkpoint funcional retomable: `classic-7` preserva el dock anterior (`164x42`), `compact-5` es la variante densa (`132x36`) y `wispr-flow` usa idle/processing `98x32` y recording `125x36`, con cápsula única y 11 barras VU `1..13px`. Selector por menú y persistencia local listos; el contrato Rust/React de IDs ahora es explícito para que las dimensiones nativas cambien correctamente. `Stop & submit`/icono `↵` está disponible en las tres skins. Cloud sigue fuera de alcance; falta sólo el pase visual fino de Wispr contra capturas de JP. Evidencia/snapshot en `artifacts/desktop-control/dock-skins/` y `dock-compact-height/`. Continuar desde `docs/topics/fixvox-dock-and-hotkeys-reference.md`, sin tocar cloud ni `classic-7`.
+- First-run quedó corregido local/provider-free: `Empezar` abre el dock una sola vez, espera éxito host y recién entonces cierra la bienvenida; un fallo conserva la pantalla para retry. Tests onboarding focales, build y diagnósticos verdes; Rust intacto. La revalidación instalada requiere una nueva autorización explícita y no debe repetir OAuth ni reset.
 - Instrumentación productiva autorizada quedó activa en Worker `e8c642c3-6543-4794-8f32-b763a48c105a`, desplegada desde un worktree limpio byte-parity con la base productiva; rollback exacto: versión 158 `df416730-61b8-4222-ab5f-282879251db9`. Tres STT reales aislaron todo el overhead Worker: budget events `1326/326/421 ms`, engine `107/95/88`, prompt `44/47/71`, budget config `49/44/66`, multipart `15/14/19`; parse/usage `0`. En warm, budget events explica 62.7% de `595.5 ms` promedio de overhead.
 - Batches 2A-2B quedaron completos local/provider-free: ledger monetario O(1), upgrade PostgreSQL 5→6, backfill/checkpoint idempotente con parity UTC día/mes, shadow redacted legacy-authoritative y expiry/outbox/read-model reintentables fuera de `reserve()`. Checks focales pasaron; p95 local final observado `2.131 ms`. No se cableó provider/authority ni se tocó producción.
 - Batch 2C quedó completo local/provider-free para STT canónico: pricing PostgreSQL tipado USD/per-hour, estimación conservadora por duración, account→profile por campo, `operationId` estable, settle/release idempotente y receipt redacted; legacy conserva authority. Evidencia: core 5/5, API focal 28/28, PostgreSQL 12/12, reserve p95 `1.795 ms`, LSP limpio.
@@ -64,6 +65,7 @@ Router operativo corto. El detalle durable vive en topics, tracks, specs y decis
 | `pi-chat-conversation-first-ux.md` | Batch 1 completo; Batch 2 queda postergado. |
 | `standard-product-ux-external-operation-gate-plan.md` | Única puerta para operaciones externas. |
 | `app-audit-autonomous-implementation-plan.md` | Residual pendiente de decidir: cerrar o pausar. |
+| `dock-skins-visual-refinement.md` | Activa: próximo pase visual de `wispr-flow`; preservar `classic-7` y cloud fuera de alcance. |
 | `fixvox-account-profile-inheritance-hotfix.md` | Completa: account-wide `Pro`, identidad estable, Admin, callback y runtime productivo verificados. |
 | `user-facing-error-experience-review.md` | Completo: aviso temporal `No te escuché` implementado y verificado provider-free. |
 | `fixvox-registered-users-opportunities.md` | Roadmap pendiente de decidir o consolidar. |
@@ -75,7 +77,7 @@ Router operativo corto. El detalle durable vive en topics, tracks, specs y decis
 - Latencia proxy: `docs/tracks/cloudflare-proxy-latency-optimization.md`; comparar con `C:/dev/fixvox/proxy/src/index.ts`.
 - Cloud/runtime: Spec 019, track product-first y `docs/topics/fixvox-cloud-runtime-port.md`.
 - Pi Chat: track conversation-first; remote parity queda completa.
-- UI: external-operation gate, `PRODUCT.md`, `DESIGN.md`, `docs/topics/ui-design-and-impeccable.md`.
+- UI: external-operation gate, `PRODUCT.md`, `DESIGN.md`, `docs/topics/ui-design-and-impeccable.md`; dock/skins en `docs/topics/fixvox-dock-and-hotkeys-reference.md`.
 - AOS: `docs/topics/agentic-os.md`; salud read-only con `bun run aos:doctor` o Pi `/doctor`.
 
 ## Guardrails

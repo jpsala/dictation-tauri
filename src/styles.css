@@ -16,16 +16,16 @@
 html,
 #root {
   margin: 0;
-  min-width: 164px;
-  min-height: 64px;
+  min-width: 98px;
+  min-height: 32px;
   background: transparent;
   overflow: hidden;
 }
 
 body {
   margin: 0;
-  min-width: 164px;
-  min-height: 64px;
+  min-width: 98px;
+  min-height: 32px;
   background: transparent;
   overflow: hidden;
 }
@@ -40,8 +40,8 @@ select {
 .app-shell {
   display: grid;
   width: 100vw;
-  min-width: 164px;
-  min-height: 64px;
+  min-width: 98px;
+  min-height: 32px;
   height: 100vh;
   place-items: center;
   padding: 0;
@@ -50,8 +50,10 @@ select {
 
 .voice-panel {
   position: relative;
-  width: 164px;
-  height: 64px;
+  display: grid;
+  width: 100vw;
+  height: 100vh;
+  place-items: center;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -317,17 +319,23 @@ h1 {
 }
 
 .voice-dock {
-  --skin4-dock-width: 164px;
-  --skin4-dock-height: 64px;
-  --skin4-core-width: 66px;
-  --skin4-core-height: 28px;
-  --skin4-control-size: 31px;
-  --skin4-dot-gap: 3.5px;
-  --skin4-control-gap: 70px;
+  --dock-width: 132px;
+  --dock-height: 36px;
+  --dock-core-width: 48px;
+  --dock-core-height: 24px;
+  --dock-control-size: 25px;
+  --dock-enter-size: 21px;
+  --dock-icon-size: 16px;
+  --dock-dot-gap: 2.5px;
+  --dock-vu-height: 20px;
+  --dock-action-left: 3px;
+  --dock-action-center: 30px;
+  --dock-action-right: 3px;
+  --dock-recording-core-offset: 11px;
   position: relative;
   display: grid;
-  width: 164px;
-  height: 64px;
+  width: var(--dock-width);
+  height: var(--dock-height);
   place-items: center;
   margin: 0;
   border: 0;
@@ -338,12 +346,63 @@ h1 {
   isolation: isolate;
 }
 
+.voice-dock[data-skin="classic-7"] {
+  --dock-width: 164px;
+  --dock-height: 42px;
+  --dock-core-width: 66px;
+  --dock-core-height: 28px;
+  --dock-control-size: 31px;
+  --dock-enter-size: 25px;
+  --dock-icon-size: 19px;
+  --dock-dot-gap: 3.5px;
+  --dock-vu-height: 24px;
+  --dock-action-left: 2px;
+  --dock-action-center: 35px;
+  --dock-action-right: 2px;
+  --dock-recording-core-offset: 13px;
+}
+
+.voice-dock[data-skin="wispr-flow"] {
+  --dock-width: 98px;
+  --dock-height: 32px;
+  --dock-core-width: 40px;
+  --dock-core-height: 8px;
+  --dock-control-size: 19px;
+  --dock-enter-size: 17px;
+  --dock-action-center: 54px;
+  --dock-icon-size: 12px;
+  --dock-dot-gap: 2px;
+  --dock-vu-height: 15px;
+  --dock-recording-core-offset: 0px;
+}
+
+.voice-dock[data-skin="wispr-flow"].voice-dock--idle:hover {
+  --dock-core-width: 72px;
+  --dock-core-height: 32px;
+}
+
+.voice-dock[data-skin="wispr-flow"].voice-dock--arming,
+.voice-dock[data-skin="wispr-flow"].voice-dock--recording {
+  --dock-width: 125px;
+  --dock-height: 36px;
+  --dock-core-width: 46px;
+  --dock-core-height: 20px;
+}
+
+.voice-dock[data-skin="wispr-flow"].voice-dock--processing {
+  --dock-width: 98px;
+  --dock-height: 32px;
+  --dock-core-width: 72px;
+  --dock-core-height: 32px;
+  --dock-vu-height: 15px;
+}
+
 .voice-dock__main {
   position: relative;
   z-index: 2;
   display: grid;
-  width: 66px;
-  height: 28px;
+  width: var(--dock-core-width);
+  height: var(--dock-core-height);
   place-items: center;
   min-width: 0;
   filter:
@@ -356,9 +415,9 @@ h1 {
   inset: 0;
   z-index: 2;
   display: grid;
-  width: 66px;
-  min-width: 66px;
-  height: 28px;
+  width: var(--dock-core-width);
+  min-width: var(--dock-core-width);
+  height: var(--dock-core-height);
   place-items: center;
   border: 0;
   border-radius: 999px;
@@ -397,8 +456,8 @@ h1 {
   inset: 0;
   z-index: 3;
   display: grid;
-  width: 66px;
-  height: 28px;
+  width: var(--dock-core-width);
+  height: var(--dock-core-height);
   min-width: 0;
   place-items: center;
   pointer-events: none;
@@ -430,8 +489,8 @@ h1 {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  gap: 3.5px;
-  height: 24px;
+  gap: var(--dock-dot-gap);
+  height: var(--dock-vu-height);
   min-width: 48px;
   margin: 0;
   pointer-events: none;
@@ -685,7 +744,7 @@ h1 {
   position: absolute;
   inset: 0;
   z-index: 4;
-  min-height: 31px;
+  min-height: var(--dock-control-size);
   padding: 0;
   pointer-events: none;
 }
@@ -693,10 +752,10 @@ h1 {
 .voice-dock__action {
   position: absolute;
   top: 50%;
-  width: 31px;
-  min-width: 31px;
-  height: 31px;
-  min-height: 31px;
+  width: var(--dock-control-size);
+  min-width: var(--dock-control-size);
+  height: var(--dock-control-size);
+  min-height: var(--dock-control-size);
   transform: translateY(-35%);
   border: 0;
   border-radius: 999px;
@@ -715,20 +774,25 @@ h1 {
 }
 
 .voice-dock__action[data-side="left"] {
-  left: 16px;
+  left: var(--dock-action-left);
 }
 
 .voice-dock__action[data-side="center"] {
-  left: 50%;
-  width: 25px;
-  min-width: 25px;
-  height: 25px;
-  min-height: 25px;
-  transform: translate(-50%, calc(34% + 5px));
+  left: var(--dock-action-center);
+  width: var(--dock-enter-size);
+  min-width: var(--dock-enter-size);
+  height: var(--dock-enter-size);
+  min-height: var(--dock-enter-size);
+  transform: translateY(-35%);
 }
 
 .voice-dock__action[data-side="right"] {
-  right: 16px;
+  right: var(--dock-action-right);
+}
+
+.voice-dock--arming .voice-dock__main,
+.voice-dock--recording .voice-dock__main {
+  transform: translateX(var(--dock-recording-core-offset));
 }
 
 .voice-dock__action:hover {
@@ -744,7 +808,7 @@ h1 {
   display: grid;
   place-items: center;
   color: currentColor;
-  font-size: 22px;
+  font-size: var(--dock-icon-size);
   line-height: 1;
 }
 
@@ -782,13 +846,107 @@ h1 {
 .voice-dock__action[data-command="stop_submit"] {
   color: rgb(125 211 252 / 96%);
   filter:
-    drop-shadow(0 1px 3px rgb(15 23 42 / 22%))
-    drop-shadow(0 0 7px rgb(125 211 252 / 20%));
+    drop-shadow(0 1px 2px rgb(15 23 42 / 20%))
+    drop-shadow(0 0 4px rgb(125 211 252 / 16%));
+}
+
+.voice-dock__action[data-command="stop_submit"]::before {
+  transform: translateY(3px);
 }
 
 .voice-dock__action--ghost {
   background: transparent;
   color: rgb(248 113 113 / 96%);
+}
+
+.voice-dock[data-skin="wispr-flow"] .voice-dock__main {
+  border: 1px solid rgb(128 128 128 / 82%);
+  border-radius: 999px;
+  background: rgb(7 8 10 / 98%);
+  filter: drop-shadow(0 2px 5px rgb(0 0 0 / 48%));
+  transition: width 150ms ease-out, height 150ms ease-out;
+}
+
+.voice-dock[data-skin="wispr-flow"].voice-dock--arming::before,
+.voice-dock[data-skin="wispr-flow"].voice-dock--recording::before {
+  position: absolute;
+  z-index: 1;
+  width: 102px;
+  height: 33px;
+  border: 1px solid rgb(72 72 72 / 92%);
+  border-radius: 999px;
+  background: rgb(7 8 10 / 98%);
+  box-shadow: 0 3px 8px rgb(0 0 0 / 44%);
+  content: "";
+}
+
+.voice-dock[data-skin="wispr-flow"].voice-dock--idle:hover .voice-dock__main {
+  border-color: rgb(72 72 72 / 92%);
+}
+
+.voice-dock[data-skin="wispr-flow"].voice-dock--arming .voice-dock__main,
+.voice-dock[data-skin="wispr-flow"].voice-dock--recording .voice-dock__main {
+  border: 0;
+  background: transparent;
+  filter: none;
+}
+
+.voice-dock[data-skin="wispr-flow"] .voice-dock__vu {
+  align-items: center;
+}
+
+.voice-dock[data-skin="wispr-flow"].voice-dock--idle .voice-dock__vu-dot {
+  width: 1.5px;
+  height: 1px;
+  background: rgb(203 213 225 / 78%);
+  box-shadow: none;
+  opacity: 0;
+}
+
+.voice-dock[data-skin="wispr-flow"].voice-dock--idle:hover .voice-dock__vu-dot {
+  opacity: 0.82;
+}
+
+.voice-dock[data-skin="wispr-flow"].voice-dock--arming .voice-dock__vu-dot,
+.voice-dock[data-skin="wispr-flow"].voice-dock--recording .voice-dock__vu-dot {
+  width: 1.5px;
+  height: clamp(1px, calc((var(--dot-height) - 5px) * 0.8 + 1px), 13px);
+  background: rgb(241 245 249 / 92%);
+  box-shadow: none;
+}
+
+.voice-dock[data-skin="wispr-flow"].voice-dock--processing .voice-dock__vu-dot {
+  width: 1.5px;
+  height: 2px;
+  background: rgb(203 213 225 / 82%);
+  box-shadow: none;
+}
+
+.voice-dock[data-skin="wispr-flow"] .voice-dock__action[data-command="cancel"] {
+  right: auto;
+  left: 16px;
+  background: rgb(58 59 62 / 98%);
+  color: rgb(241 245 249 / 92%);
+  filter: none;
+  transform: translateY(-50%);
+}
+
+.voice-dock[data-skin="wispr-flow"] .voice-dock__action[data-command="stop"] {
+  right: 16px;
+  left: auto;
+  background: rgb(251 113 133 / 98%);
+  color: white;
+  filter: none;
+  transform: translateY(-50%);
+}
+
+.voice-dock[data-skin="wispr-flow"] .voice-dock__action[data-command="stop"]::before {
+  content: "■";
+  font-size: 7px;
+}
+
+.voice-dock[data-skin="wispr-flow"] .voice-dock__action:hover {
+  filter: brightness(1.12);
 }
 
 .voice-dock__recovery {

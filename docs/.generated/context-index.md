@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-25T02:13:02.800Z
+Generated: 2026-07-25T16:03:47.431Z
 
 ## Topics
 
@@ -42,7 +42,9 @@ Generated: 2026-07-25T02:13:02.800Z
 - paused: [Bounded Taskflow Implementation Spike](../tracks/bounded-taskflow-implementation-spike.md)
 - complete: [Clean Install Readiness And Account UX](../tracks/clean-install-readiness-and-account-ux.md)
 - complete: [Cloudflare Proxy Latency Optimization](../tracks/cloudflare-proxy-latency-optimization.md)
-- active: [First-Run Installed Google Validation](../tracks/first-run-installed-google-validation.md)
+- active: [Dock Skins Visual Refinement](../tracks/dock-skins-visual-refinement.md)
+- blocked: [First-Run Installed Google Validation](../tracks/first-run-installed-google-validation.md)
+- complete: [First-Run Start Dock Recovery](../tracks/first-run-start-dock-recovery.md)
 - complete: [First-Run Welcome And Sign-In](../tracks/first-run-welcome-and-sign-in.md)
 - complete: [Fixvox Account Profile Inheritance Hotfix](../tracks/fixvox-account-profile-inheritance-hotfix.md)
 - complete: [Fixvox Admin Configuration Hub](../tracks/fixvox-admin-configuration-hub.md)

@@ -100,6 +100,7 @@ import {
   type DockDragEvent,
   type DockCompanionPresetId,
   type DockCompanionSnapshot,
+  type DockSkinId,
 } from "./voice-dock";
 import {
   createSoundCuePolicy,
@@ -113,6 +114,7 @@ import { SettingsSurface } from "./settings/SettingsSurface";
 import { OnboardingSurface } from "./onboarding/OnboardingSurface";
 import { createAccountFirstFixtureController } from "./onboarding/account-first-flow";
 import { SetupReadinessRouter } from "./onboarding/SetupReadinessRouter";
+import { createStartDockHandoff } from "./onboarding/start-dock-handoff";
 import {
   ensureTauriDictationReadiness,
   TauriAccountGate,
@@ -123,6 +125,7 @@ import {
   createMuteOutputPolicy,
   defaultUserPreferences,
   getUserPreferences,
+  setUserPreferences,
   userPreferencesChangedEvent,
   type UserPreferences,
 } from "./settings/user-preferences-control";
@@ -1159,21 +1162,22 @@ function getAppSurface(): "dock" | "companion" | "preset-picker" | "settings" | 
   return window.location.hash === "#settings" ? "settings" : "dock";
 }
 
-function exitOnboarding() {
+async function exitOnboarding(): Promise<void> {
   if (isTauri()) {
-    void getCurrentWindow().close();
+    await getCurrentWindow().close();
     return;
   }
   window.close();
 }
 
-function completeOnboarding() {
-  if (!isTauri()) {
-    exitOnboarding();
-    return;
-  }
-  void invoke("show_dock").then(exitOnboarding);
-}
+const completeOnboarding = createStartDockHandoff({
+  openDock: async () => {
+    if (isTauri()) {
+      await invoke("show_dock");
+    }
+  },
+  closeOnboarding: exitOnboarding,
+});
 
 type CompanionSurfaceViewProps = {
   snapshot: DockCompanionSnapshot;
@@ -2139,6 +2143,7 @@ export function DockSurface() {
     bands: [0, 0, 0, 0, 0, 0, 0],
   });
   const [effectiveHotkeyLabel, setEffectiveHotkeyLabel] = useState(tauriGlobalHotkeyShortcut);
+  const [dockSkin, setDockSkin] = useState<DockSkinId>(defaultUserPreferences.dockSkin);
   const [activePreset, setActivePreset] = useState<DockActivePreset | undefined>(
     activePresetRef.current,
   );
@@ -2192,6 +2197,7 @@ export function DockSurface() {
         ...preferences,
         schemaVersion: 1,
       };
+      setDockSkin(userPreferencesRef.current.dockSkin);
       Object.assign(
         autoStopSilencePolicyRef.current,
         createAutoStopSilencePolicy(userPreferencesRef.current),
@@ -2949,7 +2955,10 @@ export function DockSurface() {
     }
 
     const syncDockShellState = () => {
-      void invoke("update_dock_shell_state", { state: voiceDockState.phase }).catch(() => {
+      void invoke("update_dock_shell_state", {
+        state: voiceDockState.phase,
+        skin: dockSkin,
+      }).catch(() => {
         // Dock shell updates are best-effort; renderer state remains the source of truth.
       });
     };
@@ -2958,7 +2967,7 @@ export function DockSurface() {
     const startupRetry = window.setTimeout(syncDockShellState, 250);
 
     return () => window.clearTimeout(startupRetry);
-  }, [voiceDockState.phase]);
+  }, [dockSkin, voiceDockState.phase]);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -3282,6 +3291,17 @@ export function DockSurface() {
         break;
       case "clear_preset":
         clearActivePreset();
+        break;
+      case "set_dock_skin":
+        if (payload.dockSkin) {
+          const nextSkin = payload.dockSkin;
+          setDockSkin(nextSkin);
+          userPreferencesRef.current = {
+            ...userPreferencesRef.current,
+            dockSkin: nextSkin,
+          };
+          void setUserPreferences(userPreferencesRef.current).catch(() => undefined);
+        }
         break;
       case "show_result_history":
         void loadResultHistory({ targetSnapshot: payload.targetSnapshot });
@@ -3847,6 +3867,7 @@ export function DockSurface() {
 
         <VoiceDock
           state={voiceDockState}
+          skinId={dockSkin}
           hotkeyLabel={voiceDockHotkey}
           transcriptPreview={assistantHandledBySurface ? undefined : transcriptReview?.text}
           onCommand={handleVoiceDockCommand}

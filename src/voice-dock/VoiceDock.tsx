@@ -1,9 +1,11 @@
 import { useRef } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import type { DockCommand, DockDragEvent, VoiceDockState } from "./types";
+import { defaultDockSkinId, getDockSkin, type DockSkinId } from "./skins";
 
 export type VoiceDockProps = {
   state: VoiceDockState;
+  skinId?: DockSkinId;
   hotkeyLabel?: string;
   transcriptPreview?: string;
   onCommand: (command: DockCommand) => void;
@@ -23,6 +25,7 @@ type DockAction = {
 
 export function VoiceDock({
   state,
+  skinId = defaultDockSkinId,
   hotkeyLabel = "Ctrl+Shift+F9",
   transcriptPreview,
   onCommand,
@@ -129,9 +132,16 @@ export function VoiceDock({
     window.addEventListener("pointercancel", onPointerUp, true);
   };
 
+  const skin = getDockSkin(skinId);
+  const visibleBands = skin.dotIndexes.map((sourceIndex) => ({
+    band: state.vuBands[sourceIndex] ?? 0,
+    sourceIndex,
+  }));
   const actions = createDockActions(state);
   const visibleActions = actions.filter((action) => action.visible);
-  const companion = createCompanionChip(state);
+  const companion = skin.id === "wispr-flow" && state.phase === "processing"
+    ? undefined
+    : createCompanionChip(state);
   const primaryAction = getPrimaryActionCommand(state);
   const primaryActionLabel = getPrimaryActionLabel(state);
 
@@ -141,7 +151,7 @@ export function VoiceDock({
       data-testid="voice-dock"
       data-phase={state.phase}
       data-delivery-status={state.deliveryStatus}
-      data-skin="fixvox-skin4"
+      data-skin={skin.id}
       role="toolbar"
       aria-label="Voice dock"
       data-context-menu="available"
@@ -189,7 +199,9 @@ export function VoiceDock({
             }
           }}
           aria-label={primaryActionLabel}
-          title={primaryActionLabel}
+          title={skin.id === "wispr-flow" && state.phase === "idle"
+            ? `Click or hold ${hotkeyLabel} to start dictating`
+            : primaryActionLabel}
           disabled={!primaryAction}
         >
           {primaryActionLabel}
@@ -222,12 +234,12 @@ export function VoiceDock({
             aria-valuenow={Math.round(state.vuLevel * 100)}
             data-testid="voice-dock-vu"
           >
-            {state.vuBands.map((band, index) => {
-              const dot = getDotVisual(state, band, index);
+            {visibleBands.map(({ band, sourceIndex }, visualIndex) => {
+              const dot = getDotVisual(state, band, sourceIndex);
 
               return (
                 <span
-                  key={index}
+                  key={`${sourceIndex}-${visualIndex}`}
                   className={`voice-dock__vu-dot voice-dock__vu-dot--${state.phase}`}
                   data-testid="voice-dock-vu-dot"
                   data-active={band > 0 ? "true" : "false"}
@@ -235,7 +247,7 @@ export function VoiceDock({
                     "--dot-width": `${dot.width}px`,
                     "--dot-height": `${dot.height}px`,
                     "--dot-opacity": dot.opacity,
-                    "--dot-delay": `${index * 80}ms`,
+                    "--dot-delay": `${visualIndex * 80}ms`,
                     "--dot-offset": `${dot.offset}px`,
                   } as CSSProperties}
                 />

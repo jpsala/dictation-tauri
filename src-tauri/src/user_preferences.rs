@@ -5,12 +5,25 @@ use tauri::{AppHandle, Manager, Runtime};
 
 pub const USER_PREFERENCES_FILE: &str = "user-preferences.v1.json";
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+pub enum DockSkinId {
+    #[serde(rename = "classic-7")]
+    Classic7,
+    #[default]
+    #[serde(rename = "compact-5")]
+    Compact5,
+    #[serde(rename = "wispr-flow")]
+    WisprFlow,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserPreferences {
     pub schema_version: u8,
     #[serde(default = "default_show_dock_on_startup")]
     pub show_dock_on_startup: bool,
+    #[serde(default)]
+    pub dock_skin: DockSkinId,
     #[serde(default)]
     pub review_before_delivery: bool,
     #[serde(default)]
@@ -40,6 +53,7 @@ pub fn set_user_preferences(
     let next = UserPreferences {
         schema_version: 1,
         show_dock_on_startup: preferences.show_dock_on_startup,
+        dock_skin: preferences.dock_skin,
         review_before_delivery: preferences.review_before_delivery,
         press_enter_after_paste: preferences.press_enter_after_paste,
         follow_focus_until_delivery: preferences.follow_focus_until_delivery,
@@ -88,6 +102,7 @@ pub fn default_user_preferences() -> UserPreferences {
     UserPreferences {
         schema_version: 1,
         show_dock_on_startup: default_show_dock_on_startup(),
+        dock_skin: DockSkinId::default(),
         review_before_delivery: false,
         press_enter_after_paste: false,
         follow_focus_until_delivery: default_follow_focus_until_delivery(),
@@ -122,6 +137,7 @@ mod tests {
     fn defaults_are_safe_for_delivery() {
         let defaults = default_user_preferences();
         assert!(defaults.show_dock_on_startup);
+        assert_eq!(defaults.dock_skin, DockSkinId::Compact5);
         assert!(!defaults.review_before_delivery);
         assert!(!defaults.press_enter_after_paste);
         assert!(defaults.follow_focus_until_delivery);
@@ -129,6 +145,18 @@ mod tests {
         assert_eq!(defaults.auto_stop_silence_ms, 1_200);
         assert!(!defaults.mute_output_during_recording);
         assert!(!defaults.dictation_sound_cues_enabled);
+    }
+
+    #[test]
+    fn dock_skin_ids_match_renderer_contract() {
+        for (skin, encoded) in [
+            (DockSkinId::Classic7, "\"classic-7\""),
+            (DockSkinId::Compact5, "\"compact-5\""),
+            (DockSkinId::WisprFlow, "\"wispr-flow\""),
+        ] {
+            assert_eq!(serde_json::to_string(&skin).unwrap(), encoded);
+            assert_eq!(serde_json::from_str::<DockSkinId>(encoded).unwrap(), skin);
+        }
     }
 
     #[test]

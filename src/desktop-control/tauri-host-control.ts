@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { TauriDesktopDeliveryTarget } from "../delivery/tauri-desktop-delivery";
 import type { SelectionTransformPresetId } from "../selection-transform";
+import type { DockSkinId } from "../voice-dock/skins";
 import type { DictationKeyEvent } from "./dictation-key";
 
 export const tauriDefaultGlobalHotkeyShortcut = "Alt+Space";
@@ -80,6 +81,7 @@ export type TauriHostCommand =
   | "paste_last_safe"
   | "select_preset"
   | "clear_preset"
+  | "set_dock_skin"
   | "show_result_history"
   | "show_preset_picker"
   | "run_preset_picker_chord"
@@ -89,6 +91,7 @@ export type TauriHostCommandPayload = {
   source?: "tray_or_context_menu" | "global_hotkey";
   command?: TauriHostCommand;
   presetId?: SelectionTransformPresetId;
+  dockSkin?: DockSkinId;
   chordKey?: string;
   targetSnapshot?: TauriDesktopDeliveryTarget;
 };

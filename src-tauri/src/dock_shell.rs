@@ -14,17 +14,26 @@ use std::{
 
 use tauri::{AppHandle, Manager, Runtime, WebviewWindow};
 
+use crate::user_preferences::DockSkinId;
+
 pub const DOCK_WINDOW_LABEL: &str = "main";
 pub const DOCK_WIDTH: i32 = 164;
-pub const DOCK_HEIGHT: i32 = 64;
+pub const DOCK_HEIGHT: i32 = 42;
+pub const COMPACT_DOCK_WIDTH: i32 = 132;
+pub const COMPACT_DOCK_HEIGHT: i32 = 36;
+pub const WISPR_IDLE_DOCK_WIDTH: i32 = 98;
+pub const WISPR_IDLE_DOCK_HEIGHT: i32 = 32;
+pub const WISPR_RECORDING_DOCK_WIDTH: i32 = 125;
+pub const WISPR_RECORDING_DOCK_HEIGHT: i32 = 36;
 pub const DOCK_WINDOW_MARGIN: i32 = 16;
-pub const DOCK_BOTTOM_MARGIN: i32 = 16;
+pub const DOCK_BOTTOM_MARGIN: i32 = 8;
 pub const LEGACY_DOCK_POSITION_FILE: &str = "dock-position.v1.json";
 pub const DOCK_POSITION_FILE: &str = "dock-positions.v2.json";
 const DOCK_MONITOR_POLL_INTERVAL: Duration = Duration::from_millis(180);
 
 static DOCK_VISIBLE: AtomicBool = AtomicBool::new(true);
 static LAST_DOCK_STATE: Mutex<DockShellState> = Mutex::new(DockShellState::Idle);
+static LAST_DOCK_SKIN: Mutex<DockSkinId> = Mutex::new(DockSkinId::Compact5);
 static LAST_IDLE_MONITOR_KEY: Mutex<Option<String>> = Mutex::new(None);
 static DOCK_MONITOR_WATCHER: Once = Once::new();
 
@@ -80,6 +89,7 @@ pub struct DockShellSnapshot {
     width: i32,
     height: i32,
     state: DockShellState,
+    skin: DockSkinId,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -101,8 +111,9 @@ struct StoredDockPositions {
 pub fn update_dock_shell_state(
     app: AppHandle,
     state: DockShellState,
+    skin: DockSkinId,
 ) -> Result<DockShellSnapshot, String> {
-    apply_dock_shell_state(&app, state).map_err(|error| error.to_string())
+    apply_dock_shell_state(&app, state, skin).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -140,6 +151,7 @@ pub fn configure_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<d
     let user_preferences = crate::user_preferences::read_user_preferences_for_app(app);
     DOCK_VISIBLE.store(user_preferences.show_dock_on_startup, Ordering::SeqCst);
     remember_dock_state(DockShellState::Idle);
+    remember_dock_skin(user_preferences.dock_skin);
 
     let window = app.get_webview_window(DOCK_WINDOW_LABEL).ok_or_else(|| {
         io::Error::new(
@@ -147,7 +159,7 @@ pub fn configure_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<d
             "Dictation Dock window was not created",
         )
     })?;
-    let layout = dock_shell_layout(DockShellState::Idle);
+    let layout = dock_shell_layout_for_skin(DockShellState::Idle, user_preferences.dock_skin);
     let monitor = resolve_cursor_monitor(app, &window)?;
     let scale_factor = monitor.scale_factor();
     let native_layout = scale_dock_shell_layout(layout, scale_factor);
@@ -180,9 +192,10 @@ pub fn configure_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<d
 
 pub fn show_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn Error>> {
     let state = last_dock_state();
-    eprintln!("[dictation-tauri][dock] show requested state={state:?}");
+    let skin = last_dock_skin();
+    eprintln!("[dictation-tauri][dock] show requested state={state:?} skin={skin:?}");
     DOCK_VISIBLE.store(true, Ordering::SeqCst);
-    apply_dock_shell_state(app, state).map(|_| ())
+    apply_dock_shell_state(app, state, skin).map(|_| ())
 }
 
 pub fn hide_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn Error>> {
@@ -203,6 +216,7 @@ pub fn hide_dock_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn Er
 fn apply_dock_shell_state<R: Runtime>(
     app: &AppHandle<R>,
     state: DockShellState,
+    skin: DockSkinId,
 ) -> Result<DockShellSnapshot, Box<dyn Error>> {
     let window = app.get_webview_window(DOCK_WINDOW_LABEL).ok_or_else(|| {
         io::Error::new(
@@ -211,7 +225,8 @@ fn apply_dock_shell_state<R: Runtime>(
         )
     })?;
     remember_dock_state(state);
-    let layout = dock_shell_layout(state);
+    remember_dock_skin(skin);
+    let layout = dock_shell_layout_for_skin(state, skin);
     let scale_factor = dock_scale_factor(&window);
     let native_layout = scale_dock_shell_layout(layout, scale_factor);
 
@@ -221,10 +236,11 @@ fn apply_dock_shell_state<R: Runtime>(
             width: layout.width,
             height: layout.height,
             state,
+            skin,
         });
     }
 
-    let position = resolve_state_position(app, &window, native_layout, scale_factor)?;
+    let position = resolve_state_position(app, &window, native_layout, scale_factor, skin)?;
 
     platform::show_dock_window_no_activate(&window, position, native_layout)?;
     eprintln!(
@@ -243,6 +259,7 @@ fn apply_dock_shell_state<R: Runtime>(
         width: layout.width,
         height: layout.height,
         state,
+        skin,
     })
 }
 
@@ -264,6 +281,7 @@ fn resolve_state_position<R: Runtime>(
     window: &WebviewWindow<R>,
     next_layout: DockShellLayout,
     scale_factor: f64,
+    skin: DockSkinId,
 ) -> Result<DockPosition, Box<dyn Error>> {
     let work_area = resolve_work_area(app, window)?;
     let current_position = window.outer_position()?;
@@ -278,7 +296,7 @@ fn resolve_state_position<R: Runtime>(
         current_size.height as i32,
         next_layout,
         work_area,
-        dock_layout_metrics(scale_factor),
+        dock_layout_metrics(scale_factor, skin),
     ))
 }
 
@@ -390,7 +408,7 @@ fn move_dock_position<R: Runtime>(
             "Dictation Dock window is not available",
         )
     })?;
-    let logical_layout = dock_shell_layout(last_dock_state());
+    let logical_layout = dock_shell_layout_for_skin(last_dock_state(), last_dock_skin());
     let current_layout = scale_dock_shell_layout(logical_layout, dock_scale_factor(&window));
     let monitor = resolve_monitor_for_position(app, &window, position, current_layout)?;
     let layout = scale_dock_shell_layout(logical_layout, monitor.scale_factor());
@@ -416,7 +434,7 @@ fn save_current_dock_position<R: Runtime>(
         &window,
         dock_position,
         scale_dock_shell_layout(
-            dock_shell_layout(last_dock_state()),
+            dock_shell_layout_for_skin(last_dock_state(), last_dock_skin()),
             dock_scale_factor(&window),
         ),
     )?;
@@ -437,6 +455,19 @@ fn last_dock_state() -> DockShellState {
         .lock()
         .map(|stored_state| *stored_state)
         .unwrap_or(DockShellState::Idle)
+}
+
+fn remember_dock_skin(skin: DockSkinId) {
+    if let Ok(mut stored_skin) = LAST_DOCK_SKIN.lock() {
+        *stored_skin = skin;
+    }
+}
+
+fn last_dock_skin() -> DockSkinId {
+    LAST_DOCK_SKIN
+        .lock()
+        .map(|stored_skin| *stored_skin)
+        .unwrap_or_default()
 }
 
 fn remember_idle_monitor_key(key: Option<String>) {
@@ -487,7 +518,7 @@ fn follow_cursor_monitor_if_needed<R: Runtime>(app: &AppHandle<R>) -> Result<boo
     }
 
     let layout = scale_dock_shell_layout(
-        dock_shell_layout(DockShellState::Idle),
+        dock_shell_layout_for_skin(DockShellState::Idle, last_dock_skin()),
         monitor.scale_factor(),
     );
     let position = resolve_dock_position_for_monitor(app, &monitor, layout)?;
@@ -578,15 +609,32 @@ fn write_saved_dock_position<R: Runtime>(
 }
 
 pub fn dock_shell_layout(state: DockShellState) -> DockShellLayout {
+    dock_shell_layout_for_skin(state, DockSkinId::Classic7)
+}
+
+pub fn dock_shell_layout_for_skin(state: DockShellState, skin: DockSkinId) -> DockShellLayout {
+    let compact_dimensions = match (skin, state) {
+        (DockSkinId::Classic7, _) => (DOCK_WIDTH, DOCK_HEIGHT),
+        (DockSkinId::Compact5, _) => (COMPACT_DOCK_WIDTH, COMPACT_DOCK_HEIGHT),
+        (DockSkinId::WisprFlow, DockShellState::Idle) => {
+            (WISPR_IDLE_DOCK_WIDTH, WISPR_IDLE_DOCK_HEIGHT)
+        }
+        (DockSkinId::WisprFlow, _) => {
+            (WISPR_RECORDING_DOCK_WIDTH, WISPR_RECORDING_DOCK_HEIGHT)
+        }
+    };
+
     match state {
-        DockShellState::Idle => DockShellLayout {
-            width: DOCK_WIDTH,
-            height: DOCK_HEIGHT,
-            hit_region: DockHitRegion::Full,
-        },
-        DockShellState::Arming | DockShellState::Recording => DockShellLayout {
-            width: DOCK_WIDTH,
-            height: DOCK_HEIGHT,
+        DockShellState::Idle | DockShellState::Arming | DockShellState::Recording => {
+            DockShellLayout {
+                width: compact_dimensions.0,
+                height: compact_dimensions.1,
+                hit_region: DockHitRegion::Full,
+            }
+        }
+        DockShellState::Processing if skin == DockSkinId::WisprFlow => DockShellLayout {
+            width: WISPR_IDLE_DOCK_WIDTH,
+            height: WISPR_IDLE_DOCK_HEIGHT,
             hit_region: DockHitRegion::Full,
         },
         DockShellState::Processing => expanded_layout(236, 84),
@@ -663,7 +711,7 @@ pub fn calculate_centered_bottom_resize_position(
         current_height,
         next_layout,
         work_area,
-        dock_layout_metrics(1.0),
+        dock_layout_metrics(1.0, DockSkinId::Classic7),
     )
 }
 
@@ -724,10 +772,11 @@ fn scale_dock_shell_layout(layout: DockShellLayout, scale_factor: f64) -> DockSh
     }
 }
 
-fn dock_layout_metrics(scale_factor: f64) -> DockLayoutMetrics {
+fn dock_layout_metrics(scale_factor: f64, skin: DockSkinId) -> DockLayoutMetrics {
+    let layout = dock_shell_layout_for_skin(DockShellState::Idle, skin);
     DockLayoutMetrics {
-        compact_width: scale_dimension(DOCK_WIDTH, scale_factor),
-        compact_height: scale_dimension(DOCK_HEIGHT, scale_factor),
+        compact_width: scale_dimension(layout.width, scale_factor),
+        compact_height: scale_dimension(layout.height, scale_factor),
     }
 }
 
@@ -938,7 +987,7 @@ mod tests {
                 },
                 dock_shell_layout(DockShellState::Idle),
             ),
-            DockPosition { x: 878, y: 1000 }
+            DockPosition { x: 878, y: 1030 }
         );
     }
 
@@ -954,7 +1003,7 @@ mod tests {
                 },
                 dock_shell_layout(DockShellState::Idle),
             ),
-            DockPosition { x: -722, y: 924 }
+            DockPosition { x: -722, y: 954 }
         );
     }
 
@@ -991,7 +1040,7 @@ mod tests {
                 },
                 dock_shell_layout(DockShellState::Idle),
             ),
-            DockPosition { x: 16, y: 1000 }
+            DockPosition { x: 16, y: 1030 }
         );
     }
 
@@ -1025,7 +1074,51 @@ mod tests {
             dock_shell_layout(DockShellState::Recording),
             DockShellLayout {
                 width: 164,
-                height: 64,
+                height: 42,
+                hit_region: DockHitRegion::Full,
+            }
+        );
+    }
+
+    #[test]
+    fn compact_skin_uses_its_own_native_shell_dimensions() {
+        assert_eq!(
+            dock_shell_layout_for_skin(DockShellState::Recording, DockSkinId::Compact5),
+            DockShellLayout {
+                width: 132,
+                height: 36,
+                hit_region: DockHitRegion::Full,
+            }
+        );
+        assert_eq!(
+            dock_shell_layout_for_skin(DockShellState::Processing, DockSkinId::Compact5),
+            expanded_layout(236, 84),
+        );
+    }
+
+    #[test]
+    fn wispr_flow_skin_expands_only_while_recording() {
+        assert_eq!(
+            dock_shell_layout_for_skin(DockShellState::Idle, DockSkinId::WisprFlow),
+            DockShellLayout {
+                width: 98,
+                height: 32,
+                hit_region: DockHitRegion::Full,
+            }
+        );
+        assert_eq!(
+            dock_shell_layout_for_skin(DockShellState::Recording, DockSkinId::WisprFlow),
+            DockShellLayout {
+                width: 125,
+                height: 36,
+                hit_region: DockHitRegion::Full,
+            }
+        );
+        assert_eq!(
+            dock_shell_layout_for_skin(DockShellState::Processing, DockSkinId::WisprFlow),
+            DockShellLayout {
+                width: 98,
+                height: 32,
                 hit_region: DockHitRegion::Full,
             }
         );
@@ -1037,7 +1130,7 @@ mod tests {
             calculate_centered_bottom_resize_position(
                 DockPosition { x: 878, y: 900 },
                 164,
-                64,
+                42,
                 dock_shell_layout(DockShellState::Recording),
                 DockWorkArea {
                     x: 0,
@@ -1054,9 +1147,9 @@ mod tests {
     fn same_size_state_update_clamps_stale_position_outside_safe_area() {
         assert_eq!(
             calculate_centered_bottom_resize_position(
-                DockPosition { x: 878, y: 1020 },
+                DockPosition { x: 878, y: 1040 },
                 164,
-                64,
+                42,
                 dock_shell_layout(DockShellState::Recording),
                 DockWorkArea {
                     x: 0,
@@ -1065,7 +1158,7 @@ mod tests {
                     height: 1080,
                 },
             ),
-            DockPosition { x: 878, y: 1000 }
+            DockPosition { x: 878, y: 1030 }
         );
     }
 
@@ -1075,7 +1168,7 @@ mod tests {
             scale_dock_shell_layout(dock_shell_layout(DockShellState::Idle), 1.5),
             DockShellLayout {
                 width: 246,
-                height: 96,
+                height: 63,
                 hit_region: DockHitRegion::Full,
             }
         );
@@ -1101,7 +1194,7 @@ mod tests {
                 },
                 scale_dock_shell_layout(dock_shell_layout(DockShellState::Idle), 1.5),
             ),
-            DockPosition { x: 837, y: 928 }
+            DockPosition { x: 837, y: 969 }
         );
     }
 
@@ -1109,9 +1202,9 @@ mod tests {
     fn review_layout_expands_with_safe_area_clamp_from_default_position() {
         assert_eq!(
             calculate_centered_bottom_resize_position(
-                DockPosition { x: 878, y: 968 },
+                DockPosition { x: 878, y: 1030 },
                 164,
-                64,
+                42,
                 dock_shell_layout(DockShellState::Review),
                 DockWorkArea {
                     x: 0,
@@ -1120,7 +1213,7 @@ mod tests {
                     height: 1080,
                 },
             ),
-            DockPosition { x: 830, y: 955 }
+            DockPosition { x: 830, y: 982 }
         );
     }
 
@@ -1128,9 +1221,9 @@ mod tests {
     fn review_layout_clamps_when_user_dragged_below_safe_area() {
         assert_eq!(
             calculate_centered_bottom_resize_position(
-                DockPosition { x: 878, y: 1020 },
+                DockPosition { x: 878, y: 1040 },
                 164,
-                64,
+                42,
                 dock_shell_layout(DockShellState::Review),
                 DockWorkArea {
                     x: 0,
@@ -1139,7 +1232,7 @@ mod tests {
                     height: 1080,
                 },
             ),
-            DockPosition { x: 830, y: 974 }
+            DockPosition { x: 830, y: 982 }
         );
     }
 
@@ -1150,7 +1243,7 @@ mod tests {
                 DockPosition { x: 1900, y: 900 },
                 dock_shell_layout(DockShellState::Idle),
             ),
-            DockPosition { x: 1982, y: 932 }
+            DockPosition { x: 1982, y: 921 }
         );
     }
 

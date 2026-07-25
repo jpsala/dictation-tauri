@@ -13,6 +13,7 @@ import {
 describe("user preference contracts", () => {
   it("defaults auto-stop disabled with a safe silence duration", () => {
     expect(defaultUserPreferences).toMatchObject({
+      dockSkin: "compact-5",
       followFocusUntilDelivery: true,
       autoStopOnSilenceEnabled: false,
       autoStopSilenceMs: defaultAutoStopSilenceMs,
@@ -38,6 +39,7 @@ describe("user preference contracts", () => {
       }),
     ).toMatchObject({
       showDockOnStartup: false,
+      dockSkin: "compact-5",
       reviewBeforeDelivery: true,
       pressEnterAfterPaste: true,
       followFocusUntilDelivery: true,
@@ -46,6 +48,12 @@ describe("user preference contracts", () => {
       muteOutputDuringRecording: false,
       dictationSoundCuesEnabled: false,
     });
+  });
+
+  it("keeps only supported dock skin identifiers", () => {
+    expect(normalizeUserPreferences({ dockSkin: "classic-7" }).dockSkin).toBe("classic-7");
+    expect(normalizeUserPreferences({ dockSkin: "compact-5" }).dockSkin).toBe("compact-5");
+    expect(normalizeUserPreferences({ dockSkin: "wispr-flow" }).dockSkin).toBe("wispr-flow");
   });
 
   it("creates the runtime auto-stop silence policy", () => {

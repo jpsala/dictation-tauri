@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { VoiceDock } from "../../src/voice-dock/VoiceDock";
+import type { DockSkinId } from "../../src/voice-dock/skins";
 import type { DockCommand, VoiceDockState } from "../../src/voice-dock/types";
 import { createVoiceDockState } from "../../src/voice-dock/visual-semantics";
 import type { DesktopDictationSession } from "../../src/desktop-control/types";
@@ -21,11 +22,11 @@ type RenderedDock = {
 
 function renderDock(
   state: VoiceDockState,
-  options: { allowPasteObservedWording?: boolean } = {},
+  options: { allowPasteObservedWording?: boolean; skinId?: DockSkinId } = {},
 ): RenderedDock {
   const onCommand = vi.fn<(command: DockCommand) => void>();
   const html = renderToStaticMarkup(
-    <VoiceDock state={state} onCommand={onCommand} />,
+    <VoiceDock state={state} skinId={options.skinId} onCommand={onCommand} />,
   );
 
   if (!options.allowPasteObservedWording) {
@@ -83,6 +84,7 @@ describe("VoiceDock UI", () => {
         session({ state: "listening" }),
         { vuLevel: 0.72, vuBands: [0.1, 0.35, 0.8, 1, 0.7, 0.4, 0.2] },
       ),
+      { skinId: "classic-7" },
     );
 
     expect(html).toContain('data-phase="recording"');

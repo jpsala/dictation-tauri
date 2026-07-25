@@ -9,6 +9,15 @@ export type {
 } from "./types";
 
 export type { VoiceDockProps } from "./VoiceDock";
+export type { DockSkinDefinition, DockSkinId } from "./skins";
+export {
+  classicDockSkin,
+  compactDockSkin,
+  defaultDockSkinId,
+  getDockSkin,
+  normalizeDockSkinId,
+  wisprFlowDockSkin,
+} from "./skins";
 
 export {
   createVoiceDockState,

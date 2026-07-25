@@ -8,6 +8,7 @@ use tauri::{
 use crate::desktop_delivery;
 use crate::dock_shell::{self, DOCK_WINDOW_LABEL};
 use crate::settings_window;
+use crate::user_preferences::DockSkinId;
 
 pub const HOST_COMMAND_EVENT: &str = "desktop-control://host-command";
 
@@ -22,6 +23,9 @@ pub const MENU_PRESET_REWRITE: &str = "preset_rewrite";
 pub const MENU_PRESET_SHORTEN: &str = "preset_shorten";
 pub const MENU_PRESET_PROFESSIONAL: &str = "preset_professional";
 pub const MENU_CLEAR_PRESET: &str = "clear_preset";
+pub const MENU_DOCK_SKIN_CLASSIC: &str = "dock_skin_classic_7";
+pub const MENU_DOCK_SKIN_COMPACT: &str = "dock_skin_compact_5";
+pub const MENU_DOCK_SKIN_WISPR_FLOW: &str = "dock_skin_wispr_flow";
 pub const MENU_SHOW_RESULT_HISTORY: &str = "show_result_history";
 pub const MENU_SHOW_PRESET_PICKER: &str = "show_preset_picker";
 pub const MENU_OPEN_SETTINGS: &str = "open_settings";
@@ -33,6 +37,8 @@ pub struct HostCommandPayload {
     pub source: &'static str,
     pub command: &'static str,
     pub preset_id: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dock_skin: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chord_key: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -49,6 +55,7 @@ pub enum HostMenuAction {
     PasteLastSafe,
     SelectPreset(&'static str),
     ClearPreset,
+    SelectDockSkin(DockSkinId),
     ShowResultHistory,
     ShowPresetPicker,
     OpenSettings,
@@ -69,6 +76,9 @@ pub fn resolve_host_menu_action(id: &str) -> HostMenuAction {
         MENU_PRESET_SHORTEN => HostMenuAction::SelectPreset("shorten"),
         MENU_PRESET_PROFESSIONAL => HostMenuAction::SelectPreset("professional"),
         MENU_CLEAR_PRESET => HostMenuAction::ClearPreset,
+        MENU_DOCK_SKIN_CLASSIC => HostMenuAction::SelectDockSkin(DockSkinId::Classic7),
+        MENU_DOCK_SKIN_COMPACT => HostMenuAction::SelectDockSkin(DockSkinId::Compact5),
+        MENU_DOCK_SKIN_WISPR_FLOW => HostMenuAction::SelectDockSkin(DockSkinId::WisprFlow),
         MENU_SHOW_RESULT_HISTORY => HostMenuAction::ShowResultHistory,
         MENU_SHOW_PRESET_PICKER => HostMenuAction::ShowPresetPicker,
         MENU_OPEN_SETTINGS => HostMenuAction::OpenSettings,
@@ -78,15 +88,24 @@ pub fn resolve_host_menu_action(id: &str) -> HostMenuAction {
 }
 
 pub fn host_command_payload(action: HostMenuAction) -> Option<HostCommandPayload> {
-    let (command, preset_id) = match action {
-        HostMenuAction::StartDictation => ("start", None),
-        HostMenuAction::StopDictation => ("stop", None),
-        HostMenuAction::CancelDictation => ("cancel", None),
-        HostMenuAction::PasteLastSafe => ("paste_last_safe", None),
-        HostMenuAction::SelectPreset(preset_id) => ("select_preset", Some(preset_id)),
-        HostMenuAction::ClearPreset => ("clear_preset", None),
-        HostMenuAction::ShowResultHistory => ("show_result_history", None),
-        HostMenuAction::ShowPresetPicker => ("show_preset_picker", None),
+    let (command, preset_id, dock_skin) = match action {
+        HostMenuAction::StartDictation => ("start", None, None),
+        HostMenuAction::StopDictation => ("stop", None, None),
+        HostMenuAction::CancelDictation => ("cancel", None, None),
+        HostMenuAction::PasteLastSafe => ("paste_last_safe", None, None),
+        HostMenuAction::SelectPreset(preset_id) => ("select_preset", Some(preset_id), None),
+        HostMenuAction::ClearPreset => ("clear_preset", None, None),
+        HostMenuAction::SelectDockSkin(DockSkinId::Classic7) => {
+            ("set_dock_skin", None, Some("classic-7"))
+        }
+        HostMenuAction::SelectDockSkin(DockSkinId::Compact5) => {
+            ("set_dock_skin", None, Some("compact-5"))
+        }
+        HostMenuAction::SelectDockSkin(DockSkinId::WisprFlow) => {
+            ("set_dock_skin", None, Some("wispr-flow"))
+        }
+        HostMenuAction::ShowResultHistory => ("show_result_history", None, None),
+        HostMenuAction::ShowPresetPicker => ("show_preset_picker", None, None),
         HostMenuAction::ShowDock
         | HostMenuAction::OpenSettings
         | HostMenuAction::HideDock
@@ -98,6 +117,7 @@ pub fn host_command_payload(action: HostMenuAction) -> Option<HostCommandPayload
         source: "tray_or_context_menu",
         command,
         preset_id,
+        dock_skin,
         chord_key: None,
         target_snapshot: None,
     })
@@ -178,6 +198,10 @@ fn build_host_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu:
         .text(MENU_PRESET_SHORTEN, "Preset: Shorten")
         .text(MENU_PRESET_PROFESSIONAL, "Preset: Professional")
         .text(MENU_CLEAR_PRESET, "Clear preset")
+        .separator()
+        .text(MENU_DOCK_SKIN_CLASSIC, "Dock skin: Classic 7")
+        .text(MENU_DOCK_SKIN_COMPACT, "Dock skin: Compact 5")
+        .text(MENU_DOCK_SKIN_WISPR_FLOW, "Dock skin: Wispr Flow")
         .separator()
         .text(MENU_OPEN_SETTINGS, "Settings")
         .separator()
@@ -270,6 +294,18 @@ mod tests {
             HostMenuAction::ClearPreset
         );
         assert_eq!(
+            resolve_host_menu_action(MENU_DOCK_SKIN_CLASSIC),
+            HostMenuAction::SelectDockSkin(DockSkinId::Classic7)
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_DOCK_SKIN_COMPACT),
+            HostMenuAction::SelectDockSkin(DockSkinId::Compact5)
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_DOCK_SKIN_WISPR_FLOW),
+            HostMenuAction::SelectDockSkin(DockSkinId::WisprFlow)
+        );
+        assert_eq!(
             resolve_host_menu_action(MENU_SHOW_RESULT_HISTORY),
             HostMenuAction::ShowResultHistory
         );
@@ -293,6 +329,7 @@ mod tests {
                 source: "tray_or_context_menu",
                 command: "start",
                 preset_id: None,
+                dock_skin: None,
                 chord_key: None,
                 target_snapshot: None,
             })
@@ -303,6 +340,7 @@ mod tests {
                 source: "tray_or_context_menu",
                 command: "stop",
                 preset_id: None,
+                dock_skin: None,
                 chord_key: None,
                 target_snapshot: None,
             })
@@ -313,6 +351,29 @@ mod tests {
                 source: "tray_or_context_menu",
                 command: "select_preset",
                 preset_id: Some("translate"),
+                dock_skin: None,
+                chord_key: None,
+                target_snapshot: None,
+            })
+        );
+        assert_eq!(
+            host_command_payload(HostMenuAction::SelectDockSkin(DockSkinId::Compact5)),
+            Some(HostCommandPayload {
+                source: "tray_or_context_menu",
+                command: "set_dock_skin",
+                preset_id: None,
+                dock_skin: Some("compact-5"),
+                chord_key: None,
+                target_snapshot: None,
+            })
+        );
+        assert_eq!(
+            host_command_payload(HostMenuAction::SelectDockSkin(DockSkinId::WisprFlow)),
+            Some(HostCommandPayload {
+                source: "tray_or_context_menu",
+                command: "set_dock_skin",
+                preset_id: None,
+                dock_skin: Some("wispr-flow"),
                 chord_key: None,
                 target_snapshot: None,
             })
@@ -323,6 +384,7 @@ mod tests {
                 source: "tray_or_context_menu",
                 command: "show_preset_picker",
                 preset_id: None,
+                dock_skin: None,
                 chord_key: None,
                 target_snapshot: None,
             })

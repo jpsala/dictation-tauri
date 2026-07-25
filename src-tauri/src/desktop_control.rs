@@ -1166,6 +1166,7 @@ fn emit_preset_picker_hotkey_payload<R: tauri::Runtime>(app: &tauri::AppHandle<R
         source: "global_hotkey",
         command: "show_preset_picker",
         preset_id: None,
+        dock_skin: None,
         chord_key: None,
         target_snapshot,
     };
@@ -1185,6 +1186,7 @@ fn emit_preset_picker_chord_payload<R: tauri::Runtime>(
         source: "global_hotkey",
         command: "run_preset_picker_chord",
         preset_id: None,
+        dock_skin: None,
         chord_key: Some(chord_key),
         target_snapshot,
     };
@@ -1482,6 +1484,7 @@ mod native_paste_last {
                         source: "global_hotkey",
                         command: "paste_last_safe",
                         preset_id: None,
+                        dock_skin: None,
                         chord_key: None,
                         target_snapshot,
                     },

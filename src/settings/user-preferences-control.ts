@@ -1,11 +1,17 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
+import {
+  defaultDockSkinId,
+  normalizeDockSkinId,
+  type DockSkinId,
+} from "../voice-dock/skins";
 
 export const userPreferencesChangedEvent = "settings://user-preferences-changed";
 
 export type UserPreferences = {
   schemaVersion: 1;
   showDockOnStartup: boolean;
+  dockSkin: DockSkinId;
   reviewBeforeDelivery: boolean;
   pressEnterAfterPaste: boolean;
   followFocusUntilDelivery: boolean;
@@ -31,6 +37,7 @@ export type MuteOutputPolicy = {
 export const defaultUserPreferences: UserPreferences = {
   schemaVersion: 1,
   showDockOnStartup: true,
+  dockSkin: defaultDockSkinId,
   reviewBeforeDelivery: false,
   pressEnterAfterPaste: false,
   followFocusUntilDelivery: true,
@@ -57,6 +64,7 @@ export function normalizeUserPreferences(
     ...defaultUserPreferences,
     ...preferences,
     schemaVersion: 1,
+    dockSkin: normalizeDockSkinId(preferences?.dockSkin),
     autoStopSilenceMs: normalizeAutoStopSilenceMs(
       preferences?.autoStopSilenceMs ?? defaultAutoStopSilenceMs,
     ),
