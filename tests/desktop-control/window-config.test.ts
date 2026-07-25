@@ -21,7 +21,7 @@ type TauriConfig = {
 };
 
 describe("Tauri dev dock window config", () => {
-  it("keeps the main dev surface compact, hidden-until-native-show, refreshable, and above normal windows", () => {
+  it("keeps the main dev surface skin-compatible, hidden-until-native-show, refreshable, and above normal windows", () => {
     const config = JSON.parse(
       readFileSync("src-tauri/tauri.conf.json", "utf8"),
     ) as TauriConfig;
@@ -39,9 +39,9 @@ describe("Tauri dev dock window config", () => {
       shadow: false,
       alwaysOnTop: true,
     });
-    expect(main?.width).toBeLessThanOrEqual(200);
-    expect(main?.height).toBeLessThanOrEqual(96);
-    expect(main?.minWidth).toBeGreaterThanOrEqual(164);
-    expect(main?.minHeight).toBeGreaterThanOrEqual(64);
+    expect(main?.width).toBe(132);
+    expect(main?.height).toBe(36);
+    expect(main?.minWidth).toBe(98);
+    expect(main?.minHeight).toBe(32);
   });
 });
