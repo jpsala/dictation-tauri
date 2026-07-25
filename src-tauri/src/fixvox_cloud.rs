@@ -1899,20 +1899,38 @@ pub(crate) fn get_fixvox_setup_readiness_with_env(
     let has_signed_in_context =
         has_signed_in_local_context(device_state.as_ref(), auth_session.as_ref());
 
-    let phase = match read_setup_readiness_state(&path) {
+    let persisted_phase = match read_setup_readiness_state(&path) {
         Ok(Some(state))
             if state.schema_version == FIXVOX_SETUP_READINESS_SCHEMA_VERSION
                 && is_valid_setup_phase(&state.phase) =>
         {
-            if state.phase == "ready" && !has_signed_in_context {
-                "service_unavailable".to_string()
-            } else {
-                state.phase
-            }
+            Some(state.phase)
         }
-        Ok(Some(_)) | Err(_) => "service_unavailable".to_string(),
-        Ok(None) if has_signed_in_context => "ready".to_string(),
-        Ok(None) => "welcome".to_string(),
+        Ok(Some(_)) | Err(_) => Some("service_unavailable".to_string()),
+        Ok(None) => None,
+    };
+    let phase = if has_signed_in_context {
+        "ready".to_string()
+    } else {
+        match auth_session.as_ref().map(|session| session.status.as_str()) {
+            Some("pending") => "oauth_handoff".to_string(),
+            Some("expired") => "oauth_expired".to_string(),
+            Some("error") => "oauth_cancelled".to_string(),
+            Some("signed_in") => "service_unavailable".to_string(),
+            _ => match persisted_phase.as_deref() {
+                Some("ready") => "oauth_expired".to_string(),
+                Some(
+                    phase @ ("offline"
+                    | "oauth_cancelled"
+                    | "oauth_expired"
+                    | "account_not_authorized"
+                    | "binding_conflict"
+                    | "policy_unavailable"
+                    | "service_unavailable"),
+                ) => phase.to_string(),
+                _ => "welcome".to_string(),
+            },
+        }
     };
 
     persist_setup_readiness_state(
@@ -3688,7 +3706,7 @@ mod tests {
     }
 
     #[test]
-    fn setup_readiness_restores_a_persisted_phase() {
+    fn setup_readiness_retires_legacy_configuration_phases() {
         let root = setup_test_root("resume");
         let env = setup_env(root.clone());
         let path = resolve_setup_readiness_path(&env).expect("setup path");
@@ -3703,7 +3721,7 @@ mod tests {
 
         assert_eq!(
             get_fixvox_setup_readiness_with_env(&env).expect("resumed readiness"),
-            build_setup_readiness("shortcut_setup")
+            build_setup_readiness("welcome")
         );
         let _ = std::fs::remove_dir_all(root);
     }
@@ -3739,6 +3757,14 @@ mod tests {
             },
         )
         .expect("legacy device state");
+        persist_setup_readiness_state(
+            &resolve_setup_readiness_path(&env).expect("setup path"),
+            &FixvoxSetupReadinessState {
+                schema_version: FIXVOX_SETUP_READINESS_SCHEMA_VERSION,
+                phase: "welcome".to_string(),
+            },
+        )
+        .expect("persist welcome");
         persist_auth_session_state(
             &auth_path,
             &FixvoxAuthSessionState {
@@ -3778,7 +3804,7 @@ mod tests {
         .expect("persist stale ready");
         assert_eq!(
             get_fixvox_setup_readiness_with_env(&env).expect("stale readiness"),
-            build_setup_readiness("service_unavailable")
+            build_setup_readiness("oauth_expired")
         );
 
         std::fs::write(&path, "raw-token-and-device-sensitive").expect("corrupt setup state");

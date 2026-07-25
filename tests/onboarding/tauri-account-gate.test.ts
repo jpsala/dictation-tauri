@@ -19,39 +19,25 @@ describe("Tauri account readiness gate", () => {
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
-  it("recognizes an already linked signed-in account when legacy readiness remains welcome", async () => {
-    const invoke = vi.fn(async (command: string) => {
-      if (command === "get_fixvox_setup_readiness") {
-        return { schemaVersion: 1, phase: "welcome", ready: false, redacted: true };
-      }
-      if (command === "get_fixvox_cloud_status") {
-        return {
-          deviceRegistered: true,
-          lastRegisterOk: true,
-          authPolicy: { accessMode: "signed_in" },
-          capabilities: { canUseManagedTranscription: true },
-          redacted: true,
-        };
-      }
-      throw new Error(`unexpected command ${command}`);
-    });
+  it("keeps an expired host-owned session out of the dock", async () => {
+    const invoke = vi.fn(async () => ({
+      schemaVersion: 1,
+      phase: "oauth_expired",
+      ready: false,
+      redacted: true,
+    }));
 
-    await expect(getEffectiveTauriAccountReadiness(invoke)).resolves.toEqual({ ready: true, phase: "ready" });
+    await expect(getEffectiveTauriAccountReadiness(invoke)).resolves.toEqual({
+      ready: false,
+      phase: "oauth_expired",
+    });
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 
   it("opens account setup and performs zero capture work when dictation is not ready", async () => {
     const invoke = vi.fn(async (command: string) => {
       if (command === "get_fixvox_setup_readiness") {
         return { schemaVersion: 1, phase: "welcome", ready: false, redacted: true };
-      }
-      if (command === "get_fixvox_cloud_status") {
-        return {
-          deviceRegistered: false,
-          lastRegisterOk: false,
-          authPolicy: { accessMode: "signed_out" },
-          capabilities: { canUseManagedTranscription: false },
-          redacted: true,
-        };
       }
       if (command === "hide_dock" || command === "show_account_setup_window") {
         return null;
@@ -62,7 +48,6 @@ describe("Tauri account readiness gate", () => {
     await expect(ensureTauriDictationReadiness(invoke)).resolves.toBe(false);
     expect(invoke.mock.calls.map(([command]) => command)).toEqual([
       "get_fixvox_setup_readiness",
-      "get_fixvox_cloud_status",
       "hide_dock",
       "show_account_setup_window",
     ]);
@@ -81,5 +66,6 @@ describe("Tauri account readiness gate", () => {
       startCapture.indexOf("desktopSession.start()"),
     );
     expect(source).toContain("<TauriAccountGate invoke={invoke} renderReady={() => <DockSurface />} />");
+    expect(source).toContain("<SetupReadinessRouter invoke={invoke} onReady={completeOnboarding} />");
   });
 });

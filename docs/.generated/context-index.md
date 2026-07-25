@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-24T21:10:44.044Z
+Generated: 2026-07-25T02:13:02.800Z
 
 ## Topics
 
@@ -42,6 +42,8 @@ Generated: 2026-07-24T21:10:44.044Z
 - paused: [Bounded Taskflow Implementation Spike](../tracks/bounded-taskflow-implementation-spike.md)
 - complete: [Clean Install Readiness And Account UX](../tracks/clean-install-readiness-and-account-ux.md)
 - complete: [Cloudflare Proxy Latency Optimization](../tracks/cloudflare-proxy-latency-optimization.md)
+- active: [First-Run Installed Google Validation](../tracks/first-run-installed-google-validation.md)
+- complete: [First-Run Welcome And Sign-In](../tracks/first-run-welcome-and-sign-in.md)
 - complete: [Fixvox Account Profile Inheritance Hotfix](../tracks/fixvox-account-profile-inheritance-hotfix.md)
 - complete: [Fixvox Admin Configuration Hub](../tracks/fixvox-admin-configuration-hub.md)
 - stable: [Fixvox Admin Profile Composer](../tracks/fixvox-admin-profile-composer.md)
@@ -75,7 +77,7 @@ Generated: 2026-07-24T21:10:44.044Z
 - complete: [Information Architecture And Navigation](../tracks/standard-product-ux-redesign/information-architecture.md)
 - complete: [Settings Wireframes](../tracks/standard-product-ux-redesign/settings-wireframes.md)
 - complete: [Surface Boundaries](../tracks/standard-product-ux-redesign/surface-boundaries.md)
-- pending: [User-Facing Error Experience Review](../tracks/user-facing-error-experience-review.md)
+- complete: [No-Speech Transient Recovery](../tracks/user-facing-error-experience-review.md)
 - blocked: [VPS Direct Runtime Cutover](../tracks/vps-direct-runtime-cutover-brief.md)
 - blocked: [VPS Direct Runtime Cutover — Convergence-Aware](../tracks/vps-direct-runtime-cutover-convergence-aware-brief.md)
 - blocked: [VPS Direct Runtime Cutover — Corrected Connector](../tracks/vps-direct-runtime-cutover-corrected-connector-brief.md)

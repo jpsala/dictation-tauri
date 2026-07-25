@@ -68,6 +68,9 @@ pub fn show_account_setup_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Resu
     )
     .ok_or_else(|| "account setup window unavailable (settings_startup_timeout)".to_string())?;
     eprintln!("[dictation-tauri][settings] account setup reusing configured window");
+    window
+        .eval("window.location.replace('index.html?surface=onboarding')")
+        .map_err(|error| format!("account setup navigation failed: {error}"))?;
     show_existing_settings_window(window)
 }
 

@@ -1167,6 +1167,14 @@ function exitOnboarding() {
   window.close();
 }
 
+function completeOnboarding() {
+  if (!isTauri()) {
+    exitOnboarding();
+    return;
+  }
+  void invoke("show_dock").then(exitOnboarding);
+}
+
 type CompanionSurfaceViewProps = {
   snapshot: DockCompanionSnapshot;
   onCommand?: (payload: DockCompanionCommandPayload) => void;
@@ -4090,17 +4098,15 @@ export function App() {
   }
   if (appSurface === "onboarding") {
     if (isTauri()) {
-      return <SetupReadinessRouter invoke={invoke} renderReady={() => <DockSurface />} onExit={exitOnboarding} />;
+      return <SetupReadinessRouter invoke={invoke} onReady={completeOnboarding} />;
     }
     return (
       <OnboardingSurface
         controller={createAccountFirstFixtureController({
           callback: "signed_in",
           link: "linked",
-          microphone: "granted",
-          shortcut: "recommended",
         })}
-        onExit={exitOnboarding}
+        onReady={completeOnboarding}
       />
     );
   }
