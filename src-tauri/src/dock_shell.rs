@@ -619,9 +619,7 @@ pub fn dock_shell_layout_for_skin(state: DockShellState, skin: DockSkinId) -> Do
         (DockSkinId::WisprFlow, DockShellState::Idle) => {
             (WISPR_IDLE_DOCK_WIDTH, WISPR_IDLE_DOCK_HEIGHT)
         }
-        (DockSkinId::WisprFlow, _) => {
-            (WISPR_RECORDING_DOCK_WIDTH, WISPR_RECORDING_DOCK_HEIGHT)
-        }
+        (DockSkinId::WisprFlow, _) => (WISPR_RECORDING_DOCK_WIDTH, WISPR_RECORDING_DOCK_HEIGHT),
     };
 
     match state {

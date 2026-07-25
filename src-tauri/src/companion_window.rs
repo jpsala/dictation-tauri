@@ -126,10 +126,7 @@ pub fn focus_preset_picker(app: AppHandle) -> Result<(), String> {
     focus_window(&app, PRESET_PICKER_WINDOW_LABEL, "Preset Picker")
 }
 
-pub fn show_companion_window<R: Runtime>(
-    app: &AppHandle<R>,
-    transient: bool,
-) -> tauri::Result<()> {
+pub fn show_companion_window<R: Runtime>(app: &AppHandle<R>, transient: bool) -> tauri::Result<()> {
     let window = app
         .get_webview_window(COMPANION_WINDOW_LABEL)
         .ok_or_else(|| tauri::Error::WindowNotFound)?;
