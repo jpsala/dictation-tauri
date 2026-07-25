@@ -9,6 +9,7 @@ Router operativo corto. El detalle durable vive en topics, tracks, specs y decis
 - **Estado:** `ready`.
 - **Plan:** `docs/tracks/dock-skins-visual-refinement.md`.
 - **Próximo batch:** **Batch 1 — Wispr Flow visual refinement**.
+- **Último cierre:** documentación, commit `e75535c` y push a `origin/main` completados; working tree limpio.
 
 ## Estado Vivo
 
