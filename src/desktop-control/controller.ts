@@ -411,6 +411,25 @@ export class DesktopDictationController
     message: string,
     code: string,
   ): DesktopDictationSession {
+    if (
+      code === "invalid_transition" &&
+      (event.action === "stop" || event.action === "cancel")
+    ) {
+      // A stale stop/cancel can arrive while capture startup or processing is
+      // settling. It is a harmless race, not a user-facing failure.
+      if (this.current.state !== "idle") {
+        return this.current;
+      }
+
+      return this.replaceCurrent({
+        sessionId: this.createSessionId(),
+        controlSource: event.source,
+        state: "cancelled",
+        startedAt: event.receivedAt ?? this.now(),
+        endedAt: this.now(),
+      });
+    }
+
     if (this.current.state !== "idle") {
       return this.patchCurrent(this.current.sessionId, {
         error: { message, code },

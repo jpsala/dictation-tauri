@@ -569,6 +569,24 @@ describe("DesktopDictationController US1 session lifecycle", () => {
       },
     });
   });
+
+  it("ignores stale stop/cancel controls without surfacing a transition error", async () => {
+    const controller = createController();
+
+    const staleStop = await controller.handleControl(
+      createControlEvent({ action: "stop", id: "stale-stop-idle" }),
+    );
+
+    expect(staleStop).toMatchObject({ state: "cancelled" });
+    expect(staleStop.error).toBeUndefined();
+
+    const staleCancel = await controller.handleControl(
+      createControlEvent({ action: "cancel", id: "stale-cancel-idle" }),
+    );
+
+    expect(staleCancel).toMatchObject({ state: "cancelled" });
+    expect(staleCancel.error).toBeUndefined();
+  });
 });
 
 function createController(input: {

@@ -45,9 +45,9 @@ describe("voice dock visual semantics", () => {
       active: true,
       busy: true,
       canStart: false,
-      canStop: true,
+      canStop: false,
       canCancel: true,
-      canStopSubmit: true,
+      canStopSubmit: false,
       vuLevel: 0.3,
       vuBands: [0.1, 0.8, 0, 0, 0, 0, 0],
     });

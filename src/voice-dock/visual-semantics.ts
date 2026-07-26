@@ -30,8 +30,8 @@ export function createVoiceDockState(
   );
   const canCopy = hasOutput && !inserted && !assistantResult;
   const canRetry = phase === "failed" || phase === "cancelled";
-  const canStop = phase === "arming" || phase === "recording";
-  const canCancel = canStop;
+  const canStop = phase === "recording";
+  const canCancel = phase === "arming" || phase === "recording";
   const canStart = phase === "idle" || phase === "review" || phase === "failed" || phase === "cancelled";
   const canStopSubmit = canStop && options.showEnterSubmitButton !== false;
   const recovery = createRecoveryState(input, phase, {
