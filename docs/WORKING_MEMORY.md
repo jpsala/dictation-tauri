@@ -1,6 +1,7 @@
 # Working Memory
 
-Router operativo corto. El detalle durable vive en topics, tracks, specs y decisiones.
+Router operativo corto; el detalle durable vive en topics, tracks, specs y
+decisiones.
 
 Última actualización: 2026-07-25.
 
@@ -9,90 +10,54 @@ Router operativo corto. El detalle durable vive en topics, tracks, specs y decis
 - **Estado:** `ready`.
 - **Plan:** `docs/tracks/dock-skins-visual-refinement.md`.
 - **Próximo batch:** **Batch 1 — Wispr Flow visual refinement**.
-- **Último cierre:** documentación, commit `e75535c` y push a `origin/main` completados; working tree limpio.
 
 ## Estado Vivo
 
-- Dictation Tauri y Control Room son el producto canónico. Cloudflare conserva front door, TLS y authority; el VPS sirve el hot path y `fixvox-proxy` queda como rollback sin Custom Domain. `C:/dev/fixvox` queda sólo como referencia para comportamiento Fixvox-like.
-- Spec 019 completó A-E y Gate F quedó completo: restart, rollback provider-loopback-compatible y restore aislado verdes. Current `89750e99f55f7d01`; rollback inmediato `e835f7f678b528c8`; schema 6, markers 1/1, providers y OAuth Google configurados, bind loopback y `cloudflare-authority`. `68e…`, `73c7…`, `66652…`, `90ca…` y `c0deb…` siguen preservados; `9afa…` no es ready sobre schema 6. Cloudflare conserva front door/TLS y el hot path llega al VPS por Tunnel dedicado.
-- El desktop instalado mantiene compatibilidad `CF-DESKTOP`: artifacts release bajo app data y STT por el mismo alias público, ahora servido por VPS/PostgreSQL; la confirmación humana final del dictado queda pendiente.
-- Prompt runtime parity quedó promovido: VPS vuelve a enviar prompt técnico Fixvox-compatible, `temperature=0`, `verbose_json` y granularidades word/segment; postprocess usa baseline server-owned para puntuación, preguntas españolas, correcciones, fillers y términos técnicos. Producción no tiene filas de prompt, por lo que aplica fallback code-owned. Primer candidate revertido al detectar ese drift; release final `89750e99f55f7d01`, health/readiness/context 200, `NRestarts=0`, staging limpio, sin mutación DB ni provider call iniciada por la operación.
-- La otra PC confirmó la deuda de account linkage: OAuth terminaba pero la cuenta canónica no tenía profile y caía a `Basic`, mientras la PC original conservaba `Pro` sólo por device. La reparación definitiva quedó completa: cuenta Google canónica `Pro` account-wide, handles opacos estables, mutación Admin auditable, callback visible y runtime base `e835f7f678b528c8` preservado como rollback; resta sólo reiniciar la app en esa PC para refrescar su cache en memoria.
-- Pi Chat Trusted Owner remoto quedó operativo. Conversation-first Batch 1 está completo; Batch 2 queda postergado mientras Checkpoint F sea el foco. Infraestructura estable: `docs/tracks/pi-prod-workspace.md`.
-- Standard Product UX completó implementación local. Operaciones de otra PC, provider, release o rollout viven detrás de `docs/tracks/standard-product-ux-external-operation-gate-plan.md`.
-- La recuperación no-speech quedó cerrada: `No te escuché` aparece como aviso compacto de 8 s, no bloqueante, con retry, cierre, `Esc` y pausa por interacción; no expone error técnico ni estado `failed`.
-- Dock skins quedó en checkpoint funcional retomable: `classic-7` preserva el dock anterior (`164x42`), `compact-5` es la variante densa (`132x36`) y `wispr-flow` usa idle/processing `98x32` y recording `125x36`, con cápsula única y 11 barras VU `1..13px`. Selector por menú y persistencia local listos; el contrato Rust/React de IDs ahora es explícito para que las dimensiones nativas cambien correctamente. `Stop & submit`/icono `↵` está disponible en las tres skins. Cloud sigue fuera de alcance; falta sólo el pase visual fino de Wispr contra capturas de JP. Evidencia/snapshot en `artifacts/desktop-control/dock-skins/` y `dock-compact-height/`. Continuar desde `docs/topics/fixvox-dock-and-hotkeys-reference.md`, sin tocar cloud ni `classic-7`.
-- First-run quedó corregido local/provider-free: `Empezar` abre el dock una sola vez, espera éxito host y recién entonces cierra la bienvenida; un fallo conserva la pantalla para retry. Tests onboarding focales, build y diagnósticos verdes; Rust intacto. La revalidación instalada requiere una nueva autorización explícita y no debe repetir OAuth ni reset.
-- Instrumentación productiva autorizada quedó activa en Worker `e8c642c3-6543-4794-8f32-b763a48c105a`, desplegada desde un worktree limpio byte-parity con la base productiva; rollback exacto: versión 158 `df416730-61b8-4222-ab5f-282879251db9`. Tres STT reales aislaron todo el overhead Worker: budget events `1326/326/421 ms`, engine `107/95/88`, prompt `44/47/71`, budget config `49/44/66`, multipart `15/14/19`; parse/usage `0`. En warm, budget events explica 62.7% de `595.5 ms` promedio de overhead.
-- Batches 2A-2B quedaron completos local/provider-free: ledger monetario O(1), upgrade PostgreSQL 5→6, backfill/checkpoint idempotente con parity UTC día/mes, shadow redacted legacy-authoritative y expiry/outbox/read-model reintentables fuera de `reserve()`. Checks focales pasaron; p95 local final observado `2.131 ms`. No se cableó provider/authority ni se tocó producción.
-- Batch 2C quedó completo local/provider-free para STT canónico: pricing PostgreSQL tipado USD/per-hour, estimación conservadora por duración, account→profile por campo, `operationId` estable, settle/release idempotente y receipt redacted; legacy conserva authority. Evidencia: core 5/5, API focal 28/28, PostgreSQL 12/12, reserve p95 `1.795 ms`, LSP limpio.
-- VPS provider/canary y Gate F completos sobre `4075da53…`. La release `73c764c8c679dc40`, runtime byte-identical a current (61 paths), quedó instalada inmutable y probada como rollback con retorno final a current. Tres etapas dieron health/readiness/Admin 200; restarts 0, timers activos, backups 5/5, privacy verde, staging limpio y provider routes 0.
-- Batch D1 provider-free quedó completo: Access dio `403/200`, marcador fijo `FIXVOX_D1_OK`, métrica Tunnel `0→1` y `/health`/`/ready` 200 por el canal privado con `cloudflare-authority`. Cleanup dejó cero recursos D1; VPS/Worker siguen verdes y el patch Worker permanece sólo local, sin deploy.
-- Worker-off completo: la base `8e5dd3d` más instrumentación y routing produjo el bundle verificado (`516315` bytes, SHA-256 `7ce5be…e575`), 2/2 tests verdes y deploy productivo `4a97683d-0198-4af5-8f70-ee892a5a9253`. Health 200; trigger/origin/credenciales canary y KV de kill switch ausentes, sin camino al VPS. Rollback exacto disponible: `e8c642c3-6543-4794-8f32-b763a48c105a`.
-- Single-attempt quedó bloqueado: JP pasó `403→200` por registro soportado, pero el único intento no produjo receipt ni evento VPS/provider; no se repitió. Cleanup total confirmado: JP volvió a `403`, routing/recursos efímeros ausentes y Worker/VPS verdes.
-- Diagnóstico provider-free completo: el request gestionado consumido no llevaba trigger, mientras la frontera desplegada lo exigía antes de consultar el allowlist server-owned. La corrección local selecciona sólo por KV habilitado más hash; test focal rojo→verde confirma una invocación `vps-canary` para la identidad válida y Worker para la no-canary, sin efectos externos.
-- Cutover directo inicial bloqueado antes de DNS/STT: la identidad local quedó registrada y con preflight VPS permitido, pero la unit del Tunnel fijó `/usr/bin/cloudflared` frente al binario real en `/usr/local/bin/cloudflared`. Rollback removió todos los recursos dedicados y preservó Worker público 200, VPS ready, restarts 0; no hubo provider call.
-- Cutover con connector corregido también quedó bloqueado provider-free: la unit en `/usr/local/bin/cloudflared`, conexiones y CNAME exacto quedaron verdes, pero el hostname no convergió a `fixvox-api` dentro de la ventana acotada. Rollback automático restauró el custom domain Worker con health 200 y eliminó Tunnel/DNS/unit/config/credencial; VPS ready, restarts 0, provider attempts 0.
-- Diagnóstico de convergencia completo: al separar el Custom Domain, DNS vacío dio 522; con CNAME exacto al Tunnel hubo 54 probes 522 y luego 6 respuestas 200 de `fixvox-api`, con convergencia observada de ~110 s. Tunnel `+9`, Workers KV `0`, provider `0`; cleanup restauró Worker 200 y cero recursos dedicados.
-- Cutover convergence-aware bloqueado tras un falso negativo del receipt: convergió 3× health en `126.258 s`, readiness/preflight y la única STT dieron 200 por VPS, pero el logger normalizó la ruta y el harness restauró Worker. KV `0`; analytics Worker no ejecutado; cleanup total, VPS restarts 0.
-- Cutover provider-free final completo: receipt/log STT previo validados sin otra llamada provider; CNAME, Tunnel y unit `/usr/local/bin/cloudflared` activos; 3× health `fixvox-api` en `19.124 s`, readiness/preflight 200, Worker invocations 0, KV delta 0, VPS restarts 0 y Custom Domain Worker ausente.
-- Desktop prewarm completo: cliente reqwest compartido y `/health` best-effort al iniciar captura redujeron la prueba fría real de `1625 ms` a `687 ms`; health ocurrió `12.25 s` antes de STT, test focal 1/1 y cargo/LSP verdes. Commit `3f0804e` pusheado con los cinco commits locales previos.
-- Prerelease Windows publicado desde worktree limpio en `fixvox-tauri-v0.1.0-20260724030810`: NSIS unsigned `29,553,376` bytes, SHA-256 `32738e2e…aefec`, redescarga idéntica. URL directa: `https://github.com/jpsala/fixvox-releases/releases/download/fixvox-tauri-v0.1.0-20260724030810/Fixvox-Tauri-Setup.exe`.
-- El bloqueo clean install/upgrade por `device_not_registered` quedó corregido y publicado: desktop `a99a493`, prerelease `fixvox-tauri-v0.1.0-20260724125602`, SHA-256 `53115e…bd2a`; Pages deployment `0e00217a`. La PC con upgrade viejo expuso dos fallos VPS posteriores: public base loopback y OAuth incompleto/mock. Producción quedó reparada con backups `0600`, secretos por SSH stdin y release API `68eae40e974909c5` desde source `faf1985`: login start 200, URL Google completa, `prompt=select_account`, callback canónico y exchange/UserInfo real sin persistir tokens. Tests 38/38, provider calls 0 y validación humana final verde.
-- Prompt parity quedó cerrado y publicado desde source `4db04f8`: runtime VPS reproducible `89750e99f55f7d01`, rollback `e835f7f678b528c8`; prerelease Windows `fixvox-tauri-v0.1.0-20260724210739`, installer `29,575,899` bytes y SHA-256 local/publicado/redescargado `92657b4b…63443`. URL directa: `https://github.com/jpsala/fixvox-releases/releases/download/fixvox-tauri-v0.1.0-20260724210739/Fixvox-Tauri-Setup.exe`. Checks: 47 archivos/249 tests focales, frontend, Rust fmt/check/test compile y NSIS; no hubo instalación ni smoke físico.
+- Dictation Tauri y Control Room son el producto canónico; `C:/dev/fixvox`
+  queda como referencia de comportamiento Fixvox-like.
+- El runtime cloud/self-hosted y Checkpoint F están cerrados. Estado, receipts,
+  rollback y hashes viven en las tracks de cloud/VPS y en Spec 019; cualquier
+  operación nueva requiere un brief y gate explícitos.
+- Desktop mantiene compatibilidad `CF-DESKTOP`; OAuth/account linkage y prompt
+  parity quedaron corregidos. Smokes reales, instalación, release, provider,
+  VPS, DNS y deploy siguen gated.
+- Dock skins está listo para el pase visual de `wispr-flow`: preservar
+  `classic-7`, mantener cloud fuera de alcance y continuar desde
+  `docs/topics/fixvox-dock-and-hotkeys-reference.md`.
+- Último cierre: hotfix `f418160` y release
+  `fixvox-tauri-v0.1.0-20260725210647` publicados; instalador verificado e
+  instalado localmente; documentación durable en
+  `docs/tracks/fixvox-tauri-cloud-release.md`.
+- Standard Product UX cerró su operación local. Pi Chat Batch 2, App Audit y el
+  roadmap de usuarios registrados están pausados hasta nueva priorización.
+- La evidencia detallada no se duplica aquí: permanece en las tracks, specs,
+  artifacts y topics enlazados por el índice.
 
-## Tracks Activas
+## Frentes Retomables
 
-| Track | Rol actual |
-| --- | --- |
-| `cloudflare-proxy-latency-optimization.md` | Batches 1 y 2A-2C, promoción shadow, único smoke STT real y provider-support code promotion completos. |
-| `vps-persistent-provider-canary-plan.md` | R1-R3/P1-P3 completos; provider persistente y único canary verdes. |
-| `vps-routing-canary-brief.md` | Gates A-C completos; Gates D/E siguen bloqueados hasta un nuevo plan/gate explícito. |
-| `vps-routing-canary-d1-provider-free-brief.md` | Completo: `403/200`, marcador, delta Tunnel, health/readiness privados y cleanup total verdes. |
-| `vps-routing-canary-worker-off-brief.md` | Completo: Worker `4a97683d…` activo con routing inoperable y rollback exacto `e8c642c3…`. |
-| `vps-routing-canary-single-attempt-brief.md` | Bloqueado: intento consumido sin receipt/evento VPS; cleanup total verde y sin retry autorizado. |
-| `vps-routing-canary-provider-free-diagnostic-brief.md` | Completo: trigger client-side aislado como causa; selección local corregida a KV + hash y test rojo→verde. |
-| `vps-direct-runtime-cutover-brief.md` | Bloqueado antes de DNS/STT; registro persistente verde y rollback total, sin provider. |
-| `vps-direct-runtime-cutover-corrected-connector-brief.md` | Bloqueado provider-free: connector/CNAME verdes, hostname sin convergencia y rollback total al Worker. |
-| `vps-direct-runtime-cutover-diagnostic-brief.md` | Completo: convergencia al Tunnel observada tras ~110 s; provider-free y cleanup total. |
-| `vps-direct-runtime-cutover-convergence-aware-brief.md` | Bloqueado: corte y STT VPS 200, pero falso negativo del receipt disparó rollback total; sin retry autorizado. |
-| `vps-direct-runtime-cutover-provider-free-finalization-brief.md` | Completo: hot path permanente por VPS, evidencia STT reutilizada, Worker/KV en cero y recursos dedicados activos. |
-| `vps-routing-canary-patch-promotion-brief.md` | Pausado: el cutover directo volvió innecesaria la promoción; WIP local preservado sin deploy. |
-| `vps-routing-canary-source-parity-brief.md` | Completo: base activa reproducible, `cmp` idéntico y diff canary limitado a routing. |
-| `vps-provider-loopback-rollback-brief.md` | Candidate `73c764c8c679dc40` construida determinísticamente y luego instalada/probada por el gate externo. |
-| `vps-gate-f-external-closure-brief.md` | Completo: restart, rollback/retorno, restore previo y baseline final verdes. |
-| `fixvox-product-first-self-hosted-contract-plan.md` | Plan cloud/runtime padre; Checkpoints A-E completos. |
-| `fixvox-self-hosted-checkpoint-f-vps-loopback-plan.md` | Checkpoint F completo; F5R2 histórico permanece superseded. |
-| `pi-chat-conversation-first-ux.md` | Batch 1 completo; Batch 2 queda postergado. |
-| `standard-product-ux-external-operation-gate-plan.md` | Única puerta para operaciones externas. |
-| `app-audit-autonomous-implementation-plan.md` | Residual pendiente de decidir: cerrar o pausar. |
-| `dock-skins-visual-refinement.md` | Activa: próximo pase visual de `wispr-flow`; preservar `classic-7` y cloud fuera de alcance. |
-| `fixvox-account-profile-inheritance-hotfix.md` | Completa: account-wide `Pro`, identidad estable, Admin, callback y runtime productivo verificados. |
-| `user-facing-error-experience-review.md` | Completo: aviso temporal `No te escuché` implementado y verificado provider-free. |
-| `fixvox-registered-users-opportunities.md` | Roadmap pendiente de decidir o consolidar. |
-
-## Lectura Por Frente
-
-- Producto: `docs/topics/product-direction.md`.
-- Desktop/selection: `docs/topics/dictation-tauri-foundation.md`, `docs/topics/selection-and-assistant-actions.md`.
-- Latencia proxy: `docs/tracks/cloudflare-proxy-latency-optimization.md`; comparar con `C:/dev/fixvox/proxy/src/index.ts`.
-- Cloud/runtime: Spec 019, track product-first y `docs/topics/fixvox-cloud-runtime-port.md`.
-- Pi Chat: track conversation-first; remote parity queda completa.
-- UI: external-operation gate, `PRODUCT.md`, `DESIGN.md`, `docs/topics/ui-design-and-impeccable.md`; dock/skins en `docs/topics/fixvox-dock-and-hotkeys-reference.md`.
-- AOS: `docs/topics/agentic-os.md`; salud read-only con `bun run aos:doctor` o Pi `/doctor`.
+| Frente | Estado | Abrir primero |
+| --- | --- | --- |
+| Dock/Wispr | activo | `docs/tracks/dock-skins-visual-refinement.md` |
+| Cloud/runtime | referencia cerrada | Spec 019 y `docs/topics/fixvox-cloud-runtime-port.md` |
+| Operaciones externas | sin batch activa | `docs/tracks/standard-product-ux-external-operation-gate-plan.md` |
+| Pi Chat | pausado | `docs/tracks/pi-chat-conversation-first-ux.md` |
+| App audit | pausado | `docs/tracks/app-audit-autonomous-implementation-plan.md` |
+| Usuarios registrados | pausado | `docs/tracks/fixvox-registered-users-opportunities.md` |
+| Producto | referencia | `docs/topics/product-direction.md` |
+| AOS | operativo | `docs/topics/agentic-os.md` |
 
 ## Guardrails
 
-- No imprimir ni commitear secretos, `.env`, tokens, datos sensibles, artifacts o caches.
-- Provider/OAuth real, cuentas, VPS, deploy, DNS, release, producción, commit/push y acciones destructivas requieren autorización explícita.
-- Smokes físicos/live de hotkeys, audio, Alt+Space, selección, replace-selection, observer y paste real requieren task/spec o confirmación.
-- Para UI durable abrir `PRODUCT.md` y `DESIGN.md`; usar app Tauri real para tray, hotkeys, ventanas y delivery cuando corresponda.
-- Trabajo normal: manual por etapas, un bounded batch, checks proporcionales. No iniciar Taskflow ni loops largos sin opt-in explícito.
-
-## Riesgos Transversales
-
-- `cloud/fixvox-api/src/app.ts` conserva fan-out alto y preflight legacy pendiente de limpieza.
-- No convertir esta ruta caliente en transcript; receipts y evidencia pertenecen a tracks/specs.
+- No imprimir ni commitear secretos, `.env`, tokens, datos sensibles, artifacts
+  o caches.
+- Provider/OAuth real, cuentas, VPS, deploy, DNS, release, producción,
+  commit/push y acciones destructivas requieren autorización explícita.
+- Smokes físicos/live de hotkeys, audio, selección, replace-selection, observer
+  y paste real requieren task/spec o confirmación.
+- Para UI durable abrir `PRODUCT.md` y `DESIGN.md`; usar app Tauri real cuando
+  el shell nativo sea parte del comportamiento.
+- Ejecutar un solo batch acotado con checks proporcionales; no revivir motores
+  de orquestación retirados.
 
 ## Comandos
 

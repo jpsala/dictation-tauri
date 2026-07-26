@@ -1,3 +1,5 @@
+/// <reference path="../types/aos-runtime.d.ts" />
+
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 
@@ -75,13 +77,22 @@ if (exists("docs/topics")) {
 lines.push("", "## Tracks", "");
 
 if (exists("docs/tracks")) {
+  const coldTrackStatuses = new Set(["archived", "complete", "stable", "superseded"]);
+  let coldTrackCount = 0;
   for (const file of walkMarkdownFiles(join(root, "docs", "tracks")).sort()) {
     const path = rel(file);
     if (path === "docs/tracks/README.md" || path === "docs/tracks/TEMPLATE.md") continue;
     const content = read(path);
     const meta = frontmatter(content);
     const status = value(meta, "status") || "unknown";
+    if (coldTrackStatuses.has(status)) {
+      coldTrackCount += 1;
+      continue;
+    }
     lines.push(`- ${status}: [${title(content)}](../${path.replace(/^docs\//, "")})`);
+  }
+  if (coldTrackCount > 0) {
+    lines.push(`- Closed/historical: ${coldTrackCount} tracks omitted from the hot index; search \`docs/tracks/\` on demand.`);
   }
 } else {
   lines.push("- Missing docs/tracks/");

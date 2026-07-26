@@ -1,5 +1,5 @@
 ---
-status: active
+status: complete
 started: 2026-07-16
 updated: 2026-07-20
 priority: high
@@ -509,5 +509,5 @@ JP eligió **roles sólo para cuentas ya enlazadas**. Control Room seleccionará
 
 ## Siguiente Acción
 
-Autorizar una sola ejecución de `docs/tracks/vps-gate-f-closure-brief.md` para
-cerrar F5R3-F6; no tocar el VPS antes de ese gate.
+Checkpoint F quedó cerrado; usar esta track como referencia histórica y abrir
+un brief nuevo para cualquier operación posterior.

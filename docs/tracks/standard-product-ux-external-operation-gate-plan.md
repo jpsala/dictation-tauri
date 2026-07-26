@@ -1,5 +1,5 @@
 ---
-status: active
+status: complete
 started: 2026-07-18
 updated: 2026-07-18
 priority: high
@@ -231,4 +231,5 @@ Detener y reportar si:
 
 ## Siguiente Batch
 
-**Batch 1 — Read-Only Readiness Packet**, con perfil **Implementador**, manual staged y un único owner. Al completarlo, detenerse en **Batch 2 — Decisión Humana De Operación**. No ejecutar ninguna operación externa durante Batch 1.
+No hay batch activa. Cualquier operación posterior requiere un brief nuevo y
+una decisión humana explícita.

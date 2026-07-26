@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-25T17:18:07.840Z
+Generated: 2026-07-26T01:02:09.108Z
 
 ## Topics
 
@@ -35,68 +35,20 @@ Generated: 2026-07-25T17:18:07.840Z
 
 ## Tracks
 
-- active: [App Audit Autonomous Implementation Plan](../tracks/app-audit-autonomous-implementation-plan.md)
-- archived: [Fixvox Effective Runtime Parity](../tracks/archive/fixvox-effective-runtime-parity.md)
-- archived: [Prompt Para Proxima Sesion Archivado](../tracks/archive/next-session-prompt-2026-06-20.md)
-- archived: [Product Scope Decision Pass](../tracks/archive/product-scope-decision-pass.md)
+- paused: [App Audit Autonomous Implementation Plan](../tracks/app-audit-autonomous-implementation-plan.md)
 - paused: [Bounded Taskflow Implementation Spike](../tracks/bounded-taskflow-implementation-spike.md)
-- complete: [Clean Install Readiness And Account UX](../tracks/clean-install-readiness-and-account-ux.md)
-- complete: [Cloudflare Proxy Latency Optimization](../tracks/cloudflare-proxy-latency-optimization.md)
 - active: [Dock Skins Visual Refinement](../tracks/dock-skins-visual-refinement.md)
 - blocked: [First-Run Installed Google Validation](../tracks/first-run-installed-google-validation.md)
-- complete: [First-Run Start Dock Recovery](../tracks/first-run-start-dock-recovery.md)
-- complete: [First-Run Welcome And Sign-In](../tracks/first-run-welcome-and-sign-in.md)
-- complete: [Fixvox Account Profile Inheritance Hotfix](../tracks/fixvox-account-profile-inheritance-hotfix.md)
-- complete: [Fixvox Admin Configuration Hub](../tracks/fixvox-admin-configuration-hub.md)
-- stable: [Fixvox Admin Profile Composer](../tracks/fixvox-admin-profile-composer.md)
-- superseded: [Fixvox Admin Web + Pi Chat](../tracks/fixvox-admin-web-pi-chat.md)
-- complete: [Fixvox Clean Install — Device Bootstrap Hotfix](../tracks/fixvox-clean-install-device-bootstrap-hotfix-brief.md)
-- complete: [Fixvox Lulu Assistant Parity Refactor](../tracks/fixvox-lulu-assistant-parity-refactor.md)
-- complete: [Fixvox Lulu Assistant Safe Architecture Plan](../tracks/fixvox-lulu-assistant-safe-architecture-plan.md)
-- active: [Fixvox Product-First Self-Hosted Contract Plan](../tracks/fixvox-product-first-self-hosted-contract-plan.md)
-- active: [Fixvox Registered Users Opportunities](../tracks/fixvox-registered-users-opportunities.md)
-- superseded: [Fixvox Self-Hosted Checkpoint D Closure Plan](../tracks/fixvox-self-hosted-checkpoint-d-closure-plan.md)
+- paused: [Fixvox Registered Users Opportunities](../tracks/fixvox-registered-users-opportunities.md)
 - paused: [Fixvox Self-Hosted Checkpoint F — VPS Loopback And Operations](../tracks/fixvox-self-hosted-checkpoint-f-vps-loopback-plan.md)
-- superseded: [Fixvox Tauri Cloud Client + Release](../tracks/fixvox-tauri-cloud-release.md)
-- complete: [Flow Plan/Execution Evaluation](../tracks/flow-plan-execution-evaluation.md)
-- superseded: [MVP Y Recursos De Referencia](../tracks/mvp-and-reference-resources.md)
-- active: [Pi Chat — Conversation-First UX](../tracks/pi-chat-conversation-first-ux.md)
-- complete: [Pi Chat Remote Agent Parity](../tracks/pi-chat-remote-agent-parity.md)
-- stable: [Pi Prod Workspace For Dictation Tauri](../tracks/pi-prod-workspace.md)
-- stable: [Profile Composer: Cloudflare rollout seguro y auditable](../tracks/profile-composer-cloudflare-rollout-plan.md)
-- stable: [Profile Composer Phase 3: preview, RBAC and safe publish](../tracks/profile-composer-phase-3-rbac-publish-plan.md)
-- complete: [QuickPick Alt+Q — Reliability](../tracks/quickpick-alt-q-reliability.md)
-- complete: [QuickPick — Installed App Validation](../tracks/quickpick-installed-app-validation.md)
-- superseded: [Settings Window Y UI Foundation](../tracks/settings-window-and-ui-foundation.md)
-- complete: [Plan De Estudio De Proyectos Fuente](../tracks/source-project-study-plan.md)
-- active: [Standard Product UX — External Operation Gate Plan](../tracks/standard-product-ux-external-operation-gate-plan.md)
-- complete: [Standard Product UX Redesign Plan](../tracks/standard-product-ux-redesign-plan.md)
-- complete: [Acceptance Matrix](../tracks/standard-product-ux-redesign/acceptance-matrix.md)
-- complete: [Control Room Wireframes](../tracks/standard-product-ux-redesign/control-room-wireframes.md)
-- complete: [Copy And Error Contract](../tracks/standard-product-ux-redesign/copy-and-error-contract.md)
-- complete: [First-Run State Machine](../tracks/standard-product-ux-redesign/first-run-state-machine.md)
-- complete: [First-Run Wireflows](../tracks/standard-product-ux-redesign/first-run-wireflows.md)
-- complete: [Information Architecture And Navigation](../tracks/standard-product-ux-redesign/information-architecture.md)
-- complete: [Settings Wireframes](../tracks/standard-product-ux-redesign/settings-wireframes.md)
-- complete: [Surface Boundaries](../tracks/standard-product-ux-redesign/surface-boundaries.md)
-- complete: [No-Speech Transient Recovery](../tracks/user-facing-error-experience-review.md)
+- paused: [Pi Chat — Conversation-First UX](../tracks/pi-chat-conversation-first-ux.md)
 - blocked: [VPS Direct Runtime Cutover](../tracks/vps-direct-runtime-cutover-brief.md)
 - blocked: [VPS Direct Runtime Cutover — Convergence-Aware](../tracks/vps-direct-runtime-cutover-convergence-aware-brief.md)
 - blocked: [VPS Direct Runtime Cutover — Corrected Connector](../tracks/vps-direct-runtime-cutover-corrected-connector-brief.md)
-- complete: [VPS Direct Runtime Cutover — Provider-Free Diagnostic](../tracks/vps-direct-runtime-cutover-diagnostic-brief.md)
-- complete: [VPS Direct Runtime Cutover — Provider-Free Finalization](../tracks/vps-direct-runtime-cutover-provider-free-finalization-brief.md)
-- complete: [VPS Gate F Closure](../tracks/vps-gate-f-closure-brief.md)
-- complete: [VPS Gate F External Closure](../tracks/vps-gate-f-external-closure-brief.md)
-- complete: [VPS Persistent Provider And Canary Gate Plan](../tracks/vps-persistent-provider-canary-plan.md)
-- complete: [VPS Provider-Loopback Rollback Candidate](../tracks/vps-provider-loopback-rollback-brief.md)
-- complete: [VPS Routing Canary — Cloudflare Access Gate](../tracks/vps-routing-canary-access-gate-brief.md)
 - blocked: [VPS Routing Canary](../tracks/vps-routing-canary-brief.md)
-- complete: [VPS Routing Canary — D1 Provider-Free](../tracks/vps-routing-canary-d1-provider-free-brief.md)
 - paused: [VPS Routing Canary — Local Patch Promotion](../tracks/vps-routing-canary-patch-promotion-brief.md)
-- complete: [VPS Routing Canary — Provider-Free Diagnostic](../tracks/vps-routing-canary-provider-free-diagnostic-brief.md)
 - blocked: [VPS Routing Canary — Single Attempt And Return](../tracks/vps-routing-canary-single-attempt-brief.md)
-- complete: [VPS Routing Canary — Source Parity](../tracks/vps-routing-canary-source-parity-brief.md)
-- complete: [VPS Routing Canary — Worker Off](../tracks/vps-routing-canary-worker-off-brief.md)
+- Closed/historical: 49 tracks omitted from the hot index; search `docs/tracks/` on demand.
 
 ## Specs
 

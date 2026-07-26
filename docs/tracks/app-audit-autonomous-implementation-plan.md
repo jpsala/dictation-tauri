@@ -1,5 +1,5 @@
 ---
-status: active
+status: paused
 started: 2026-07-08
 updated: 2026-07-13
 priority: high
