@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ensureTauriDictationReadiness,
   getEffectiveTauriAccountReadiness,
+  shouldOpenTauriAccountSetup,
 } from "../../src/onboarding/tauri-account-gate";
 
 describe("Tauri account readiness gate", () => {
@@ -34,6 +35,16 @@ describe("Tauri account readiness gate", () => {
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
+  it("does not open onboarding for transient startup and connectivity phases", () => {
+    for (const phase of ["checking", "offline", "policy_unavailable", "service_unavailable"] as const) {
+      expect(shouldOpenTauriAccountSetup(phase), phase).toBe(false);
+    }
+
+    for (const phase of ["welcome", "oauth_expired", "account_not_authorized", "binding_conflict"] as const) {
+      expect(shouldOpenTauriAccountSetup(phase), phase).toBe(true);
+    }
+  });
+
   it("opens account setup and performs zero capture work when dictation is not ready", async () => {
     const invoke = vi.fn(async (command: string) => {
       if (command === "get_fixvox_setup_readiness") {
@@ -51,6 +62,18 @@ describe("Tauri account readiness gate", () => {
       "hide_dock",
       "show_account_setup_window",
     ]);
+  });
+
+  it("keeps transient readiness failures from opening account setup during dictation", async () => {
+    const invoke = vi.fn(async (command: string) => {
+      if (command === "get_fixvox_setup_readiness") {
+        throw new Error("temporary startup failure");
+      }
+      throw new Error(`unexpected command ${command}`);
+    });
+
+    await expect(ensureTauriDictationReadiness(invoke)).resolves.toBe(false);
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 
   it("guards the central capture boundary before creating a desktop session", () => {

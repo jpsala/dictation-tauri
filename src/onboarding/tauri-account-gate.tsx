@@ -35,6 +35,16 @@ export async function openTauriAccountSetup(invoke: TauriAccountGateInvoke): Pro
   await invoke("show_account_setup_window");
 }
 
+export function shouldOpenTauriAccountSetup(phase: AccountFirstPhase): boolean {
+  return phase === "welcome" ||
+    phase === "oauth_handoff" ||
+    phase === "account_linking" ||
+    phase === "oauth_cancelled" ||
+    phase === "oauth_expired" ||
+    phase === "account_not_authorized" ||
+    phase === "binding_conflict";
+}
+
 export async function ensureTauriDictationReadiness(
   invoke: TauriAccountGateInvoke,
 ): Promise<boolean> {
@@ -43,13 +53,16 @@ export async function ensureTauriDictationReadiness(
     return true;
   }
 
-  await openTauriAccountSetup(invoke);
+  if (shouldOpenTauriAccountSetup(readiness.phase)) {
+    await openTauriAccountSetup(invoke);
+  }
   return false;
 }
 
 /** Keeps the dock unavailable until the host reports an effective signed-in account. */
 export function TauriAccountGate({ invoke, renderReady }: TauriAccountGateProps) {
   const [ready, setReady] = useState(false);
+  const [openingSetup, setOpeningSetup] = useState(false);
   const setupOpenedRef = useRef(false);
 
   useEffect(() => {
@@ -63,12 +76,18 @@ export function TauriAccountGate({ invoke, renderReady }: TauriAccountGateProps)
 
       if (readiness.ready) {
         setReady(true);
+        setOpeningSetup(false);
         return;
       }
 
       setReady(false);
+      if (!shouldOpenTauriAccountSetup(readiness.phase)) {
+        setOpeningSetup(false);
+        return;
+      }
       if (!setupOpenedRef.current) {
         setupOpenedRef.current = true;
+        setOpeningSetup(true);
         await openTauriAccountSetup(invoke).catch(() => undefined);
       }
     };
@@ -87,7 +106,7 @@ export function TauriAccountGate({ invoke, renderReady }: TauriAccountGateProps)
 
   return (
     <main className="onboarding-shell" aria-live="polite" data-testid="account-setup-opening">
-      <p>Abriendo la configuración de tu cuenta…</p>
+      <p>{openingSetup ? "Abriendo la configuración de tu cuenta…" : "Verificando tu cuenta…"}</p>
     </main>
   );
 }
