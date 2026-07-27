@@ -75,14 +75,21 @@ function createTargetSnapshot(target: TauriDesktopDeliveryTarget): DesktopTarget
 
 export async function captureTauriDesktopDeliveryTarget(
   invoke: TauriInvoke,
-  options: { preferForegroundWatcherCacheOverTerminal?: boolean } = {},
+  options: {
+    preferForegroundWatcherCacheOverTerminal?: boolean;
+    allowCachedFallback?: boolean;
+  } = {},
 ): Promise<TauriDesktopDeliveryTarget | undefined> {
   let currentTarget: TauriDesktopDeliveryTarget | undefined;
   try {
     currentTarget = await invoke<TauriDesktopDeliveryTarget>("capture_desktop_delivery_target");
   } catch {
-    // Fall back to a previously cached editable target below. This preserves tray/menu
-    // flows where opening the menu can temporarily steal foreground away from the input.
+    // Fall back to a previously cached editable target below when allowed. This preserves
+    // tray/menu flows where opening the menu can temporarily steal foreground away from the input.
+  }
+
+  if (options.allowCachedFallback === false) {
+    return currentTarget?.inputLike ? currentTarget : undefined;
   }
 
   let cachedTarget: TauriDesktopDeliveryTarget | undefined;
@@ -154,6 +161,7 @@ export function createTauriSavedTargetDeliveryGateway(input: {
   getTarget: () => TauriDesktopDeliveryTarget | undefined;
   getStopTarget?: () => TauriDesktopDeliveryTarget | undefined;
   getFollowFocusUntilDelivery?: () => boolean;
+  getPasteWithoutFocusChange?: () => boolean;
   getPressEnterAfterPaste?: () => boolean;
   observer?: DesktopPasteObserver<TauriDesktopDeliveryTarget>;
 }): DesktopDeliveryGateway {
@@ -164,27 +172,39 @@ export function createTauriSavedTargetDeliveryGateway(input: {
       }
 
       const savedTarget = input.getTarget();
-      const useStopTarget = request.targetAffinity !== "saved" &&
+      const pasteWithoutFocusChange = input.getPasteWithoutFocusChange?.() === true;
+      const useStopTarget = !pasteWithoutFocusChange &&
+        request.targetAffinity !== "saved" &&
         input.getFollowFocusUntilDelivery?.() === false;
       const stopTarget = useStopTarget ? input.getStopTarget?.() : undefined;
       const savedTargetIsExplicitTerminal = savedTarget?.inputLike === true &&
         isTerminalLikeTarget(savedTarget);
-      const currentTarget = request.targetAffinity === "saved" || useStopTarget
-        ? undefined
-        : await captureTauriDesktopDeliveryTarget(input.invoke, {
-            preferForegroundWatcherCacheOverTerminal: !savedTargetIsExplicitTerminal,
-          });
-      const target = useStopTarget
-        ? stopTarget?.inputLike ? stopTarget : undefined
-        : resolveAssuredDeliveryTarget({
-            savedTarget,
-            currentTarget,
-            targetAffinity: request.targetAffinity,
-          });
+      const currentTarget = pasteWithoutFocusChange
+        ? await captureTauriDesktopDeliveryTarget(input.invoke, { allowCachedFallback: false })
+        : request.targetAffinity === "saved" || useStopTarget
+          ? undefined
+          : await captureTauriDesktopDeliveryTarget(input.invoke, {
+              preferForegroundWatcherCacheOverTerminal: !savedTargetIsExplicitTerminal,
+            });
+      const target = pasteWithoutFocusChange
+        ? request.targetAffinity === "saved"
+          ? savedTarget?.inputLike && currentTarget?.frameHwnd === savedTarget.frameHwnd
+            ? currentTarget
+            : undefined
+          : currentTarget
+        : useStopTarget
+          ? stopTarget?.inputLike ? stopTarget : undefined
+          : resolveAssuredDeliveryTarget({
+              savedTarget,
+              currentTarget,
+              targetAffinity: request.targetAffinity,
+            });
       if (!target) {
         return deriveDeliveryEvidence(request, {
           status: "failed",
-          reason: "No assured editable target is available for paste delivery.",
+          reason: pasteWithoutFocusChange
+            ? "No matching editable foreground target is available for paste without changing windows."
+            : "No assured editable target is available for paste delivery.",
         });
       }
 
@@ -195,6 +215,7 @@ export function createTauriSavedTargetDeliveryGateway(input: {
             text: request.text,
             target,
             pressEnterAfterPaste: input.getPressEnterAfterPaste?.() === true,
+            focusTargetBeforePaste: !pasteWithoutFocusChange,
           },
         );
 

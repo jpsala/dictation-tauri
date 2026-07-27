@@ -10,8 +10,15 @@ import {
   createPasteSendDeliveryGateway,
   createReviewOnlyDeliveryGateway,
 } from "../../src/delivery/adapters";
-import { createTauriSavedTargetDeliveryGateway } from "../../src/delivery/tauri-desktop-delivery";
+import {
+  createTauriSavedTargetDeliveryGateway,
+  type TauriInvoke,
+} from "../../src/delivery/tauri-desktop-delivery";
 import { createDeliveryRequest } from "./desktop-control-fixtures";
+
+const asTauriInvoke = (
+  invoke: (command: string, args?: Record<string, unknown>) => unknown,
+): TauriInvoke => invoke as unknown as TauriInvoke;
 
 describe("desktop delivery evidence foundation", () => {
   it("marks review-only text as available without desktop side effects", () => {
@@ -179,7 +186,7 @@ describe("desktop delivery evidence foundation", () => {
   it("sends Tauri saved-target paste as paste_sent without claiming observation", async () => {
     const invokeCalls: Record<string, unknown>[] = [];
     const gateway = createTauriSavedTargetDeliveryGateway({
-      invoke: async (_command, args) => {
+      invoke: asTauriInvoke(async (_command, args) => {
         invokeCalls.push(args ?? {});
         return {
           status: "paste_sent",
@@ -193,7 +200,7 @@ describe("desktop delivery evidence foundation", () => {
             reason: "foreground target captured before dictation",
           },
         };
-      },
+      }),
       getTarget: () => ({
         frameHwnd: "123",
         windowTitle: "Scratchpad",
@@ -212,12 +219,12 @@ describe("desktop delivery evidence foundation", () => {
       reason: "Paste command was sent to the saved foreground target without observation.",
     });
     expect(invokeCalls.find((call) => "pressEnterAfterPaste" in call))
-      .toMatchObject({ pressEnterAfterPaste: false });
+      .toMatchObject({ pressEnterAfterPaste: false, focusTargetBeforePaste: true });
   });
 
   it("allows a Tauri verified observer to elevate delivery to paste_observed", async () => {
     const gateway = createTauriSavedTargetDeliveryGateway({
-      invoke: async () => ({
+      invoke: asTauriInvoke(async () => ({
         status: "paste_observed" as const,
         reason: "Paste insertion was verified by a bounded Win32 text observer on the saved target.",
         target: {
@@ -228,7 +235,7 @@ describe("desktop delivery evidence foundation", () => {
           inputLike: true,
           reason: "foreground target captured before dictation",
         },
-      }),
+      })),
       getTarget: () => ({
         frameHwnd: "123",
         windowTitle: "Scratchpad",
@@ -252,7 +259,7 @@ describe("desktop delivery evidence foundation", () => {
   it("can request paste-then-enter through Tauri while keeping evidence as paste_sent", async () => {
     const invokeCalls: Record<string, unknown>[] = [];
     const gateway = createTauriSavedTargetDeliveryGateway({
-      invoke: async (_command, args) => {
+      invoke: asTauriInvoke(async (_command, args) => {
         invokeCalls.push(args ?? {});
         return {
           status: "paste_sent",
@@ -266,7 +273,7 @@ describe("desktop delivery evidence foundation", () => {
             reason: "foreground target captured before dictation",
           },
         };
-      },
+      }),
       getTarget: () => ({
         frameHwnd: "123",
         windowTitle: "Scratchpad",
@@ -286,14 +293,14 @@ describe("desktop delivery evidence foundation", () => {
       reason: "Paste and Enter commands were sent to the saved foreground target without observation.",
     });
     expect(invokeCalls.find((call) => "pressEnterAfterPaste" in call))
-      .toMatchObject({ pressEnterAfterPaste: true });
+      .toMatchObject({ pressEnterAfterPaste: true, focusTargetBeforePaste: true });
   });
 
   it("falls back when Tauri paste has no saved target", async () => {
     const gateway = createTauriSavedTargetDeliveryGateway({
-      invoke: async () => {
+      invoke: asTauriInvoke(async () => {
         throw new Error("should not invoke without target");
-      },
+      }),
       getTarget: () => undefined,
     });
 

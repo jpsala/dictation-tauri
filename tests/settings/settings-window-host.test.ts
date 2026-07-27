@@ -24,6 +24,8 @@ describe("Settings host window", () => {
     expect(settingsSource).toContain("index.html#settings");
     expect(settingsSource).toContain("window.location.replace('index.html#settings')");
     expect(settingsSource).toContain("settings navigation failed");
+    expect(settingsSource).toContain('ACCOUNT_SETUP_WINDOW_LABEL: &str = "account-setup"');
+    expect(settingsSource).toContain("create_fresh_account_setup_window");
     expect(settingsSource).not.toContain("destroying stale window before open");
     expect(settingsSource).not.toContain("window.destroy()?");
   });

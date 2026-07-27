@@ -151,8 +151,14 @@ pub fn deliver_text_to_desktop_target(
     text: String,
     target: DesktopDeliveryTarget,
     press_enter_after_paste: Option<bool>,
+    focus_target_before_paste: Option<bool>,
 ) -> Result<DesktopDeliveryResult, String> {
-    platform::deliver_text_to_desktop_target(text, target, press_enter_after_paste.unwrap_or(false))
+    platform::deliver_text_to_desktop_target(
+        text,
+        target,
+        press_enter_after_paste.unwrap_or(false),
+        focus_target_before_paste.unwrap_or(true),
+    )
 }
 
 #[tauri::command]
@@ -341,6 +347,7 @@ mod platform {
         text: String,
         target: DesktopDeliveryTarget,
         press_enter_after_paste: bool,
+        focus_target_before_paste: bool,
     ) -> Result<DesktopDeliveryResult, String> {
         if text.trim().is_empty() {
             return Err("Cannot deliver empty text.".to_string());
@@ -357,13 +364,17 @@ mod platform {
             read_observable_window_text(hwnd)
         };
         eprintln!("[dictation-tauri][desktop-delivery] using Fixvox-like clipboard paste delivery");
-        let clipboard_warning =
-            deliver_text_with_clipboard(&text, &target, hwnd, press_enter_after_paste).map_err(
-                |error| {
-                    eprintln!("[dictation-tauri][desktop-delivery] failed reason={error}");
-                    error
-                },
-            )?;
+        let clipboard_warning = deliver_text_with_clipboard(
+            &text,
+            &target,
+            hwnd,
+            press_enter_after_paste,
+            focus_target_before_paste,
+        )
+        .map_err(|error| {
+            eprintln!("[dictation-tauri][desktop-delivery] failed reason={error}");
+            error
+        })?;
         let used_clipboard_fallback = true;
 
         let observable_after = if skip_bounded_observer {
@@ -377,15 +388,23 @@ mod platform {
             observable_after.as_deref(),
         );
 
-        let reason = if observed && used_clipboard_fallback {
-            "Fixvox-like clipboard paste was verified by a bounded Win32 text observer on the saved target."
-                .to_string()
-        } else if used_clipboard_fallback && press_enter_after_paste {
-            "Fixvox-like clipboard paste and Enter commands were sent to the saved foreground target without observation."
-                .to_string()
+        let target_description = if focus_target_before_paste {
+            "saved foreground target"
         } else {
-            "Fixvox-like clipboard paste command was sent to the saved foreground target without observation."
-                .to_string()
+            "current foreground target without changing windows"
+        };
+        let reason = if observed && used_clipboard_fallback {
+            format!(
+                "Fixvox-like clipboard paste was verified by a bounded Win32 text observer on the {target_description}."
+            )
+        } else if used_clipboard_fallback && press_enter_after_paste {
+            format!(
+                "Fixvox-like clipboard paste and Enter commands were sent to the {target_description} without observation."
+            )
+        } else {
+            format!(
+                "Fixvox-like clipboard paste command was sent to the {target_description} without observation."
+            )
         };
         let reason = clipboard_warning
             .map(|warning| format!("{reason} Delivery warning: {warning}"))
@@ -407,8 +426,16 @@ mod platform {
         target: &DesktopDeliveryTarget,
         hwnd: HWND,
         press_enter_after_paste: bool,
+        focus_target_before_paste: bool,
     ) -> Result<Option<String>, String> {
-        focus_window(hwnd)?;
+        if focus_target_before_paste {
+            focus_window(hwnd)?;
+        } else if !is_expected_foreground(hwnd, unsafe { GetForegroundWindow() }) {
+            return Err(
+                "Foreground input changed before paste; no window was focused and no keys were sent."
+                    .to_string(),
+            );
+        }
         let previous_clipboard = read_clipboard_snapshot()?;
         if let Err(write_error) = write_clipboard_text(text) {
             return match restore_clipboard_snapshot(previous_clipboard) {
@@ -558,8 +585,10 @@ mod platform {
     }
 
     unsafe extern "system" fn enum_child_text_proc(hwnd: HWND, lparam: isize) -> i32 {
-        let values = &mut *(lparam as *mut Vec<String>);
-        push_window_text(hwnd, values);
+        unsafe {
+            let values = &mut *(lparam as *mut Vec<String>);
+            push_window_text(hwnd, values);
+        }
         1
     }
 
@@ -766,8 +795,10 @@ mod platform {
     }
 
     unsafe extern "system" fn enum_child_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        let hwnds = &mut *(lparam as *mut Vec<HWND>);
-        hwnds.push(hwnd);
+        unsafe {
+            let hwnds = &mut *(lparam as *mut Vec<HWND>);
+            hwnds.push(hwnd);
+        }
         1
     }
 
@@ -970,53 +1001,59 @@ mod platform {
     }
 
     unsafe fn read_clipboard_format_name_open(format: u32) -> Option<String> {
-        let mut buffer = [0u16; 256];
-        let length = GetClipboardFormatNameW(format, buffer.as_mut_ptr(), buffer.len() as i32);
-        (length > 0).then(|| String::from_utf16_lossy(&buffer[..length as usize]))
+        unsafe {
+            let mut buffer = [0u16; 256];
+            let length = GetClipboardFormatNameW(format, buffer.as_mut_ptr(), buffer.len() as i32);
+            (length > 0).then(|| String::from_utf16_lossy(&buffer[..length as usize]))
+        }
     }
 
     unsafe fn read_clipboard_text_open() -> Option<String> {
-        if IsClipboardFormatAvailable(CF_UNICODETEXT_FORMAT) == 0 {
-            return None;
+        unsafe {
+            if IsClipboardFormatAvailable(CF_UNICODETEXT_FORMAT) == 0 {
+                return None;
+            }
+            let handle = GetClipboardData(CF_UNICODETEXT_FORMAT);
+            if handle.is_null() {
+                return None;
+            }
+            let ptr = GlobalLock(handle) as *const u16;
+            if ptr.is_null() {
+                return None;
+            }
+            let size = GlobalSize(handle) / 2;
+            let slice = std::slice::from_raw_parts(ptr, size);
+            let nul = slice
+                .iter()
+                .position(|value| *value == 0)
+                .unwrap_or(slice.len());
+            let text = String::from_utf16_lossy(&slice[..nul]);
+            GlobalUnlock(handle);
+            Some(text)
         }
-        let handle = GetClipboardData(CF_UNICODETEXT_FORMAT);
-        if handle.is_null() {
-            return None;
-        }
-        let ptr = GlobalLock(handle) as *const u16;
-        if ptr.is_null() {
-            return None;
-        }
-        let size = GlobalSize(handle) / 2;
-        let slice = std::slice::from_raw_parts(ptr, size);
-        let nul = slice
-            .iter()
-            .position(|value| *value == 0)
-            .unwrap_or(slice.len());
-        let text = String::from_utf16_lossy(&slice[..nul]);
-        GlobalUnlock(handle);
-        Some(text)
     }
 
     unsafe fn read_clipboard_format_bytes_open(format: u32) -> Option<Vec<u8>> {
-        if IsClipboardFormatAvailable(format) == 0 {
-            return None;
+        unsafe {
+            if IsClipboardFormatAvailable(format) == 0 {
+                return None;
+            }
+            let handle = GetClipboardData(format);
+            if handle.is_null() {
+                return None;
+            }
+            let size = GlobalSize(handle);
+            if size == 0 {
+                return None;
+            }
+            let source = GlobalLock(handle) as *const u8;
+            if source.is_null() {
+                return None;
+            }
+            let bytes = std::slice::from_raw_parts(source, size).to_vec();
+            GlobalUnlock(handle);
+            Some(bytes)
         }
-        let handle = GetClipboardData(format);
-        if handle.is_null() {
-            return None;
-        }
-        let size = GlobalSize(handle);
-        if size == 0 {
-            return None;
-        }
-        let source = GlobalLock(handle) as *const u8;
-        if source.is_null() {
-            return None;
-        }
-        let bytes = std::slice::from_raw_parts(source, size).to_vec();
-        GlobalUnlock(handle);
-        Some(bytes)
     }
 
     fn restore_clipboard_snapshot(snapshot: Option<ClipboardSnapshot>) -> Result<(), String> {
@@ -1066,37 +1103,41 @@ mod platform {
     }
 
     unsafe fn write_clipboard_text_open(text: &str) -> bool {
-        let mut encoded: Vec<u16> = text.encode_utf16().collect();
-        encoded.push(0);
-        let bytes = encoded.len() * std::mem::size_of::<u16>();
-        let handle = GlobalAlloc(GMEM_MOVEABLE, bytes);
-        if handle.is_null() {
-            return false;
+        unsafe {
+            let mut encoded: Vec<u16> = text.encode_utf16().collect();
+            encoded.push(0);
+            let bytes = encoded.len() * std::mem::size_of::<u16>();
+            let handle = GlobalAlloc(GMEM_MOVEABLE, bytes);
+            if handle.is_null() {
+                return false;
+            }
+            let destination = GlobalLock(handle) as *mut c_void;
+            if destination.is_null() {
+                return false;
+            }
+            ptr::copy_nonoverlapping(encoded.as_ptr() as *const c_void, destination, bytes);
+            GlobalUnlock(handle);
+            !SetClipboardData(CF_UNICODETEXT_FORMAT, handle).is_null()
         }
-        let destination = GlobalLock(handle) as *mut c_void;
-        if destination.is_null() {
-            return false;
-        }
-        ptr::copy_nonoverlapping(encoded.as_ptr() as *const c_void, destination, bytes);
-        GlobalUnlock(handle);
-        !SetClipboardData(CF_UNICODETEXT_FORMAT, handle).is_null()
     }
 
     unsafe fn write_clipboard_format_bytes_open(format: u32, bytes: &[u8]) -> bool {
-        if bytes.is_empty() {
-            return false;
+        unsafe {
+            if bytes.is_empty() {
+                return false;
+            }
+            let handle = GlobalAlloc(GMEM_MOVEABLE, bytes.len());
+            if handle.is_null() {
+                return false;
+            }
+            let destination = GlobalLock(handle) as *mut c_void;
+            if destination.is_null() {
+                return false;
+            }
+            ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_void, destination, bytes.len());
+            GlobalUnlock(handle);
+            !SetClipboardData(format, handle).is_null()
         }
-        let handle = GlobalAlloc(GMEM_MOVEABLE, bytes.len());
-        if handle.is_null() {
-            return false;
-        }
-        let destination = GlobalLock(handle) as *mut c_void;
-        if destination.is_null() {
-            return false;
-        }
-        ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_void, destination, bytes.len());
-        GlobalUnlock(handle);
-        !SetClipboardData(format, handle).is_null()
     }
 
     fn write_clipboard_text(text: &str) -> Result<(), String> {
@@ -1397,6 +1438,7 @@ mod platform {
         _text: String,
         target: DesktopDeliveryTarget,
         _press_enter_after_paste: bool,
+        _focus_target_before_paste: bool,
     ) -> Result<DesktopDeliveryResult, String> {
         Err(format!(
             "Desktop delivery is only available on Windows for target {}.",

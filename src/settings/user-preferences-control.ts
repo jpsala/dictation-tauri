@@ -14,6 +14,7 @@ export type UserPreferences = {
   dockSkin: DockSkinId;
   reviewBeforeDelivery: boolean;
   pressEnterAfterPaste: boolean;
+  pasteWithoutFocusChange: boolean;
   followFocusUntilDelivery: boolean;
   autoStopOnSilenceEnabled: boolean;
   autoStopSilenceMs: number;
@@ -40,6 +41,7 @@ export const defaultUserPreferences: UserPreferences = {
   dockSkin: defaultDockSkinId,
   reviewBeforeDelivery: false,
   pressEnterAfterPaste: false,
+  pasteWithoutFocusChange: false,
   followFocusUntilDelivery: true,
   autoStopOnSilenceEnabled: false,
   autoStopSilenceMs: defaultAutoStopSilenceMs,

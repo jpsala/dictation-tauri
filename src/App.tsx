@@ -1986,6 +1986,7 @@ export function DockSurface() {
             getTarget: () => savedDeliveryTargetRef.current,
             getStopTarget: () => stopDeliveryTargetRef.current,
             getFollowFocusUntilDelivery: () => userPreferencesRef.current.followFocusUntilDelivery,
+            getPasteWithoutFocusChange: () => userPreferencesRef.current.pasteWithoutFocusChange,
             getPressEnterAfterPaste: () =>
               userPreferencesRef.current.pressEnterAfterPaste ||
               forcePressEnterAfterPasteRef.current,

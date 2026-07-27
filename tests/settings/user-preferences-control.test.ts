@@ -15,6 +15,7 @@ describe("user preference contracts", () => {
     expect(defaultUserPreferences).toMatchObject({
       dockSkin: "compact-5",
       followFocusUntilDelivery: true,
+      pasteWithoutFocusChange: false,
       autoStopOnSilenceEnabled: false,
       autoStopSilenceMs: defaultAutoStopSilenceMs,
       muteOutputDuringRecording: false,
@@ -42,6 +43,7 @@ describe("user preference contracts", () => {
       dockSkin: "compact-5",
       reviewBeforeDelivery: true,
       pressEnterAfterPaste: true,
+      pasteWithoutFocusChange: false,
       followFocusUntilDelivery: true,
       autoStopOnSilenceEnabled: false,
       autoStopSilenceMs: defaultAutoStopSilenceMs,

@@ -3,6 +3,9 @@ use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindow, WindowEvent}
 pub const SETTINGS_WINDOW_LABEL: &str = "settings";
 const SETTINGS_WINDOW_TITLE: &str = "Dictation Tauri Settings";
 const SETTINGS_WINDOW_URL: &str = "index.html#settings";
+const ACCOUNT_SETUP_WINDOW_LABEL: &str = "account-setup";
+const ACCOUNT_SETUP_WINDOW_TITLE: &str = "Fixvox Setup";
+const ACCOUNT_SETUP_WINDOW_URL: &str = "index.html?surface=onboarding";
 const DEFAULT_ADMIN_CONTROL_ROOM_URL: &str = "https://fixvox.jpsala.dev/admin/pi";
 
 pub fn configure_settings_window<R: Runtime>(app: &AppHandle<R>) {
@@ -30,22 +33,6 @@ fn show_existing_settings_window<R: Runtime>(window: WebviewWindow<R>) -> Result
     Ok(())
 }
 
-fn poll_for_value<T>(
-    attempts: usize,
-    mut lookup: impl FnMut() -> Option<T>,
-    mut wait: impl FnMut(),
-) -> Option<T> {
-    for attempt in 0..attempts {
-        if let Some(value) = lookup() {
-            return Some(value);
-        }
-        if attempt + 1 < attempts {
-            wait();
-        }
-    }
-    None
-}
-
 pub fn show_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     eprintln!("[dictation-tauri][settings] show requested");
     let window = if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
@@ -64,13 +51,13 @@ pub fn show_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<()
 
 pub fn show_account_setup_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     eprintln!("[dictation-tauri][settings] account setup show requested");
-    let window = poll_for_value(
-        50,
-        || app.get_webview_window(SETTINGS_WINDOW_LABEL),
-        || std::thread::sleep(std::time::Duration::from_millis(50)),
-    )
-    .ok_or_else(|| "account setup window unavailable (settings_startup_timeout)".to_string())?;
-    eprintln!("[dictation-tauri][settings] account setup reusing configured window");
+    let window = if let Some(window) = app.get_webview_window(ACCOUNT_SETUP_WINDOW_LABEL) {
+        eprintln!("[dictation-tauri][settings] reusing account setup window");
+        window
+    } else {
+        create_fresh_account_setup_window(app)
+            .map_err(|error| format!("account setup window unavailable: {error}"))?
+    };
     window
         .eval("window.location.replace('index.html?surface=onboarding')")
         .map_err(|error| format!("account setup navigation failed: {error}"))?;
@@ -123,6 +110,30 @@ fn create_fresh_settings_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result
     Ok(window)
 }
 
+fn create_fresh_account_setup_window<R: Runtime>(
+    app: &AppHandle<R>,
+) -> tauri::Result<WebviewWindow<R>> {
+    eprintln!("[dictation-tauri][settings] creating account setup window");
+    let window = tauri::WebviewWindowBuilder::new(
+        app,
+        ACCOUNT_SETUP_WINDOW_LABEL,
+        WebviewUrl::App(ACCOUNT_SETUP_WINDOW_URL.into()),
+    )
+    .title(ACCOUNT_SETUP_WINDOW_TITLE)
+    .inner_size(720.0, 480.0)
+    .min_inner_size(620.0, 420.0)
+    .resizable(true)
+    .decorations(true)
+    .shadow(true)
+    .focused(true)
+    .skip_taskbar(false)
+    .visible(false)
+    .build()?;
+
+    attach_close_lifecycle(window.clone());
+    Ok(window)
+}
+
 fn attach_close_lifecycle<R: Runtime>(window: WebviewWindow<R>) {
     window.on_window_event(move |event| {
         if let WindowEvent::CloseRequested { .. } = event {
@@ -152,35 +163,12 @@ pub fn show_admin_control_room(app: AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::poll_for_value;
+    use super::*;
 
     #[test]
-    fn account_setup_poll_reuses_a_configured_window_when_it_appears() {
-        let mut attempts = 0;
-        let found = poll_for_value(
-            4,
-            || {
-                attempts += 1;
-                (attempts == 3).then_some("settings")
-            },
-            || {},
-        );
-        assert_eq!(found, Some("settings"));
-        assert_eq!(attempts, 3);
-    }
-
-    #[test]
-    fn account_setup_poll_times_out_without_creating_a_fallback() {
-        let mut attempts = 0;
-        let found: Option<&str> = poll_for_value(
-            3,
-            || {
-                attempts += 1;
-                None
-            },
-            || {},
-        );
-        assert_eq!(found, None);
-        assert_eq!(attempts, 3);
+    fn settings_and_account_setup_use_distinct_windows_and_routes() {
+        assert_ne!(SETTINGS_WINDOW_LABEL, ACCOUNT_SETUP_WINDOW_LABEL);
+        assert_eq!(SETTINGS_WINDOW_URL, "index.html#settings");
+        assert_eq!(ACCOUNT_SETUP_WINDOW_URL, "index.html?surface=onboarding");
     }
 }

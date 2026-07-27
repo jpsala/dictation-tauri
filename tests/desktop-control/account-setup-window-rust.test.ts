@@ -2,8 +2,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-describe("account setup Settings window host boundary", () => {
-  it("waits for the configured window without invoking the normal fallback", () => {
+describe("account setup window host boundary", () => {
+  it("uses a dedicated onboarding window instead of navigating Settings", () => {
     const source = readFileSync("src-tauri/src/settings_window.rs", "utf8");
     const lib = readFileSync("src-tauri/src/lib.rs", "utf8");
     const accountSetup = source.slice(
@@ -15,10 +15,13 @@ describe("account setup Settings window host boundary", () => {
       source.indexOf("pub fn show_account_setup_window_for_app"),
     );
 
-    expect(accountSetup).toContain("poll_for_value");
-    expect(accountSetup).toContain("settings_startup_timeout");
-    expect(accountSetup).not.toContain("create_fresh_settings_window");
+    expect(source).toContain('ACCOUNT_SETUP_WINDOW_LABEL: &str = "account-setup"');
+    expect(source).toContain('ACCOUNT_SETUP_WINDOW_URL: &str = "index.html?surface=onboarding"');
+    expect(accountSetup).toContain("create_fresh_account_setup_window");
+    expect(accountSetup).toContain("ACCOUNT_SETUP_WINDOW_LABEL");
+    expect(accountSetup).not.toContain("SETTINGS_WINDOW_LABEL");
     expect(normalSettings).toContain("create_fresh_settings_window");
+    expect(normalSettings).not.toContain("ACCOUNT_SETUP_WINDOW_LABEL");
     expect(lib).toContain("settings_window::show_account_setup_window");
   });
 });

@@ -662,7 +662,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     }
   }
 
-  async function toggleUserPreference(key: keyof Pick<UserPreferences, "showDockOnStartup" | "reviewBeforeDelivery" | "pressEnterAfterPaste" | "followFocusUntilDelivery" | "autoStopOnSilenceEnabled" | "muteOutputDuringRecording" | "dictationSoundCuesEnabled">) {
+  async function toggleUserPreference(key: keyof Pick<UserPreferences, "showDockOnStartup" | "reviewBeforeDelivery" | "pressEnterAfterPaste" | "pasteWithoutFocusChange" | "followFocusUntilDelivery" | "autoStopOnSilenceEnabled" | "muteOutputDuringRecording" | "dictationSoundCuesEnabled">) {
     setBusyAction("preferences");
     try {
       const nextPreferences = {
@@ -1080,6 +1080,13 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
               checked={userPreferences.dictationSoundCuesEnabled}
               disabled={!tauriRuntime || busyAction === "preferences"}
               onClick={() => void toggleUserPreference("dictationSoundCuesEnabled")}
+            />
+            <PreferenceToggle
+              label="Pegar sin cambiar de ventana"
+              detail="Envía Ctrl+V sólo al input que siga activo al entregar. Si el foco no es seguro, no pega."
+              checked={userPreferences.pasteWithoutFocusChange}
+              disabled={!tauriRuntime || busyAction === "preferences"}
+              onClick={() => void toggleUserPreference("pasteWithoutFocusChange")}
             />
             <PreferenceToggle
               label="Revisar antes de entregar"

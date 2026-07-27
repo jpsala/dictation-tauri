@@ -348,6 +348,9 @@ describe("SettingsSurface", () => {
     expect(source).toContain("Silenciar salida al grabar");
     expect(source).toContain("dictationSoundCuesEnabled");
     expect(source).toContain("Sonidos de dictado");
+    expect(source).toContain("pasteWithoutFocusChange");
+    expect(source).toContain("Pegar sin cambiar de ventana");
+    expect(source).toContain("Envía Ctrl+V sólo al input que siga activo al entregar");
     expect(source).toContain("getFixvoxAuthSessionStatus");
     expect(source).toContain("pollFixvoxCloudLogin");
     expect(source).toContain("pollCloudLoginStatus");
@@ -370,7 +373,9 @@ describe("SettingsSurface", () => {
     expect(appSource).toContain("getUserPreferences()");
     expect(appSource).toContain("userPreferencesRef.current.pressEnterAfterPaste");
     expect(appSource).toContain("userPreferencesRef.current.followFocusUntilDelivery");
+    expect(appSource).toContain("userPreferencesRef.current.pasteWithoutFocusChange");
     expect(settingsControlSource).toContain("followFocusUntilDelivery");
+    expect(settingsControlSource).toContain("pasteWithoutFocusChange");
     expect(settingsControlSource).toContain("autoStopOnSilenceEnabled");
     expect(settingsControlSource).toContain("defaultAutoStopSilenceMs");
     expect(settingsControlSource).toContain("createMuteOutputPolicy");

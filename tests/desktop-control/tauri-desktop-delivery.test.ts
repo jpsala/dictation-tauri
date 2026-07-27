@@ -439,6 +439,103 @@ describe("Tauri desktop delivery target capture", () => {
     expect(deliveredTargets).toEqual(["final-editor-hwnd"]);
   });
 
+  it("pastes into the current foreground input without requesting a focus change", async () => {
+    const deliveredTargets: string[] = [];
+    const deliveryArgs: Record<string, unknown>[] = [];
+    const gateway = createTauriSavedTargetDeliveryGateway({
+      invoke: asTauriInvoke((command, args) => {
+        if (command === "capture_desktop_delivery_target") {
+          return {
+            frameHwnd: "foreground-editor-hwnd",
+            windowTitle: "Current editor",
+            windowClass: "Chrome_WidgetWin_1",
+            processId: 200,
+            processName: "chrome.exe",
+            inputLike: true,
+            reason: "current foreground input",
+          };
+        }
+        if (command === "deliver_text_to_desktop_target") {
+          const target = args?.target as { frameHwnd: string };
+          deliveredTargets.push(target.frameHwnd);
+          deliveryArgs.push(args ?? {});
+          return {
+            status: "paste_sent",
+            reason: "native foreground paste sent",
+            target: args?.target,
+          };
+        }
+        throw new Error(`focus-preserving delivery should not invoke ${command}`);
+      }),
+      getTarget: () => ({
+        frameHwnd: "initial-editor-hwnd",
+        windowTitle: "Initial editor",
+        windowClass: "Chrome_WidgetWin_1",
+        processId: 100,
+        processName: "chrome.exe",
+        inputLike: true,
+        reason: "target saved before dictation",
+      }),
+      getPasteWithoutFocusChange: () => true,
+    });
+
+    const evidence = await gateway.deliver({
+      sessionId: "session-foreground-only",
+      text: "dictated text",
+      strategy: "paste_send",
+      allowDesktopSideEffects: true,
+    });
+
+    expect(evidence.status).toBe("paste_sent");
+    expect(deliveredTargets).toEqual(["foreground-editor-hwnd"]);
+    expect(deliveryArgs).toContainEqual(expect.objectContaining({
+      focusTargetBeforePaste: false,
+    }));
+  });
+
+  it("fails closed when a saved-affinity target is not the current foreground window", async () => {
+    const calls: string[] = [];
+    const gateway = createTauriSavedTargetDeliveryGateway({
+      invoke: asTauriInvoke((command) => {
+        calls.push(command);
+        if (command === "capture_desktop_delivery_target") {
+          return {
+            frameHwnd: "other-editor-hwnd",
+            windowTitle: "Other editor",
+            windowClass: "Chrome_WidgetWin_1",
+            processId: 200,
+            inputLike: true,
+            reason: "current foreground input",
+          };
+        }
+        throw new Error(`saved-affinity foreground guard should not invoke ${command}`);
+      }),
+      getTarget: () => ({
+        frameHwnd: "selection-origin-hwnd",
+        windowTitle: "Selected text editor",
+        windowClass: "Chrome_WidgetWin_1",
+        processId: 100,
+        inputLike: true,
+        reason: "target saved before selection transform",
+      }),
+      getPasteWithoutFocusChange: () => true,
+    });
+
+    const evidence = await gateway.deliver({
+      sessionId: "session-saved-affinity-foreground-mismatch",
+      text: "transformed selected text",
+      strategy: "paste_send",
+      allowDesktopSideEffects: true,
+      targetAffinity: "saved",
+    });
+
+    expect(evidence).toMatchObject({
+      status: "failed",
+      reason: "No matching editable foreground target is available for paste without changing windows.",
+    });
+    expect(calls).toEqual(["capture_desktop_delivery_target"]);
+  });
+
   it("keeps the saved target for selection replace even if focus moves", async () => {
     const deliveredTargets: string[] = [];
     const gateway = createTauriSavedTargetDeliveryGateway({

@@ -28,6 +28,8 @@ pub struct UserPreferences {
     pub review_before_delivery: bool,
     #[serde(default)]
     pub press_enter_after_paste: bool,
+    #[serde(default)]
+    pub paste_without_focus_change: bool,
     #[serde(default = "default_follow_focus_until_delivery")]
     pub follow_focus_until_delivery: bool,
     #[serde(default)]
@@ -56,6 +58,7 @@ pub fn set_user_preferences(
         dock_skin: preferences.dock_skin,
         review_before_delivery: preferences.review_before_delivery,
         press_enter_after_paste: preferences.press_enter_after_paste,
+        paste_without_focus_change: preferences.paste_without_focus_change,
         follow_focus_until_delivery: preferences.follow_focus_until_delivery,
         auto_stop_on_silence_enabled: preferences.auto_stop_on_silence_enabled,
         auto_stop_silence_ms: normalize_auto_stop_silence_ms(preferences.auto_stop_silence_ms),
@@ -105,6 +108,7 @@ pub fn default_user_preferences() -> UserPreferences {
         dock_skin: DockSkinId::default(),
         review_before_delivery: false,
         press_enter_after_paste: false,
+        paste_without_focus_change: false,
         follow_focus_until_delivery: default_follow_focus_until_delivery(),
         auto_stop_on_silence_enabled: false,
         auto_stop_silence_ms: default_auto_stop_silence_ms(),
@@ -140,6 +144,7 @@ mod tests {
         assert_eq!(defaults.dock_skin, DockSkinId::Compact5);
         assert!(!defaults.review_before_delivery);
         assert!(!defaults.press_enter_after_paste);
+        assert!(!defaults.paste_without_focus_change);
         assert!(defaults.follow_focus_until_delivery);
         assert!(!defaults.auto_stop_on_silence_enabled);
         assert_eq!(defaults.auto_stop_silence_ms, 1_200);

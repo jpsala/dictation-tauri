@@ -13,7 +13,9 @@ describe("Windows desktop delivery native paste", () => {
     expect(source).not.toContain("send_unicode_text");
     expect(source).not.toContain("DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK");
     expect(source).toContain("using Fixvox-like clipboard paste delivery");
-    expect(source).toContain("deliver_text_with_clipboard(&text, &target, hwnd, press_enter_after_paste)");
+    expect(source).toContain("deliver_text_with_clipboard(");
+    expect(source).toContain("press_enter_after_paste,");
+    expect(source).toContain("focus_target_before_paste,");
     expect(source).toContain("[dictation-tauri][desktop-delivery] failed reason={error}");
   });
 
@@ -35,6 +37,9 @@ describe("Windows desktop delivery native paste", () => {
     expect(snapshotIndex).toBeLessThan(writeIndex);
     expect(writeIndex).toBeLessThan(pasteIndex);
     expect(pasteIndex).toBeLessThan(restoreIndex);
+    expect(source).toContain("if focus_target_before_paste");
+    expect(source).toContain("focus_target_before_paste.unwrap_or(true)");
+    expect(source).toContain("Foreground input changed before paste; no window was focused and no keys were sent.");
     expect(source).toContain("Desktop target lost focus before paste; no keys were sent.");
     expect(source).toContain("Desktop target lost focus before Ctrl+V; no paste keys were sent.");
     expect(source).toContain("Clipboard contains unsupported data and was left unchanged.");
