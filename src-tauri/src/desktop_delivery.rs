@@ -220,6 +220,9 @@ mod platform {
     };
     use windows_sys::Win32::{
         Foundation::{CloseHandle, BOOL, HWND, LPARAM},
+        Graphics::Gdi::{
+            GetDC, GetDIBits, GetObjectW, ReleaseDC, BITMAP, BITMAPINFO, BI_RGB, DIB_RGB_COLORS,
+        },
         System::{
             DataExchange::{
                 CloseClipboard, CountClipboardFormats, EmptyClipboard, EnumClipboardFormats,
@@ -1010,7 +1013,8 @@ mod platform {
             }
             let snapshot = ClipboardSnapshot {
                 text: read_clipboard_text_open(),
-                dib: read_clipboard_format_bytes_open(CF_DIB_FORMAT),
+                dib: read_clipboard_format_bytes_open(CF_DIB_FORMAT)
+                    .or_else(|| read_clipboard_bitmap_as_dib_open()),
                 dib_v5: read_clipboard_format_bytes_open(CF_DIBV5_FORMAT),
                 additional_formats: Vec::new(),
             };
@@ -1064,6 +1068,74 @@ mod platform {
             let text = String::from_utf16_lossy(&slice[..nul]);
             GlobalUnlock(handle);
             Some(text)
+        }
+    }
+
+    unsafe fn read_clipboard_bitmap_as_dib_open() -> Option<Vec<u8>> {
+        unsafe {
+            if IsClipboardFormatAvailable(CF_BITMAP_FORMAT) == 0 {
+                return None;
+            }
+            let bitmap_handle = GetClipboardData(CF_BITMAP_FORMAT);
+            if bitmap_handle.is_null() {
+                return None;
+            }
+
+            let mut bitmap: BITMAP = std::mem::zeroed();
+            if GetObjectW(
+                bitmap_handle,
+                std::mem::size_of::<BITMAP>() as i32,
+                &mut bitmap as *mut BITMAP as *mut c_void,
+            ) == 0
+            {
+                return None;
+            }
+            let width = usize::try_from(bitmap.bmWidth).ok()?;
+            let height = usize::try_from(bitmap.bmHeight.checked_abs()?).ok()?;
+            if width == 0 || height == 0 {
+                return None;
+            }
+            let pixel_bytes = width.checked_mul(4)?.checked_mul(height)?;
+            if pixel_bytes > 256 * 1024 * 1024 {
+                return None;
+            }
+
+            let mut info: BITMAPINFO = std::mem::zeroed();
+            info.bmiHeader.biSize = std::mem::size_of_val(&info.bmiHeader) as u32;
+            info.bmiHeader.biWidth = bitmap.bmWidth;
+            info.bmiHeader.biHeight = bitmap.bmHeight;
+            info.bmiHeader.biPlanes = 1;
+            info.bmiHeader.biBitCount = 32;
+            info.bmiHeader.biCompression = BI_RGB;
+            info.bmiHeader.biSizeImage = pixel_bytes as u32;
+
+            let mut pixels = vec![0u8; pixel_bytes];
+            let screen_dc = GetDC(ptr::null_mut());
+            if screen_dc.is_null() {
+                return None;
+            }
+            let copied_lines = GetDIBits(
+                screen_dc,
+                bitmap_handle,
+                0,
+                height as u32,
+                pixels.as_mut_ptr() as *mut c_void,
+                &mut info,
+                DIB_RGB_COLORS,
+            );
+            ReleaseDC(ptr::null_mut(), screen_dc);
+            if copied_lines != height as i32 {
+                return None;
+            }
+
+            let header = std::slice::from_raw_parts(
+                &info.bmiHeader as *const _ as *const u8,
+                std::mem::size_of_val(&info.bmiHeader),
+            );
+            let mut dib = Vec::with_capacity(header.len() + pixels.len());
+            dib.extend_from_slice(header);
+            dib.extend_from_slice(&pixels);
+            Some(dib)
         }
     }
 

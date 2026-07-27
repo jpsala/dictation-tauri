@@ -26,6 +26,9 @@ describe("Windows desktop delivery native paste", () => {
     expect(source).toContain("CF_DIB_FORMAT");
     expect(source).toContain("CF_DIBV5_FORMAT");
     expect(source).toContain("read_clipboard_snapshot()");
+    expect(source).toContain("read_clipboard_bitmap_as_dib_open");
+    expect(source).toContain("GetDIBits");
+    expect(source).toContain(".or_else(|| read_clipboard_bitmap_as_dib_open())");
     expect(source).toContain("restore_clipboard_snapshot(previous_clipboard)");
     expect(source).toContain("send_ctrl_v()?");
     const focusIndex = source.indexOf("focus_window(hwnd)?");

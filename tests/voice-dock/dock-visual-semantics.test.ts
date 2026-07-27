@@ -305,19 +305,13 @@ describe("voice dock visual semantics", () => {
     );
 
     expect(uncertain).toMatchObject({
-      phase: "uncertain",
-      statusText: "Delivery uncertain",
-      statusDetail: "Insertion was not verified. Check target, copy, or paste last safely.",
+      phase: "idle",
+      statusText: "Ready",
       deliveryStatusLabel: "uncertain · check target",
       canStart: true,
-      canCopy: true,
-      canPasteLastSafe: true,
-      recovery: {
-        kind: "uncertain",
-        title: "Delivery uncertain",
-        primaryAction: "copy",
-        secondaryAction: "paste_last_safe",
-      },
+      canCopy: false,
+      canPasteLastSafe: false,
+      recovery: undefined,
     });
     expect(JSON.stringify(uncertain)).not.toContain("paste_observed");
 
@@ -335,16 +329,13 @@ describe("voice dock visual semantics", () => {
         { canPasteLastSafe: true },
       ),
     ).toMatchObject({
-      phase: "uncertain",
-      statusText: "Delivery failed",
-      statusDetail: "No verified insertion. Copy the result or retry if needed.",
+      phase: "idle",
+      statusText: "Ready",
       deliveryStatusLabel: "failed · not inserted",
       canStart: true,
-      recovery: {
-        kind: "uncertain",
-        title: "Delivery failed",
-        message: "No verified insertion. Copy the result or retry if needed.",
-      },
+      canCopy: false,
+      canPasteLastSafe: false,
+      recovery: undefined,
     });
   });
 

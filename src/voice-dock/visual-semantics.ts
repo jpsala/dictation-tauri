@@ -22,13 +22,15 @@ export function createVoiceDockState(
 ): VoiceDockState {
   const phase = mapDockPhase(input);
   const hasOutput = hasDeliveryOutput(input);
-  const inserted = deliveryWasInserted(getDelivery(input));
+  const delivery = getDelivery(input);
+  const inserted = deliveryWasInserted(delivery);
+  const settledDeliveryFailure = phase === "idle" && deliveryIsUncertain(delivery);
   const assistantResult = options.resultSource === "assistant";
   const selectionTransformFailed = options.selectionTransformFailed === true;
   const canPasteLastSafe = Boolean(
-    options.canPasteLastSafe && hasOutput && !inserted && !assistantResult && !selectionTransformFailed,
+    options.canPasteLastSafe && hasOutput && !inserted && !settledDeliveryFailure && !assistantResult && !selectionTransformFailed,
   );
-  const canCopy = hasOutput && !inserted && !assistantResult;
+  const canCopy = hasOutput && !inserted && !settledDeliveryFailure && !assistantResult;
   const canRetry = phase === "failed" || phase === "cancelled";
   const canStop = phase === "recording";
   const canCancel = phase === "arming" || phase === "recording";
@@ -90,21 +92,17 @@ function mapDockPhase(input: DockInputState): VoiceDockPhase {
     case "delivering":
       return "processing";
     case "reviewing":
-      return deliveryWasInserted(input.delivery)
+      return deliveryWasInserted(input.delivery) || deliveryIsUncertain(input.delivery)
         ? "idle"
-        : deliveryIsUncertain(input.delivery)
-          ? "uncertain"
-          : "review";
+        : "review";
     case "error":
       return "failed";
     case "cancelled":
       return "idle";
     case "done":
-      return deliveryWasInserted(input.delivery)
+      return deliveryWasInserted(input.delivery) || deliveryIsUncertain(input.delivery)
         ? "idle"
-        : deliveryIsUncertain(input.delivery)
-          ? "uncertain"
-          : "review";
+        : "review";
     default:
       return "idle";
   }

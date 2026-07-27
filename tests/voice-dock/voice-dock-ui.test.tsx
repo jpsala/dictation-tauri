@@ -209,7 +209,7 @@ describe("VoiceDock UI", () => {
     expectNoAction(cancelled, "Retry");
   });
 
-  it("renders uncertain delivery as copy-first recovery and never says paste was observed", () => {
+  it("settles uncertain delivery to idle without leaving a persistent check-target state", () => {
     const { html } = renderDock(
       createVoiceDockState(
         session({
@@ -225,15 +225,14 @@ describe("VoiceDock UI", () => {
       ),
     );
 
-    expect(html).toContain('data-phase="uncertain"');
+    expect(html).toContain('data-phase="idle"');
     expect(html).toContain('data-delivery-status="uncertain"');
-    expect(html).toContain("Delivery uncertain");
-    expect(html).toContain("Insertion was not verified");
-    expect(html).toContain("Delivery status:");
-    expect(html).toContain("uncertain · check target");
+    expect(html).toContain("Ready");
+    expect(html).not.toContain("Delivery uncertain");
+    expect(html).not.toContain("Insertion was not verified");
     expectAction(html, "Start");
-    expectAction(html, "Copy transcript");
-    expectAction(html, "Paste last (safe)");
+    expectNoAction(html, "Copy transcript");
+    expectNoAction(html, "Paste last (safe)");
   });
 
   it("returns verified paste observation to quiet idle with machine-readable dock evidence", () => {
