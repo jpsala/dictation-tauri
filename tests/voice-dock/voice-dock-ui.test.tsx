@@ -231,6 +231,7 @@ describe("VoiceDock UI", () => {
     expect(html).toContain("Insertion was not verified");
     expect(html).toContain("Delivery status:");
     expect(html).toContain("uncertain · check target");
+    expectAction(html, "Start");
     expectAction(html, "Copy transcript");
     expectAction(html, "Paste last (safe)");
   });

@@ -161,7 +161,7 @@ export function createTauriSavedTargetDeliveryGateway(input: {
   getTarget: () => TauriDesktopDeliveryTarget | undefined;
   getStopTarget?: () => TauriDesktopDeliveryTarget | undefined;
   getFollowFocusUntilDelivery?: () => boolean;
-  getPasteWithoutFocusChange?: () => boolean;
+  getPasteWithoutFocusChange?: () => boolean | Promise<boolean>;
   getPressEnterAfterPaste?: () => boolean;
   observer?: DesktopPasteObserver<TauriDesktopDeliveryTarget>;
 }): DesktopDeliveryGateway {
@@ -172,7 +172,7 @@ export function createTauriSavedTargetDeliveryGateway(input: {
       }
 
       const savedTarget = input.getTarget();
-      const pasteWithoutFocusChange = input.getPasteWithoutFocusChange?.() === true;
+      const pasteWithoutFocusChange = (await input.getPasteWithoutFocusChange?.()) === true;
       const useStopTarget = !pasteWithoutFocusChange &&
         request.targetAffinity !== "saved" &&
         input.getFollowFocusUntilDelivery?.() === false;

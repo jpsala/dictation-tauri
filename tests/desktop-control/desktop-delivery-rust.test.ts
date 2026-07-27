@@ -38,7 +38,9 @@ describe("Windows desktop delivery native paste", () => {
     expect(writeIndex).toBeLessThan(pasteIndex);
     expect(pasteIndex).toBeLessThan(restoreIndex);
     expect(source).toContain("if focus_target_before_paste");
-    expect(source).toContain("focus_target_before_paste.unwrap_or(true)");
+    expect(source).toContain("read_user_preferences_for_app(&app)");
+    expect(source).toContain("resolve_focus_target_before_paste(");
+    expect(source).toContain("requested_focus.unwrap_or(true) && !paste_without_focus_change");
     expect(source).toContain("Foreground input changed before paste; no window was focused and no keys were sent.");
     expect(source).toContain("Desktop target lost focus before paste; no keys were sent.");
     expect(source).toContain("Desktop target lost focus before Ctrl+V; no paste keys were sent.");

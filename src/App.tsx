@@ -1986,7 +1986,13 @@ export function DockSurface() {
             getTarget: () => savedDeliveryTargetRef.current,
             getStopTarget: () => stopDeliveryTargetRef.current,
             getFollowFocusUntilDelivery: () => userPreferencesRef.current.followFocusUntilDelivery,
-            getPasteWithoutFocusChange: () => userPreferencesRef.current.pasteWithoutFocusChange,
+            getPasteWithoutFocusChange: async () => {
+            try {
+              return (await getUserPreferences()).pasteWithoutFocusChange;
+            } catch {
+              return userPreferencesRef.current.pasteWithoutFocusChange;
+            }
+          },
             getPressEnterAfterPaste: () =>
               userPreferencesRef.current.pressEnterAfterPaste ||
               forcePressEnterAfterPasteRef.current,
@@ -2355,6 +2361,17 @@ export function DockSurface() {
 
     try {
       const target = savedDeliveryTargetRef.current;
+      const pasteWithoutFocusChange = await getUserPreferences()
+        .then((preferences) => preferences.pasteWithoutFocusChange)
+        .catch(() => userPreferencesRef.current.pasteWithoutFocusChange);
+      if (pasteWithoutFocusChange && target?.frameHwnd) {
+        const foregroundTarget = await captureTauriDesktopDeliveryTarget(invoke, {
+          allowCachedFallback: false,
+        });
+        if (!foregroundTarget?.inputLike || foregroundTarget.frameHwnd !== target.frameHwnd) {
+          return undefined;
+        }
+      }
       const targetCommand = options.forceTargetClipboardFallback
         ? hostSelectionCaptureForTargetWithClipboardCommand
         : hostSelectionCaptureForTargetCommand;

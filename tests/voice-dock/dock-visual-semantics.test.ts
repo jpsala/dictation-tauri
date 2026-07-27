@@ -309,6 +309,7 @@ describe("voice dock visual semantics", () => {
       statusText: "Delivery uncertain",
       statusDetail: "Insertion was not verified. Check target, copy, or paste last safely.",
       deliveryStatusLabel: "uncertain · check target",
+      canStart: true,
       canCopy: true,
       canPasteLastSafe: true,
       recovery: {
@@ -338,6 +339,7 @@ describe("voice dock visual semantics", () => {
       statusText: "Delivery failed",
       statusDetail: "No verified insertion. Copy the result or retry if needed.",
       deliveryStatusLabel: "failed · not inserted",
+      canStart: true,
       recovery: {
         kind: "uncertain",
         title: "Delivery failed",

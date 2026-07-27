@@ -373,6 +373,7 @@ describe("SettingsSurface", () => {
     expect(appSource).toContain("getUserPreferences()");
     expect(appSource).toContain("userPreferencesRef.current.pressEnterAfterPaste");
     expect(appSource).toContain("userPreferencesRef.current.followFocusUntilDelivery");
+    expect(appSource).toContain("(await getUserPreferences()).pasteWithoutFocusChange");
     expect(appSource).toContain("userPreferencesRef.current.pasteWithoutFocusChange");
     expect(settingsControlSource).toContain("followFocusUntilDelivery");
     expect(settingsControlSource).toContain("pasteWithoutFocusChange");

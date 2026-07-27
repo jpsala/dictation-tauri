@@ -476,7 +476,7 @@ describe("Tauri desktop delivery target capture", () => {
         inputLike: true,
         reason: "target saved before dictation",
       }),
-      getPasteWithoutFocusChange: () => true,
+      getPasteWithoutFocusChange: async () => true,
     });
 
     const evidence = await gateway.deliver({

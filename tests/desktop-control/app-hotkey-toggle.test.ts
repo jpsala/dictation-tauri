@@ -1,3 +1,4 @@
+// @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -59,6 +60,20 @@ describe("App global hotkey dictation-key seam", () => {
     expect(listenerBlock).not.toContain("desktopSession.toggle");
     expect(listenerBlock).not.toContain("canStart");
     expect(listenerBlock).not.toContain("canStop");
+  });
+
+  it("does not let saved-selection capture reactivate the starting window in no-focus mode", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+    const helperStart = source.indexOf("async function rememberSelectionTransformContext");
+    const helperEnd = source.indexOf("async function runSelectionTransformIfNeeded", helperStart);
+    const helperBlock = source.slice(helperStart, helperEnd);
+
+    expect(helperBlock).toContain("preferences.pasteWithoutFocusChange");
+    expect(helperBlock).toContain("allowCachedFallback: false");
+    expect(helperBlock).toContain("foregroundTarget.frameHwnd !== target.frameHwnd");
+    expect(helperBlock.indexOf("foregroundTarget.frameHwnd !== target.frameHwnd")).toBeLessThan(
+      helperBlock.indexOf("hostSelectionCaptureForTargetCommand"),
+    );
   });
 
   it("prepares equivalent start context for button and hotkey starts", () => {

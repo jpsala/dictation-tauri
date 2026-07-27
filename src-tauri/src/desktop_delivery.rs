@@ -148,17 +148,49 @@ fn is_terminal_like_target(target: &DesktopDeliveryTarget) -> bool {
 
 #[tauri::command]
 pub fn deliver_text_to_desktop_target(
+    app: tauri::AppHandle,
     text: String,
     target: DesktopDeliveryTarget,
     press_enter_after_paste: Option<bool>,
     focus_target_before_paste: Option<bool>,
 ) -> Result<DesktopDeliveryResult, String> {
+    let preferences = crate::user_preferences::read_user_preferences_for_app(&app);
+    let focus_target_before_paste = resolve_focus_target_before_paste(
+        focus_target_before_paste,
+        preferences.paste_without_focus_change,
+    );
     platform::deliver_text_to_desktop_target(
         text,
         target,
         press_enter_after_paste.unwrap_or(false),
-        focus_target_before_paste.unwrap_or(true),
+        focus_target_before_paste,
     )
+}
+
+fn resolve_focus_target_before_paste(
+    requested_focus: Option<bool>,
+    paste_without_focus_change: bool,
+) -> bool {
+    requested_focus.unwrap_or(true) && !paste_without_focus_change
+}
+
+#[cfg(test)]
+mod focus_policy_tests {
+    use super::resolve_focus_target_before_paste;
+
+    #[test]
+    fn host_preference_never_allows_the_delivery_command_to_focus_a_window() {
+        assert!(!resolve_focus_target_before_paste(None, true));
+        assert!(!resolve_focus_target_before_paste(Some(true), true));
+        assert!(!resolve_focus_target_before_paste(Some(false), true));
+    }
+
+    #[test]
+    fn legacy_focus_behavior_remains_the_default_when_the_preference_is_disabled() {
+        assert!(resolve_focus_target_before_paste(None, false));
+        assert!(resolve_focus_target_before_paste(Some(true), false));
+        assert!(!resolve_focus_target_before_paste(Some(false), false));
+    }
 }
 
 #[tauri::command]
@@ -363,7 +395,9 @@ mod platform {
         } else {
             read_observable_window_text(hwnd)
         };
-        eprintln!("[dictation-tauri][desktop-delivery] using Fixvox-like clipboard paste delivery");
+        eprintln!(
+            "[dictation-tauri][desktop-delivery] using Fixvox-like clipboard paste delivery focus_target_before_paste={focus_target_before_paste}"
+        );
         let clipboard_warning = deliver_text_with_clipboard(
             &text,
             &target,
