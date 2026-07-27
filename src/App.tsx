@@ -93,6 +93,7 @@ import {
   createVoiceDockState,
   dockCompanionCommandEvent,
   dockCompanionStateEvent,
+  NO_SPEECH_NOTICE_TIMEOUT_MS,
   VoiceDock,
   type DockActivePreset,
   type DockCommand,
@@ -1276,7 +1277,7 @@ export function CompanionSurfaceView({
   const [presetPickerHotkeyLabel, setPresetPickerHotkeyLabel] = useState("Alt+Q");
   const [assistantDraft, setAssistantDraft] = useState("");
   const [noticeInteracting, setNoticeInteracting] = useState(false);
-  const noticeRemainingMsRef = useRef(8000);
+  const noticeRemainingMsRef = useRef(NO_SPEECH_NOTICE_TIMEOUT_MS);
   const noticeStartedAtRef = useRef<number | undefined>(undefined);
   const pickerInputRef = useRef<HTMLInputElement>(null);
   const pickerPresets = useMemo(
@@ -1309,7 +1310,8 @@ export function CompanionSurfaceView({
   }, [pickerPresets, pickerQuery]);
 
   useEffect(() => {
-    noticeRemainingMsRef.current = snapshot.notice?.timeoutMs ?? 8000;
+    noticeRemainingMsRef.current =
+      snapshot.notice?.timeoutMs ?? NO_SPEECH_NOTICE_TIMEOUT_MS;
     noticeStartedAtRef.current = undefined;
     setNoticeInteracting(false);
   }, [snapshot.notice?.kind, snapshot.notice?.timeoutMs]);

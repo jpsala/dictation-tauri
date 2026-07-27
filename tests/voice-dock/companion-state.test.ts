@@ -156,7 +156,7 @@ describe("dock companion state", () => {
     expect(snapshot.notice).toEqual({
       kind: "no-speech",
       title: "No te escuché",
-      timeoutMs: 8000,
+      timeoutMs: 15000,
     });
     expect(snapshot.recovery).toBeUndefined();
   });

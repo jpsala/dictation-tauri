@@ -8,6 +8,7 @@ import type {
 
 export const dockCompanionStateEvent = "dock-companion://state";
 export const dockCompanionCommandEvent = "dock-companion://command";
+export const NO_SPEECH_NOTICE_TIMEOUT_MS = 15_000;
 
 export type DockCompanionPresetId = SelectionTransformPresetId;
 
@@ -79,7 +80,7 @@ export type DockCompanionSnapshot = {
   notice?: {
     kind: "no-speech";
     title: "No te escuché";
-    timeoutMs: 8000;
+    timeoutMs: typeof NO_SPEECH_NOTICE_TIMEOUT_MS;
   };
   history: {
     open: boolean;
@@ -148,7 +149,11 @@ export function createDockCompanionSnapshot(input: {
     },
     recovery: input.voiceDockState.recovery,
     notice: input.noSpeechNoticeOpen
-      ? { kind: "no-speech", title: "No te escuché", timeoutMs: 8000 }
+      ? {
+          kind: "no-speech",
+          title: "No te escuché",
+          timeoutMs: NO_SPEECH_NOTICE_TIMEOUT_MS,
+        }
       : undefined,
     history: {
       open: input.resultHistoryOpen,

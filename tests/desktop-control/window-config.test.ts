@@ -1,3 +1,4 @@
+// @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -16,6 +17,9 @@ type TauriConfig = {
       skipTaskbar?: boolean;
       visible?: boolean;
       resizable?: boolean;
+      decorations?: boolean;
+      transparent?: boolean;
+      shadow?: boolean;
     }>;
   };
 };
@@ -43,5 +47,21 @@ describe("Tauri dev dock window config", () => {
     expect(main?.height).toBe(36);
     expect(main?.minWidth).toBe(98);
     expect(main?.minHeight).toBe(32);
+  });
+
+  it("keeps the transient companion transparent so only the notice chrome is visible", () => {
+    const config = JSON.parse(
+      readFileSync("src-tauri/tauri.conf.json", "utf8"),
+    ) as TauriConfig;
+    const companion = config.app.windows.find(
+      (window) => window.label === "dock-companion",
+    );
+
+    expect(companion).toMatchObject({
+      visible: false,
+      transparent: true,
+      shadow: false,
+      alwaysOnTop: true,
+    });
   });
 });

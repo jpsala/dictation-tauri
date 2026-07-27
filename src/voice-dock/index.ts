@@ -29,6 +29,7 @@ export {
   createEmptyDockCompanionSnapshot,
   dockCompanionCommandEvent,
   dockCompanionStateEvent,
+  NO_SPEECH_NOTICE_TIMEOUT_MS,
 } from "./companion-state";
 export type {
   DockCompanionCommandPayload,
