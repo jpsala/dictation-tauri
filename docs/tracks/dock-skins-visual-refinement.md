@@ -37,6 +37,11 @@ Mejorar `wispr-flow` por comparación visual iterativa sin alterar `classic-7`, 
   el dock principal para no ocultar ni reenviar texto incierto.
 - Settings fuerza `index.html#settings` al reutilizar su WebView, evitando que
   una navegación previa de onboarding quede atrapada dentro de Settings.
+- Prerelease publicado desde `2430e9a`:
+  `fixvox-tauri-v0.1.0-20260727165806`. Installer y checksum remoto coinciden
+  en SHA-256 `30efe46ec7fd773481dc309644cf4ca5cbe3829a05bdc5399d3d2b1fbb4781b8`.
+  Descarga:
+  `https://github.com/jpsala/fixvox-releases/releases/download/fixvox-tauri-v0.1.0-20260727165806/Fixvox-Tauri-Setup.exe`.
 
 ## Batch 1 — Wispr Flow Visual Refinement
 
