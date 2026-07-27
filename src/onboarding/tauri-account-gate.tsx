@@ -45,6 +45,16 @@ export function shouldOpenTauriAccountSetup(phase: AccountFirstPhase): boolean {
     phase === "binding_conflict";
 }
 
+export function projectTauriAccountGateReady(
+  currentReady: boolean,
+  readiness: EffectiveAccountReadiness,
+): boolean {
+  if (readiness.ready) {
+    return true;
+  }
+  return shouldOpenTauriAccountSetup(readiness.phase) ? false : currentReady;
+}
+
 export async function ensureTauriDictationReadiness(
   invoke: TauriAccountGateInvoke,
 ): Promise<boolean> {
@@ -74,13 +84,12 @@ export function TauriAccountGate({ invoke, renderReady }: TauriAccountGateProps)
         return;
       }
 
+      setReady((currentReady) => projectTauriAccountGateReady(currentReady, readiness));
       if (readiness.ready) {
-        setReady(true);
         setOpeningSetup(false);
         return;
       }
 
-      setReady(false);
       if (!shouldOpenTauriAccountSetup(readiness.phase)) {
         setOpeningSetup(false);
         return;

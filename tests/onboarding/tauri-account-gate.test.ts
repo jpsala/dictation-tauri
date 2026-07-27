@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ensureTauriDictationReadiness,
   getEffectiveTauriAccountReadiness,
+  projectTauriAccountGateReady,
   shouldOpenTauriAccountSetup,
 } from "../../src/onboarding/tauri-account-gate";
 
@@ -43,6 +44,16 @@ describe("Tauri account readiness gate", () => {
     for (const phase of ["welcome", "oauth_expired", "account_not_authorized", "binding_conflict"] as const) {
       expect(shouldOpenTauriAccountSetup(phase), phase).toBe(true);
     }
+  });
+
+  it("keeps an already-ready dock mounted across transient readiness failures", () => {
+    for (const phase of ["checking", "offline", "policy_unavailable", "service_unavailable"] as const) {
+      expect(projectTauriAccountGateReady(true, { ready: false, phase }), phase).toBe(true);
+      expect(projectTauriAccountGateReady(false, { ready: false, phase }), phase).toBe(false);
+    }
+
+    expect(projectTauriAccountGateReady(true, { ready: false, phase: "oauth_expired" })).toBe(false);
+    expect(projectTauriAccountGateReady(false, { ready: true, phase: "ready" })).toBe(true);
   });
 
   it("opens account setup and performs zero capture work when dictation is not ready", async () => {
