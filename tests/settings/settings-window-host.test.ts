@@ -1,3 +1,4 @@
+// @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -21,6 +22,8 @@ describe("Settings host window", () => {
     expect(settingsSource).not.toContain("api.prevent_close()");
     expect(settingsSource).not.toContain("settings_window.hide()");
     expect(settingsSource).toContain("index.html#settings");
+    expect(settingsSource).toContain("window.location.replace('index.html#settings')");
+    expect(settingsSource).toContain("settings navigation failed");
     expect(settingsSource).not.toContain("destroying stale window before open");
     expect(settingsSource).not.toContain("window.destroy()?");
   });

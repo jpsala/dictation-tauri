@@ -141,6 +141,7 @@ describe("VoiceDock UI", () => {
     expect(html).toContain("Review ready");
     expect(html).toContain("Review only");
     expect(html).toContain("Nothing was inserted. Review the transcript locally or copy it manually.");
+    expect(html).not.toContain('data-testid="voice-dock-companion"');
     expectAction(html, "Copy transcript");
     expectAction(html, "Paste last (safe)");
     expectNoAction(html, "Retry");

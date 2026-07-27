@@ -141,6 +141,10 @@ pub fn hide_dock(app: AppHandle) -> Result<(), String> {
     hide_dock_window(&app).map_err(|error| error.to_string())
 }
 
+pub fn is_dock_visible() -> bool {
+    DOCK_VISIBLE.load(Ordering::SeqCst)
+}
+
 pub fn prepare_hidden_dock_for_startup_smoke() {
     DOCK_VISIBLE.store(false, Ordering::SeqCst);
     remember_dock_state(DockShellState::Idle);

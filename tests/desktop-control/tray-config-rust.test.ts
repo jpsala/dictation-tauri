@@ -1,3 +1,4 @@
+// @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -20,16 +21,24 @@ describe("Tauri tray background lifecycle", () => {
     expect(packageJson.scripts["dev:desktop:restart"]).toContain("-Refresh");
   });
 
-  it("uses stable Fixvox-parity tray IDs and show/hide/quit actions", () => {
+  it("uses one dock toggle, nested skins/presets, settings, and quit", () => {
     const source = readFileSync("src-tauri/src/tray.rs", "utf8");
 
     expect(source).toContain('TrayIconBuilder::with_id("dictation-tauri-tray")');
-    expect(source).toContain('MENU_SHOW_DOCK: &str = "show_dock"');
-    expect(source).toContain('MENU_HIDE_DOCK: &str = "hide_dock"');
+    expect(source).toContain('MENU_TOGGLE_DOCK: &str = "toggle_dock"');
+    expect(source).toContain('CheckMenuItemBuilder::with_id(MENU_TOGGLE_DOCK, "Show dock")');
+    expect(source.match(/CheckMenuItemBuilder::with_id/g)).toHaveLength(1);
+    expect(source).toContain('SubmenuBuilder::new(app, "Dock skin")');
+    expect(source).toContain('SubmenuBuilder::new(app, "Presets")');
+    expect(source).toContain('MENU_PRESET_COMO_YO_ES: &str = "preset_como_yo_es"');
+    expect(source).toContain('MENU_PRESET_CORREGIR_TEXTO: &str = "preset_corregir_texto"');
+    expect(source).toContain('MENU_PRESET_FIX_WRITING: &str = "preset_fix_writing"');
+    expect(source).toContain('MENU_PRESET_LIKE_ME_EN: &str = "preset_like_me_en"');
     expect(source).toContain('MENU_OPEN_SETTINGS: &str = "open_settings"');
     expect(source).toContain('MENU_QUIT: &str = "quit"');
     expect(source).toContain("show_menu_on_left_click(true)");
     expect(source).toContain("dock_shell::show_dock_window(app)");
+    expect(source).toContain("dock_shell::hide_dock_window(app)");
     expect(source).toContain("app.exit(0)");
   });
 

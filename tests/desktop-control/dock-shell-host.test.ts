@@ -3,16 +3,15 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("Dock shell host visibility", () => {
-  it("keeps tray show/hide native, diagnostic, and persistent across renderer state updates", () => {
+  it("keeps the tray dock toggle native, diagnostic, and persistent across renderer state updates", () => {
     const dockSource = readFileSync("src-tauri/src/dock_shell.rs", "utf8");
     const traySource = readFileSync("src-tauri/src/tray.rs", "utf8");
 
-    expect(traySource).toContain("HostMenuAction::ShowDock");
-    expect(traySource).toContain("failed to show dock window");
-    expect(traySource).toContain("HostMenuAction::HideDock");
-    expect(traySource).toContain("failed to hide dock window");
-    expect(traySource).toContain("host_command_payload(HostMenuAction::ShowDock), None");
-    expect(traySource).toContain("host_command_payload(HostMenuAction::HideDock), None");
+    expect(traySource).toContain("HostMenuAction::ToggleDock");
+    expect(traySource).toContain("failed to toggle dock window");
+    expect(traySource).toContain("CheckMenuItemBuilder::with_id(MENU_TOGGLE_DOCK");
+    expect(traySource).toContain("dock_shell::is_dock_visible()");
+    expect(traySource).toContain("host_command_payload(HostMenuAction::ToggleDock), None");
 
     expect(dockSource).toContain("static DOCK_VISIBLE: AtomicBool");
     expect(dockSource).toContain("read_user_preferences_for_app");

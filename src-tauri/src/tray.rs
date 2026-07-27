@@ -1,6 +1,6 @@
 use serde::Serialize;
 use tauri::{
-    menu::{ContextMenu, MenuBuilder, MenuEvent},
+    menu::{CheckMenuItemBuilder, ContextMenu, MenuBuilder, MenuEvent, SubmenuBuilder},
     tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, Runtime, WindowEvent,
 };
@@ -12,22 +12,14 @@ use crate::user_preferences::DockSkinId;
 
 pub const HOST_COMMAND_EVENT: &str = "desktop-control://host-command";
 
-pub const MENU_SHOW_DOCK: &str = "show_dock";
-pub const MENU_HIDE_DOCK: &str = "hide_dock";
-pub const MENU_START: &str = "start_dictation";
-pub const MENU_STOP: &str = "stop_dictation";
-pub const MENU_CANCEL: &str = "cancel_dictation";
-pub const MENU_PASTE_LAST_SAFE: &str = "paste_last_safe";
-pub const MENU_PRESET_TRANSLATE: &str = "preset_translate";
-pub const MENU_PRESET_REWRITE: &str = "preset_rewrite";
-pub const MENU_PRESET_SHORTEN: &str = "preset_shorten";
-pub const MENU_PRESET_PROFESSIONAL: &str = "preset_professional";
-pub const MENU_CLEAR_PRESET: &str = "clear_preset";
+pub const MENU_TOGGLE_DOCK: &str = "toggle_dock";
+pub const MENU_PRESET_COMO_YO_ES: &str = "preset_como_yo_es";
+pub const MENU_PRESET_CORREGIR_TEXTO: &str = "preset_corregir_texto";
+pub const MENU_PRESET_FIX_WRITING: &str = "preset_fix_writing";
+pub const MENU_PRESET_LIKE_ME_EN: &str = "preset_like_me_en";
 pub const MENU_DOCK_SKIN_CLASSIC: &str = "dock_skin_classic_7";
 pub const MENU_DOCK_SKIN_COMPACT: &str = "dock_skin_compact_5";
 pub const MENU_DOCK_SKIN_WISPR_FLOW: &str = "dock_skin_wispr_flow";
-pub const MENU_SHOW_RESULT_HISTORY: &str = "show_result_history";
-pub const MENU_SHOW_PRESET_PICKER: &str = "show_preset_picker";
 pub const MENU_OPEN_SETTINGS: &str = "open_settings";
 pub const MENU_QUIT: &str = "quit";
 
@@ -47,17 +39,9 @@ pub struct HostCommandPayload {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HostMenuAction {
-    ShowDock,
-    HideDock,
-    StartDictation,
-    StopDictation,
-    CancelDictation,
-    PasteLastSafe,
+    ToggleDock,
     SelectPreset(&'static str),
-    ClearPreset,
     SelectDockSkin(DockSkinId),
-    ShowResultHistory,
-    ShowPresetPicker,
     OpenSettings,
     Quit,
     Unknown,
@@ -65,22 +49,14 @@ pub enum HostMenuAction {
 
 pub fn resolve_host_menu_action(id: &str) -> HostMenuAction {
     match id {
-        MENU_SHOW_DOCK => HostMenuAction::ShowDock,
-        MENU_HIDE_DOCK => HostMenuAction::HideDock,
-        MENU_START => HostMenuAction::StartDictation,
-        MENU_STOP => HostMenuAction::StopDictation,
-        MENU_CANCEL => HostMenuAction::CancelDictation,
-        MENU_PASTE_LAST_SAFE => HostMenuAction::PasteLastSafe,
-        MENU_PRESET_TRANSLATE => HostMenuAction::SelectPreset("translate"),
-        MENU_PRESET_REWRITE => HostMenuAction::SelectPreset("rewrite"),
-        MENU_PRESET_SHORTEN => HostMenuAction::SelectPreset("shorten"),
-        MENU_PRESET_PROFESSIONAL => HostMenuAction::SelectPreset("professional"),
-        MENU_CLEAR_PRESET => HostMenuAction::ClearPreset,
+        MENU_TOGGLE_DOCK => HostMenuAction::ToggleDock,
+        MENU_PRESET_COMO_YO_ES => HostMenuAction::SelectPreset("como-yo-es"),
+        MENU_PRESET_CORREGIR_TEXTO => HostMenuAction::SelectPreset("corregir-texto"),
+        MENU_PRESET_FIX_WRITING => HostMenuAction::SelectPreset("fix-writing"),
+        MENU_PRESET_LIKE_ME_EN => HostMenuAction::SelectPreset("like-me-en"),
         MENU_DOCK_SKIN_CLASSIC => HostMenuAction::SelectDockSkin(DockSkinId::Classic7),
         MENU_DOCK_SKIN_COMPACT => HostMenuAction::SelectDockSkin(DockSkinId::Compact5),
         MENU_DOCK_SKIN_WISPR_FLOW => HostMenuAction::SelectDockSkin(DockSkinId::WisprFlow),
-        MENU_SHOW_RESULT_HISTORY => HostMenuAction::ShowResultHistory,
-        MENU_SHOW_PRESET_PICKER => HostMenuAction::ShowPresetPicker,
         MENU_OPEN_SETTINGS => HostMenuAction::OpenSettings,
         MENU_QUIT => HostMenuAction::Quit,
         _ => HostMenuAction::Unknown,
@@ -89,12 +65,7 @@ pub fn resolve_host_menu_action(id: &str) -> HostMenuAction {
 
 pub fn host_command_payload(action: HostMenuAction) -> Option<HostCommandPayload> {
     let (command, preset_id, dock_skin) = match action {
-        HostMenuAction::StartDictation => ("start", None, None),
-        HostMenuAction::StopDictation => ("stop", None, None),
-        HostMenuAction::CancelDictation => ("cancel", None, None),
-        HostMenuAction::PasteLastSafe => ("paste_last_safe", None, None),
         HostMenuAction::SelectPreset(preset_id) => ("select_preset", Some(preset_id), None),
-        HostMenuAction::ClearPreset => ("clear_preset", None, None),
         HostMenuAction::SelectDockSkin(DockSkinId::Classic7) => {
             ("set_dock_skin", None, Some("classic-7"))
         }
@@ -104,11 +75,8 @@ pub fn host_command_payload(action: HostMenuAction) -> Option<HostCommandPayload
         HostMenuAction::SelectDockSkin(DockSkinId::WisprFlow) => {
             ("set_dock_skin", None, Some("wispr-flow"))
         }
-        HostMenuAction::ShowResultHistory => ("show_result_history", None, None),
-        HostMenuAction::ShowPresetPicker => ("show_preset_picker", None, None),
-        HostMenuAction::ShowDock
+        HostMenuAction::ToggleDock
         | HostMenuAction::OpenSettings
-        | HostMenuAction::HideDock
         | HostMenuAction::Quit
         | HostMenuAction::Unknown => return None,
     };
@@ -181,28 +149,27 @@ fn cache_delivery_target_before_tray_menu(event: TrayIconEvent) {
 }
 
 fn build_host_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu::Menu<R>> {
+    let show_dock = CheckMenuItemBuilder::with_id(MENU_TOGGLE_DOCK, "Show dock")
+        .checked(dock_shell::is_dock_visible())
+        .build(app)?;
+
+    let skin_menu = SubmenuBuilder::new(app, "Dock skin")
+        .text(MENU_DOCK_SKIN_CLASSIC, "Classic 7")
+        .text(MENU_DOCK_SKIN_COMPACT, "Compact 5")
+        .text(MENU_DOCK_SKIN_WISPR_FLOW, "Wispr Flow")
+        .build()?;
+
+    let presets_menu = SubmenuBuilder::new(app, "Presets")
+        .text(MENU_PRESET_COMO_YO_ES, "Como yo (español)")
+        .text(MENU_PRESET_CORREGIR_TEXTO, "Corregir texto")
+        .text(MENU_PRESET_FIX_WRITING, "Fix Writing")
+        .text(MENU_PRESET_LIKE_ME_EN, "Like me (English)")
+        .build()?;
+
     MenuBuilder::new(app)
-        .text(MENU_SHOW_DOCK, "Show dock")
-        .text(MENU_HIDE_DOCK, "Hide dock")
-        .separator()
-        .text(MENU_START, "Start dictation")
-        .text(MENU_STOP, "Stop / review")
-        .text(MENU_CANCEL, "Cancel dictation")
-        .separator()
-        .text(MENU_PASTE_LAST_SAFE, "Paste last (safe)")
-        .text(MENU_SHOW_RESULT_HISTORY, "Result history")
-        .text(MENU_SHOW_PRESET_PICKER, "Action picker (Alt+Q)")
-        .separator()
-        .text(MENU_PRESET_TRANSLATE, "Preset: Translate")
-        .text(MENU_PRESET_REWRITE, "Preset: Rewrite")
-        .text(MENU_PRESET_SHORTEN, "Preset: Shorten")
-        .text(MENU_PRESET_PROFESSIONAL, "Preset: Professional")
-        .text(MENU_CLEAR_PRESET, "Clear preset")
-        .separator()
-        .text(MENU_DOCK_SKIN_CLASSIC, "Dock skin: Classic 7")
-        .text(MENU_DOCK_SKIN_COMPACT, "Dock skin: Compact 5")
-        .text(MENU_DOCK_SKIN_WISPR_FLOW, "Dock skin: Wispr Flow")
-        .separator()
+        .item(&show_dock)
+        .item(&skin_menu)
+        .item(&presets_menu)
         .text(MENU_OPEN_SETTINGS, "Settings")
         .separator()
         .text(MENU_QUIT, "Quit Dictation Tauri")
@@ -218,14 +185,14 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
     );
 
     match action {
-        HostMenuAction::ShowDock => {
-            if let Err(error) = dock_shell::show_dock_window(app) {
-                eprintln!("failed to show dock window: {error}");
-            }
-        }
-        HostMenuAction::HideDock => {
-            if let Err(error) = dock_shell::hide_dock_window(app) {
-                eprintln!("failed to hide dock window: {error}");
+        HostMenuAction::ToggleDock => {
+            let result = if dock_shell::is_dock_visible() {
+                dock_shell::hide_dock_window(app)
+            } else {
+                dock_shell::show_dock_window(app)
+            };
+            if let Err(error) = result {
+                eprintln!("failed to toggle dock window: {error}");
             }
         }
         HostMenuAction::OpenSettings => {
@@ -248,50 +215,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolves_host_menu_actions_from_stable_ids() {
+    fn resolves_the_reduced_menu_actions_from_stable_ids() {
         assert_eq!(
-            resolve_host_menu_action(MENU_SHOW_DOCK),
-            HostMenuAction::ShowDock
+            resolve_host_menu_action(MENU_TOGGLE_DOCK),
+            HostMenuAction::ToggleDock
         );
         assert_eq!(
-            resolve_host_menu_action(MENU_HIDE_DOCK),
-            HostMenuAction::HideDock
+            resolve_host_menu_action(MENU_PRESET_COMO_YO_ES),
+            HostMenuAction::SelectPreset("como-yo-es")
         );
         assert_eq!(
-            resolve_host_menu_action(MENU_START),
-            HostMenuAction::StartDictation
+            resolve_host_menu_action(MENU_PRESET_CORREGIR_TEXTO),
+            HostMenuAction::SelectPreset("corregir-texto")
         );
         assert_eq!(
-            resolve_host_menu_action(MENU_STOP),
-            HostMenuAction::StopDictation
+            resolve_host_menu_action(MENU_PRESET_FIX_WRITING),
+            HostMenuAction::SelectPreset("fix-writing")
         );
         assert_eq!(
-            resolve_host_menu_action(MENU_CANCEL),
-            HostMenuAction::CancelDictation
-        );
-        assert_eq!(
-            resolve_host_menu_action(MENU_PASTE_LAST_SAFE),
-            HostMenuAction::PasteLastSafe
-        );
-        assert_eq!(
-            resolve_host_menu_action(MENU_PRESET_TRANSLATE),
-            HostMenuAction::SelectPreset("translate")
-        );
-        assert_eq!(
-            resolve_host_menu_action(MENU_PRESET_REWRITE),
-            HostMenuAction::SelectPreset("rewrite")
-        );
-        assert_eq!(
-            resolve_host_menu_action(MENU_PRESET_SHORTEN),
-            HostMenuAction::SelectPreset("shorten")
-        );
-        assert_eq!(
-            resolve_host_menu_action(MENU_PRESET_PROFESSIONAL),
-            HostMenuAction::SelectPreset("professional")
-        );
-        assert_eq!(
-            resolve_host_menu_action(MENU_CLEAR_PRESET),
-            HostMenuAction::ClearPreset
+            resolve_host_menu_action(MENU_PRESET_LIKE_ME_EN),
+            HostMenuAction::SelectPreset("like-me-en")
         );
         assert_eq!(
             resolve_host_menu_action(MENU_DOCK_SKIN_CLASSIC),
@@ -306,14 +249,6 @@ mod tests {
             HostMenuAction::SelectDockSkin(DockSkinId::WisprFlow)
         );
         assert_eq!(
-            resolve_host_menu_action(MENU_SHOW_RESULT_HISTORY),
-            HostMenuAction::ShowResultHistory
-        );
-        assert_eq!(
-            resolve_host_menu_action(MENU_SHOW_PRESET_PICKER),
-            HostMenuAction::ShowPresetPicker
-        );
-        assert_eq!(
             resolve_host_menu_action(MENU_OPEN_SETTINGS),
             HostMenuAction::OpenSettings
         );
@@ -322,35 +257,13 @@ mod tests {
     }
 
     #[test]
-    fn emits_only_renderer_safe_host_commands() {
+    fn emits_renderer_commands_only_for_presets_and_skins() {
         assert_eq!(
-            host_command_payload(HostMenuAction::StartDictation),
-            Some(HostCommandPayload {
-                source: "tray_or_context_menu",
-                command: "start",
-                preset_id: None,
-                dock_skin: None,
-                chord_key: None,
-                target_snapshot: None,
-            })
-        );
-        assert_eq!(
-            host_command_payload(HostMenuAction::StopDictation),
-            Some(HostCommandPayload {
-                source: "tray_or_context_menu",
-                command: "stop",
-                preset_id: None,
-                dock_skin: None,
-                chord_key: None,
-                target_snapshot: None,
-            })
-        );
-        assert_eq!(
-            host_command_payload(HostMenuAction::SelectPreset("translate")),
+            host_command_payload(HostMenuAction::SelectPreset("como-yo-es")),
             Some(HostCommandPayload {
                 source: "tray_or_context_menu",
                 command: "select_preset",
-                preset_id: Some("translate"),
+                preset_id: Some("como-yo-es"),
                 dock_skin: None,
                 chord_key: None,
                 target_snapshot: None,
@@ -367,30 +280,7 @@ mod tests {
                 target_snapshot: None,
             })
         );
-        assert_eq!(
-            host_command_payload(HostMenuAction::SelectDockSkin(DockSkinId::WisprFlow)),
-            Some(HostCommandPayload {
-                source: "tray_or_context_menu",
-                command: "set_dock_skin",
-                preset_id: None,
-                dock_skin: Some("wispr-flow"),
-                chord_key: None,
-                target_snapshot: None,
-            })
-        );
-        assert_eq!(
-            host_command_payload(HostMenuAction::ShowPresetPicker),
-            Some(HostCommandPayload {
-                source: "tray_or_context_menu",
-                command: "show_preset_picker",
-                preset_id: None,
-                dock_skin: None,
-                chord_key: None,
-                target_snapshot: None,
-            })
-        );
-        assert_eq!(host_command_payload(HostMenuAction::ShowDock), None);
-        assert_eq!(host_command_payload(HostMenuAction::HideDock), None);
+        assert_eq!(host_command_payload(HostMenuAction::ToggleDock), None);
         assert_eq!(host_command_payload(HostMenuAction::OpenSettings), None);
         assert_eq!(host_command_payload(HostMenuAction::Quit), None);
     }

@@ -27,6 +27,17 @@ Mejorar `wispr-flow` por comparación visual iterativa sin alterar `classic-7`, 
 - `Stop & submit` vuelve a estar disponible en las tres skins: el icono `↵` queda junto a `Stop & review`; en Wispr la disposición es cancelar izquierda, enter al centro y stop derecha.
 - Contratos verificados: UI focal 21/21, preferencias Rust 3/3, shell Rust 19/19 y `npm run build` correcto.
 
+## Checkpoint — Menú Contextual Y Recovery — 2026-07-27
+
+- El menú contextual/tray queda reducido a un único toggle `Show dock`,
+  `Settings`, submenús `Dock skin` y `Presets`, y `Quit Dictation Tauri`.
+- `Dock skin` contiene Classic 7, Compact 5 y Wispr Flow; `Presets` contiene
+  los cuatro presets activos actuales.
+- El chip flotante `Review ready` deja de persistir; la recuperación sigue en
+  el dock principal para no ocultar ni reenviar texto incierto.
+- Settings fuerza `index.html#settings` al reutilizar su WebView, evitando que
+  una navegación previa de onboarding quede atrapada dentro de Settings.
+
 ## Batch 1 — Wispr Flow Visual Refinement
 
 1. Capturar idle, hover, recording y processing del Tauri real sin mover ni rediseñar otras skins.
