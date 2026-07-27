@@ -21,14 +21,12 @@ decisiones.
 - Desktop mantiene compatibilidad `CF-DESKTOP`; OAuth/account linkage y prompt
   parity quedaron corregidos. Smokes reales, instalación, release, provider,
   VPS, DNS y deploy siguen gated.
-- Prioridad inmediata: la falla 100%↔150% apunta al watcher agregado en
-  `1c8a4f9`, que movía y redimensionaba el HWND en el mismo `SetWindowPos`
-  mientras Tao procesaba `WM_DPICHANGED`. Hay un patch local que escalona el
-  movimiento y fuerza refresh de bounds WebView2; checks pasan, pero sigue sin
-  smoke físico en la PC afectada y no tiene release.
-- Último cierre publicado: hotfix bitmap/dock idle `c2d07cb`, prerelease
-  `fixvox-tauri-v0.1.0-20260727194108`, instalado localmente y validado con
-  paste real preservando una imagen en clipboard. `main` quedó en `e625166`.
+- Prioridad inmediata: validar en la PC afectada la corrección 100%↔150%, que
+  escalona el movimiento del HWND antes del resize/refresh WebView2. Source
+  `3d6bd5f`; checks y NSIS pasan, pero aún no hay smoke físico mixed-DPI.
+- Último cierre publicado: prerelease mixed-DPI
+  `fixvox-tauri-v0.1.0-20260727204131`, installer y checksum redescargados con
+  SHA-256 `f745060a…d0f1bb`. El source quedó pusheado en `3d6bd5f`.
 - Standard Product UX cerró su operación local. Pi Chat Batch 2, App Audit y el
   roadmap de usuarios registrados están pausados hasta nueva priorización.
 - La evidencia detallada no se duplica aquí: permanece en las tracks, specs,
