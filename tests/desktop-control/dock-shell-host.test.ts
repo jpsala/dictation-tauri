@@ -41,4 +41,14 @@ describe("Dock shell host visibility", () => {
     expect(dockSource).toContain("BTreeMap<String, DockPosition>");
     expect(dockSource).toContain("repositioned for cursor monitor");
   });
+
+  it("stages native movement before resizing across a monitor DPI boundary", () => {
+    const dockSource = readFileSync("src-tauri/src/dock_shell.rs", "utf8");
+
+    expect(dockSource).toContain("dock_scale_factor_changed");
+    expect(dockSource).toContain("show_dock_window_after_scale_transition");
+    expect(dockSource).toContain("SWP_NOACTIVATE | SWP_NOSIZE");
+    expect(dockSource).toContain("SWP_NOACTIVATE | SWP_FRAMECHANGED");
+    expect(dockSource).toContain("dpi_staged={}");
+  });
 });

@@ -3,13 +3,13 @@
 Router operativo corto; el detalle durable vive en topics, tracks, specs y
 decisiones.
 
-Última actualización: 2026-07-25.
+Última actualización: 2026-07-27.
 
 ## Foco Único De Ejecución
 
 - **Estado:** `ready`.
 - **Plan:** `docs/tracks/dock-skins-visual-refinement.md`.
-- **Próximo batch:** **Batch 1 — Wispr Flow visual refinement**.
+- **Próximo batch:** **Batch Urgente — Regresión Mixed-DPI — 2026-07-27**.
 
 ## Estado Vivo
 
@@ -21,13 +21,14 @@ decisiones.
 - Desktop mantiene compatibilidad `CF-DESKTOP`; OAuth/account linkage y prompt
   parity quedaron corregidos. Smokes reales, instalación, release, provider,
   VPS, DNS y deploy siguen gated.
-- Dock skins está listo para el pase visual de `wispr-flow`: preservar
-  `classic-7`, mantener cloud fuera de alcance y continuar desde
-  `docs/topics/fixvox-dock-and-hotkeys-reference.md`.
-- Último cierre: hotfix `f418160` y release
-  `fixvox-tauri-v0.1.0-20260725210647` publicados; instalador verificado e
-  instalado localmente; documentación durable en
-  `docs/tracks/fixvox-tauri-cloud-release.md`.
+- Prioridad inmediata: la falla 100%↔150% apunta al watcher agregado en
+  `1c8a4f9`, que movía y redimensionaba el HWND en el mismo `SetWindowPos`
+  mientras Tao procesaba `WM_DPICHANGED`. Hay un patch local que escalona el
+  movimiento y fuerza refresh de bounds WebView2; checks pasan, pero sigue sin
+  smoke físico en la PC afectada y no tiene release.
+- Último cierre publicado: hotfix bitmap/dock idle `c2d07cb`, prerelease
+  `fixvox-tauri-v0.1.0-20260727194108`, instalado localmente y validado con
+  paste real preservando una imagen en clipboard. `main` quedó en `e625166`.
 - Standard Product UX cerró su operación local. Pi Chat Batch 2, App Audit y el
   roadmap de usuarios registrados están pausados hasta nueva priorización.
 - La evidencia detallada no se duplica aquí: permanece en las tracks, specs,

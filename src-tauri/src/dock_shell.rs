@@ -521,20 +521,30 @@ fn follow_cursor_monitor_if_needed<R: Runtime>(app: &AppHandle<R>) -> Result<boo
         return Ok(false);
     }
 
+    let current_scale_factor = dock_scale_factor(&window);
+    let target_scale_factor = monitor.scale_factor();
     let layout = scale_dock_shell_layout(
         dock_shell_layout_for_skin(DockShellState::Idle, last_dock_skin()),
-        monitor.scale_factor(),
+        target_scale_factor,
     );
     let position = resolve_dock_position_for_monitor(app, &monitor, layout)?;
-    platform::show_dock_window_no_activate(&window, position, layout)?;
+    let crossed_scale_boundary =
+        dock_scale_factor_changed(current_scale_factor, target_scale_factor);
+    if crossed_scale_boundary {
+        platform::show_dock_window_after_scale_transition(&window, position, layout)?;
+    } else {
+        platform::show_dock_window_no_activate(&window, position, layout)?;
+    }
     remember_idle_monitor_key(Some(key));
     eprintln!(
-        "[dictation-tauri][dock] repositioned for cursor monitor position=({}, {}) size={}x{} scale={:.2}",
+        "[dictation-tauri][dock] repositioned for cursor monitor position=({}, {}) size={}x{} scale={:.2} previous_scale={:.2} dpi_staged={}",
         position.x,
         position.y,
         layout.width,
         layout.height,
-        monitor.scale_factor()
+        target_scale_factor,
+        current_scale_factor,
+        crossed_scale_boundary
     );
     Ok(true)
 }
@@ -766,6 +776,10 @@ fn dock_scale_factor<R: Runtime>(window: &WebviewWindow<R>) -> f64 {
     window.scale_factor().unwrap_or(1.0).max(1.0)
 }
 
+fn dock_scale_factor_changed(current: f64, target: f64) -> bool {
+    (current - target).abs() >= 0.01
+}
+
 fn scale_dock_shell_layout(layout: DockShellLayout, scale_factor: f64) -> DockShellLayout {
     DockShellLayout {
         width: scale_dimension(layout.width, scale_factor),
@@ -823,7 +837,8 @@ mod platform {
             WindowsAndMessaging::{
                 GetCursorPos, GetWindowLongPtrW, IsWindowVisible, SetWindowLongPtrW, SetWindowPos,
                 ShowWindow, GWL_EXSTYLE, HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE,
-                SWP_SHOWWINDOW, SW_HIDE, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+                SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
+                WS_EX_TOOLWINDOW,
             },
         },
     };
@@ -868,6 +883,52 @@ mod platform {
             );
             if ok == 0 {
                 return Err(Box::new(io::Error::last_os_error()));
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn show_dock_window_after_scale_transition<R: Runtime>(
+        window: &WebviewWindow<R>,
+        position: DockPosition,
+        layout: DockShellLayout,
+    ) -> Result<(), Box<dyn Error>> {
+        let hwnd = window.hwnd()?;
+        let raw_hwnd = hwnd.0 as windows_sys::Win32::Foundation::HWND;
+
+        unsafe {
+            let moved = SetWindowPos(
+                raw_hwnd,
+                HWND_TOPMOST,
+                position.x,
+                position.y,
+                0,
+                0,
+                SWP_NOACTIVATE | SWP_NOSIZE,
+            );
+            if moved == 0 {
+                return Err(Box::new(io::Error::last_os_error()));
+            }
+        }
+
+        show_dock_window_no_activate(window, position, layout)?;
+
+        let nudge_width = layout.width.saturating_add(1);
+        unsafe {
+            for width in [nudge_width, layout.width] {
+                let refreshed = SetWindowPos(
+                    raw_hwnd,
+                    HWND_TOPMOST,
+                    position.x,
+                    position.y,
+                    width,
+                    layout.height,
+                    SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                );
+                if refreshed == 0 {
+                    return Err(Box::new(io::Error::last_os_error()));
+                }
             }
         }
 
@@ -964,6 +1025,14 @@ mod platform {
     ) -> Result<(), Box<dyn Error>> {
         window.show()?;
         Ok(())
+    }
+
+    pub fn show_dock_window_after_scale_transition<R: Runtime>(
+        window: &WebviewWindow<R>,
+        position: DockPosition,
+        layout: DockShellLayout,
+    ) -> Result<(), Box<dyn Error>> {
+        show_dock_window_no_activate(window, position, layout)
     }
 
     pub fn hide_dock_window<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), Box<dyn Error>> {
@@ -1162,6 +1231,14 @@ mod tests {
             ),
             DockPosition { x: 878, y: 1030 }
         );
+    }
+
+    #[test]
+    fn detects_only_real_dock_scale_factor_transitions() {
+        assert!(!dock_scale_factor_changed(1.0, 1.0));
+        assert!(!dock_scale_factor_changed(1.5, 1.500_001));
+        assert!(dock_scale_factor_changed(1.0, 1.5));
+        assert!(dock_scale_factor_changed(1.5, 1.0));
     }
 
     #[test]

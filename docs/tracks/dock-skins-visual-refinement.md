@@ -1,6 +1,6 @@
 ---
 status: active
-updated: 2026-07-25
+updated: 2026-07-27
 priority: medium
 execution_route: balanced
 topic: docs/topics/fixvox-dock-and-hotkeys-reference.md
@@ -42,6 +42,17 @@ Mejorar `wispr-flow` por comparación visual iterativa sin alterar `classic-7`, 
   en SHA-256 `30efe46ec7fd773481dc309644cf4ca5cbe3829a05bdc5399d3d2b1fbb4781b8`.
   Descarga:
   `https://github.com/jpsala/fixvox-releases/releases/download/fixvox-tauri-v0.1.0-20260727165806/Fixvox-Tauri-Setup.exe`.
+
+## Batch Urgente — Regresión Mixed-DPI — 2026-07-27
+
+- Reproducción disponible sólo en la PC del trabajo: al mover el cursor del monitor inferior al superior con DPI 150%, el dock aparece por milisegundos y luego queda invisible. Esa PC ya tiene el installer `fixvox-tauri-v0.1.0-20260727194108` (`c2d07cb`). JP pidió evitar por ahora el costo de bisect e instrumentación física allí.
+- Control negativo validado en la PC actual: dos monitores 1920x1080 a escala normal. Probe Win32 de 100 muestras movió el cursor al segundo monitor; HWND pasó de `(874,1002,1006,1038)` a `(2814,1002,2946,1038)` en 100 ms y permaneció `visible=true` en todas las muestras.
+- La auditoría descartó una regresión nativa del 27 de julio: entre `94d324d` y `c2d07cb` no cambió la geometría ni el watcher. El status chip `Ready`, el account gate y la semántica de delivery pueden alterar contenido React, pero ninguno explica una falla determinista sólo al cruzar escalas.
+- Causa más probable: deuda latente del watcher multi-monitor agregado en `1c8a4f9` el 17 de julio. `follow_cursor_monitor_if_needed` hacía un único `SetWindowPos` con posición y tamaño ya escalado para el monitor destino. Al cruzar 100%↔150%, Windows emite `WM_DPICHANGED`; Tao 0.35.3 procesa ese mensaje con otro `SetWindowPos`, mientras Wry 0.55.1 reajusta el child WebView2 en `WM_SIZE`. En 100%↔100% esa ruta doble no existe, consistente con el control negativo.
+- Patch local: el cruce de escala ahora se detecta explícitamente. Sólo en ese caso se mueve primero el HWND con `SWP_NOSIZE`, dejando que Tao complete `WM_DPICHANGED`; después se reaplican tamaño físico, región, no-activate/topmost y un nudge de ancho `+1 → exacto` con `SWP_FRAMECHANGED` para forzar `WM_SIZE`/bounds de WebView2. Los cruces con igual DPI conservan la ruta previa de un solo paso.
+- La fuente canónica Fixvox respalda el mecanismo de recovery: `recoverBlankDockVisual` reaplica estilo/hit region/topmost y hace un frame nudge; su utilidad genérica `window-repaint-nudge.ts` también usa ancho `+1 → exacto` para despertar WebView2.
+- Checks locales: `cargo fmt --check`, 22 tests `dock_shell`, 2 de tray, 3 de preferencias, `cargo check`, 23 tests Vitest focales, `npm run build` y `git diff --check` pasan. Persisten sólo warnings `dead_code` preexistentes de runtime transcription.
+- Estado: corrección basada en causa mecánica fuerte, todavía sin validación física 150%. No publicar ni afirmar cierre mixed-DPI hasta una prueba instalada en la PC afectada o una decisión explícita de aceptar esa evidencia indirecta.
 
 ## Batch 1 — Wispr Flow Visual Refinement
 
