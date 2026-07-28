@@ -1,3 +1,4 @@
+// @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -11,6 +12,9 @@ describe("Companion host window", () => {
     expect(source).toContain("WindowEvent::CloseRequested");
     expect(source).toContain("api.prevent_close()");
     expect(source).toContain("companion_window.hide()");
+    expect(source).toMatch(
+      /WindowEvent::CloseRequested[\s\S]*app\.emit_to\([\s\S]*DOCK_COMPANION_COMMAND_EVENT[\s\S]*"command": "close_companion"/,
+    );
     expect(source).toContain("position_window_above_anchor");
     expect(source).toMatch(/dock\s*\.current_monitor\(\)/);
     expect(source).toContain("monitor.work_area()");

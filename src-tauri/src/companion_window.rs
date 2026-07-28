@@ -72,14 +72,14 @@ fn position_window_above_anchor(
 pub fn configure_companion_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window(COMPANION_WINDOW_LABEL) {
         eprintln!("[dictation-tauri][companion] attaching hide-on-close");
-        attach_hide_on_close(window);
+        attach_hide_on_close(app.clone(), window);
     } else {
         eprintln!("[dictation-tauri][companion] configured window not found during setup");
     }
 
     if let Some(window) = app.get_webview_window(PRESET_PICKER_WINDOW_LABEL) {
         eprintln!("[dictation-tauri][preset-picker] attaching hide-on-close");
-        attach_hide_on_close(window);
+        attach_hide_on_close(app.clone(), window);
     } else {
         eprintln!("[dictation-tauri][preset-picker] configured window not found during setup");
     }
@@ -368,7 +368,7 @@ fn is_picker_foreground<R: Runtime>(window: &WebviewWindow<R>) -> bool {
     window.is_focused().unwrap_or(false)
 }
 
-fn attach_hide_on_close<R: Runtime>(window: WebviewWindow<R>) {
+fn attach_hide_on_close<R: Runtime>(app: AppHandle<R>, window: WebviewWindow<R>) {
     let companion_window = window.clone();
     window.on_window_event(move |event| {
         if let WindowEvent::CloseRequested { api, .. } = event {
@@ -376,6 +376,16 @@ fn attach_hide_on_close<R: Runtime>(window: WebviewWindow<R>) {
             api.prevent_close();
             if let Err(error) = companion_window.hide() {
                 eprintln!("[dictation-tauri][companion] hide-on-close failed: {error}");
+            }
+            if let Err(error) = app.emit_to(
+                DOCK_WINDOW_LABEL,
+                DOCK_COMPANION_COMMAND_EVENT,
+                serde_json::json!({
+                    "source": "dock_companion",
+                    "command": "close_companion",
+                }),
+            ) {
+                eprintln!("[dictation-tauri][companion] close command emit failed: {error}");
             }
         }
     });
