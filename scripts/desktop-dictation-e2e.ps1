@@ -15,6 +15,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Windows.Forms
 
 if (-not $AllowDesktopSideEffects) {
   throw 'Desktop dictation E2E opens Tauri, launches a target window, sends Ctrl+Shift+F9, and may paste into the target. Re-run with -AllowDesktopSideEffects only after explicit local approval.'
@@ -71,6 +72,40 @@ public static class DictationE2EWin32 {
   [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
   [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+  [DllImport("user32.dll", SetLastError=true)] static extern bool OpenClipboard(IntPtr owner);
+  [DllImport("user32.dll", SetLastError=true)] static extern bool CloseClipboard();
+  [DllImport("user32.dll", SetLastError=true)] static extern bool EmptyClipboard();
+  [DllImport("user32.dll", SetLastError=true)] static extern IntPtr SetClipboardData(uint format, IntPtr memory);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr GlobalLock(IntPtr memory);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool GlobalUnlock(IntPtr memory);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr GlobalFree(IntPtr memory);
+
+  public static bool WriteClipboardText(string text) {
+    if (!OpenClipboard(IntPtr.Zero)) return false;
+    IntPtr memory = IntPtr.Zero;
+    try {
+      if (!EmptyClipboard()) return false;
+      byte[] bytes = Encoding.Unicode.GetBytes((text ?? "") + "\0");
+      memory = GlobalAlloc(0x0002, (UIntPtr)bytes.Length);
+      if (memory == IntPtr.Zero) return false;
+      IntPtr target = GlobalLock(memory);
+      if (target == IntPtr.Zero) return false;
+      Marshal.Copy(bytes, 0, target, bytes.Length);
+      GlobalUnlock(memory);
+      if (SetClipboardData(13, memory) == IntPtr.Zero) return false;
+      memory = IntPtr.Zero;
+      return true;
+    } finally {
+      if (memory != IntPtr.Zero) GlobalFree(memory);
+      CloseClipboard();
+    }
+  }
+
+  public static bool ClearClipboardNow() {
+    if (!OpenClipboard(IntPtr.Zero)) return false;
+    try { return EmptyClipboard(); } finally { CloseClipboard(); }
+  }
 }
 "@
 
@@ -419,8 +454,15 @@ try {
   Add-Check 'cua health overall ok' ($health.overall -eq 'ok') $health
   Add-Check 'cua autostart disabled' ($report.cua.autostart -match 'not-registered') $report.cua.autostart
 
-  $originalClipboard = Get-Clipboard -Raw -ErrorAction SilentlyContinue
-  Set-Clipboard -Value $sentinel
+  $originalClipboardHadText = [System.Windows.Forms.Clipboard]::ContainsText()
+  $originalClipboard = if ($originalClipboardHadText) {
+    [System.Windows.Forms.Clipboard]::GetText()
+  } else {
+    $null
+  }
+  if (-not [DictationE2EWin32]::WriteClipboardText($sentinel)) {
+    throw 'Native clipboard sentinel preparation failed.'
+  }
   $report.clipboard = [ordered]@{ sentinelSet = $true; sentinelLength = $sentinel.Length }
 
   if ($DictationKey -eq 'CtrlShiftF9') {
@@ -541,7 +583,11 @@ try {
     lastWriteTime = $_.LastWriteTime.ToString('o')
   }})
 
-  $clipboardAfter = Get-Clipboard -Raw -ErrorAction SilentlyContinue
+  $clipboardAfter = if ([System.Windows.Forms.Clipboard]::ContainsText()) {
+    [System.Windows.Forms.Clipboard]::GetText()
+  } else {
+    $null
+  }
   $clipboardRestoredToSentinel = ($clipboardAfter -eq $sentinel)
   Add-Check 'clipboard sentinel restored after paste_sent' $clipboardRestoredToSentinel @{ restoredToSentinel = $clipboardRestoredToSentinel; currentLength = if ($null -eq $clipboardAfter) { 0 } else { $clipboardAfter.Length } }
 
@@ -572,7 +618,15 @@ finally {
     if ($targetProc -and -not $targetProc.HasExited) { Stop-Tree ([int]$targetProc.Id) }
   } catch { $report.errors += "stop target: $($_.Exception.Message)" }
   try {
-    if ($null -ne $originalClipboard) { Set-Clipboard -Value $originalClipboard } else { Set-Clipboard -Value '' }
+    if ($originalClipboardHadText) {
+      if (-not [DictationE2EWin32]::WriteClipboardText($originalClipboard)) {
+        throw 'Native clipboard text restoration failed.'
+      }
+    } else {
+      if (-not [DictationE2EWin32]::ClearClipboardNow()) {
+        throw 'Native clipboard clear restoration failed.'
+      }
+    }
     $report.clipboard.restoredOriginalAfterScript = $true
   } catch { $report.errors += "restore clipboard: $($_.Exception.Message)" }
   $report | ConvertTo-Json -Depth 12 | Set-Content -Encoding UTF8 -Path $reportPath

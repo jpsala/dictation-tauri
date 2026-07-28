@@ -3,25 +3,28 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("Windows desktop delivery native paste", () => {
-  it("uses Fixvox-like clipboard paste delivery instead of direct Unicode input", () => {
+  it("uses direct Unicode input without the clipboard by default", () => {
     const source = readFileSync("src-tauri/src/desktop_delivery.rs", "utf8");
 
     expect(source).not.toContain("VK_ESCAPE");
     expect(source).not.toContain("dismiss_transient_menu_before_paste");
     expect(source).not.toContain("should_dismiss_transient_menu_before_paste");
-    expect(source).not.toContain("KEYEVENTF_UNICODE");
-    expect(source).not.toContain("send_unicode_text");
-    expect(source).not.toContain("DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK");
-    expect(source).toContain("using Fixvox-like clipboard paste delivery");
-    expect(source).toContain("deliver_text_with_clipboard(");
-    expect(source).toContain("press_enter_after_paste,");
-    expect(source).toContain("focus_target_before_paste,");
-    expect(source).toContain("[dictation-tauri][desktop-delivery] failed reason={error}");
+    expect(source).toContain("KEYEVENTF_UNICODE");
+    expect(source).toContain("send_unicode_text(text)?");
+    expect(source).toContain("using direct Unicode delivery without clipboard");
+    expect(source).toContain("Direct Unicode input was sent");
+    expect(source).toContain("without using the clipboard");
+    expect(source.indexOf("let direct_result = deliver_text_without_clipboard(")).toBeLessThan(
+      source.indexOf("let warning = deliver_text_with_clipboard("),
+    );
   });
 
-  it("snapshots and restores text and image clipboard formats around Ctrl+V paste", () => {
+  it("keeps clipboard paste as an explicit opt-in fallback with restoration", () => {
     const source = readFileSync("src-tauri/src/desktop_delivery.rs", "utf8");
 
+    expect(source).toContain("DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK");
+    expect(source).toContain("fn allow_clipboard_paste_fallback");
+    expect(source).toContain("Temporary clipboard fallback is disabled by default");
     expect(source).toContain("struct ClipboardSnapshot");
     expect(source).toContain("CF_DIB_FORMAT");
     expect(source).toContain("CF_DIBV5_FORMAT");

@@ -291,7 +291,8 @@ mod platform {
         UI::{
             Input::KeyboardAndMouse::{
                 SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
-                VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RETURN, VK_RWIN, VK_SHIFT, VK_V,
+                KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RETURN, VK_RWIN,
+                VK_SHIFT, VK_V,
             },
             WindowsAndMessaging::{
                 BringWindowToTop, EnumChildWindows, GetClassNameW, GetForegroundWindow,
@@ -452,20 +453,44 @@ mod platform {
             read_observable_window_text(hwnd)
         };
         eprintln!(
-            "[dictation-tauri][desktop-delivery] using Fixvox-like clipboard paste delivery focus_target_before_paste={focus_target_before_paste}"
+            "[dictation-tauri][desktop-delivery] using direct Unicode delivery without clipboard focus_target_before_paste={focus_target_before_paste}"
         );
-        let clipboard_warning = deliver_text_with_clipboard(
+        let direct_result = deliver_text_without_clipboard(
             &text,
-            &target,
             hwnd,
             press_enter_after_paste,
             focus_target_before_paste,
-        )
-        .map_err(|error| {
-            eprintln!("[dictation-tauri][desktop-delivery] failed reason={error}");
-            error
-        })?;
-        let used_clipboard_fallback = true;
+        );
+        let (used_clipboard_fallback, clipboard_warning) = match direct_result {
+            Ok(()) => (false, None),
+            Err(error) if allow_clipboard_paste_fallback() => {
+                eprintln!(
+                    "[dictation-tauri][desktop-delivery] direct Unicode input failed; using explicit clipboard fallback reason={error}"
+                );
+                let warning = deliver_text_with_clipboard(
+                    &text,
+                    &target,
+                    hwnd,
+                    press_enter_after_paste,
+                    focus_target_before_paste,
+                )
+                .map_err(|fallback_error| {
+                    eprintln!(
+                        "[dictation-tauri][desktop-delivery] clipboard fallback failed reason={fallback_error}"
+                    );
+                    fallback_error
+                })?;
+                (true, warning)
+            }
+            Err(error) => {
+                eprintln!(
+                    "[dictation-tauri][desktop-delivery] direct delivery failed without clipboard fallback reason={error}"
+                );
+                return Err(format!(
+                    "Direct text input failed without using the clipboard: {error}. Temporary clipboard fallback is disabled by default."
+                ));
+            }
+        };
 
         let observable_after = if skip_bounded_observer {
             None
@@ -485,15 +510,27 @@ mod platform {
         };
         let reason = if observed && used_clipboard_fallback {
             format!(
-                "Fixvox-like clipboard paste was verified by a bounded Win32 text observer on the {target_description}."
+                "Explicit clipboard fallback was verified by a bounded Win32 text observer on the {target_description}."
+            )
+        } else if observed {
+            format!(
+                "Direct Unicode input was verified by a bounded Win32 text observer on the {target_description} without using the clipboard."
             )
         } else if used_clipboard_fallback && press_enter_after_paste {
             format!(
-                "Fixvox-like clipboard paste and Enter commands were sent to the {target_description} without observation."
+                "Explicit clipboard fallback and Enter commands were sent to the {target_description} without observation."
+            )
+        } else if used_clipboard_fallback {
+            format!(
+                "Explicit clipboard fallback was sent to the {target_description} without observation."
+            )
+        } else if press_enter_after_paste {
+            format!(
+                "Direct Unicode input and Enter were sent to the {target_description} without using the clipboard or observation."
             )
         } else {
             format!(
-                "Fixvox-like clipboard paste command was sent to the {target_description} without observation."
+                "Direct Unicode input was sent to the {target_description} without using the clipboard or observation."
             )
         };
         let reason = clipboard_warning
@@ -509,6 +546,55 @@ mod platform {
             reason,
             target,
         })
+    }
+
+    fn deliver_text_without_clipboard(
+        text: &str,
+        hwnd: HWND,
+        press_enter_after_paste: bool,
+        focus_target_before_paste: bool,
+    ) -> Result<(), String> {
+        if focus_target_before_paste {
+            focus_window(hwnd)?;
+        } else if !is_expected_foreground(hwnd, unsafe { GetForegroundWindow() }) {
+            return Err(
+                "Foreground input changed before direct delivery; no window was focused and no keys were sent."
+                    .to_string(),
+            );
+        }
+
+        thread::sleep(Duration::from_millis(80));
+        if !is_expected_foreground(hwnd, unsafe { GetForegroundWindow() }) {
+            return Err(
+                "Desktop target lost focus before direct delivery; no text was sent.".to_string(),
+            );
+        }
+        release_modifier_keys()?;
+        thread::sleep(Duration::from_millis(20));
+        if !is_expected_foreground(hwnd, unsafe { GetForegroundWindow() }) {
+            return Err(
+                "Desktop target lost focus before direct text input; no text was sent.".to_string(),
+            );
+        }
+        send_unicode_text(text)?;
+        if press_enter_after_paste {
+            thread::sleep(Duration::from_millis(80));
+            send_enter()?;
+        }
+        thread::sleep(Duration::from_millis(80));
+        release_modifier_keys()?;
+        Ok(())
+    }
+
+    fn allow_clipboard_paste_fallback() -> bool {
+        std::env::var("DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK")
+            .map(|value| {
+                matches!(
+                    value.to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false)
     }
 
     fn deliver_text_with_clipboard(
@@ -767,6 +853,22 @@ mod platform {
         )
     }
 
+    fn send_unicode_text(text: &str) -> Result<(), String> {
+        for chunk in text.encode_utf16().collect::<Vec<_>>().chunks(512) {
+            let mut inputs = Vec::with_capacity(chunk.len() * 2);
+            for code_unit in chunk {
+                inputs.push(unicode_input(*code_unit, false));
+                inputs.push(unicode_input(*code_unit, true));
+            }
+            send_keyboard_inputs(
+                &mut inputs,
+                "Direct text input could not be sent without the clipboard.",
+            )?;
+            thread::sleep(Duration::from_millis(1));
+        }
+        Ok(())
+    }
+
     fn send_ctrl_v() -> Result<(), String> {
         send_keyboard_inputs(
             &mut [
@@ -807,6 +909,21 @@ mod platform {
             Ok(())
         } else {
             Err("Enter key could not be sent after paste.".to_string())
+        }
+    }
+
+    fn unicode_input(code_unit: u16, key_up: bool) -> INPUT {
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: 0,
+                    wScan: code_unit,
+                    dwFlags: KEYEVENTF_UNICODE | if key_up { KEYEVENTF_KEYUP } else { 0 },
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
         }
     }
 
