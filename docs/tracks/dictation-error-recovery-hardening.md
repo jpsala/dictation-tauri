@@ -121,8 +121,38 @@ Orden:
 8. Registrar commit/tag/hash/smoke/URL en esta track y Working Memory; hacer el
    commit/push documental de receipt si corresponde.
 
+## Receipt De Release — 2026-07-27
+
+- Source de recovery/tray y mixed-DPI preservado en `2739597`; el smoke del
+  primer candidato detectó que el cierre nativo de Companion sólo ocultaba la
+  ventana. El follow-up `d5aa728` emite `close_companion` al dock y deja el
+  source final pusheado con `HEAD == origin/main` antes del build definitivo.
+- Gates finales: 47 archivos/264 tests focales; 3 tests Rust de tray, 22 de
+  dock y 4 de companion; frontend build, Rust fmt/check, context index/audit y
+  `git diff --check` verdes. Persisten sólo warnings `dead_code` conocidos y un
+  warning documental por el tamaño del topic Fixvox.
+- Prerelease final unsigned:
+  `fixvox-tauri-v0.1.0-20260727234336`. Installer `29,595,980` bytes. SHA-256
+  local, checksum publicado y redescarga:
+  `b394b2a42ce2014ddec0b04c4b9b5e88954e9af15880321daddd23b1375cad60`.
+- Release:
+  `https://github.com/jpsala/fixvox-releases/releases/tag/fixvox-tauri-v0.1.0-20260727234336`.
+  Installer directo:
+  `https://github.com/jpsala/fixvox-releases/releases/download/fixvox-tauri-v0.1.0-20260727234336/Fixvox-Tauri-Setup.exe`.
+- El asset redescargado se instaló localmente con exit `0`, versión `0.1.0` y
+  entrada de uninstall presente. Smoke nativo instalado pasó: tray y botón
+  derecho muestran Paste last/History; ambos conservaron el target descartable;
+  History entregó con afinidad `saved`; un intento cancelado sin transcript más
+  `Alt+Shift+X` no pegó History viejo; Copy exitoso y el cierre nativo de
+  Companion volvieron a `Ready`.
+- El smoke no hizo provider calls ni registró texto crudo. Clipboard y la
+  preferencia temporal de focus fueron restaurados. Evidencia redacted ignorada
+  en `artifacts/desktop-control/error-recovery-installed-smoke/fixvox-tauri-v0.1.0-20260727234336/report.json`.
+- El candidato previo `fixvox-tauri-v0.1.0-20260727225134` quedó superseded por
+  el prerelease final después de descubrir y corregir el lifecycle nativo de
+  Companion; no usarlo para instalación.
+
 ## Pendiente
 
-1. Completar el handoff autorizado anterior en una sesión limpia.
-2. Después del release, continuar la matriz capture → STT → postprocess →
-   delivery sólo para errores todavía colapsados o estados no operativos.
+1. Continuar la matriz capture → STT → postprocess → delivery sólo para errores
+   todavía colapsados o estados no operativos.

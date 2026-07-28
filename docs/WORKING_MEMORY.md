@@ -9,7 +9,7 @@ decisiones.
 
 - **Estado:** `ready`.
 - **Plan:** `docs/tracks/dictation-error-recovery-hardening.md`.
-- **Próximo batch:** **Batch 2 — commit/push/prerelease/install + smoke nativo autorizado**.
+- **Próximo batch:** **Batch 3 — continuar sólo la matriz de errores todavía colapsados**.
 
 ## Estado Vivo
 
@@ -21,17 +21,17 @@ decisiones.
 - Desktop mantiene compatibilidad `CF-DESKTOP`; OAuth/account linkage y prompt
   parity quedaron corregidos. Smokes reales, instalación, release, provider,
   VPS, DNS y deploy siguen gated.
-- Error recovery quedó endurecido localmente: un intento sin transcript ya no
-  reutiliza History en silencio; copy/paste-last conservan causa y operación;
-  Copy/dismiss vuelven a `Ready`; tray/botón derecho recuperan Paste last e
-  History con target previo. JP autorizó commit, push, prerelease, instalación
-  local y smoke nativo en una sesión nueva; no incluye deploy cloud/VPS.
+- Error recovery quedó publicado y validado: un intento sin transcript ya no
+  reutiliza History; copy/paste-last conservan causa y operación; Copy y cierre
+  nativo de Companion vuelven a `Ready`; tray/botón derecho ofrecen Paste last
+  e History y preservan el target previo. No hubo provider calls ni deploy.
 - La regresión mixed-DPI quedó cerrada físicamente en la PC afectada: el dock
   cruza correctamente del monitor inferior al 100% al superior al 150%. El
   guardrail conserva movimiento position-only antes del resize/refresh.
-- Último cierre publicado y validado: prerelease mixed-DPI
-  `fixvox-tauri-v0.1.0-20260727204131`, installer y checksum redescargados con
-  SHA-256 `f745060a…d0f1bb`; source `3d6bd5f`.
+- Último cierre publicado y validado: prerelease recovery
+  `fixvox-tauri-v0.1.0-20260727234336`, installer/checksum redescargados e
+  instalado localmente; SHA-256 `b394b2a4…75cad60`; source `d5aa728`. El
+  candidato `...225134` quedó superseded y no debe usarse.
 - Standard Product UX cerró su operación local. Pi Chat Batch 2, App Audit y el
   roadmap de usuarios registrados están pausados hasta nueva priorización.
 - La evidencia detallada no se duplica aquí: permanece en las tracks, specs,
