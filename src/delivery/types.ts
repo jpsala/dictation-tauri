@@ -36,6 +36,7 @@ export type DeliveryRequest = {
   allowDesktopSideEffects: boolean;
   targetSnapshot?: DesktopTargetSnapshot;
   targetAffinity?: DeliveryTargetAffinity;
+  restoreSavedTargetFocus?: boolean;
 };
 
 export type DeliveryEvidence = {

@@ -173,32 +173,39 @@ export function createTauriSavedTargetDeliveryGateway(input: {
 
       const savedTarget = input.getTarget();
       const pasteWithoutFocusChange = (await input.getPasteWithoutFocusChange?.()) === true;
-      const useStopTarget = !pasteWithoutFocusChange &&
+      const restoreSavedTargetFocus = request.restoreSavedTargetFocus === true &&
+        savedTarget?.inputLike === true;
+      const useStopTarget = !restoreSavedTargetFocus &&
+        !pasteWithoutFocusChange &&
         request.targetAffinity !== "saved" &&
         input.getFollowFocusUntilDelivery?.() === false;
       const stopTarget = useStopTarget ? input.getStopTarget?.() : undefined;
       const savedTargetIsExplicitTerminal = savedTarget?.inputLike === true &&
         isTerminalLikeTarget(savedTarget);
-      const currentTarget = pasteWithoutFocusChange
-        ? await captureTauriDesktopDeliveryTarget(input.invoke, { allowCachedFallback: false })
-        : request.targetAffinity === "saved" || useStopTarget
-          ? undefined
-          : await captureTauriDesktopDeliveryTarget(input.invoke, {
-              preferForegroundWatcherCacheOverTerminal: !savedTargetIsExplicitTerminal,
-            });
-      const target = pasteWithoutFocusChange
-        ? request.targetAffinity === "saved"
-          ? savedTarget?.inputLike && currentTarget?.frameHwnd === savedTarget.frameHwnd
-            ? currentTarget
-            : undefined
-          : currentTarget
-        : useStopTarget
-          ? stopTarget?.inputLike ? stopTarget : undefined
-          : resolveAssuredDeliveryTarget({
-              savedTarget,
-              currentTarget,
-              targetAffinity: request.targetAffinity,
-            });
+      const currentTarget = restoreSavedTargetFocus
+        ? undefined
+        : pasteWithoutFocusChange
+          ? await captureTauriDesktopDeliveryTarget(input.invoke, { allowCachedFallback: false })
+          : request.targetAffinity === "saved" || useStopTarget
+            ? undefined
+            : await captureTauriDesktopDeliveryTarget(input.invoke, {
+                preferForegroundWatcherCacheOverTerminal: !savedTargetIsExplicitTerminal,
+              });
+      const target = restoreSavedTargetFocus
+        ? savedTarget
+        : pasteWithoutFocusChange
+          ? request.targetAffinity === "saved"
+            ? savedTarget?.inputLike && currentTarget?.frameHwnd === savedTarget.frameHwnd
+              ? currentTarget
+              : undefined
+            : currentTarget
+          : useStopTarget
+            ? stopTarget?.inputLike ? stopTarget : undefined
+            : resolveAssuredDeliveryTarget({
+                savedTarget,
+                currentTarget,
+                targetAffinity: request.targetAffinity,
+              });
       if (!target) {
         return deriveDeliveryEvidence(request, {
           status: "failed",
@@ -215,7 +222,8 @@ export function createTauriSavedTargetDeliveryGateway(input: {
             text: request.text,
             target,
             pressEnterAfterPaste: input.getPressEnterAfterPaste?.() === true,
-            focusTargetBeforePaste: !pasteWithoutFocusChange,
+            focusTargetBeforePaste: restoreSavedTargetFocus || !pasteWithoutFocusChange,
+            restoreSavedTargetFocus,
           },
         );
 

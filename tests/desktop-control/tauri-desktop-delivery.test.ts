@@ -536,6 +536,52 @@ describe("Tauri desktop delivery target capture", () => {
     expect(calls).toEqual(["capture_desktop_delivery_target"]);
   });
 
+  it("restores an explicitly captured host-menu target even when no-focus paste is enabled", async () => {
+    const calls: string[] = [];
+    const deliveryArgs: Record<string, unknown>[] = [];
+    const gateway = createTauriSavedTargetDeliveryGateway({
+      invoke: asTauriInvoke((command, args) => {
+        calls.push(command);
+        if (command === "deliver_text_to_desktop_target") {
+          deliveryArgs.push(args ?? {});
+          return {
+            status: "paste_sent",
+            reason: "native paste sent after restoring the menu target",
+            target: args?.target,
+          };
+        }
+        throw new Error(`host-menu focus restore should not invoke ${command}`);
+      }),
+      getTarget: () => ({
+        frameHwnd: "windows-terminal-hwnd",
+        windowTitle: "PowerShell",
+        windowClass: "CASCADIA_HOSTING_WINDOW_CLASS",
+        processId: 200,
+        processName: "WindowsTerminal.exe",
+        inputLike: true,
+        reason: "target captured before the dock context menu",
+      }),
+      getPasteWithoutFocusChange: () => true,
+    });
+
+    const evidence = await gateway.deliver({
+      sessionId: "session-host-menu-terminal",
+      text: "latest transcript",
+      strategy: "paste_send",
+      allowDesktopSideEffects: true,
+      targetAffinity: "saved",
+      restoreSavedTargetFocus: true,
+    });
+
+    expect(evidence.status).toBe("paste_sent");
+    expect(calls).toEqual(["deliver_text_to_desktop_target"]);
+    expect(deliveryArgs).toContainEqual(expect.objectContaining({
+      focusTargetBeforePaste: true,
+      restoreSavedTargetFocus: true,
+      target: expect.objectContaining({ frameHwnd: "windows-terminal-hwnd" }),
+    }));
+  });
+
   it("keeps the saved target for selection replace even if focus moves", async () => {
     const deliveredTargets: string[] = [];
     const gateway = createTauriSavedTargetDeliveryGateway({

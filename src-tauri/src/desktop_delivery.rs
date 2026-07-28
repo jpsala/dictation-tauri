@@ -95,13 +95,7 @@ fn cache_delivery_target_if_editable(reason: &str, mut target: DesktopDeliveryTa
         return;
     }
 
-    if is_terminal_like_target(&target) {
-        if reason != "foreground_watcher" {
-            eprintln!(
-                "[dictation-tauri][delivery-target] skipped terminal-like target reason={} target_reason={}",
-                reason, target.reason
-            );
-        }
+    if should_skip_terminal_like_target_for_cache(reason, &target) {
         return;
     }
 
@@ -123,6 +117,13 @@ fn cache_delivery_target_if_editable(reason: &str, mut target: DesktopDeliveryTa
             "[dictation-tauri][delivery-target] cached reason={reason} pid={process_id} class={window_class} title_len={title_length}"
         );
     }
+}
+
+fn should_skip_terminal_like_target_for_cache(
+    reason: &str,
+    target: &DesktopDeliveryTarget,
+) -> bool {
+    reason == "foreground_watcher" && is_terminal_like_target(target)
 }
 
 fn is_terminal_like_target(target: &DesktopDeliveryTarget) -> bool {
@@ -153,11 +154,13 @@ pub fn deliver_text_to_desktop_target(
     target: DesktopDeliveryTarget,
     press_enter_after_paste: Option<bool>,
     focus_target_before_paste: Option<bool>,
+    restore_saved_target_focus: Option<bool>,
 ) -> Result<DesktopDeliveryResult, String> {
     let preferences = crate::user_preferences::read_user_preferences_for_app(&app);
     let focus_target_before_paste = resolve_focus_target_before_paste(
         focus_target_before_paste,
         preferences.paste_without_focus_change,
+        restore_saved_target_focus.unwrap_or(false),
     );
     platform::deliver_text_to_desktop_target(
         text,
@@ -170,8 +173,48 @@ pub fn deliver_text_to_desktop_target(
 fn resolve_focus_target_before_paste(
     requested_focus: Option<bool>,
     paste_without_focus_change: bool,
+    restore_saved_target_focus: bool,
 ) -> bool {
-    requested_focus.unwrap_or(true) && !paste_without_focus_change
+    restore_saved_target_focus || (requested_focus.unwrap_or(true) && !paste_without_focus_change)
+}
+
+#[cfg(test)]
+mod target_cache_policy_tests {
+    use super::{should_skip_terminal_like_target_for_cache, DesktopDeliveryTarget};
+
+    fn windows_terminal_target() -> DesktopDeliveryTarget {
+        DesktopDeliveryTarget {
+            frame_hwnd: "terminal-hwnd".to_string(),
+            window_title: "PowerShell".to_string(),
+            window_class: "CASCADIA_HOSTING_WINDOW_CLASS".to_string(),
+            process_id: 42,
+            process_name: Some("WindowsTerminal.exe".to_string()),
+            input_like: true,
+            reason: "foreground target captured before menu".to_string(),
+            cache_reason: None,
+        }
+    }
+
+    #[test]
+    fn foreground_watcher_does_not_replace_an_app_target_with_a_terminal() {
+        assert!(should_skip_terminal_like_target_for_cache(
+            "foreground_watcher",
+            &windows_terminal_target(),
+        ));
+    }
+
+    #[test]
+    fn explicit_menu_capture_accepts_windows_terminal_as_the_requested_target() {
+        let terminal = windows_terminal_target();
+        assert!(!should_skip_terminal_like_target_for_cache(
+            "tray_icon_click_before_menu",
+            &terminal,
+        ));
+        assert!(!should_skip_terminal_like_target_for_cache(
+            "dock_context_menu_before_popup",
+            &terminal,
+        ));
+    }
 }
 
 #[cfg(test)]
@@ -179,17 +222,27 @@ mod focus_policy_tests {
     use super::resolve_focus_target_before_paste;
 
     #[test]
-    fn host_preference_never_allows_the_delivery_command_to_focus_a_window() {
-        assert!(!resolve_focus_target_before_paste(None, true));
-        assert!(!resolve_focus_target_before_paste(Some(true), true));
-        assert!(!resolve_focus_target_before_paste(Some(false), true));
+    fn host_preference_prevents_unrequested_focus_changes() {
+        assert!(!resolve_focus_target_before_paste(None, true, false));
+        assert!(!resolve_focus_target_before_paste(Some(true), true, false));
+        assert!(!resolve_focus_target_before_paste(Some(false), true, false));
+    }
+
+    #[test]
+    fn explicit_host_menu_restore_returns_focus_to_its_captured_target() {
+        assert!(resolve_focus_target_before_paste(Some(true), true, true));
+        assert!(resolve_focus_target_before_paste(Some(false), true, true));
     }
 
     #[test]
     fn legacy_focus_behavior_remains_the_default_when_the_preference_is_disabled() {
-        assert!(resolve_focus_target_before_paste(None, false));
-        assert!(resolve_focus_target_before_paste(Some(true), false));
-        assert!(!resolve_focus_target_before_paste(Some(false), false));
+        assert!(resolve_focus_target_before_paste(None, false, false));
+        assert!(resolve_focus_target_before_paste(Some(true), false, false));
+        assert!(!resolve_focus_target_before_paste(
+            Some(false),
+            false,
+            false
+        ));
     }
 }
 

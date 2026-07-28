@@ -9,6 +9,9 @@ describe("result history actions", () => {
     expect(source).toContain("invoke(\"clear_result_history\")");
     expect(source).toContain("targetSnapshot: savedDeliveryTargetRef.current");
     expect(source).toContain("targetAffinity: \"saved\"");
+    expect(source).toContain("historyTargetNeedsFocusRestoreRef");
+    expect(source).toContain('restoreTargetFocus: payload.source === "tray_or_context_menu"');
+    expect(source).toContain("restoreSavedTargetFocus: forced?.restoreSavedTargetFocus");
     expect(source).toMatch(/case "paste_last_safe":\s+void pasteLastToForegroundTarget\(\);/);
     expect(source).toContain("[pipelineUi.summary, recoveryKey, resultHistoryEntries, settingsPanelOpen]");
   });

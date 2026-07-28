@@ -44,6 +44,8 @@ describe("Windows desktop delivery native paste", () => {
     expect(source).toContain("read_user_preferences_for_app(&app)");
     expect(source).toContain("resolve_focus_target_before_paste(");
     expect(source).toContain("requested_focus.unwrap_or(true) && !paste_without_focus_change");
+    expect(source).toContain("restore_saved_target_focus");
+    expect(source).toContain("explicit_host_menu_restore_returns_focus_to_its_captured_target");
     expect(source).toContain("Foreground input changed before paste; no window was focused and no keys were sent.");
     expect(source).toContain("Desktop target lost focus before paste; no keys were sent.");
     expect(source).toContain("Desktop target lost focus before Ctrl+V; no paste keys were sent.");
@@ -70,14 +72,17 @@ describe("Windows desktop delivery native paste", () => {
     );
   });
 
-  it("does not let terminal-like foreground windows overwrite the cached app target", () => {
+  it("keeps watcher terminals from replacing app targets but accepts explicit menu terminals", () => {
     const source = readFileSync("src-tauri/src/desktop_delivery.rs", "utf8");
 
     expect(source).toContain("fn is_terminal_like_target");
-    expect(source).toContain("skipped terminal-like target");
+    expect(source).toContain("fn should_skip_terminal_like_target_for_cache");
+    expect(source).toContain('reason == "foreground_watcher" && is_terminal_like_target(target)');
     expect(source).toContain("windowsterminal.exe");
     expect(source).toContain("tabby.exe");
-    expect(source.indexOf("if is_terminal_like_target(&target)")).toBeLessThan(
+    expect(source).toContain('"tray_icon_click_before_menu"');
+    expect(source).toContain('"dock_context_menu_before_popup"');
+    expect(source.indexOf("if should_skip_terminal_like_target_for_cache(reason, &target)")).toBeLessThan(
       source.indexOf("*cached = Some(target)"),
     );
   });

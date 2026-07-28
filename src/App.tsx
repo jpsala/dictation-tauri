@@ -2191,6 +2191,7 @@ export function DockSurface() {
   const companionSyncKeyRef = useRef<string | undefined>(undefined);
   const recoveryOperationPendingRef = useRef(false);
   const latestAttemptBlocksHistoryPasteRef = useRef(false);
+  const historyTargetNeedsFocusRestoreRef = useRef(false);
   const hostCommandHandlerRef = useRef<
     ((payload: ResolvedTauriHostCommandPayload) => void | Promise<void>) | undefined
   >(undefined);
@@ -2861,6 +2862,7 @@ export function DockSurface() {
     text?: string;
     targetSnapshot?: TauriDesktopDeliveryTarget;
     targetAffinity?: DeliveryTargetAffinity;
+    restoreSavedTargetFocus?: boolean;
   }) {
     if (recoveryOperationPendingRef.current) {
       return;
@@ -2946,6 +2948,7 @@ export function DockSurface() {
         strategy: "paste_send",
         allowDesktopSideEffects: true,
         targetAffinity: forced?.targetAffinity,
+        restoreSavedTargetFocus: forced?.restoreSavedTargetFocus,
       });
       const nextSummary = applyDeliveryEvidenceFallback(pasteSummary, evidence);
       const evidenceMessage = describeDeliveryEvidence(nextSummary.deliveryEvidence);
@@ -3174,8 +3177,12 @@ export function DockSurface() {
     setResultHistoryEntries([]);
   }
 
-  async function loadResultHistory(options: { targetSnapshot?: TauriDesktopDeliveryTarget } = {}) {
+  async function loadResultHistory(options: {
+    targetSnapshot?: TauriDesktopDeliveryTarget;
+    restoreTargetFocus?: boolean;
+  } = {}) {
     if (!isTauri()) {
+      historyTargetNeedsFocusRestoreRef.current = false;
       setResultHistoryOpen(true);
       return;
     }
@@ -3186,6 +3193,8 @@ export function DockSurface() {
     if (historyTarget?.inputLike) {
       savedDeliveryTargetRef.current = historyTarget;
     }
+    historyTargetNeedsFocusRestoreRef.current = options.restoreTargetFocus === true &&
+      historyTarget?.inputLike === true;
 
     const entries = await invoke<ResultHistoryEntry[]>("list_result_history_entries");
     setResultHistoryEntries(entries);
@@ -3217,6 +3226,7 @@ export function DockSurface() {
     }
     setNoSpeechNoticeOpen(false);
     setResultHistoryOpen(false);
+    historyTargetNeedsFocusRestoreRef.current = false;
     setSettingsPanelOpen(false);
     setDismissedAssistantRunId(companionSnapshot.assistant.runId);
   }
@@ -3228,6 +3238,8 @@ export function DockSurface() {
     }
 
     const summary = createHistorySummary(entry);
+    const restoreSavedTargetFocus = historyTargetNeedsFocusRestoreRef.current;
+    historyTargetNeedsFocusRestoreRef.current = false;
     setPipelineUi({
       status: "done",
       message: "History result selected; paste-last is being sent to the saved target.",
@@ -3240,6 +3252,7 @@ export function DockSurface() {
       text: entry.text,
       targetSnapshot: savedDeliveryTargetRef.current,
       targetAffinity: "saved",
+      restoreSavedTargetFocus,
     });
   }
 
@@ -3444,7 +3457,10 @@ export function DockSurface() {
         }
         break;
       case "show_result_history":
-        void loadResultHistory({ targetSnapshot: payload.targetSnapshot });
+        void loadResultHistory({
+          targetSnapshot: payload.targetSnapshot,
+          restoreTargetFocus: payload.source === "tray_or_context_menu",
+        });
         break;
       case "show_preset_picker":
         void openPresetPicker(payload.targetSnapshot);
@@ -3475,9 +3491,16 @@ export function DockSurface() {
           setSettingsPanelOpen(true);
         }
         break;
-      case "paste_last_safe":
-        void pasteLastToForegroundTarget({ targetSnapshot: payload.targetSnapshot });
+      case "paste_last_safe": {
+        const restoreSavedTargetFocus = payload.source === "tray_or_context_menu" &&
+          payload.targetSnapshot?.inputLike === true;
+        void pasteLastToForegroundTarget({
+          targetSnapshot: payload.targetSnapshot,
+          targetAffinity: restoreSavedTargetFocus ? "saved" : undefined,
+          restoreSavedTargetFocus,
+        });
         break;
+      }
       default:
         handleVoiceDockCommand(payload.command);
     }
@@ -3590,6 +3613,7 @@ export function DockSurface() {
         break;
       case "dismiss_result_history":
         setResultHistoryOpen(false);
+        historyTargetNeedsFocusRestoreRef.current = false;
         break;
       case "dismiss_settings":
         setSettingsPanelOpen(false);
