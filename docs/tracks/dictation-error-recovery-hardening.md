@@ -152,6 +152,43 @@ Orden:
   el prerelease final después de descubrir y corregir el lifecycle nativo de
   Companion; no usarlo para instalación.
 
+## Hotfix Windows Terminal — 2026-07-28
+
+- La prueba manual de JP encontró que `Paste last` desde el botón derecho del
+  dock fallaba sobre un input de Windows Terminal con la causa redacted
+  `No matching editable foreground target...`. El receipt anterior había usado
+  un target descartable no-terminal y una preferencia temporal distinta, por lo
+  que no cubría esta combinación.
+- Causa: el watcher excluía terminales para no reemplazar silenciosamente un
+  target de aplicación, pero esa exclusión también bloqueaba la captura
+  explícita del menú. Además, `pasteWithoutFocusChange` impedía restaurar el
+  target que el propio menú había desplazado temporalmente.
+- Fix `d1b3c98`: la exclusión de terminales queda limitada al watcher de fondo;
+  tray/botón derecho aceptan Windows Terminal como target explícito. Un flag
+  host-owned acotado permite restaurar sólo ese target capturado por el menú,
+  sin relajar la política general de no-focus ni la afinidad de selección.
+- Gates: 47 archivos/265 tests focales, 20 tests Rust de desktop delivery,
+  frontend build, `cargo fmt --check`, `cargo check`, LSP y `git diff --check`
+  verdes. Smoke local source con proceso controlado `WindowsTerminal.exe` y
+  `pasteWithoutFocusChange=true` pasó antes del release.
+- Prerelease hotfix unsigned:
+  `fixvox-tauri-v0.1.0-20260728002623`; installer `29,594,384` bytes. SHA-256
+  local, checksum publicado y redescarga:
+  `a829bc9e6d6fb3366fa5037fb12a0cfc9c9cda37af0a3fd3518b5840f13a0207`.
+- Release:
+  `https://github.com/jpsala/fixvox-releases/releases/tag/fixvox-tauri-v0.1.0-20260728002623`.
+  Installer directo:
+  `https://github.com/jpsala/fixvox-releases/releases/download/fixvox-tauri-v0.1.0-20260728002623/Fixvox-Tauri-Setup.exe`.
+- El asset redescargado se instaló con exit `0`. Smoke sobre una ventana real y
+  descartable de Windows Terminal pasó: target reconocido como editable,
+  menú con Paste last/History, delivery `paste_sent` al input previo y foco
+  restaurado después del menú. Enter quedó deshabilitado durante la prueba; no
+  se ejecutó texto, no hubo provider calls ni texto crudo. Clipboard y
+  preferencias fueron restaurados, la ventana descartable se cerró y no se
+  terminó `WindowsTerminal.exe`.
+- `fixvox-tauri-v0.1.0-20260727234336` queda superseded para esta ruta; usar el
+  hotfix `...002623`.
+
 ## Pendiente
 
 1. Continuar la matriz capture → STT → postprocess → delivery sólo para errores

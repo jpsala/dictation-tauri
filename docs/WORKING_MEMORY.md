@@ -3,7 +3,7 @@
 Router operativo corto; el detalle durable vive en topics, tracks, specs y
 decisiones.
 
-Última actualización: 2026-07-27.
+Última actualización: 2026-07-28.
 
 ## Foco Único De Ejecución
 
@@ -23,15 +23,17 @@ decisiones.
   VPS, DNS y deploy siguen gated.
 - Error recovery quedó publicado y validado: un intento sin transcript ya no
   reutiliza History; copy/paste-last conservan causa y operación; Copy y cierre
-  nativo de Companion vuelven a `Ready`; tray/botón derecho ofrecen Paste last
-  e History y preservan el target previo. No hubo provider calls ni deploy.
+  nativo de Companion vuelven a `Ready`; tray/botón derecho preservan el target,
+  incluido Windows Terminal con la preferencia no-focus. No hubo provider calls
+  ni deploy.
 - La regresión mixed-DPI quedó cerrada físicamente en la PC afectada: el dock
   cruza correctamente del monitor inferior al 100% al superior al 150%. El
   guardrail conserva movimiento position-only antes del resize/refresh.
-- Último cierre publicado y validado: prerelease recovery
-  `fixvox-tauri-v0.1.0-20260727234336`, installer/checksum redescargados e
-  instalado localmente; SHA-256 `b394b2a4…75cad60`; source `d5aa728`. El
-  candidato `...225134` quedó superseded y no debe usarse.
+- Último cierre publicado y validado: hotfix Windows Terminal
+  `fixvox-tauri-v0.1.0-20260728002623`, installer/checksum redescargados e
+  instalado localmente; SHA-256 `a829bc9e…13a0207`; source `d1b3c98`. Smoke
+  real de botón derecho → Paste last pasó sin Enter ni cierre del host. Los
+  candidatos `...234336` y `...225134` quedaron superseded.
 - Standard Product UX cerró su operación local. Pi Chat Batch 2, App Audit y el
   roadmap de usuarios registrados están pausados hasta nueva priorización.
 - La evidencia detallada no se duplica aquí: permanece en las tracks, specs,
