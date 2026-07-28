@@ -1,3 +1,4 @@
+// @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -11,6 +12,11 @@ describe("desktop delivery target cache", () => {
     expect(traySource).toContain("on_tray_icon_event");
     expect(traySource).toContain("cache_delivery_target_before_tray_menu");
     expect(traySource).toContain("tray_icon_click_before_menu");
+    expect(traySource).toContain("dock_context_menu_before_popup");
+    expect(traySource).toContain("HostMenuAction::PasteLastSafe | HostMenuAction::ShowResultHistory");
+    expect(traySource).toMatch(
+      /payload\.target_snapshot\s*=\s*desktop_delivery::get_cached_desktop_delivery_target\(\)/,
+    );
     expect(deliverySource).toContain("CACHED_DESKTOP_DELIVERY_TARGET");
     expect(deliverySource).toContain("start_delivery_target_watcher");
     expect(deliverySource).toContain("foreground_watcher");

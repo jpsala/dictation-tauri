@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-27T23:43:05.602Z
+Generated: 2026-07-28T01:47:18.414Z
 
 ## Topics
 
@@ -37,6 +37,7 @@ Generated: 2026-07-27T23:43:05.602Z
 
 - paused: [App Audit Autonomous Implementation Plan](../tracks/app-audit-autonomous-implementation-plan.md)
 - paused: [Bounded Taskflow Implementation Spike](../tracks/bounded-taskflow-implementation-spike.md)
+- active: [Dictation Error And Recovery Hardening](../tracks/dictation-error-recovery-hardening.md)
 - active: [Dock Skins Visual Refinement](../tracks/dock-skins-visual-refinement.md)
 - blocked: [First-Run Installed Google Validation](../tracks/first-run-installed-google-validation.md)
 - paused: [Fixvox Registered Users Opportunities](../tracks/fixvox-registered-users-opportunities.md)

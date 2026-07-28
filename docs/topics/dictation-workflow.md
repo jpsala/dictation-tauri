@@ -100,6 +100,22 @@ Nombres de UI:
 - Side effects desktop viven en Rust/Tauri o una frontera host explicita cuando entren: microfono, hotkeys, tray, foco, clipboard y permisos.
 - Delivery debe distinguir evidencia: texto disponible, copy fallback, paste enviado, paste observado cuando exista y delivery incierto.
 
+## Recovery Hardening — 2026-07-27
+
+- Un intento nuevo sin transcript invalida el paste-last implícito de resultados
+  históricos; reutilizar texto anterior requiere History explícita.
+- Copy, paste-last y dictado conservan identidad de operación para que recovery
+  no atribuya todos los fallos a `Dictation`.
+- La UI muestra la razón redacted concreta de delivery y no la reemplaza por un
+  mensaje genérico cuando existe.
+- Copy exitoso y dismiss de recovery preservan History pero normalizan el dock
+  a `idle/Ready`; Companion no debe mantener una fase review indefinida.
+- Las acciones async de recovery son single-flight para evitar dobles copies o
+  pastes concurrentes.
+
+Detalle y matriz de regresión:
+`docs/tracks/dictation-error-recovery-hardening.md`.
+
 ## Preguntas Abiertas Reducidas
 
 - Que targets requieren paste directo y cuales solo copy/recovery?

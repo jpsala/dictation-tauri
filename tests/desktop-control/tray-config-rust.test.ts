@@ -26,7 +26,11 @@ describe("Tauri tray background lifecycle", () => {
 
     expect(source).toContain('TrayIconBuilder::with_id("dictation-tauri-tray")');
     expect(source).toContain('MENU_TOGGLE_DOCK: &str = "toggle_dock"');
+    expect(source).toContain('MENU_PASTE_LAST_SAFE: &str = "paste_last_safe"');
+    expect(source).toContain('MENU_SHOW_RESULT_HISTORY: &str = "show_result_history"');
     expect(source).toContain('CheckMenuItemBuilder::with_id(MENU_TOGGLE_DOCK, "Show dock")');
+    expect(source).toContain('.text(MENU_PASTE_LAST_SAFE, "Paste last")');
+    expect(source).toContain('.text(MENU_SHOW_RESULT_HISTORY, "History")');
     expect(source.match(/CheckMenuItemBuilder::with_id/g)).toHaveLength(1);
     expect(source).toContain('SubmenuBuilder::new(app, "Dock skin")');
     expect(source).toContain('SubmenuBuilder::new(app, "Presets")');
@@ -39,6 +43,8 @@ describe("Tauri tray background lifecycle", () => {
     expect(source).toContain("show_menu_on_left_click(true)");
     expect(source).toContain("dock_shell::show_dock_window(app)");
     expect(source).toContain("dock_shell::hide_dock_window(app)");
+    expect(source).toContain('HostMenuAction::PasteLastSafe => ("paste_last_safe", None, None)');
+    expect(source).toContain('HostMenuAction::ShowResultHistory => ("show_result_history", None, None)');
     expect(source).toContain("app.exit(0)");
   });
 

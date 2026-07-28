@@ -12,4 +12,22 @@ describe("result history actions", () => {
     expect(source).toMatch(/case "paste_last_safe":\s+void pasteLastToForegroundTarget\(\);/);
     expect(source).toContain("[pipelineUi.summary, recoveryKey, resultHistoryEntries, settingsPanelOpen]");
   });
+
+  it("does not reuse stale History after a failed attempt and settles successful copy recovery", () => {
+    const copyStart = source.indexOf("async function copyTranscriptFallback");
+    const pasteStart = source.indexOf("async function pasteLastToForegroundTarget");
+    const dockStateStart = source.indexOf("const canStart =", pasteStart);
+    const copyBlock = source.slice(copyStart, pasteStart);
+    const pasteBlock = source.slice(pasteStart, dockStateStart);
+
+    expect(copyBlock).toContain("recoveryOperationPendingRef.current");
+    expect(copyBlock).toContain("setDismissedRecoveryKey(undefined)");
+    expect(copyBlock).toContain("settleDockAfterRecovery");
+    expect(copyBlock).toContain('operation: "copy"');
+    expect(pasteBlock).toContain("shouldFallbackToHistoryForPasteLast");
+    expect(pasteBlock).toContain("setDismissedRecoveryKey(undefined)");
+    expect(pasteBlock).toContain("latest dictation attempt produced no text");
+    expect(pasteBlock).toContain('operation: "paste_last"');
+    expect(source).toContain('settleDockAfterRecovery("Recovery dismissed. Latest result remains available in History."');
+  });
 });

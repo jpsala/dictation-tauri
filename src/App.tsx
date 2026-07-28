@@ -141,10 +141,13 @@ type CaptureUiState = {
   result?: CaptureResult;
 };
 
+type PipelineUiOperation = "dictation" | "copy" | "paste_last" | "selection_transform";
+
 type PipelineUiState = {
   status: "idle" | "running" | "done" | "error" | "cancelled";
   message: string;
   summary?: SimulatedRunSummary;
+  operation?: PipelineUiOperation;
 };
 
 type TranscriptReview = {
@@ -965,7 +968,7 @@ export function describeDeveloperDeliveryStatus(
   }
 }
 
-function describeDeliveryEvidence(
+export function describeDeliveryEvidence(
   evidence: PipelineDeliveryEvidence | undefined,
 ): string | undefined {
   switch (evidence?.status) {
@@ -982,13 +985,29 @@ function describeDeliveryEvidence(
     case "paste_observed":
       return "Paste insertion was observed by a verified desktop observer.";
     case "failed":
-      return "Delivery failed before a confirmed handoff. Check the editable target, then copy or retry.";
+      return evidence.reason
+        ? `Delivery failed: ${evidence.reason}`
+        : "Delivery failed before a confirmed handoff. Check the editable target, then copy or retry.";
     default:
       return undefined;
   }
 }
 
-function createDockInputFromUi(input: {
+export function shouldFallbackToHistoryForPasteLast(input: {
+  hasCurrentSummary: boolean;
+  pipelineStatus: PipelineUiState["status"];
+  captureState: CaptureState;
+  noSpeechNoticeOpen: boolean;
+  latestAttemptBlocksHistory: boolean;
+}): boolean {
+  return !input.hasCurrentSummary &&
+    input.pipelineStatus === "idle" &&
+    input.captureState === "idle" &&
+    !input.noSpeechNoticeOpen &&
+    !input.latestAttemptBlocksHistory;
+}
+
+export function createDockInputFromUi(input: {
   capture: CaptureUiState;
   pipelineUi: PipelineUiState;
   deliveryEvidence?: PipelineDeliveryEvidence;
@@ -1025,10 +1044,17 @@ function createDockInputFromUi(input: {
   }
 
   if (input.pipelineUi.status === "error") {
+    const errorCode = input.pipelineUi.operation === "paste_last"
+      ? "paste-last-failed"
+      : input.pipelineUi.operation === "copy"
+        ? "copy-failed"
+        : input.pipelineUi.operation === "selection_transform"
+          ? "selection-transform-failed"
+          : "pipeline-error";
     return {
       ...sessionBase,
       state: "error",
-      error: { message: input.pipelineUi.message, code: "pipeline-error" },
+      error: { message: input.pipelineUi.message, code: errorCode },
       recoveryAction: input.recoveryAction,
       delivery: mapPipelineEvidenceToDesktopEvidence(
         input.deliveryEvidence,
@@ -2163,6 +2189,8 @@ export function DockSurface() {
   const [noSpeechNoticeOpen, setNoSpeechNoticeOpen] = useState(false);
   const persistedHistoryEntryIdRef = useRef<string | undefined>(undefined);
   const companionSyncKeyRef = useRef<string | undefined>(undefined);
+  const recoveryOperationPendingRef = useRef(false);
+  const latestAttemptBlocksHistoryPasteRef = useRef(false);
   const hostCommandHandlerRef = useRef<
     ((payload: ResolvedTauriHostCommandPayload) => void | Promise<void>) | undefined
   >(undefined);
@@ -2491,15 +2519,18 @@ export function DockSurface() {
     requestDictationSoundCue(soundCuePolicyRef.current, cue);
   }
 
-  function showNoSpeechNotice() {
+  function showNoSpeechNotice(summary?: SimulatedRunSummary) {
+    latestAttemptBlocksHistoryPasteRef.current = true;
     queueDictationSoundCue("no-speech");
     setNoSpeechNoticeOpen(true);
     setDesktopRecoveryAction(undefined);
     setCapture({ state: "idle", message: "Listo" });
-    setPipelineUi({ status: "idle", message: "No te escuché" });
+    setPipelineUi({ status: "idle", message: "No te escuché", summary });
   }
 
   async function startCapture(options: { keepCurrentContext?: boolean } = {}) {
+    latestAttemptBlocksHistoryPasteRef.current = true;
+    setDismissedRecoveryKey(undefined);
     setNoSpeechNoticeOpen(false);
     if (isTauri() && !(await ensureTauriDictationReadiness(invoke))) {
       setDesktopRecoveryAction(accountSetupRecoveryAction());
@@ -2577,11 +2608,12 @@ export function DockSurface() {
       });
 
       if (isNoSpeechOutcome(summary, session.error?.message)) {
-        showNoSpeechNotice();
+        showNoSpeechNotice(summary);
         return;
       }
 
       if (summary?.terminalState === "done") {
+        latestAttemptBlocksHistoryPasteRef.current = false;
         const deliveryMessage =
           describeDeliveryEvidence(summary.deliveryEvidence) ??
           (summary.transcript
@@ -2675,11 +2707,12 @@ export function DockSurface() {
       );
 
       if (isNoSpeechOutcome(summary)) {
-        showNoSpeechNotice();
+        showNoSpeechNotice(summary);
         return;
       }
 
       if (summary.terminalState === "done") {
+        latestAttemptBlocksHistoryPasteRef.current = false;
         const deliveryMessage =
           describeDeliveryEvidence(summary.deliveryEvidence) ??
           (summary.transcript
@@ -2705,7 +2738,7 @@ export function DockSurface() {
       }
 
       if (isNoSpeechOutcome(summary)) {
-        showNoSpeechNotice();
+        showNoSpeechNotice(summary);
         return;
       }
 
@@ -2728,36 +2761,73 @@ export function DockSurface() {
     await submitCapturedRun({ useRealProvider: true });
   }
 
+  function settleDockAfterRecovery(message: string, summary?: SimulatedRunSummary) {
+    setNoSpeechNoticeOpen(false);
+    setDesktopRecoveryAction(undefined);
+    setCapture({ state: "idle", message: "Listo" });
+    setPipelineUi({ status: "idle", message, summary });
+  }
+
   async function copyTranscriptFallback() {
+    if (recoveryOperationPendingRef.current) {
+      return;
+    }
+
     const summary = pipelineUi.summary;
     const latestResult = latestResultFromPipelineSummary(summary);
 
     if (!summary || !latestResult) {
       setPipelineUi({
         status: "error",
-        message: "No transcript is available to copy.",
+        operation: "copy",
+        message: "No transcript is available to copy. Record again or choose a result from History.",
         summary,
       });
       return;
     }
 
-    const resultNoun = describeLatestResultNoun(summary);
-    const evidence = await copyDelivery.deliver({
-      sessionId: summary.runId,
-      text: latestResult.text,
-      strategy: "copy",
-      allowDesktopSideEffects: true,
-    });
-    const nextSummary = applyDeliveryEvidenceFallback(summary, evidence);
-
+    recoveryOperationPendingRef.current = true;
+    setDismissedRecoveryKey(undefined);
+    setDesktopRecoveryAction(undefined);
     setPipelineUi({
-      status: evidence.status === "failed" ? "error" : "done",
-      message: describeDeliveryEvidence(nextSummary.deliveryEvidence) ??
-        (evidence.status === "failed"
-          ? `Clipboard copy failed. Latest ${resultNoun} remains available in the app.`
-          : `Latest ${resultNoun} copied as fallback.`),
-      summary: nextSummary,
+      status: "running",
+      operation: "copy",
+      message: "Copying transcript to the clipboard.",
+      summary,
     });
+
+    const resultNoun = describeLatestResultNoun(summary);
+    try {
+      const evidence = await copyDelivery.deliver({
+        sessionId: summary.runId,
+        text: latestResult.text,
+        strategy: "copy",
+        allowDesktopSideEffects: true,
+      });
+      const nextSummary = applyDeliveryEvidenceFallback(summary, evidence);
+
+      if (evidence.status === "failed") {
+        setPipelineUi({
+          status: "error",
+          operation: "copy",
+          message: describeDeliveryEvidence(nextSummary.deliveryEvidence) ??
+            `Clipboard copy failed. Latest ${resultNoun} remains available in the app.`,
+          summary: nextSummary,
+        });
+        return;
+      }
+
+      settleDockAfterRecovery(`Latest ${resultNoun} copied.`, nextSummary);
+    } catch {
+      setPipelineUi({
+        status: "error",
+        operation: "copy",
+        message: `Clipboard copy failed. Latest ${resultNoun} remains available in the app.`,
+        summary,
+      });
+    } finally {
+      recoveryOperationPendingRef.current = false;
+    }
   }
 
   function markSafePasteLastRecovery() {
@@ -2766,8 +2836,9 @@ export function DockSurface() {
 
     if (!summary || !latestResult) {
       setPipelineUi({
-        status: "idle",
-        message: "No latest transcript is available for paste-last recovery.",
+        status: "error",
+        operation: "paste_last",
+        message: "No transcript is available for paste-last. Record again or choose a result from History.",
         summary,
       });
       setDesktopRecoveryAction(undefined);
@@ -2791,12 +2862,24 @@ export function DockSurface() {
     targetSnapshot?: TauriDesktopDeliveryTarget;
     targetAffinity?: DeliveryTargetAffinity;
   }) {
+    if (recoveryOperationPendingRef.current) {
+      return;
+    }
+
     const summary = forced?.summary ?? pipelineUi.summary;
     const latestResult = latestResultFromPipelineSummary(summary);
     let pasteSummary = summary;
     let pasteText = forced?.text ?? latestResult?.text;
+    let pasteFromHistory = false;
+    const historyFallbackAllowed = shouldFallbackToHistoryForPasteLast({
+      hasCurrentSummary: Boolean(summary),
+      pipelineStatus: pipelineUi.status,
+      captureState: capture.state,
+      noSpeechNoticeOpen,
+      latestAttemptBlocksHistory: latestAttemptBlocksHistoryPasteRef.current,
+    });
 
-    if (!pasteText && isTauri()) {
+    if (!pasteText && isTauri() && historyFallbackAllowed) {
       try {
         const entries = await invoke<ResultHistoryEntry[]>("list_result_history_entries");
         const entry = entries
@@ -2806,6 +2889,7 @@ export function DockSurface() {
         if (entry) {
           pasteSummary = createHistorySummary(entry);
           pasteText = entry.text;
+          pasteFromHistory = true;
           setResultHistoryEntries(entries);
         }
       } catch {
@@ -2814,47 +2898,81 @@ export function DockSurface() {
     }
 
     if (!pasteSummary || !pasteText) {
+      const message = historyFallbackAllowed
+        ? "No transcript is available for paste-last. Record again or choose a result from History."
+        : "The latest dictation attempt produced no text. Record again or explicitly choose an older result from History.";
+      setNoSpeechNoticeOpen(false);
+      setCapture({ state: "idle", message: "Listo" });
       setPipelineUi({
-        status: "idle",
-        message: "No latest transcript is available for paste-last.",
+        status: "error",
+        operation: "paste_last",
+        message,
         summary,
       });
       setDesktopRecoveryAction(undefined);
       return;
     }
 
-    if (isTauri()) {
-      const nextTarget = forced?.targetSnapshot?.inputLike
-        ? forced.targetSnapshot
-        : await captureTauriDesktopDeliveryTarget(invoke);
-      if (nextTarget?.inputLike) {
-        savedDeliveryTargetRef.current = nextTarget;
-      }
-    }
-
-    if (!desktopDelivery) {
-      markSafePasteLastRecovery();
-      return;
-    }
-
-    const evidence = await desktopDelivery.deliver({
-      sessionId: pasteSummary.runId,
-      text: pasteText,
-      strategy: "paste_send",
-      allowDesktopSideEffects: true,
-      targetAffinity: forced?.targetAffinity,
-    });
-    const nextSummary = applyDeliveryEvidenceFallback(pasteSummary, evidence);
-
+    recoveryOperationPendingRef.current = true;
+    setDismissedRecoveryKey(undefined);
+    setDesktopRecoveryAction(undefined);
     setPipelineUi({
-      status: evidence.status === "failed" ? "error" : "done",
-      message:
-        describeDeliveryEvidence(nextSummary.deliveryEvidence) ??
-        (evidence.status === "failed"
-          ? "Paste last failed. Transcript remains available in the app."
-          : "Paste last was sent to the foreground target."),
-      summary: nextSummary,
+      status: "running",
+      operation: "paste_last",
+      message: pasteFromHistory
+        ? "Pasting the last explicitly available History result."
+        : "Pasting the latest transcript.",
+      summary: pasteSummary,
     });
+
+    try {
+      if (isTauri()) {
+        const nextTarget = forced?.targetSnapshot?.inputLike
+          ? forced.targetSnapshot
+          : await captureTauriDesktopDeliveryTarget(invoke);
+        if (nextTarget?.inputLike) {
+          savedDeliveryTargetRef.current = nextTarget;
+        }
+      }
+
+      if (!desktopDelivery) {
+        markSafePasteLastRecovery();
+        return;
+      }
+
+      const evidence = await desktopDelivery.deliver({
+        sessionId: pasteSummary.runId,
+        text: pasteText,
+        strategy: "paste_send",
+        allowDesktopSideEffects: true,
+        targetAffinity: forced?.targetAffinity,
+      });
+      const nextSummary = applyDeliveryEvidenceFallback(pasteSummary, evidence);
+      const evidenceMessage = describeDeliveryEvidence(nextSummary.deliveryEvidence);
+
+      setPipelineUi({
+        status: evidence.status === "failed" ? "error" : "done",
+        operation: evidence.status === "failed" ? "paste_last" : undefined,
+        message: evidence.status === "failed" && pasteFromHistory
+          ? `${evidenceMessage ?? "Paste last failed."} The transcript came from History and remains available to copy.`
+          : evidenceMessage ??
+            (evidence.status === "failed"
+              ? "Paste last failed. Transcript remains available in the app."
+              : "Paste last was sent to the foreground target."),
+        summary: nextSummary,
+      });
+    } catch {
+      setPipelineUi({
+        status: "error",
+        operation: "paste_last",
+        message: pasteFromHistory
+          ? "Paste last failed unexpectedly. The transcript came from History and remains available to copy."
+          : "Paste last failed unexpectedly. The transcript remains available to copy.",
+        summary: pasteSummary,
+      });
+    } finally {
+      recoveryOperationPendingRef.current = false;
+    }
   }
 
   const canStart =
@@ -3095,6 +3213,7 @@ export function DockSurface() {
   function closeCompanionSurfaces() {
     if (recoveryKey) {
       setDismissedRecoveryKey(recoveryKey);
+      settleDockAfterRecovery("Recovery dismissed. Latest result remains available in History.", pipelineUi.summary);
     }
     setNoSpeechNoticeOpen(false);
     setResultHistoryOpen(false);
@@ -3200,7 +3319,7 @@ export function DockSurface() {
       presetPickerSelectionCaptureStatusRef.current = undefined;
       const message = "Selected text could not be captured safely. No preset was activated.";
       setCapture({ state: "idle", message });
-      setPipelineUi({ status: "error", message, summary: pipelineUi.summary });
+      setPipelineUi({ status: "error", operation: "selection_transform", message });
       return;
     }
     if (action === "activate_dictation_preset") {
@@ -3221,8 +3340,8 @@ export function DockSurface() {
     const startedAt = Date.now();
     setPipelineUi({
       status: "running",
+      operation: "selection_transform",
       message: `Running ${presetDisplayName(presetId)} on captured selected text.`,
-      summary: pipelineUi.summary,
     });
 
     try {
@@ -3281,6 +3400,7 @@ export function DockSurface() {
 
       setPipelineUi({
         status: evidence.status === "failed" ? "error" : "done",
+        operation: evidence.status === "failed" ? "selection_transform" : undefined,
         message:
           describeDeliveryEvidence(deliveredSummary.deliveryEvidence) ??
           (evidence.status === "failed"
@@ -3291,10 +3411,10 @@ export function DockSurface() {
     } catch (error) {
       setPipelineUi({
         status: "error",
+        operation: "selection_transform",
         message: error instanceof Error
           ? error.message
           : "Preset transform failed; selected text was not replaced.",
-        summary: pipelineUi.summary,
       });
     } finally {
       selectionContextRef.current = undefined;
@@ -3465,6 +3585,7 @@ export function DockSurface() {
       case "dismiss_recovery":
         if (recoveryKey) {
           setDismissedRecoveryKey(recoveryKey);
+          settleDockAfterRecovery("Recovery dismissed. Latest result remains available in History.", pipelineUi.summary);
         }
         break;
       case "dismiss_result_history":
@@ -3610,11 +3731,12 @@ export function DockSurface() {
     });
 
     if (isNoSpeechOutcome(summary, session.error?.message)) {
-      showNoSpeechNotice();
+      showNoSpeechNotice(summary);
       return;
     }
 
     if (summary?.terminalState === "done") {
+      latestAttemptBlocksHistoryPasteRef.current = false;
       setPipelineUi({
         status: "done",
         message:

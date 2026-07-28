@@ -53,7 +53,8 @@ Mejorar `wispr-flow` por comparación visual iterativa sin alterar `classic-7`, 
 - La fuente canónica Fixvox respalda el mecanismo de recovery: `recoverBlankDockVisual` reaplica estilo/hit region/topmost y hace un frame nudge; su utilidad genérica `window-repaint-nudge.ts` también usa ancho `+1 → exacto` para despertar WebView2.
 - Checks locales: `cargo fmt --check`, 22 tests `dock_shell`, 2 de tray, 3 de preferencias, `cargo check`, 23 tests Vitest focales, `npm run build` y `git diff --check` pasan. El gate de release repitió 47 archivos/260 tests, frontend, Rust fmt/check/test compile y NSIS; persisten sólo warnings `dead_code` preexistentes.
 - JP aceptó la evidencia indirecta para publicar una build de validación. Source `3d6bd5f`; prerelease `fixvox-tauri-v0.1.0-20260727204131`; installer unsigned `29,584,179` bytes. SHA-256 local, publicado y redescargado: `f745060a0b738a0d88af569fe946a20a82124cc92a340f76948fdb1db9d0f1bb`. Descarga: `https://github.com/jpsala/fixvox-releases/releases/download/fixvox-tauri-v0.1.0-20260727204131/Fixvox-Tauri-Setup.exe`.
-- Estado: build publicada para validar en la PC afectada; todavía no afirmar cierre mixed-DPI hasta probar el cruce físico 100%↔150%.
+- Validación física completada por JP en la PC afectada con el prerelease publicado: el dock vuelve a cruzar correctamente entre el monitor inferior al 100% y el superior al 150%; ya no aparece por milisegundos ni queda invisible.
+- Estado: batch mixed-DPI cerrado. Guardrail durable: no fusionar el movimiento position-only y el resize/refresh en un único `SetWindowPos`; el comentario nativo, el test Rust de transición de escala y el contrato host Vitest protegen esa secuencia.
 
 ## Batch 1 — Wispr Flow Visual Refinement
 

@@ -175,10 +175,42 @@ function createRecoveryState(
   }
 
   if (phase === "failed") {
+    const errorCode = getErrorCode(input);
+    const message = getErrorMessage(input) ?? "The operation failed before a verified result.";
+
+    if (errorCode === "paste-last-failed") {
+      return {
+        kind: actions.canCopy ? "copy" : "retry",
+        title: actions.canCopy ? "Paste last failed" : "Nothing to paste",
+        message,
+        primaryAction: actions.canCopy ? "copy" : "retry",
+        secondaryAction: actions.canCopy ? "retry" : undefined,
+      };
+    }
+
+    if (errorCode === "copy-failed") {
+      return {
+        kind: actions.canCopy ? "copy" : "retry",
+        title: "Copy failed",
+        message,
+        primaryAction: actions.canCopy ? "copy" : "retry",
+        secondaryAction: actions.canCopy ? "retry" : undefined,
+      };
+    }
+
+    if (errorCode === "selection-transform-failed") {
+      return {
+        kind: actions.canCopy ? "copy" : "retry",
+        title: "Selected text unchanged",
+        message,
+        primaryAction: actions.canCopy ? "copy" : undefined,
+      };
+    }
+
     return {
       kind: mapFailureRecoveryKind(input),
       title: "Dictation needs attention",
-      message: getErrorMessage(input) ?? "The dictation run failed before a verified result.",
+      message,
       primaryAction: "retry",
       secondaryAction: actions.canCopy ? "copy" : undefined,
     };
@@ -295,6 +327,14 @@ function getErrorMessage(input: DockInputState): string | undefined {
   }
 
   return input.error?.message;
+}
+
+function getErrorCode(input: DockInputState): string | undefined {
+  if (input.state === "idle") {
+    return undefined;
+  }
+
+  return input.error?.code;
 }
 
 function mapFailureRecoveryKind(input: DockInputState): DockRecoveryState["kind"] {

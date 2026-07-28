@@ -13,6 +13,8 @@ use crate::user_preferences::DockSkinId;
 pub const HOST_COMMAND_EVENT: &str = "desktop-control://host-command";
 
 pub const MENU_TOGGLE_DOCK: &str = "toggle_dock";
+pub const MENU_PASTE_LAST_SAFE: &str = "paste_last_safe";
+pub const MENU_SHOW_RESULT_HISTORY: &str = "show_result_history";
 pub const MENU_PRESET_COMO_YO_ES: &str = "preset_como_yo_es";
 pub const MENU_PRESET_CORREGIR_TEXTO: &str = "preset_corregir_texto";
 pub const MENU_PRESET_FIX_WRITING: &str = "preset_fix_writing";
@@ -40,6 +42,8 @@ pub struct HostCommandPayload {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HostMenuAction {
     ToggleDock,
+    PasteLastSafe,
+    ShowResultHistory,
     SelectPreset(&'static str),
     SelectDockSkin(DockSkinId),
     OpenSettings,
@@ -50,6 +54,8 @@ pub enum HostMenuAction {
 pub fn resolve_host_menu_action(id: &str) -> HostMenuAction {
     match id {
         MENU_TOGGLE_DOCK => HostMenuAction::ToggleDock,
+        MENU_PASTE_LAST_SAFE => HostMenuAction::PasteLastSafe,
+        MENU_SHOW_RESULT_HISTORY => HostMenuAction::ShowResultHistory,
         MENU_PRESET_COMO_YO_ES => HostMenuAction::SelectPreset("como-yo-es"),
         MENU_PRESET_CORREGIR_TEXTO => HostMenuAction::SelectPreset("corregir-texto"),
         MENU_PRESET_FIX_WRITING => HostMenuAction::SelectPreset("fix-writing"),
@@ -65,6 +71,8 @@ pub fn resolve_host_menu_action(id: &str) -> HostMenuAction {
 
 pub fn host_command_payload(action: HostMenuAction) -> Option<HostCommandPayload> {
     let (command, preset_id, dock_skin) = match action {
+        HostMenuAction::PasteLastSafe => ("paste_last_safe", None, None),
+        HostMenuAction::ShowResultHistory => ("show_result_history", None, None),
         HostMenuAction::SelectPreset(preset_id) => ("select_preset", Some(preset_id), None),
         HostMenuAction::SelectDockSkin(DockSkinId::Classic7) => {
             ("set_dock_skin", None, Some("classic-7"))
@@ -127,6 +135,9 @@ pub fn configure_tray_and_background<R: Runtime>(
 
 #[tauri::command]
 pub fn show_dock_context_menu(app: AppHandle) -> Result<(), String> {
+    desktop_delivery::cache_current_desktop_delivery_target_for_tray(
+        "dock_context_menu_before_popup",
+    );
     let window = app
         .get_window(DOCK_WINDOW_LABEL)
         .ok_or_else(|| "Dictation Dock window is not available".to_string())?;
@@ -168,12 +179,23 @@ fn build_host_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu:
 
     MenuBuilder::new(app)
         .item(&show_dock)
+        .separator()
+        .text(MENU_PASTE_LAST_SAFE, "Paste last")
+        .text(MENU_SHOW_RESULT_HISTORY, "History")
+        .separator()
         .item(&skin_menu)
         .item(&presets_menu)
         .text(MENU_OPEN_SETTINGS, "Settings")
         .separator()
         .text(MENU_QUIT, "Quit Dictation Tauri")
         .build()
+}
+
+fn menu_action_uses_cached_delivery_target(action: HostMenuAction) -> bool {
+    matches!(
+        action,
+        HostMenuAction::PasteLastSafe | HostMenuAction::ShowResultHistory
+    )
 }
 
 fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
@@ -202,7 +224,11 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
         }
         HostMenuAction::Quit => app.exit(0),
         action => {
-            if let Some(payload) = host_command_payload(action) {
+            if let Some(mut payload) = host_command_payload(action) {
+                if menu_action_uses_cached_delivery_target(action) {
+                    payload.target_snapshot =
+                        desktop_delivery::get_cached_desktop_delivery_target();
+                }
                 let _ = app.emit_to(DOCK_WINDOW_LABEL, HOST_COMMAND_EVENT, payload.clone());
                 let _ = app.emit(HOST_COMMAND_EVENT, payload);
             }
@@ -219,6 +245,14 @@ mod tests {
         assert_eq!(
             resolve_host_menu_action(MENU_TOGGLE_DOCK),
             HostMenuAction::ToggleDock
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_PASTE_LAST_SAFE),
+            HostMenuAction::PasteLastSafe
+        );
+        assert_eq!(
+            resolve_host_menu_action(MENU_SHOW_RESULT_HISTORY),
+            HostMenuAction::ShowResultHistory
         );
         assert_eq!(
             resolve_host_menu_action(MENU_PRESET_COMO_YO_ES),
@@ -257,7 +291,42 @@ mod tests {
     }
 
     #[test]
-    fn emits_renderer_commands_only_for_presets_and_skins() {
+    fn recovery_menu_actions_preserve_the_target_captured_before_the_menu() {
+        assert!(menu_action_uses_cached_delivery_target(
+            HostMenuAction::PasteLastSafe
+        ));
+        assert!(menu_action_uses_cached_delivery_target(
+            HostMenuAction::ShowResultHistory
+        ));
+        assert!(!menu_action_uses_cached_delivery_target(
+            HostMenuAction::SelectPreset("como-yo-es")
+        ));
+    }
+
+    #[test]
+    fn emits_renderer_commands_for_recovery_presets_and_skins() {
+        assert_eq!(
+            host_command_payload(HostMenuAction::PasteLastSafe),
+            Some(HostCommandPayload {
+                source: "tray_or_context_menu",
+                command: "paste_last_safe",
+                preset_id: None,
+                dock_skin: None,
+                chord_key: None,
+                target_snapshot: None,
+            })
+        );
+        assert_eq!(
+            host_command_payload(HostMenuAction::ShowResultHistory),
+            Some(HostCommandPayload {
+                source: "tray_or_context_menu",
+                command: "show_result_history",
+                preset_id: None,
+                dock_skin: None,
+                chord_key: None,
+                target_snapshot: None,
+            })
+        );
         assert_eq!(
             host_command_payload(HostMenuAction::SelectPreset("como-yo-es")),
             Some(HostCommandPayload {

@@ -6,6 +6,8 @@ import {
   applySelectionTransformFailureToRuntimeResult,
   applySelectionTransformOutputToRuntimeResult,
   applySelectionTransformToRuntimeResult,
+  createDockInputFromUi,
+  describeDeliveryEvidence,
   describeDeveloperDeliveryStatus,
   formatDesktopRecoveryAction,
   getReviewCopyLabel,
@@ -13,6 +15,7 @@ import {
   mapPipelineEvidenceToDesktopEvidence,
   resolveDictationPostProcessPolicy,
   selectionTransformFailureReason,
+  shouldFallbackToHistoryForPasteLast,
 } from "../../src/App";
 import type { DesktopRuntimeResult } from "../../src/desktop-control/controller";
 import type { SimulatedRunSummary } from "../../src/pipeline/types";
@@ -128,8 +131,73 @@ describe("App delivery fallback", () => {
       reason: "No assured editable target is available for paste delivery.",
     }, "transcript remains visible")).toMatchObject({
       status: "failed",
-      message: "Delivery failed before a confirmed handoff. Check the editable target, then copy or retry.",
+      message: "Delivery failed: No assured editable target is available for paste delivery.",
       reason: "No assured editable target is available for paste delivery.",
+    });
+    expect(describeDeliveryEvidence({
+      status: "failed",
+      reason: "Foreground target changed before paste.",
+    })).toBe("Delivery failed: Foreground target changed before paste.");
+  });
+
+  it("uses durable History only when there is no newer dictation attempt to protect", () => {
+    const freshIdle = {
+      hasCurrentSummary: false,
+      pipelineStatus: "idle" as const,
+      captureState: "idle" as const,
+      noSpeechNoticeOpen: false,
+      latestAttemptBlocksHistory: false,
+    };
+
+    expect(shouldFallbackToHistoryForPasteLast(freshIdle)).toBe(true);
+    expect(shouldFallbackToHistoryForPasteLast({
+      ...freshIdle,
+      hasCurrentSummary: true,
+    })).toBe(false);
+    expect(shouldFallbackToHistoryForPasteLast({
+      ...freshIdle,
+      pipelineStatus: "error",
+    })).toBe(false);
+    expect(shouldFallbackToHistoryForPasteLast({
+      ...freshIdle,
+      captureState: "failed",
+    })).toBe(false);
+    expect(shouldFallbackToHistoryForPasteLast({
+      ...freshIdle,
+      noSpeechNoticeOpen: true,
+    })).toBe(false);
+    expect(shouldFallbackToHistoryForPasteLast({
+      ...freshIdle,
+      latestAttemptBlocksHistory: true,
+    })).toBe(false);
+  });
+
+  it("settles copied recovery to idle while preserving the latest summary", () => {
+    const summary = createReviewSummary();
+
+    expect(createDockInputFromUi({
+      capture: { state: "idle", message: "Listo" },
+      pipelineUi: {
+        status: "idle",
+        message: "Latest transcript copied.",
+        summary,
+      },
+    })).toEqual({ state: "idle" });
+
+    expect(createDockInputFromUi({
+      capture: { state: "idle", message: "Listo" },
+      pipelineUi: {
+        status: "error",
+        operation: "paste_last",
+        message: "The latest dictation attempt produced no text.",
+        summary,
+      },
+    })).toMatchObject({
+      state: "error",
+      error: {
+        code: "paste-last-failed",
+        message: "The latest dictation attempt produced no text.",
+      },
     });
   });
 

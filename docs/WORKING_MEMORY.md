@@ -8,8 +8,8 @@ decisiones.
 ## Foco Único De Ejecución
 
 - **Estado:** `ready`.
-- **Plan:** `docs/tracks/dock-skins-visual-refinement.md`.
-- **Próximo batch:** **Batch Urgente — Regresión Mixed-DPI — 2026-07-27**.
+- **Plan:** `docs/tracks/dictation-error-recovery-hardening.md`.
+- **Próximo batch:** **Batch 2 — commit/push/prerelease/install + smoke nativo autorizado**.
 
 ## Estado Vivo
 
@@ -21,12 +21,17 @@ decisiones.
 - Desktop mantiene compatibilidad `CF-DESKTOP`; OAuth/account linkage y prompt
   parity quedaron corregidos. Smokes reales, instalación, release, provider,
   VPS, DNS y deploy siguen gated.
-- Prioridad inmediata: validar en la PC afectada la corrección 100%↔150%, que
-  escalona el movimiento del HWND antes del resize/refresh WebView2. Source
-  `3d6bd5f`; checks y NSIS pasan, pero aún no hay smoke físico mixed-DPI.
-- Último cierre publicado: prerelease mixed-DPI
+- Error recovery quedó endurecido localmente: un intento sin transcript ya no
+  reutiliza History en silencio; copy/paste-last conservan causa y operación;
+  Copy/dismiss vuelven a `Ready`; tray/botón derecho recuperan Paste last e
+  History con target previo. JP autorizó commit, push, prerelease, instalación
+  local y smoke nativo en una sesión nueva; no incluye deploy cloud/VPS.
+- La regresión mixed-DPI quedó cerrada físicamente en la PC afectada: el dock
+  cruza correctamente del monitor inferior al 100% al superior al 150%. El
+  guardrail conserva movimiento position-only antes del resize/refresh.
+- Último cierre publicado y validado: prerelease mixed-DPI
   `fixvox-tauri-v0.1.0-20260727204131`, installer y checksum redescargados con
-  SHA-256 `f745060a…d0f1bb`. El source quedó pusheado en `3d6bd5f`.
+  SHA-256 `f745060a…d0f1bb`; source `3d6bd5f`.
 - Standard Product UX cerró su operación local. Pi Chat Batch 2, App Audit y el
   roadmap de usuarios registrados están pausados hasta nueva priorización.
 - La evidencia detallada no se duplica aquí: permanece en las tracks, specs,
@@ -36,7 +41,8 @@ decisiones.
 
 | Frente | Estado | Abrir primero |
 | --- | --- | --- |
-| Dock/Wispr | activo | `docs/tracks/dock-skins-visual-refinement.md` |
+| Error recovery | activo | `docs/tracks/dictation-error-recovery-hardening.md` |
+| Dock/Wispr | listo para retomar | `docs/tracks/dock-skins-visual-refinement.md` |
 | Cloud/runtime | referencia cerrada | Spec 019 y `docs/topics/fixvox-cloud-runtime-port.md` |
 | Operaciones externas | sin batch activa | `docs/tracks/standard-product-ux-external-operation-gate-plan.md` |
 | Pi Chat | pausado | `docs/tracks/pi-chat-conversation-first-ux.md` |

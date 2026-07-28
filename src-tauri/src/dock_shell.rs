@@ -531,6 +531,8 @@ fn follow_cursor_monitor_if_needed<R: Runtime>(app: &AppHandle<R>) -> Result<boo
     let crossed_scale_boundary =
         dock_scale_factor_changed(current_scale_factor, target_scale_factor);
     if crossed_scale_boundary {
+        // Keep the position-only step separate from resize. Collapsing both into one
+        // SetWindowPos races Tao's WM_DPICHANGED handling and can blank WebView2.
         platform::show_dock_window_after_scale_transition(&window, position, layout)?;
     } else {
         platform::show_dock_window_no_activate(&window, position, layout)?;

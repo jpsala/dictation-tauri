@@ -209,6 +209,84 @@ describe("VoiceDock UI", () => {
     expectNoAction(cancelled, "Retry");
   });
 
+  it("distinguishes paste-last and copy failures from dictation failures", () => {
+    const pasteFailure = renderDock(
+      createVoiceDockState(
+        session({
+          state: "error",
+          error: {
+            code: "paste-last-failed",
+            message: "Delivery failed: No assured editable target is available.",
+          },
+          delivery: {
+            status: "failed",
+            strategy: "paste_send",
+            output: "older History transcript",
+            message: "Paste failed.",
+          },
+        }),
+      ),
+    ).html;
+
+    expect(pasteFailure).toContain("Paste last failed");
+    expect(pasteFailure).toContain("No assured editable target");
+    expect(pasteFailure).not.toContain("Dictation needs attention");
+    expectAction(pasteFailure, "Copy transcript");
+    expectAction(pasteFailure, "Retry");
+
+    const unavailable = renderDock(
+      createVoiceDockState(
+        session({
+          state: "error",
+          error: {
+            code: "paste-last-failed",
+            message: "The latest dictation attempt produced no text.",
+          },
+        }),
+      ),
+    ).html;
+
+    expect(unavailable).toContain("Nothing to paste");
+    expect(unavailable).toContain("latest dictation attempt produced no text");
+    expectNoAction(unavailable, "Copy transcript");
+
+    const selectionFailure = renderDock(
+      createVoiceDockState(
+        session({
+          state: "error",
+          error: {
+            code: "selection-transform-failed",
+            message: "Selected text could not be captured safely.",
+          },
+        }),
+      ),
+    ).html;
+
+    expect(selectionFailure).toContain("Selected text unchanged");
+    expect(selectionFailure).toContain("could not be captured safely");
+    expect(selectionFailure).not.toContain("Dictation needs attention");
+    expectNoAction(selectionFailure, "Copy transcript");
+
+    const copyFailure = renderDock(
+      createVoiceDockState(
+        session({
+          state: "error",
+          error: { code: "copy-failed", message: "Clipboard is busy." },
+          delivery: {
+            status: "failed",
+            strategy: "copy",
+            output: "transcript remains available",
+            message: "Copy failed.",
+          },
+        }),
+      ),
+    ).html;
+
+    expect(copyFailure).toContain("Copy failed");
+    expect(copyFailure).toContain("Clipboard is busy");
+    expect(copyFailure).not.toContain("Dictation needs attention");
+  });
+
   it("settles uncertain delivery to idle without leaving a persistent check-target state", () => {
     const { html } = renderDock(
       createVoiceDockState(
