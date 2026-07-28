@@ -24,16 +24,16 @@ decisiones.
 - Error recovery quedó publicado y validado: un intento sin transcript ya no
   reutiliza History; copy/paste-last conservan causa y operación; Copy y cierre
   nativo de Companion vuelven a `Ready`; tray/botón derecho preservan el target,
-  incluido Windows Terminal con la preferencia no-focus. No hubo provider calls
-  ni deploy.
+  incluido Windows Terminal. Dictado, Paste last e History usan Unicode directo
+  y no tocan el clipboard por defecto. No hubo deploy.
 - La regresión mixed-DPI quedó cerrada físicamente en la PC afectada: el dock
   cruza correctamente del monitor inferior al 100% al superior al 150%. El
   guardrail conserva movimiento position-only antes del resize/refresh.
-- Último cierre publicado y validado: hotfix Windows Terminal
-  `fixvox-tauri-v0.1.0-20260728002623`, installer/checksum redescargados e
-  instalado localmente; SHA-256 `a829bc9e…13a0207`; source `d1b3c98`. Smoke
-  real de botón derecho → Paste last pasó sin Enter ni cierre del host. Los
-  candidatos `...234336` y `...225134` quedaron superseded.
+- Último cierre publicado y validado: hotfix clipboard-free
+  `fixvox-tauri-v0.1.0-20260728122818`, installer/checksum redescargados e
+  instalado localmente; SHA-256 `27ff95c3…66df6e7`; source `775c5c9`. E2E de
+  dictado y smoke real de Windows Terminal preservaron el clipboard. Los
+  candidatos `...002623`, `...234336` y `...225134` quedaron superseded.
 - Standard Product UX cerró su operación local. Pi Chat Batch 2, App Audit y el
   roadmap de usuarios registrados están pausados hasta nueva priorización.
 - La evidencia detallada no se duplica aquí: permanece en las tracks, specs,

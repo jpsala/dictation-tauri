@@ -189,6 +189,41 @@ Orden:
 - `fixvox-tauri-v0.1.0-20260727234336` queda superseded para esta ruta; usar el
   hotfix `...002623`.
 
+## Hotfix Delivery Sin Clipboard — 2026-07-28
+
+- JP detectó que el delivery introducido en `bc9de65` había reemplazado la ruta
+  Unicode directa de `193ad54` por un `Ctrl+V` basado siempre en clipboard. La
+  restauración posterior no satisface el contrato: dictado normal, Paste last e
+  History no deben contaminar ni depender del clipboard.
+- Fix `775c5c9`: `KEYEVENTF_UNICODE` vuelve a ser la ruta predeterminada y no
+  toca el clipboard. El fallback temporal queda únicamente como opt-in explícito
+  mediante `DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK`; no está definido en
+  process/user/machine y por defecto falla cerrado. `Copy transcript` conserva
+  su semántica explícita de copiar.
+- El E2E de dictado quedó endurecido para preparar y restaurar el sentinel con
+  Win32 real, sin formatos OLE que falseaban el guardrail. E2E completo con audio
+  sintético y provider real pasó: target recibió texto, evidence disponible y
+  el clipboard de control permaneció idéntico. JP probó dos dictados en dev; el
+  log sólo mostró `using direct Unicode delivery without clipboard`.
+- Gates: 47 archivos/265 tests focales, 20 tests Rust de desktop delivery,
+  frontend build, `cargo fmt --check`, `cargo check`, LSP, context audit y
+  `git diff --check` verdes.
+- Prerelease unsigned:
+  `fixvox-tauri-v0.1.0-20260728122818`; installer `29,594,984` bytes. SHA-256
+  local, checksum publicado y redescarga:
+  `27ff95c3aa49a727ba0197a22fbdc67c0f84e4f5a6390ea21952f8adb66df6e7`.
+- Release:
+  `https://github.com/jpsala/fixvox-releases/releases/tag/fixvox-tauri-v0.1.0-20260728122818`.
+  Installer directo:
+  `https://github.com/jpsala/fixvox-releases/releases/download/fixvox-tauri-v0.1.0-20260728122818/Fixvox-Tauri-Setup.exe`.
+- El asset redescargado se instaló con exit `0`. Smoke instalado sobre una
+  ventana real descartable de Windows Terminal pasó: target editable, botón
+  derecho → Paste last, foco restaurado, delivery `paste_sent`, Enter no enviado
+  y clipboard sentinel preservado. Preferencias y clipboard fueron restaurados;
+  la ventana descartable se cerró sin terminar el host compartido. No hubo
+  provider calls ni texto crudo en este smoke instalado.
+- `fixvox-tauri-v0.1.0-20260728002623` queda superseded; usar `...122818`.
+
 ## Pendiente
 
 1. Continuar la matriz capture → STT → postprocess → delivery sólo para errores
