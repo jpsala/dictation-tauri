@@ -3,17 +3,29 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("Windows desktop delivery native paste", () => {
-  it("uses direct Unicode input without the clipboard by default", () => {
+  it("uses a verified native Edit fast path before direct Unicode fallback", () => {
     const source = readFileSync("src-tauri/src/desktop_delivery.rs", "utf8");
 
     expect(source).not.toContain("VK_ESCAPE");
     expect(source).not.toContain("dismiss_transient_menu_before_paste");
     expect(source).not.toContain("should_dismiss_transient_menu_before_paste");
+    expect(source).toContain("GetGUIThreadInfo");
+    expect(source).toContain("focus_hwnd");
+    expect(source).toContain("native_edit_fast_path");
+    expect(source).toContain("fn is_native_edit_class_name");
+    expect(source).toContain("EM_REPLACESEL_MESSAGE");
+    expect(source).toContain("SendMessageTimeoutW(");
+    expect(source).toContain("SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT");
+    expect(source).toContain("No fallback was attempted to avoid duplicate text");
+    expect(source).toContain("Native Edit insertion");
     expect(source).toContain("KEYEVENTF_UNICODE");
-    expect(source).toContain("send_unicode_text(text)?");
-    expect(source).toContain("using direct Unicode delivery without clipboard");
+    expect(source).toContain("send_unicode_text(text)");
     expect(source).toContain("Direct Unicode input was sent");
     expect(source).toContain("without using the clipboard");
+    expect(source).toContain("completed method={method_label} utf16_units={utf16_units}");
+    expect(source.indexOf("matching_native_edit_target(&target")).toBeLessThan(
+      source.indexOf("send_unicode_text(text)"),
+    );
     expect(source.indexOf("let direct_result = deliver_text_without_clipboard(")).toBeLessThan(
       source.indexOf("let warning = deliver_text_with_clipboard("),
     );
@@ -63,16 +75,14 @@ describe("Windows desktop delivery native paste", () => {
     expect(source).toContain("Delivery warning:");
   });
 
-  it("skips the bounded Win32 observer on Chromium targets", () => {
+  it("scopes inline observation to the focused control with bounded messages", () => {
     const source = readFileSync("src-tauri/src/desktop_delivery.rs", "utf8");
 
-    expect(source).toContain("fn should_skip_bounded_observer");
-    expect(source).toContain("chrome_widgetwin");
-    expect(source).toContain("chrome_renderwidgethosthwnd");
-    expect(source).toContain("let skip_bounded_observer = should_skip_bounded_observer(&target)");
-    expect(source.indexOf("let skip_bounded_observer")).toBeLessThan(
-      source.indexOf("let observable_before"),
-    );
+    expect(source).toContain("let observer_hwnd = native_edit_hwnd");
+    expect(source).toContain("observer_hwnd.and_then(read_window_control_text)");
+    expect(source).toContain("SendMessageTimeoutW(hwnd, msg");
+    expect(source).not.toContain("fn read_observable_window_text");
+    expect(source).not.toContain("fn push_window_text");
   });
 
   it("keeps watcher terminals from replacing app targets but accepts explicit menu terminals", () => {

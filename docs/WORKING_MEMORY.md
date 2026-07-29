@@ -34,6 +34,11 @@ decisiones.
   instalado localmente; SHA-256 `27ff95c3…66df6e7`; source `775c5c9`. E2E de
   dictado y smoke real de Windows Terminal preservaron el clipboard. Los
   candidatos `...002623`, `...234336` y `...225134` quedaron superseded.
+- Source local validado manualmente: Notepad moderno entregó 426 unidades
+  UTF-16 por `native_edit_message` en 8 ms de input/9 ms total con
+  `observed=true`; Windows Terminal conservó `unicode_send_input` (118 unidades,
+  340 ms). Fixtures aisladas, checks Rust/TypeScript y build pasan; CRLF del
+  fallback Chromium queda aparte.
 - Standard Product UX cerró su operación local. Pi Chat Batch 2, App Audit y el
   roadmap de usuarios registrados están pausados hasta nueva priorización.
 - La evidencia detallada no se duplica aquí: permanece en las tracks, specs,

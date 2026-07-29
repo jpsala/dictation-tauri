@@ -18,6 +18,14 @@ pub struct DesktopDeliveryTarget {
     process_id: u32,
     #[serde(default)]
     process_name: Option<String>,
+    #[serde(default)]
+    focus_hwnd: Option<String>,
+    #[serde(default)]
+    focus_class: Option<String>,
+    #[serde(default)]
+    focus_process_id: Option<u32>,
+    #[serde(default)]
+    native_edit_fast_path: bool,
     input_like: bool,
     reason: String,
     #[serde(default)]
@@ -189,6 +197,10 @@ mod target_cache_policy_tests {
             window_class: "CASCADIA_HOSTING_WINDOW_CLASS".to_string(),
             process_id: 42,
             process_name: Some("WindowsTerminal.exe".to_string()),
+            focus_hwnd: None,
+            focus_class: None,
+            focus_process_id: None,
+            native_edit_fast_path: false,
             input_like: true,
             reason: "foreground target captured before menu".to_string(),
             cache_reason: None,
@@ -290,15 +302,17 @@ mod platform {
         },
         UI::{
             Input::KeyboardAndMouse::{
-                SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP,
-                KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU, VK_RETURN, VK_RWIN,
-                VK_SHIFT, VK_V,
+                IsWindowEnabled, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
+                KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, VIRTUAL_KEY, VK_CONTROL, VK_LWIN, VK_MENU,
+                VK_RETURN, VK_RWIN, VK_SHIFT, VK_V,
             },
             WindowsAndMessaging::{
-                BringWindowToTop, EnumChildWindows, GetClassNameW, GetForegroundWindow,
-                GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
-                IsWindowVisible, SendMessageTimeoutW, SendMessageW, SetForegroundWindow,
-                ShowWindow, SMTO_ABORTIFHUNG, SW_RESTORE, SW_SHOW, WM_GETTEXT, WM_GETTEXTLENGTH,
+                BringWindowToTop, EnumChildWindows, GetAncestor, GetClassNameW,
+                GetForegroundWindow, GetGUIThreadInfo, GetWindowLongPtrW, GetWindowTextLengthW,
+                GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible,
+                SendMessageTimeoutW, SetForegroundWindow, ShowWindow, GA_ROOT, GUITHREADINFO,
+                GWL_STYLE, SMTO_ABORTIFHUNG, SMTO_BLOCK, SMTO_ERRORONEXIT, SW_RESTORE, SW_SHOW,
+                WM_GETTEXT, WM_GETTEXTLENGTH,
             },
         },
     };
@@ -311,6 +325,10 @@ mod platform {
     const CF_UNICODETEXT_FORMAT: u32 = 13;
     const CF_LOCALE_FORMAT: u32 = 16;
     const CF_DIBV5_FORMAT: u32 = 17;
+    const EM_REPLACESEL_MESSAGE: u32 = 0x00c2;
+    const ES_PASSWORD_STYLE: u32 = 0x0020;
+    const ES_READONLY_STYLE: u32 = 0x0800;
+    const NATIVE_EDIT_MESSAGE_TIMEOUT_MS: u32 = 500;
     const RESTORABLE_BITMAP_METADATA_FORMAT_NAMES: [&str; 3] =
         ["DataObject", "System.Drawing.Bitmap", "Ole Private Data"];
 
@@ -335,6 +353,33 @@ mod platform {
         additional_formats: Vec<ClipboardAdditionalFormat>,
     }
 
+    #[derive(Clone, Debug)]
+    struct FocusedControl {
+        hwnd: HWND,
+        class_name: String,
+        process_id: u32,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum DirectDeliveryMethod {
+        NativeEditMessage,
+        UnicodeSendInput,
+    }
+
+    impl DirectDeliveryMethod {
+        fn label(self) -> &'static str {
+            match self {
+                Self::NativeEditMessage => "native_edit_message",
+                Self::UnicodeSendInput => "unicode_send_input",
+            }
+        }
+    }
+
+    enum DirectDeliveryError {
+        RetrySafe(String),
+        Uncertain(String),
+    }
+
     pub fn copy_text_to_clipboard(text: String) -> Result<(), String> {
         if text.trim().is_empty() {
             return Err("Cannot copy empty text.".to_string());
@@ -355,6 +400,11 @@ mod platform {
             GetWindowThreadProcessId(hwnd, &mut process_id);
         }
         let process_name = get_process_name(process_id);
+        let focused = focused_control_for_frame(hwnd);
+        let native_edit_fast_path = focused
+            .as_ref()
+            .map(is_native_edit_control)
+            .unwrap_or(false);
         let probe = format!(
             "{} {} {}",
             window_title,
@@ -375,6 +425,8 @@ mod platform {
                 .to_string()
         } else if probe.contains("taskbar") || probe.contains("shell_traywnd") {
             "foreground target is not an editable app".to_string()
+        } else if native_edit_fast_path {
+            "foreground native edit control captured before dictation".to_string()
         } else {
             "foreground target captured before dictation".to_string()
         };
@@ -385,10 +437,85 @@ mod platform {
             window_class,
             process_id,
             process_name,
+            focus_hwnd: focused
+                .as_ref()
+                .map(|control| (control.hwnd as isize).to_string()),
+            focus_class: focused.as_ref().map(|control| control.class_name.clone()),
+            focus_process_id: focused.as_ref().map(|control| control.process_id),
+            native_edit_fast_path,
             input_like,
             reason,
             cache_reason: None,
         })
+    }
+
+    fn focused_control_for_frame(frame_hwnd: HWND) -> Option<FocusedControl> {
+        let thread_id = unsafe { GetWindowThreadProcessId(frame_hwnd, ptr::null_mut()) };
+        if thread_id == 0 {
+            return None;
+        }
+
+        let mut info = GUITHREADINFO {
+            cbSize: std::mem::size_of::<GUITHREADINFO>() as u32,
+            ..unsafe { std::mem::zeroed() }
+        };
+        if unsafe { GetGUIThreadInfo(thread_id, &mut info) } == 0 || info.hwndFocus.is_null() {
+            return None;
+        }
+
+        let focus_hwnd = info.hwndFocus;
+        if unsafe { IsWindow(focus_hwnd) } == 0
+            || unsafe { GetAncestor(focus_hwnd, GA_ROOT) } != frame_hwnd
+        {
+            return None;
+        }
+
+        let mut process_id = 0u32;
+        unsafe {
+            GetWindowThreadProcessId(focus_hwnd, &mut process_id);
+        }
+        Some(FocusedControl {
+            hwnd: focus_hwnd,
+            class_name: get_class_name(focus_hwnd),
+            process_id,
+        })
+    }
+
+    fn is_native_edit_class_name(class_name: &str) -> bool {
+        let normalized = class_name.trim().to_ascii_lowercase();
+        normalized == "edit"
+            || normalized.starts_with("richedit")
+            || normalized.contains("windowsforms10.edit.")
+            || normalized.contains("windowsforms10.richedit")
+    }
+
+    fn is_native_edit_control(control: &FocusedControl) -> bool {
+        if !is_native_edit_class_name(&control.class_name)
+            || unsafe { IsWindowEnabled(control.hwnd) } == 0
+        {
+            return false;
+        }
+
+        let style = unsafe { GetWindowLongPtrW(control.hwnd, GWL_STYLE) } as u32;
+        style & (ES_PASSWORD_STYLE | ES_READONLY_STYLE) == 0
+    }
+
+    fn matching_native_edit_target(
+        target: &DesktopDeliveryTarget,
+        focused: Option<&FocusedControl>,
+    ) -> Option<HWND> {
+        if !target.native_edit_fast_path {
+            return None;
+        }
+        let focused = focused?;
+        let saved_hwnd = target.focus_hwnd.as_deref()?.parse::<isize>().ok()? as HWND;
+        let saved_class = target.focus_class.as_deref()?;
+        let saved_process_id = target.focus_process_id?;
+        (focused.hwnd == saved_hwnd
+            && focused.process_id == saved_process_id
+            && focused.class_name == saved_class
+            && is_native_edit_control(focused))
+        .then_some(focused.hwnd)
     }
 
     pub fn observe_desktop_paste(
@@ -445,27 +572,25 @@ mod platform {
             return Err(target.reason.clone());
         }
 
+        let total_started = Instant::now();
         let hwnd = parse_hwnd(&target.frame_hwnd)?;
-        let skip_bounded_observer = should_skip_bounded_observer(&target);
-        let observable_before = if skip_bounded_observer {
-            None
-        } else {
-            read_observable_window_text(hwnd)
-        };
-        eprintln!(
-            "[dictation-tauri][desktop-delivery] using direct Unicode delivery without clipboard focus_target_before_paste={focus_target_before_paste}"
-        );
-        let direct_result = deliver_text_without_clipboard(
-            &text,
-            hwnd,
-            press_enter_after_paste,
-            focus_target_before_paste,
-        );
-        let (used_clipboard_fallback, clipboard_warning) = match direct_result {
-            Ok(()) => (false, None),
-            Err(error) if allow_clipboard_paste_fallback() => {
+        prepare_direct_delivery_focus(hwnd, focus_target_before_paste)?;
+        let prepare_ms = total_started.elapsed().as_millis();
+
+        let focused = focused_control_for_delivery(hwnd, &target);
+        let native_edit_hwnd = matching_native_edit_target(&target, focused.as_ref());
+        let observer_hwnd = native_edit_hwnd;
+        let observable_before = observer_hwnd.and_then(read_window_control_text);
+
+        let input_started = Instant::now();
+        let direct_result =
+            deliver_text_without_clipboard(&text, hwnd, native_edit_hwnd, press_enter_after_paste);
+        let input_ms = input_started.elapsed().as_millis();
+        let (method, used_clipboard_fallback, delivery_warning) = match direct_result {
+            Ok(outcome) => (outcome.method, false, outcome.warning),
+            Err(DirectDeliveryError::RetrySafe(error)) if allow_clipboard_paste_fallback() => {
                 eprintln!(
-                    "[dictation-tauri][desktop-delivery] direct Unicode input failed; using explicit clipboard fallback reason={error}"
+                    "[dictation-tauri][desktop-delivery] retry-safe direct input failure; using explicit clipboard fallback reason={error}"
                 );
                 let warning = deliver_text_with_clipboard(
                     &text,
@@ -480,9 +605,17 @@ mod platform {
                     );
                     fallback_error
                 })?;
-                (true, warning)
+                (DirectDeliveryMethod::UnicodeSendInput, true, warning)
             }
-            Err(error) => {
+            Err(DirectDeliveryError::Uncertain(error)) => {
+                eprintln!(
+                    "[dictation-tauri][desktop-delivery] native edit delivery is uncertain; no fallback attempted reason={error}"
+                );
+                return Err(format!(
+                    "Native edit delivery could not be confirmed: {error}. No fallback was attempted to avoid duplicate text."
+                ));
+            }
+            Err(DirectDeliveryError::RetrySafe(error)) => {
                 eprintln!(
                     "[dictation-tauri][desktop-delivery] direct delivery failed without clipboard fallback reason={error}"
                 );
@@ -492,15 +625,21 @@ mod platform {
             }
         };
 
-        let observable_after = if skip_bounded_observer {
-            None
-        } else {
-            read_observable_window_text(hwnd)
-        };
+        let observable_after = observer_hwnd.and_then(read_window_control_text);
         let observed = did_observe_inserted_text(
             &text,
             observable_before.as_deref(),
             observable_after.as_deref(),
+        );
+        let total_ms = total_started.elapsed().as_millis();
+        let utf16_units = text.encode_utf16().count();
+        let method_label = if used_clipboard_fallback {
+            "clipboard_fallback"
+        } else {
+            method.label()
+        };
+        eprintln!(
+            "[dictation-tauri][desktop-delivery] completed method={method_label} utf16_units={utf16_units} prepare_ms={prepare_ms} input_ms={input_ms} total_ms={total_ms} observed={observed}"
         );
 
         let target_description = if focus_target_before_paste {
@@ -508,13 +647,9 @@ mod platform {
         } else {
             "current foreground target without changing windows"
         };
-        let reason = if observed && used_clipboard_fallback {
+        let reason = if used_clipboard_fallback && observed {
             format!(
                 "Explicit clipboard fallback was verified by a bounded Win32 text observer on the {target_description}."
-            )
-        } else if observed {
-            format!(
-                "Direct Unicode input was verified by a bounded Win32 text observer on the {target_description} without using the clipboard."
             )
         } else if used_clipboard_fallback && press_enter_after_paste {
             format!(
@@ -523,6 +658,20 @@ mod platform {
         } else if used_clipboard_fallback {
             format!(
                 "Explicit clipboard fallback was sent to the {target_description} without observation."
+            )
+        } else if method == DirectDeliveryMethod::NativeEditMessage && observed {
+            format!(
+                "Native Edit insertion was verified on the focused control without using the clipboard."
+            )
+        } else if method == DirectDeliveryMethod::NativeEditMessage && press_enter_after_paste {
+            "Native Edit insertion and Enter were sent to the focused control without using the clipboard or observation."
+                .to_string()
+        } else if method == DirectDeliveryMethod::NativeEditMessage {
+            "Native Edit insertion was sent to the focused control without using the clipboard or observation."
+                .to_string()
+        } else if observed {
+            format!(
+                "Direct Unicode input was verified on the focused control of the {target_description} without using the clipboard."
             )
         } else if press_enter_after_paste {
             format!(
@@ -533,7 +682,7 @@ mod platform {
                 "Direct Unicode input was sent to the {target_description} without using the clipboard or observation."
             )
         };
-        let reason = clipboard_warning
+        let reason = delivery_warning
             .map(|warning| format!("{reason} Delivery warning: {warning}"))
             .unwrap_or(reason);
 
@@ -548,10 +697,13 @@ mod platform {
         })
     }
 
-    fn deliver_text_without_clipboard(
-        text: &str,
+    struct DirectDeliveryOutcome {
+        method: DirectDeliveryMethod,
+        warning: Option<String>,
+    }
+
+    fn prepare_direct_delivery_focus(
         hwnd: HWND,
-        press_enter_after_paste: bool,
         focus_target_before_paste: bool,
     ) -> Result<(), String> {
         if focus_target_before_paste {
@@ -563,27 +715,103 @@ mod platform {
             );
         }
 
-        thread::sleep(Duration::from_millis(80));
-        if !is_expected_foreground(hwnd, unsafe { GetForegroundWindow() }) {
-            return Err(
-                "Desktop target lost focus before direct delivery; no text was sent.".to_string(),
-            );
+        if is_expected_foreground(hwnd, unsafe { GetForegroundWindow() }) {
+            Ok(())
+        } else {
+            Err("Desktop target lost focus before direct delivery; no text was sent.".to_string())
         }
-        release_modifier_keys()?;
+    }
+
+    fn focused_control_for_delivery(
+        hwnd: HWND,
+        target: &DesktopDeliveryTarget,
+    ) -> Option<FocusedControl> {
+        let deadline = Instant::now() + Duration::from_millis(50);
+        loop {
+            let focused = focused_control_for_frame(hwnd);
+            if matching_native_edit_target(target, focused.as_ref()).is_some()
+                || !target.native_edit_fast_path
+                || Instant::now() >= deadline
+            {
+                return focused;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn deliver_text_without_clipboard(
+        text: &str,
+        hwnd: HWND,
+        native_edit_hwnd: Option<HWND>,
+        press_enter_after_paste: bool,
+    ) -> Result<DirectDeliveryOutcome, DirectDeliveryError> {
+        if !is_expected_foreground(hwnd, unsafe { GetForegroundWindow() }) {
+            return Err(DirectDeliveryError::RetrySafe(
+                "Desktop target lost focus before direct text input; no text was sent.".to_string(),
+            ));
+        }
+
+        if let Some(edit_hwnd) = native_edit_hwnd {
+            send_native_edit_text(edit_hwnd, text).map_err(DirectDeliveryError::Uncertain)?;
+            let warning = send_post_delivery_keys(press_enter_after_paste);
+            return Ok(DirectDeliveryOutcome {
+                method: DirectDeliveryMethod::NativeEditMessage,
+                warning,
+            });
+        }
+
+        release_modifier_keys().map_err(DirectDeliveryError::RetrySafe)?;
         thread::sleep(Duration::from_millis(20));
         if !is_expected_foreground(hwnd, unsafe { GetForegroundWindow() }) {
-            return Err(
-                "Desktop target lost focus before direct text input; no text was sent.".to_string(),
-            );
+            return Err(DirectDeliveryError::RetrySafe(
+                "Desktop target lost focus before direct Unicode input; no text was sent."
+                    .to_string(),
+            ));
         }
-        send_unicode_text(text)?;
+        send_unicode_text(text).map_err(DirectDeliveryError::RetrySafe)?;
+        let warning = send_post_delivery_keys(press_enter_after_paste);
+        Ok(DirectDeliveryOutcome {
+            method: DirectDeliveryMethod::UnicodeSendInput,
+            warning,
+        })
+    }
+
+    fn send_native_edit_text(hwnd: HWND, text: &str) -> Result<(), String> {
+        let wide_text = text
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        let mut message_result = 0usize;
+        let sent = unsafe {
+            SendMessageTimeoutW(
+                hwnd,
+                EM_REPLACESEL_MESSAGE,
+                1,
+                wide_text.as_ptr() as isize,
+                SMTO_BLOCK | SMTO_ABORTIFHUNG | SMTO_ERRORONEXIT,
+                NATIVE_EDIT_MESSAGE_TIMEOUT_MS,
+                &mut message_result,
+            )
+        };
+        if sent == 0 {
+            Err("the focused native Edit control timed out or rejected EM_REPLACESEL".to_string())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn send_post_delivery_keys(press_enter_after_paste: bool) -> Option<String> {
+        let mut warnings = Vec::new();
         if press_enter_after_paste {
-            thread::sleep(Duration::from_millis(80));
-            send_enter()?;
+            thread::sleep(Duration::from_millis(20));
+            if let Err(error) = release_modifier_keys().and_then(|_| send_enter()) {
+                warnings.push(error);
+            }
         }
-        thread::sleep(Duration::from_millis(80));
-        release_modifier_keys()?;
-        Ok(())
+        if let Err(error) = release_modifier_keys() {
+            warnings.push(error);
+        }
+        (!warnings.is_empty()).then(|| warnings.join(" "))
     }
 
     fn allow_clipboard_paste_fallback() -> bool {
@@ -691,12 +919,6 @@ mod platform {
         Ok(())
     }
 
-    fn should_skip_bounded_observer(target: &DesktopDeliveryTarget) -> bool {
-        let class_name = target.window_class.to_ascii_lowercase();
-        class_name.contains("chrome_widgetwin")
-            || class_name.contains("chrome_renderwidgethosthwnd")
-    }
-
     fn clipboard_restore_delay(target: &DesktopDeliveryTarget) -> Duration {
         if target
             .window_class
@@ -736,50 +958,6 @@ mod platform {
             return 0;
         }
         haystack.match_indices(needle).count()
-    }
-
-    fn read_observable_window_text(hwnd: HWND) -> Option<String> {
-        let mut values = Vec::<String>::new();
-        push_window_text(hwnd, &mut values);
-        unsafe {
-            EnumChildWindows(
-                hwnd,
-                Some(enum_child_text_proc),
-                &mut values as *mut _ as isize,
-            );
-        }
-        let joined = values
-            .into_iter()
-            .filter(|value| !value.trim().is_empty())
-            .collect::<Vec<_>>()
-            .join("\n");
-        if joined.trim().is_empty() {
-            None
-        } else {
-            Some(joined)
-        }
-    }
-
-    unsafe extern "system" fn enum_child_text_proc(hwnd: HWND, lparam: isize) -> i32 {
-        unsafe {
-            let values = &mut *(lparam as *mut Vec<String>);
-            push_window_text(hwnd, values);
-        }
-        1
-    }
-
-    fn push_window_text(hwnd: HWND, values: &mut Vec<String>) {
-        let len = unsafe { SendMessageW(hwnd, WM_GETTEXTLENGTH, 0, 0) } as usize;
-        if len == 0 || len > 200_000 {
-            return;
-        }
-        let mut buffer = vec![0u16; len + 1];
-        let copied =
-            unsafe { SendMessageW(hwnd, WM_GETTEXT, buffer.len(), buffer.as_mut_ptr() as isize) }
-                as usize;
-        if copied > 0 && copied <= len {
-            values.push(String::from_utf16_lossy(&buffer[..copied]));
-        }
     }
 
     fn parse_hwnd(value: &str) -> Result<HWND, String> {
@@ -1441,8 +1619,8 @@ mod platform {
     mod tests {
         use super::{
             classify_clipboard_snapshot, combine_paste_and_restore_results,
-            did_observe_inserted_text, is_expected_foreground, ClipboardFormatDescriptor,
-            ClipboardSnapshot, HWND,
+            did_observe_inserted_text, is_expected_foreground, is_native_edit_class_name,
+            ClipboardFormatDescriptor, ClipboardSnapshot, HWND,
         };
         use std::ptr;
 
@@ -1470,6 +1648,26 @@ mod platform {
             assert!(is_expected_foreground(target, target));
             assert!(!is_expected_foreground(target, other));
             assert!(!is_expected_foreground(target, ptr::null_mut()));
+        }
+
+        #[test]
+        fn native_edit_fast_path_accepts_only_verified_edit_classes() {
+            assert!(is_native_edit_class_name("Edit"));
+            assert!(is_native_edit_class_name("RichEdit20W"));
+            assert!(is_native_edit_class_name("RICHEDIT50W"));
+            assert!(is_native_edit_class_name("RichEditD2DPT"));
+            assert!(is_native_edit_class_name(
+                "WindowsForms10.EDIT.app.0.83a3ed_r13_ad1"
+            ));
+            assert!(is_native_edit_class_name(
+                "WindowsForms10.RichEdit20W.app.0.83a3ed_r13_ad1"
+            ));
+
+            assert!(!is_native_edit_class_name("HwndWrapper[DefaultDomain]"));
+            assert!(!is_native_edit_class_name("Chrome_WidgetWin_1"));
+            assert!(!is_native_edit_class_name("Chrome_RenderWidgetHostHWND"));
+            assert!(!is_native_edit_class_name("ConsoleWindowClass"));
+            assert!(!is_native_edit_class_name("Scintilla"));
         }
 
         #[test]

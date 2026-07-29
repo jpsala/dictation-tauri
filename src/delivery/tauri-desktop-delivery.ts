@@ -21,6 +21,10 @@ export type TauriDesktopDeliveryTarget = {
   windowClass: string;
   processId: number;
   processName?: string;
+  focusHwnd?: string;
+  focusClass?: string;
+  focusProcessId?: number;
+  nativeEditFastPath?: boolean;
   inputLike: boolean;
   reason: string;
   cacheReason?: string;
