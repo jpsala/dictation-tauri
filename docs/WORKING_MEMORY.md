@@ -3,7 +3,7 @@
 Router operativo corto; el detalle durable vive en topics, tracks, specs y
 decisiones.
 
-Última actualización: 2026-07-28.
+Última actualización: 2026-07-29.
 
 ## Foco Único De Ejecución
 
@@ -29,16 +29,14 @@ decisiones.
 - La regresión mixed-DPI quedó cerrada físicamente en la PC afectada: el dock
   cruza correctamente del monitor inferior al 100% al superior al 150%. El
   guardrail conserva movimiento position-only antes del resize/refresh.
-- Último cierre publicado y validado: hotfix clipboard-free
-  `fixvox-tauri-v0.1.0-20260728122818`, installer/checksum redescargados e
-  instalado localmente; SHA-256 `27ff95c3…66df6e7`; source `775c5c9`. E2E de
-  dictado y smoke real de Windows Terminal preservaron el clipboard. Los
-  candidatos `...002623`, `...234336` y `...225134` quedaron superseded.
-- Source local validado manualmente: Notepad moderno entregó 426 unidades
-  UTF-16 por `native_edit_message` en 8 ms de input/9 ms total con
-  `observed=true`; Windows Terminal conservó `unicode_send_input` (118 unidades,
-  340 ms). Fixtures aisladas, checks Rust/TypeScript y build pasan; CRLF del
-  fallback Chromium queda aparte.
+- Último cierre publicado, redescargado e instalado:
+  `fixvox-tauri-v0.1.0-20260729120801`, source `5eb4ab8`, SHA-256
+  `1ef20887…c7426d2`. Notepad moderno entregó 426 unidades UTF-16 por
+  `native_edit_message` en 8 ms de input/9 ms total con `observed=true`;
+  Windows Terminal conservó `unicode_send_input` (118 unidades, 340 ms).
+  Installer/checksum remoto coinciden, instalación local exit `0` y app
+  instalada viva. El release clipboard-free `...122818` queda superseded;
+  CRLF del fallback Chromium continúa como follow-up separado.
 - Standard Product UX cerró su operación local. Pi Chat Batch 2, App Audit y el
   roadmap de usuarios registrados están pausados hasta nueva priorización.
 - La evidencia detallada no se duplica aquí: permanece en las tracks, specs,

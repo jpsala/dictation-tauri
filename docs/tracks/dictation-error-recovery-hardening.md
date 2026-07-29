@@ -224,6 +224,36 @@ Orden:
   provider calls ni texto crudo en este smoke instalado.
 - `fixvox-tauri-v0.1.0-20260728002623` queda superseded; usar `...122818`.
 
+## Hotfix Delivery Nativo Rápido — 2026-07-29
+
+- Source final `5eb4ab872bc08d34c6ea34dc1fdd30e2f1921487`, commiteado y
+  pusheado a `main`; `HEAD == origin/main` antes del build.
+- El delivery captura el control enfocado con `GetGUIThreadInfo` y usa
+  `EM_REPLACESEL` sólo para la allowlist `Edit`/`RichEdit` revalidada. WPF,
+  Chromium, terminales y clases desconocidas conservan
+  `SendInput(KEYEVENTF_UNICODE)` sin clipboard. Timeout del mensaje queda
+  incierto y no hace fallback para evitar duplicados.
+- Prueba real source: Notepad moderno entregó 426 unidades UTF-16 por
+  `native_edit_message` en 8 ms de input/9 ms total con `observed=true`;
+  Windows Terminal conservó `unicode_send_input` (118 unidades, 340 ms).
+- Gates de release: 47 archivos/265 tests focales, frontend build, Rust
+  `fmt --check`, `check`, test compile, context audit y NSIS verdes. Persisten
+  sólo warnings `dead_code` conocidos y el warning documental preexistente.
+- Prerelease unsigned: `fixvox-tauri-v0.1.0-20260729120801`; installer
+  `29,597,629` bytes. SHA-256 local, checksum publicado y redescarga:
+  `1ef208874a42681ba3e57afe0318160fc0e4492b3b0b9902cc884f227c7426d2`.
+- Release:
+  `https://github.com/jpsala/fixvox-releases/releases/tag/fixvox-tauri-v0.1.0-20260729120801`.
+  Installer directo:
+  `https://github.com/jpsala/fixvox-releases/releases/download/fixvox-tauri-v0.1.0-20260729120801/Fixvox-Tauri-Setup.exe`.
+- El asset redescargado se instaló localmente con exit `0` en
+  `%LOCALAPPDATA%/Fixvox Tauri`; versión `0.1.0`, entrada de uninstall presente
+  y proceso instalado vivo tras el launch. La app dev atribuible fue cerrada
+  sin terminar hosts compartidos. No hubo deploy cloud/VPS ni provider calls.
+- `fixvox-tauri-v0.1.0-20260728122818` queda superseded para nuevas
+  instalaciones. El caso CRLF en fallback Chromium sigue como follow-up
+  separado; no bloquea este fast path.
+
 ## Pendiente
 
 1. Continuar la matriz capture → STT → postprocess → delivery sólo para errores
