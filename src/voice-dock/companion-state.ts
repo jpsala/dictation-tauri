@@ -124,7 +124,11 @@ export function createDockCompanionSnapshot(input: {
 
       return {
         id: entry.id,
-        label: entry.source.replace("_", " "),
+        label: entry.source === "selection_transform"
+          ? "Transform"
+          : entry.source === "assistant"
+            ? "Assistant"
+            : "Dictation",
         textLength: entry.textLength,
         deliveryStatus: entry.deliveryEvidence?.status ?? "available",
         textPreview: truncateHistoryPreview(normalizedText, 54),

@@ -60,7 +60,7 @@ describe("dock companion state", () => {
     expect(snapshot.history.items).toEqual([
       {
         id: "history-2",
-        label: "selection transform",
+        label: "Transform",
         textLength: 17,
         deliveryStatus: "uncertain",
         textPreview: "second reusable result preview for hover details",
@@ -68,7 +68,7 @@ describe("dock companion state", () => {
       },
       {
         id: "history-1",
-        label: "dictation",
+        label: "Dictation",
         textLength: 42,
         deliveryStatus: "available",
         textPreview: "first reusable dictation result preview",

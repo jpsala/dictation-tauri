@@ -19,7 +19,7 @@ import type {
 import { isTerminalPipelineState } from "./types";
 
 export type PipelineServiceOptions = {
-  createRunId?: () => string;
+  createRunId?: (request: SimulatedRunRequest) => string;
   now?: () => number;
   getFixture?: (fixtureId: string) => SimulatedFixture | undefined;
   transcriptionAdapter?: MockTranscriptionAdapter;
@@ -44,7 +44,7 @@ export class ActivePipelineRunError extends Error {
 export class PipelineService {
   private activeRun?: ActiveRun;
   private runCounter = 0;
-  private readonly createRunId: () => string;
+  private readonly createRunId: (request: SimulatedRunRequest) => string;
   private readonly now: () => number;
   private readonly getFixture: (fixtureId: string) => SimulatedFixture | undefined;
   private readonly transcriptionAdapter: MockTranscriptionAdapter;
@@ -54,7 +54,9 @@ export class PipelineService {
   private readonly yieldControl: () => Promise<void>;
 
   constructor(options: PipelineServiceOptions = {}) {
-    this.createRunId = options.createRunId ?? (() => this.nextRunId());
+    this.createRunId = options.createRunId ?? ((request) =>
+      request.capture?.captureId ?? this.nextRunId()
+    );
     this.now = options.now ?? performanceNow;
     this.getFixture = options.getFixture ?? getSimulatedFixture;
     this.transcriptionAdapter =
@@ -83,7 +85,7 @@ export class PipelineService {
       throw new ActivePipelineRunError(this.activeRun.runId);
     }
 
-    const runId = this.createRunId();
+    const runId = this.createRunId(request);
     const activeRun: ActiveRun = {
       runId,
       cancelled: false,

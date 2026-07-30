@@ -99,6 +99,7 @@ import {
   type DockCommand,
   type DockCompanionCommandPayload,
   type DockDragEvent,
+  type DockCompanionHistoryItem,
   type DockCompanionPresetId,
   type DockCompanionSnapshot,
   type DockSkinId,
@@ -1207,6 +1208,8 @@ const completeOnboarding = createStartDockHandoff({
   closeOnboarding: exitOnboarding,
 });
 
+export const historyPreviewDelayMs = 800;
+
 type CompanionSurfaceViewProps = {
   snapshot: DockCompanionSnapshot;
   onCommand?: (payload: DockCompanionCommandPayload) => void;
@@ -1304,6 +1307,13 @@ export function CompanionSurfaceView({
   const [presetPickerHotkeyLabel, setPresetPickerHotkeyLabel] = useState("Alt+Q");
   const [assistantDraft, setAssistantDraft] = useState("");
   const [noticeInteracting, setNoticeInteracting] = useState(false);
+  const [historyPreview, setHistoryPreview] = useState<{
+    entry: DockCompanionHistoryItem;
+    top: number;
+    left: number;
+    width: number;
+  }>();
+  const historyPreviewTimerRef = useRef<number | undefined>(undefined);
   const noticeRemainingMsRef = useRef(NO_SPEECH_NOTICE_TIMEOUT_MS);
   const noticeStartedAtRef = useRef<number | undefined>(undefined);
   const pickerInputRef = useRef<HTMLInputElement>(null);
@@ -1335,6 +1345,24 @@ export function CompanionSurfaceView({
       ].some((value) => value.toLowerCase().includes(query)))
       : pickerPresets;
   }, [pickerPresets, pickerQuery]);
+
+  useEffect(() => {
+    return () => {
+      if (historyPreviewTimerRef.current !== undefined) {
+        window.clearTimeout(historyPreviewTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!snapshot.history.open) {
+      if (historyPreviewTimerRef.current !== undefined) {
+        window.clearTimeout(historyPreviewTimerRef.current);
+        historyPreviewTimerRef.current = undefined;
+      }
+      setHistoryPreview(undefined);
+    }
+  }, [snapshot.history.open]);
 
   useEffect(() => {
     noticeRemainingMsRef.current =
@@ -1530,6 +1558,62 @@ export function CompanionSurfaceView({
     return () => window.removeEventListener("keydown", handlePickerKeydown);
   }, [filteredPickerPresets, onCommand, pickerIndex, snapshot.settings.open]);
 
+  const hideHistoryPreview = () => {
+    if (historyPreviewTimerRef.current !== undefined) {
+      window.clearTimeout(historyPreviewTimerRef.current);
+      historyPreviewTimerRef.current = undefined;
+    }
+    setHistoryPreview(undefined);
+  };
+
+  const showHistoryPreview = (
+    entry: DockCompanionHistoryItem,
+    anchor: HTMLElement,
+  ) => {
+    const rect = anchor.getBoundingClientRect();
+    const width = Math.min(360, Math.max(220, window.innerWidth - 24));
+    const estimatedHeight = 118;
+    const left = Math.min(
+      Math.max(12, rect.left),
+      Math.max(12, window.innerWidth - width - 12),
+    );
+    const top = rect.bottom + estimatedHeight + 12 <= window.innerHeight
+      ? rect.bottom + 8
+      : Math.max(12, rect.top - estimatedHeight - 8);
+
+    setHistoryPreview({ entry, top, left, width });
+  };
+
+  const scheduleHistoryPreview = (
+    entry: DockCompanionHistoryItem,
+    anchor: HTMLElement,
+  ) => {
+    if (historyPreviewTimerRef.current !== undefined) {
+      window.clearTimeout(historyPreviewTimerRef.current);
+    }
+    historyPreviewTimerRef.current = window.setTimeout(() => {
+      historyPreviewTimerRef.current = undefined;
+      showHistoryPreview(entry, anchor);
+    }, historyPreviewDelayMs);
+  };
+
+  const historyDeliveryLabel = (status: string) => {
+    switch (status) {
+      case "paste_observed":
+        return "Inserted";
+      case "paste_sent":
+        return "Sent";
+      case "copied":
+        return "Copied";
+      case "failed":
+        return "Failed";
+      case "uncertain":
+        return "Uncertain";
+      default:
+        return "Ready";
+    }
+  };
+
   const closeButton = showChromeClose ? (
     <CompanionCommandButton
       payload={{ source: "dock_companion", command: "close_companion" }}
@@ -1634,32 +1718,111 @@ export function CompanionSurfaceView({
           {snapshot.history.items.length === 0 ? (
             <p>No reusable results saved yet.</p>
           ) : (
-            <div className="dock-companion-history-list" aria-label="Reusable result history">
-              {snapshot.history.items.map((entry) => (
-                <CompanionCommandButton
-                  key={entry.id}
-                  payload={{
-                    source: "dock_companion",
-                    command: "select_history_entry",
-                    entryId: entry.id,
-                  }}
-                  onCommand={onCommand}
-                  className="dock-companion-history-item"
-                  ariaLabel={`Paste history result: ${entry.hoverPreview}`}
-                >
-                  <span className="dock-companion-history-preview">
-                    {entry.textPreview}
-                  </span>
-                  <span className="dock-companion-history-meta">
-                    {`${entry.label} · ${entry.textLength} chars · ${entry.deliveryStatus}`}
-                  </span>
-                  <span className="dock-companion-history-hover" aria-hidden="true">
-                    {entry.hoverPreview}
-                  </span>
-                </CompanionCommandButton>
-              ))}
+            <div className="dock-companion-history-table-wrap">
+              <table
+                className="dock-companion-history-table"
+                aria-label="Reusable result history"
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+                    return;
+                  }
+                  const rows = Array.from(
+                    event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                      ".dock-companion-history-result",
+                    ),
+                  );
+                  const currentIndex = rows.indexOf(document.activeElement as HTMLButtonElement);
+                  if (currentIndex < 0) {
+                    return;
+                  }
+                  event.preventDefault();
+                  const offset = event.key === "ArrowDown" ? 1 : -1;
+                  rows[Math.min(rows.length - 1, Math.max(0, currentIndex + offset))]?.focus();
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th scope="col">Result</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Status</th>
+                    <th scope="col" aria-label="Action" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {snapshot.history.items.map((entry) => (
+                    <tr
+                      key={entry.id}
+                      onMouseEnter={(event) => scheduleHistoryPreview(entry, event.currentTarget)}
+                      onMouseLeave={hideHistoryPreview}
+                      onFocusCapture={(event) => scheduleHistoryPreview(entry, event.currentTarget)}
+                      onBlurCapture={(event) => {
+                        if (!event.currentTarget.contains(event.relatedTarget)) {
+                          hideHistoryPreview();
+                        }
+                      }}
+                    >
+                      <td className="dock-companion-history-result-cell">
+                        <button
+                          type="button"
+                          className="dock-companion-history-result"
+                          data-command="select_history_entry"
+                          data-entry-id={entry.id}
+                          aria-label={`Paste history result: ${entry.textPreview}`}
+                          aria-describedby={historyPreview?.entry.id === entry.id ? "history-preview" : undefined}
+                          onClick={() => onCommand?.({
+                            source: "dock_companion",
+                            command: "select_history_entry",
+                            entryId: entry.id,
+                          })}
+                        >
+                          {entry.textPreview}
+                        </button>
+                      </td>
+                      <td className="dock-companion-history-type">{entry.label}</td>
+                      <td>
+                        <span className={`dock-companion-history-status dock-companion-history-status--${entry.deliveryStatus}`}>
+                          {historyDeliveryLabel(entry.deliveryStatus)}
+                        </span>
+                      </td>
+                      <td className="dock-companion-history-action-cell">
+                        <button
+                          type="button"
+                          className="dock-companion-history-paste"
+                          aria-label={`Paste result: ${entry.textPreview}`}
+                          onClick={() => onCommand?.({
+                            source: "dock_companion",
+                            command: "select_history_entry",
+                            entryId: entry.id,
+                          })}
+                        >
+                          Paste
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
+          {historyPreview ? (
+            <aside
+              id="history-preview"
+              className="dock-companion-history-popover"
+              role="tooltip"
+              data-testid="history-preview"
+              style={{
+                top: historyPreview.top,
+                left: historyPreview.left,
+                width: historyPreview.width,
+              }}
+            >
+              <span>Preview</span>
+              <p>{historyPreview.entry.hoverPreview}</p>
+              <small>
+                {`${historyPreview.entry.textLength} characters · ${historyDeliveryLabel(historyPreview.entry.deliveryStatus)}`}
+              </small>
+            </aside>
+          ) : null}
         </section>
       ) : null}
 

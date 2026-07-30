@@ -316,7 +316,7 @@ describe("dock companion view", () => {
     expect(source).not.toContain("dock-preset-picker-which-key");
   });
 
-  it("renders history metadata as selectable buttons with an X close action", () => {
+  it("renders history as a stable table with explicit paste actions and an X close action", () => {
     const snapshot = createDockCompanionSnapshot({
       voiceDockState: createVoiceDockState({ state: "idle" }),
       resultHistoryOpen: true,
@@ -333,14 +333,26 @@ describe("dock companion view", () => {
     });
 
     const html = renderToStaticMarkup(<CompanionSurfaceView snapshot={snapshot} />);
+    const source = readFileSync("src/App.tsx", "utf8");
 
+    expect(html).toContain("<table");
+    expect(html).toContain("Result</th>");
+    expect(html).toContain("Type</th>");
+    expect(html).toContain("Status</th>");
     expect(html).toContain("rewrite this selected paragraph");
-    expect(html).toContain("selection transform · 64 chars · available");
+    expect(html).toContain("Transform");
+    expect(html).toContain("Ready");
     expect(html).toContain("select_history_entry");
+    expect(html).toContain("Paste</button>");
     expect(html).toContain("Clear history");
     expect(html).toContain("clear_result_history");
     expect(html).toContain("Close companion");
     expect(html).toContain("×");
+    expect(html).not.toContain("dock-companion-history-hover");
     expect(html).not.toContain("Dismiss");
+
+    expect(source).toContain("export const historyPreviewDelayMs = 800");
+    expect(source).toContain("scheduleHistoryPreview(entry, event.currentTarget)");
+    expect(source).toContain('data-testid="history-preview"');
   });
 });
