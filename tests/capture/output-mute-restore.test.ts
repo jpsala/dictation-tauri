@@ -1,3 +1,4 @@
+// @ts-expect-error Tests run under Vitest/Node; the app tsconfig intentionally excludes Node types.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -12,7 +13,10 @@ describe("host-owned output mute restore guards", () => {
     expect(nativeCapture).toContain("output_mute: Some(output_mute)");
     expect(outputMute).toContain("muted_by_app");
     expect(outputMute).toContain("output_mute_restored");
-    expect(outputMute).toContain("windows_coreaudio_backend_pending");
+    expect(outputMute).toContain("IAudioEndpointVolume");
+    expect(outputMute).toContain("SetMute(true");
+    expect(outputMute).toContain("SetMute(snapshot.muted");
+    expect(outputMute).not.toContain("windows_coreaudio_backend_pending");
     expect(outputMute).toContain("redacted: true");
   });
 });

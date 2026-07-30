@@ -10,6 +10,7 @@ mod runtime_transcription;
 pub mod selection_capture;
 mod selection_presets;
 mod settings_window;
+mod sound_cues;
 mod startup_launch;
 mod startup_smoke;
 mod tray;
@@ -107,6 +108,7 @@ pub fn run() {
             settings_window::show_settings_window,
             settings_window::show_account_setup_window,
             settings_window::show_admin_control_room,
+            sound_cues::play_dictation_sound_cue,
             startup_launch::get_startup_launch_config,
             startup_launch::set_startup_launch_enabled,
             user_preferences::get_user_preferences,

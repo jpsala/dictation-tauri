@@ -48,6 +48,5 @@ export function requestDictationSoundCue(
 }
 
 function defaultNoopCuePlayer() {
-  // Host/browser audio playback backend is intentionally added separately.
-  // The cue request contract must remain non-blocking and safe when playback is unavailable.
+  // Host playback is injected by the app shell so this policy module stays side-effect free.
 }

@@ -108,6 +108,7 @@ import {
   requestDictationSoundCue,
   type DictationSoundCue,
 } from "./voice-dock/sound-cues";
+import { playHostDictationSoundCue } from "./host-runtime/tauri-sound-cues";
 import { runAssistantChatWithHost, type HostAssistantChatMessage } from "./assistant/managed-chat";
 import { createAssistantQuickResponse, type AssistantQuickResponse } from "./assistant/quick-response";
 import { parseAssistantVoicePrefix } from "./assistant/voice-prefix";
@@ -2517,12 +2518,18 @@ export function DockSurface() {
   }
 
   function queueDictationSoundCue(cue: DictationSoundCue) {
-    requestDictationSoundCue(soundCuePolicyRef.current, cue);
+    requestDictationSoundCue(soundCuePolicyRef.current, cue, playHostDictationSoundCue);
+  }
+
+  async function playStartSoundCueBeforeMute() {
+    if (!soundCuePolicyRef.current.enabled) {
+      return;
+    }
+    await playHostDictationSoundCue("start").catch(() => undefined);
   }
 
   function showNoSpeechNotice(summary?: SimulatedRunSummary) {
     latestAttemptBlocksHistoryPasteRef.current = true;
-    queueDictationSoundCue("no-speech");
     setNoSpeechNoticeOpen(true);
     setDesktopRecoveryAction(undefined);
     setCapture({ state: "idle", message: "Listo" });
@@ -2562,10 +2569,10 @@ export function DockSurface() {
       message: captureRuntime.permissionMessage,
     });
 
+    await playStartSoundCueBeforeMute();
     const session = await desktopSession.start();
     setDesktopRecoveryAction(session.recoveryAction);
     if (session.state === "listening") {
-      queueDictationSoundCue("start");
       setCapture({
         state: "recording",
         message: captureRuntime.listeningMessage,
@@ -2581,7 +2588,6 @@ export function DockSurface() {
   }
 
   async function stopCapture() {
-    queueDictationSoundCue("stop");
     setCapture({
       state: "stopping",
       message: captureRuntime.stoppingMessage,
@@ -2596,6 +2602,7 @@ export function DockSurface() {
     try {
       await rememberSelectionTransformContext();
       const session = await desktopSession.stop();
+      queueDictationSoundCue("stop");
       setDesktopRecoveryAction(session.recoveryAction);
       const result = getAppSessionCaptureResult(session);
       const summary = getAppSessionSummary(session);
@@ -2621,7 +2628,6 @@ export function DockSurface() {
             ? "Transcript is available from the captured run."
             : "Captured run completed without transcript text.");
 
-        queueDictationSoundCue(summary.transcript ? "success" : "no-speech");
         setPipelineUi({
           status: "done",
           message: deliveryMessage,
@@ -2720,7 +2726,6 @@ export function DockSurface() {
             ? "Transcript is available from the captured run."
             : "Captured run completed without transcript text.");
 
-        queueDictationSoundCue(summary.transcript ? "success" : "no-speech");
         setPipelineUi({
           status: "done",
           message: deliveryMessage,

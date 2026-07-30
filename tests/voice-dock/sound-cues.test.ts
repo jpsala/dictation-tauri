@@ -1,3 +1,4 @@
+// @ts-expect-error Tests run under Vitest/Node; the app tsconfig intentionally excludes Node types.
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { createSoundCuePolicy, requestDictationSoundCue } from "../../src/voice-dock/sound-cues";
@@ -42,13 +43,19 @@ describe("dictation sound cues", () => {
     });
   });
 
-  it("wires start/stop/success/no-speech/error cues from the app flow", () => {
+  it("plays one start and one stop cue in the normal dictation flow", () => {
     const source = readFileSync("src/App.tsx", "utf8");
 
-    expect(source).toContain("queueDictationSoundCue(\"start\")");
+    const cueBackend = readFileSync("src-tauri/src/sound_cues.rs", "utf8");
+
+    expect(source).toContain("await playStartSoundCueBeforeMute()");
     expect(source).toContain("queueDictationSoundCue(\"stop\")");
-    expect(source).toContain("queueDictationSoundCue(summary.transcript ? \"success\" : \"no-speech\")");
+    expect(cueBackend).toContain("PlaySoundW");
+    expect(cueBackend).toContain("dictation-start.wav");
+    expect(cueBackend).toContain("dictation-stop.wav");
+    expect(source).not.toContain("queueDictationSoundCue(summary.transcript ? \"success\" : \"no-speech\")");
+    expect(source).not.toContain("queueDictationSoundCue(\"no-speech\")");
     expect(source).toContain("queueDictationSoundCue(\"error\")");
-    expect(source).toContain("requestDictationSoundCue(soundCuePolicyRef.current, cue)");
+    expect(source).toContain("requestDictationSoundCue(soundCuePolicyRef.current, cue, playHostDictationSoundCue)");
   });
 });
