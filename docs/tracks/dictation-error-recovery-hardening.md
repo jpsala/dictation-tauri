@@ -313,6 +313,29 @@ Orden:
   [UIA ValuePattern](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-implementingvalue) y
   [VS Code TextEditor API](https://code.visualstudio.com/api/references/vscode-api#TextEditor).
 
+## Receipt De Release History — 2026-07-30
+
+- Código y tests: `f58c53b`; documentación previa: `ffc99b0`. Ambos commits
+  quedaron pusheados a `main` y `HEAD == origin/main` antes del build.
+- Gates: 97 archivos/508 tests frontend, 125 tests Rust + 1 ignored, 40 tests
+  Rust adicionales, build frontend, `cargo fmt --check`, `cargo check`, LSP,
+  context audit y `git diff --check` verdes. El release script repitió 47
+  archivos/265 tests focales, build, Rust compile/test compile y NSIS.
+- Prerelease unsigned:
+  `fixvox-tauri-v0.1.0-20260730180738`; installer `29,619,349` bytes. SHA-256
+  local, checksum publicado y redescarga:
+  `46683ed9449cbc9be9c2819242d114de5da3bb97ec2aaf1d6858fc07c789dd77`.
+- Release:
+  `https://github.com/jpsala/fixvox-releases/releases/tag/fixvox-tauri-v0.1.0-20260730180738`.
+  Installer directo:
+  `https://github.com/jpsala/fixvox-releases/releases/download/fixvox-tauri-v0.1.0-20260730180738/Fixvox-Tauri-Setup.exe`.
+- El asset redescargado se instaló localmente con exit `0`; versión `0.1.0`,
+  executable y uninstall canónico presentes. Smoke instalado redacted pasó con
+  10 IDs únicos: store legible, snapshot completo, 10 filas renderizadas,
+  preview visible tras hover sostenido y alturas estables. No registró texto
+  crudo, no hizo provider calls y dejó la app instalada viva. Evidencia ignorada
+  en `artifacts/desktop-control/installed-history-smoke/fixvox-tauri-v0.1.0-20260730180738/report.json`.
+
 ## Pendiente
 
 1. Continuar la matriz capture → STT → postprocess → delivery sólo para errores

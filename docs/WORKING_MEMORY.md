@@ -26,27 +26,23 @@ decisiones.
   nativo de Companion vuelven a `Ready`; tray/botón derecho preservan el target,
   incluido Windows Terminal. Dictado, Paste last e History usan Unicode directo
   y no tocan el clipboard por defecto. No hubo deploy.
-- History tiene un hotfix local pendiente de release: las instancias nuevas del
-  pipeline ya no reinician todos los dictados en `sim-run-0001`; usan el
-  `captureId` nativo y dejan de sobrescribirse por deduplicación. La UI local ya
-  es una tabla estable con preview flotante a 800 ms, Paste explícito y navegación
-  por flechas; suite, build y smokes focales pasaron. VS Code sigue limitado por
-  eventos Unicode seriales: no existe otra API Windows universal para inserción
-  bulk cross-process en el caret. JP descartó extensiones por aplicación; se
-  conservan `EM_REPLACESEL` nativo y `SendInput` para Chromium, sin clipboard ni
-  hacks específicos. El History personal usado por los smokes fue restaurado y
-  no hubo provider calls.
+- History quedó corregido, publicado e instalado: cada dictado usa el
+  `captureId` nativo y ya no sobrescribe resultados bajo `sim-run-0001`. La UI es
+  una tabla estable con preview flotante a 800 ms, Paste explícito y navegación
+  por flechas. VS Code sigue limitado por eventos Unicode seriales: no existe otra
+  API Windows universal para inserción bulk cross-process en el caret. JP descartó
+  extensiones por aplicación; se conservan `EM_REPLACESEL` y `SendInput`, sin
+  clipboard ni hacks específicos. Smokes redacted pasaron y no hubo provider calls.
 - La regresión mixed-DPI quedó cerrada físicamente en la PC afectada: el dock
   cruza correctamente del monitor inferior al 100% al superior al 150%. El
   guardrail conserva movimiento position-only antes del resize/refresh.
 - Último cierre publicado, redescargado e instalado:
-  `fixvox-tauri-v0.1.0-20260729120801`, source `5eb4ab8`, SHA-256
-  `1ef20887…c7426d2`. Notepad moderno entregó 426 unidades UTF-16 por
-  `native_edit_message` en 8 ms de input/9 ms total con `observed=true`;
-  Windows Terminal conservó `unicode_send_input` (118 unidades, 340 ms).
-  Installer/checksum remoto coinciden, instalación local exit `0` y app
-  instalada viva. El release clipboard-free `...122818` queda superseded;
-  CRLF del fallback Chromium continúa como follow-up separado.
+  `fixvox-tauri-v0.1.0-20260730180738`, source `ffc99b0`, SHA-256
+  `46683ed9…789dd77`. Installer/checksum remoto coinciden, instalación local
+  exit `0` y app instalada viva. El smoke instalado confirmó 10 IDs únicos,
+  tabla completa, preview sostenido y alturas estables. El release nativo rápido
+  `...120801` queda superseded; CRLF del fallback Chromium continúa como
+  follow-up separado.
 - Standard Product UX cerró su operación local. Pi Chat Batch 2, App Audit y el
   roadmap de usuarios registrados están pausados hasta nueva priorización.
 - La evidencia detallada no se duplica aquí: permanece en las tracks, specs,
