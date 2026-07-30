@@ -334,6 +334,7 @@ describe("dock companion view", () => {
 
     const html = renderToStaticMarkup(<CompanionSurfaceView snapshot={snapshot} />);
     const source = readFileSync("src/App.tsx", "utf8");
+    const styles = readFileSync("src/styles.css", "utf8");
 
     expect(html).toContain("<table");
     expect(html).toContain("Result</th>");
@@ -348,9 +349,13 @@ describe("dock companion view", () => {
     expect(html).toContain("clear_result_history");
     expect(html).toContain("Close companion");
     expect(html).toContain("×");
+    expect(html).toContain("dock-companion-card--history");
     expect(html).not.toContain("dock-companion-history-hover");
     expect(html).not.toContain("Dismiss");
 
+    expect(styles).toMatch(/\.companion-shell \{[^}]*overflow: hidden;/);
+    expect(styles).toMatch(/\.dock-companion-card--history \{[^}]*overflow: hidden;/);
+    expect(styles).toMatch(/\.dock-companion-history-table-wrap \{[^}]*overflow-y: auto;/);
     expect(source).toContain("export const historyPreviewDelayMs = 800");
     expect(source).toContain("scheduleHistoryPreview(entry, event.currentTarget)");
     expect(source).toContain('data-testid="history-preview"');

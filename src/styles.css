@@ -1074,7 +1074,7 @@ h1 {
 .companion-shell {
   width: 100vw;
   height: 100vh;
-  overflow: auto;
+  overflow: hidden;
   padding: 12px;
   background:
     radial-gradient(circle at 20% 0%, rgb(116 226 164 / 10%), transparent 34%),
@@ -1120,6 +1120,14 @@ h1 {
 
 .dock-companion-card--standalone {
   width: 100%;
+}
+
+.dock-companion-card--history {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .dock-companion-card p {
@@ -1180,9 +1188,11 @@ h1 {
 }
 
 .dock-companion-history-table-wrap {
-  max-height: calc(100vh - 82px);
+  flex: 1;
+  min-height: 0;
   margin-top: 8px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 8px;
   background: rgb(7 10 12 / 42%);

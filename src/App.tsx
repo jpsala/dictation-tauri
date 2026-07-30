@@ -1698,7 +1698,7 @@ export function CompanionSurfaceView({
       ) : null}
 
       {snapshot.history.open ? (
-        <section className="dock-companion-card dock-companion-card--standalone">
+        <section className="dock-companion-card dock-companion-card--standalone dock-companion-card--history">
           <div className="dock-companion-title-row">
             <p className="dock-companion-kicker">Result history</p>
             <div className="dock-companion-title-actions">
