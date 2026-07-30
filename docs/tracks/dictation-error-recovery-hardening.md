@@ -254,6 +254,65 @@ Orden:
   instalaciones. El caso CRLF en fallback Chromium sigue como follow-up
   separado; no bloquea este fast path.
 
+## Hotfix Local De History — 2026-07-30
+
+- JP confirmó que `Alt+Shift+X` reutilizaba correctamente el último dictado, pero
+  History no acumulaba los resultados correctos.
+- Causa: cada dictado construía una instancia nueva de `PipelineService`; su
+  contador interno reiniciaba el `runId` en `sim-run-0001`. El writer de History
+  deduplica por `${runId}:${source}`, así que cada dictado reemplazaba al anterior.
+- Fix local: el `runId` predeterminado de una corrida con captura usa el
+  `captureId` nativo, que ya es único por captura. Fixtures sin captura conservan
+  el contador determinístico y `createRunId` sigue siendo inyectable en tests.
+- Regresión: dos servicios nuevos con capturas distintas producen IDs distintos.
+  Pasaron 97 archivos/508 tests, build, Rust History (4 tests), `cargo check`, LSP
+  focal y `git diff --check`.
+- Smoke Tauri redacted: el store retuvo tres capturas distintas, Companion mostró
+  exactamente los tres resultados en orden newest-first y seleccionar el del
+  medio promovió ese texto exacto a paste-last. El History original se restauró;
+  no hubo provider calls ni texto real en el reporte. Evidencia ignorada en
+  `artifacts/desktop-control/result-history-smoke/history-fix-20260730/report.json`.
+- El smoke físico general de action hotkeys quedó rojo antes de llegar a
+  `Alt+Shift+X` porque todavía busca el copy viejo `PRESET PICKER`; la superficie
+  actual dice `Presets`. No contradice el smoke focal de History ni el atajo que
+  JP ya confirmó, pero el harness debe actualizarse por separado.
+
+## History Table Y Estudio De VS Code — 2026-07-30
+
+- History dejó las cards expansibles y usa una tabla compacta de filas estables:
+  Result, Type, Status y Paste. El hover sólo cambia fondo; flechas recorren
+  resultados y Enter/click conservan la acción de paste.
+- El preview flotante aparece después de 800 ms, queda fuera del flujo de la
+  tabla, no cambia alturas y respeta reduced motion. Smoke Playwright a 440×420
+  confirmó `0` previews a 750 ms, `1` a 850 ms, alturas idénticas y foco por
+  ArrowDown. Screenshots redacted ignoradas en `artifacts/visual/`.
+- La ruta Chromium/VS Code ya agrupa hasta 512 unidades UTF-16 por llamada a
+  `SendInput`; Microsoft documenta que el array se inserta serialmente en el
+  keyboard stream y `KEYEVENTF_UNICODE` se convierte en `VK_PACKET`/`WM_CHAR`.
+  Los logs locales muestran el costo observable en el target: 199 unidades en
+  377 ms y 672–741 unidades en 1.17–1.27 s. Aumentar el batch no resuelve que
+  Monaco procese eventos de teclado individuales.
+- UI Automation no ofrece un fast path equivalente: TextPattern/TextRange es de
+  lectura y ValuePattern no es el contrato de edición multilínea de Monaco.
+  `WM_CHAR` sobre `Chrome_WidgetWin_1` tampoco apunta a un control editable y no
+  es una entrega confiable.
+- Una integración opt-in mediante extensión local podría acelerar VS Code, pero
+  JP la descartó por ser específica de cada aplicación. La decisión es mantener
+  una ruta estándar de Windows, sin extensiones ni hooks por aplicación.
+- Bajo esas restricciones no existe otra API universal de inserción bulk en el
+  caret de un proceso arbitrario. TSF/`ITfInsertAtSelection` pertenece a text
+  services/IME cargados dentro del contexto del target, no a una app externa;
+  `InputInjector` sigue inyectando eventos y UIA no expone inserción de caret para
+  Monaco. Se conserva `EM_REPLACESEL` para controles nativos y `SendInput` para
+  Chromium/terminales, sin clipboard. La lentitud de Monaco queda como limitación
+  explícita, no como un fast path inseguro.
+- Fuentes primarias:
+  [SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput),
+  [KEYBDINPUT](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput),
+  [UIA TextPattern](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-implementingtextandtextrange),
+  [UIA ValuePattern](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-implementingvalue) y
+  [VS Code TextEditor API](https://code.visualstudio.com/api/references/vscode-api#TextEditor).
+
 ## Pendiente
 
 1. Continuar la matriz capture → STT → postprocess → delivery sólo para errores

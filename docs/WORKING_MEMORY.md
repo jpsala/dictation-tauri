@@ -26,6 +26,16 @@ decisiones.
   nativo de Companion vuelven a `Ready`; tray/botón derecho preservan el target,
   incluido Windows Terminal. Dictado, Paste last e History usan Unicode directo
   y no tocan el clipboard por defecto. No hubo deploy.
+- History tiene un hotfix local pendiente de release: las instancias nuevas del
+  pipeline ya no reinician todos los dictados en `sim-run-0001`; usan el
+  `captureId` nativo y dejan de sobrescribirse por deduplicación. La UI local ya
+  es una tabla estable con preview flotante a 800 ms, Paste explícito y navegación
+  por flechas; suite, build y smokes focales pasaron. VS Code sigue limitado por
+  eventos Unicode seriales: no existe otra API Windows universal para inserción
+  bulk cross-process en el caret. JP descartó extensiones por aplicación; se
+  conservan `EM_REPLACESEL` nativo y `SendInput` para Chromium, sin clipboard ni
+  hacks específicos. El History personal usado por los smokes fue restaurado y
+  no hubo provider calls.
 - La regresión mixed-DPI quedó cerrada físicamente en la PC afectada: el dock
   cruza correctamente del monitor inferior al 100% al superior al 150%. El
   guardrail conserva movimiento position-only antes del resize/refresh.
