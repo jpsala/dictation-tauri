@@ -37,11 +37,11 @@ decisiones.
   cruza correctamente del monitor inferior al 100% al superior al 150%. El
   guardrail conserva movimiento position-only antes del resize/refresh.
 - Último cierre publicado, redescargado e instalado:
-  `fixvox-tauri-v0.1.0-20260730180738`, source `ffc99b0`, SHA-256
-  `46683ed9…789dd77`. Installer/checksum remoto coinciden, instalación local
-  exit `0` y app instalada viva. El smoke instalado confirmó 10 IDs únicos,
-  tabla completa, preview sostenido y alturas estables. El release nativo rápido
-  `...120801` queda superseded; CRLF del fallback Chromium continúa como
+  `fixvox-tauri-v0.1.0-20260730182241`, source `865c1ef`, SHA-256
+  `6da1bc94…956c0d`. Installer/checksum remoto coinciden, instalación local
+  exit `0` y app instalada viva. El smoke con 11 filas confirmó una única barra:
+  document y shell no scrollean; sólo la tabla tiene overflow vertical. El release
+  History `...180738` queda superseded; CRLF del fallback Chromium continúa como
   follow-up separado.
 - Standard Product UX cerró su operación local. Pi Chat Batch 2, App Audit y el
   roadmap de usuarios registrados están pausados hasta nueva priorización.

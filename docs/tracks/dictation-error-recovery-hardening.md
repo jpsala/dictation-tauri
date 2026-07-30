@@ -336,6 +336,25 @@ Orden:
   crudo, no hizo provider calls y dejó la app instalada viva. Evidencia ignorada
   en `artifacts/desktop-control/installed-history-smoke/fixvox-tauri-v0.1.0-20260730180738/report.json`.
 
+### Corrección De Scroll Del Release
+
+- La revisión visual instalada detectó dos barras verticales: el shell completo
+  podía crecer además del scroll propio de la tabla. El fix `865c1ef` hace que
+  History ocupe el alto disponible con flex, bloquea overflow del shell y deja
+  `overflow-y: auto` únicamente en el wrapper de la tabla. Una regresión verifica
+  los tres contratos CSS.
+- Release sustituto:
+  `fixvox-tauri-v0.1.0-20260730182241`; installer `29,629,572` bytes. SHA-256
+  local, checksum remoto y redescarga:
+  `6da1bc942b3957c35309bfaa0ca243df56fd66e6b01555135272a6009a956c0d`.
+  URL:
+  `https://github.com/jpsala/fixvox-releases/releases/tag/fixvox-tauri-v0.1.0-20260730182241`.
+- El reemplazo redescargado se instaló con exit `0`. Smoke sobre la app instalada
+  pasó con 11 filas: document `420 == 420`, shell `420 == 420`, tabla
+  `445 > 326`, overflow exterior `hidden` e interior `auto`. La captura final
+  muestra una única barra dentro de la tabla. No se registró texto crudo ni hubo
+  provider calls. El release `...180738` queda superseded.
+
 ## Pendiente
 
 1. Continuar la matriz capture → STT → postprocess → delivery sólo para errores
