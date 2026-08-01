@@ -36,11 +36,17 @@ un path fuera de `docs/tracks`/`specs` o campos inconsistentes bloquean antes de
 handoff. Un foco `ready` abre una nueva sesión con linaje, índice, Working Memory
 y brief en el editor; no usa Agent, resumen LLM, runtime state ni auto-send.
 
-Planear declara una ruta revisable en el brief: `economical` usa Luna High para
-docs o mecánica de bajo riesgo, `balanced` usa Sol Medium por defecto y `strong`
-usa Sol High para trabajo sensible. Hacer la aplica en la sesión nueva; modelo o
-auth ausentes bloquean sin fallback. No hay Terra, clasificador extra ni routing
-por turno.
+Planear usa `balanced` con Sol Medium como ruta normal, incluso para trabajo
+multifile, cross-layer o nativo acotado cuando la decisión ya está tomada y hay
+checks razonables. `strong` con Sol High queda sólo para ambigüedad material,
+arquitectura abierta, seguridad/auth/privacidad, irreversibilidad, alto impacto
+productivo o fallos materiales difíciles de detectar. Prioridad, cantidad de
+archivos, stack nativo, contrato/review, planificación compleja o un efecto
+externo ya autorizado no bastan. `economical` con Luna requiere pedido explícito
+de JP por cuota y checks deterministas. Hacer aplica la ruta en la sesión nueva;
+modelo o auth ausentes bloquean sin fallback. `Ctrl+P` alterna Sol Medium/High y
+`Ctrl+L` conserva la selección manual. No hay Terra, clasificador extra ni
+routing por turno.
 
 Para trabajo local, reversible y barato de rehacer, el brief es orientación y no
 checklist exhaustiva. Inspeccionar sólo lo necesario para preservar cambios,

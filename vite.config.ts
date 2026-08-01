@@ -13,7 +13,7 @@ export default defineConfig({
       clientFiles: ["./src/main.tsx"],
     },
     watch: {
-      ignored: ["**/artifacts/**", "**/src-tauri/target/**", "**/target/**"],
+      ignored: ["**/.agents/**", "**/artifacts/**", "**/src-tauri/target/**", "**/target/**"],
     },
   },
 });

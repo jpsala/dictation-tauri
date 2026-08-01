@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createInitialDictationKeyState,
   dictationKeyDecisionToControlAction,
+  markDictationKeyLatched,
   markDictationKeyStarted,
   resolveDictationKeyEvent,
 } from "../../src/desktop-control/dictation-key";
@@ -113,6 +114,22 @@ describe("dictation key hold/tap resolver", () => {
 
     expect(repeated.decision).toEqual({ action: "ignore", reason: "already_pressed" });
     expect(repeated.state.status).toBe("hold_recording");
+  });
+
+  it("stops a dock-started recording on the first key press", () => {
+    const latched = markDictationKeyLatched(
+      createInitialDictationKeyState(),
+      "desktop-session-dock",
+    );
+
+    const stopped = resolveDictationKeyEvent(
+      latched,
+      event("pressed", "2026-06-23T15:01:30.000Z", { eventId: "first-key-press" }),
+      { holdThresholdMs: thresholdMs },
+    );
+
+    expect(stopped.decision).toEqual({ action: "stop", reason: "toggle_press" });
+    expect(stopped.state.status).toBe("stopping");
   });
 
   it("stops a latched recording on the next press", () => {

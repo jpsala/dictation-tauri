@@ -10,7 +10,7 @@ describe("setup readiness router", () => {
 		expect(resolveSetupReadinessRoute("checking")).toBe("checking");
 	});
 
-	it("keeps the ready confirmation in onboarding until Empezar", () => {
+	it("routes ready through onboarding for the automatic dock handoff", () => {
 		expect(resolveSetupReadinessRoute("ready")).toBe("onboarding");
 		expect(resolveSetupReadinessRoute("welcome")).toBe("onboarding");
 	});

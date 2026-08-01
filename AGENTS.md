@@ -54,7 +54,8 @@ No correr smokes físicos/audio/prod/deploy/autostart sin confirmación.
 ## Comandos AOS
 
 - `/flow` es la única entrada diaria: `Pensar | Planear | Hacer | Cerrar`.
-- Planear declara `execution_route: economical | balanced | strong`; Hacer aplica esa ruta (`balanced` por defecto) en la sesión nueva y bloquea sin fallback si falta modelo o auth.
+- Planear usa `balanced` con Sol Medium como ruta normal, incluso para trabajo multifile/cross-layer/nativo acotado. `strong` con Sol High queda sólo para ambigüedad material, arquitectura abierta, seguridad/auth/privacidad, irreversibilidad, alto impacto productivo o fallos materiales difíciles de detectar. `economical` con Luna requiere pedido explícito de JP por cuota y checks deterministas. Hacer bloquea sin fallback si falta modelo o auth.
+- `Ctrl+P` alterna Sol Medium/High; `Ctrl+L` conserva la selección manual de modelo.
 - Hacer sólo avanza con foco `ready`: abre una sesión nueva enlazada, precarga índice, Working Memory y brief para revisión, y ejecuta directamente allí sin Agent ni auto-send.
 - Cerrar compacta sólo valor durable faltante y es opcional si Hacer ya persistió el estado final; `/new` queda para sesiones manuales fuera de ese handoff.
 - `aos-realinear-os` abre `docs/topics/agentic-os-operations.md`; las operaciones manager-only no son motores diarios.

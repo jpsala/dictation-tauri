@@ -512,6 +512,23 @@ for (const [prefix, paths] of specPrefixes) {
 if (!exists("docs/.generated/context-index.md")) {
   add("warn", "Missing generated context index docs/.generated/context-index.md");
 } else {
+  const generatedIndex = read("docs/.generated/context-index.md");
+  const tracksSection = sectionContent(generatedIndex, "Tracks") ?? "";
+  const indexedTracks = [...tracksSection.matchAll(/\]\(\.\.\/(tracks\/[^)#]+\.md)\)/g)]
+    .map((match) => `docs/${match[1]}`)
+    .sort();
+  const memoryFocus = exists("docs/WORKING_MEMORY.md")
+    ? sectionContent(read("docs/WORKING_MEMORY.md"), "Foco Único De Ejecución") ?? ""
+    : "";
+  const focusState = memoryFocus.match(/^- \*\*Estado:\*\* `([^`]+)`/m)?.[1];
+  const focusField = focusState === "ready" ? "Plan" : focusState === "blocked" || focusState === "waiting_gate" ? "Referencia" : undefined;
+  const focusedTracks = focusField
+    ? [...memoryFocus.matchAll(new RegExp("^- \\*\\*" + focusField + ":\\*\\* `(docs/tracks/[^`]+\\.md)`", "gm"))].map((match) => match[1]).sort()
+    : [];
+  if (JSON.stringify(indexedTracks) !== JSON.stringify(focusedTracks)) {
+    add("error", `Generated context index tracks must match the current execution focus (expected: ${focusedTracks.join(", ") || "none"}; found: ${indexedTracks.join(", ") || "none"})`);
+  }
+
   const indexTime = modifiedMs("docs/.generated/context-index.md");
   const trackMarkdown = walkMarkdownFiles(join(root, "docs", "tracks")).map((path) =>
     relative(root, path).replaceAll("\\", "/"),
@@ -520,6 +537,7 @@ if (!exists("docs/.generated/context-index.md")) {
     walkMarkdownFiles(join(root, spec.path)).map((path) => relative(root, path).replaceAll("\\", "/")),
   );
   const indexSources = [
+    "scripts/context-index.ts",
     "docs/WORKING_MEMORY.md",
     "docs/GLOSSARY.md",
     "docs/TOPICS.md",

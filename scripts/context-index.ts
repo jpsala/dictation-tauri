@@ -48,6 +48,22 @@ function title(content: string) {
   return content.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? "Untitled";
 }
 
+function focusedTrackPaths(): Set<string> {
+  if (!exists("docs/WORKING_MEMORY.md")) return new Set();
+  const memory = read("docs/WORKING_MEMORY.md");
+  const heading = "## Foco Único De Ejecución";
+  const start = memory.indexOf(heading);
+  if (start < 0) return new Set();
+  const remainder = memory.slice(start + heading.length);
+  const nextHeading = remainder.search(/\r?\n##\s/);
+  const focus = nextHeading >= 0 ? remainder.slice(0, nextHeading) : remainder;
+  const state = focus.match(/^- \*\*Estado:\*\* `([^`]+)`/m)?.[1];
+  const field = state === "ready" ? "Plan" : state === "blocked" || state === "waiting_gate" ? "Referencia" : undefined;
+  if (!field) return new Set();
+  const pattern = new RegExp("^- \\*\\*" + field + ":\\*\\* `(docs/tracks/[^`]+\\.md)`", "gm");
+  return new Set([...focus.matchAll(pattern)].map((match) => match[1]));
+}
+
 const now = new Date().toISOString();
 const lines: string[] = [
   "# Context Index",
@@ -77,23 +93,19 @@ if (exists("docs/topics")) {
 lines.push("", "## Tracks", "");
 
 if (exists("docs/tracks")) {
-  const coldTrackStatuses = new Set(["archived", "complete", "stable", "superseded"]);
-  let coldTrackCount = 0;
+  const focusedTracks = focusedTrackPaths();
+  let focusedTrackCount = 0;
   for (const file of walkMarkdownFiles(join(root, "docs", "tracks")).sort()) {
     const path = rel(file);
-    if (path === "docs/tracks/README.md" || path === "docs/tracks/TEMPLATE.md") continue;
+    if (path === "docs/tracks/README.md" || path === "docs/tracks/TEMPLATE.md" || !focusedTracks.has(path)) continue;
     const content = read(path);
     const meta = frontmatter(content);
     const status = value(meta, "status") || "unknown";
-    if (coldTrackStatuses.has(status)) {
-      coldTrackCount += 1;
-      continue;
-    }
     lines.push(`- ${status}: [${title(content)}](../${path.replace(/^docs\//, "")})`);
+    focusedTrackCount += 1;
   }
-  if (coldTrackCount > 0) {
-    lines.push(`- Closed/historical: ${coldTrackCount} tracks omitted from the hot index; search \`docs/tracks/\` on demand.`);
-  }
+  if (!focusedTrackCount) lines.push("- No focused track. Search `docs/tracks/` on demand.");
+  else lines.push("- Other tracks are omitted from the hot index; search `docs/tracks/` on demand.");
 } else {
   lines.push("- Missing docs/tracks/");
 }

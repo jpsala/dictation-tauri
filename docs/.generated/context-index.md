@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-07-30T21:25:07.520Z
+Generated: 2026-07-31T01:28:42.193Z
 
 ## Topics
 
@@ -35,21 +35,8 @@ Generated: 2026-07-30T21:25:07.520Z
 
 ## Tracks
 
-- paused: [App Audit Autonomous Implementation Plan](../tracks/app-audit-autonomous-implementation-plan.md)
-- paused: [Bounded Taskflow Implementation Spike](../tracks/bounded-taskflow-implementation-spike.md)
 - active: [Dictation Error And Recovery Hardening](../tracks/dictation-error-recovery-hardening.md)
-- active: [Dock Skins Visual Refinement](../tracks/dock-skins-visual-refinement.md)
-- blocked: [First-Run Installed Google Validation](../tracks/first-run-installed-google-validation.md)
-- paused: [Fixvox Registered Users Opportunities](../tracks/fixvox-registered-users-opportunities.md)
-- paused: [Fixvox Self-Hosted Checkpoint F — VPS Loopback And Operations](../tracks/fixvox-self-hosted-checkpoint-f-vps-loopback-plan.md)
-- paused: [Pi Chat — Conversation-First UX](../tracks/pi-chat-conversation-first-ux.md)
-- blocked: [VPS Direct Runtime Cutover](../tracks/vps-direct-runtime-cutover-brief.md)
-- blocked: [VPS Direct Runtime Cutover — Convergence-Aware](../tracks/vps-direct-runtime-cutover-convergence-aware-brief.md)
-- blocked: [VPS Direct Runtime Cutover — Corrected Connector](../tracks/vps-direct-runtime-cutover-corrected-connector-brief.md)
-- blocked: [VPS Routing Canary](../tracks/vps-routing-canary-brief.md)
-- paused: [VPS Routing Canary — Local Patch Promotion](../tracks/vps-routing-canary-patch-promotion-brief.md)
-- blocked: [VPS Routing Canary — Single Attempt And Return](../tracks/vps-routing-canary-single-attempt-brief.md)
-- Closed/historical: 49 tracks omitted from the hot index; search `docs/tracks/` on demand.
+- Other tracks are omitted from the hot index; search `docs/tracks/` on demand.
 
 ## Specs
 

@@ -11,7 +11,7 @@ import {
 
 export type SetupReadinessRoute = "checking" | "onboarding";
 
-/** The setup window keeps the ready confirmation visible until Empezar. */
+/** Ready still routes through onboarding so it can complete the native dock handoff. */
 export function resolveSetupReadinessRoute(
 	phase: AccountFirstPhase,
 ): SetupReadinessRoute {

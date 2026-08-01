@@ -82,6 +82,17 @@ export function markDictationKeyStarted(
   };
 }
 
+export function markDictationKeyLatched(
+  state: DictationKeyState,
+  activeSessionId: string,
+): DictationKeyState {
+  return {
+    status: "latched_recording",
+    activeSessionId,
+    lastEventId: state.lastEventId,
+  };
+}
+
 export function resetDictationKeyState(
   state: DictationKeyState = createInitialDictationKeyState(),
 ): DictationKeyState {

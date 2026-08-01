@@ -52,6 +52,7 @@ import {
 import {
   createInitialDictationKeyState,
   dictationKeyDecisionToControlAction,
+  markDictationKeyLatched,
   markDictationKeyStarted,
   resetDictationKeyState,
   resolveDictationKeyEvent,
@@ -2736,6 +2737,10 @@ export function DockSurface() {
     const session = await desktopSession.start();
     setDesktopRecoveryAction(session.recoveryAction);
     if (session.state === "listening") {
+      dictationKeyStateRef.current = markDictationKeyLatched(
+        dictationKeyStateRef.current,
+        session.sessionId,
+      );
       setCapture({
         state: "recording",
         message: captureRuntime.listeningMessage,
@@ -2743,6 +2748,9 @@ export function DockSurface() {
       return;
     }
 
+    dictationKeyStateRef.current = resetDictationKeyState(
+      dictationKeyStateRef.current,
+    );
     queueDictationSoundCue("error");
     setCapture({
       state: session.error?.code === "capture-start-failed" ? "permission_needed" : "failed",
@@ -2822,12 +2830,20 @@ export function DockSurface() {
         summary,
       });
     } finally {
+      dictationKeyStateRef.current = resetDictationKeyState(
+        dictationKeyStateRef.current,
+      );
+      deferredStopEventIdRef.current = undefined;
       selectionContextRef.current = undefined;
     }
   }
 
   async function cancelCapture() {
     const session = await desktopSession.cancel();
+    dictationKeyStateRef.current = resetDictationKeyState(
+      dictationKeyStateRef.current,
+    );
+    deferredStopEventIdRef.current = undefined;
     setDesktopRecoveryAction(session.recoveryAction);
     const result = getAppSessionCaptureResult(session);
     queueDictationSoundCue("stop");

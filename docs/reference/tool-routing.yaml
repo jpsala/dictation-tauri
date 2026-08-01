@@ -55,6 +55,20 @@ flow:
       economical: openai-codex/gpt-5.6-luna@high
       balanced: openai-codex/gpt-5.6-sol@medium
       strong: openai-codex/gpt-5.6-sol@high
+      semantics:
+        economical: explicit_quota_saving_with_deterministic_checks
+        balanced: normal_time_first_default_for_bounded_work
+        strong: exceptional_ambiguity_or_hard_to_detect_material_failure
+      non_escalators:
+        - priority
+        - file_count
+        - native_stack
+        - contract_or_review
+        - complex_planning
+        - authorized_external_effect
+      manual_controls:
+        ctrl_p: toggle_sol_medium_high
+        ctrl_l: model_selector
       application: replacement_session_reload_before_handoff
       visibility: prompt_and_notification
       unavailable: fail_closed_without_fallback

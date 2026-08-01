@@ -76,6 +76,18 @@ describe("App global hotkey dictation-key seam", () => {
     );
   });
 
+  it("synchronizes button-started sessions with the dictation key", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+    const startCaptureStart = source.indexOf("async function startCapture");
+    const startCaptureEnd = source.indexOf("async function stopCapture", startCaptureStart);
+    const startCaptureBlock = source.slice(startCaptureStart, startCaptureEnd);
+
+    expect(startCaptureBlock).toContain("markDictationKeyLatched");
+    expect(startCaptureBlock.indexOf('session.state === "listening"')).toBeLessThan(
+      startCaptureBlock.indexOf("markDictationKeyLatched"),
+    );
+  });
+
   it("prepares equivalent start context for button and hotkey starts", () => {
     const source = readFileSync("src/App.tsx", "utf8");
     const helperStart = source.indexOf("async function prepareDictationStartContext");

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { tauriGlobalHotkeyShortcut } from "../desktop-control/tauri-host-control";
 import "./onboarding.css";
 import type {
@@ -87,9 +87,27 @@ export function OnboardingSurface({
 		controller.snapshot(),
 	);
 	const [readyHandoffPending, setReadyHandoffPending] = useState(false);
+	const readyHandoffStartedRef = useRef(false);
 	const copy = copyByPhase[snapshot.phase];
+	const completeReadyHandoff = useCallback(() => {
+		if (!onReady || readyHandoffStartedRef.current) {
+			return;
+		}
+		readyHandoffStartedRef.current = true;
+		setReadyHandoffPending(true);
+		void Promise.resolve()
+			.then(() => onReady())
+			.catch(() => {
+				readyHandoffStartedRef.current = false;
+				setReadyHandoffPending(false);
+			});
+	}, [onReady]);
 
 	useEffect(() => {
+		if (snapshot.phase === "ready") {
+			completeReadyHandoff();
+			return;
+		}
 		if (snapshot.phase === "checking") {
 			void controller.completeStartupCheck().then(setSnapshot);
 			return;
@@ -114,17 +132,11 @@ export function OnboardingSurface({
 			window.clearInterval(timer);
 			window.removeEventListener("focus", poll);
 		};
-	}, [controller, snapshot.phase]);
+	}, [completeReadyHandoff, controller, snapshot.phase]);
 
 	const runPrimary = () => {
 		if (snapshot.phase === "ready") {
-			if (readyHandoffPending) {
-				return;
-			}
-			setReadyHandoffPending(true);
-			void Promise.resolve(onReady?.()).catch(() => {
-				setReadyHandoffPending(false);
-			});
+			completeReadyHandoff();
 			return;
 		}
 

@@ -45,10 +45,16 @@ Pensar, Planear y Cerrar permanecen en la sesión actual; Hacer reemplaza la
 sesión por una nueva enlazada mediante la API nativa de Pi y aplica antes del
 handoff la `execution_route` declarada por Planear.
 
-`economical` usa Luna High para docs o mecánica de bajo riesgo, `balanced` usa
-Sol Medium por defecto y `strong` usa Sol High para trabajo sensible. Si la ruta
-falta se usa `balanced`; si no existe el modelo o su autenticación, Hacer bloquea
-sin fallback. No hay Terra, clasificador extra ni routing por turno.
+`balanced` con Sol Medium es la ruta normal, incluso para trabajo multifile,
+cross-layer o nativo acotado cuando la decisión ya está tomada y hay checks
+razonables. `strong` con Sol High queda sólo para ambigüedad material,
+arquitectura abierta, seguridad/auth/privacidad, irreversibilidad, alto impacto
+productivo o fallos materiales difíciles de detectar; prioridad, cantidad de
+archivos o un efecto externo autorizado no bastan. `economical` con Luna requiere
+pedido explícito de JP por cuota y checks deterministas. Si la ruta falta se usa
+`balanced`; modelo o auth ausentes bloquean sin fallback. `Ctrl+P` alterna Sol
+Medium/High y `Ctrl+L` conserva la selección manual. No hay Terra, clasificador
+extra ni routing por turno.
 
 ## Runtime Global Y Adapter Local
 
