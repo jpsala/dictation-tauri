@@ -3,7 +3,7 @@
 Router operativo corto; el detalle durable vive en topics, tracks, specs y
 decisiones.
 
-Última actualización: 2026-07-29.
+Última actualización: 2026-07-31.
 
 ## Foco Único De Ejecución
 
@@ -37,12 +37,12 @@ decisiones.
   cruza correctamente del monitor inferior al 100% al superior al 150%. El
   guardrail conserva movimiento position-only antes del resize/refresh.
 - Último cierre publicado, redescargado e instalado:
-  `fixvox-tauri-v0.1.0-20260730182241`, source `865c1ef`, SHA-256
-  `6da1bc94…956c0d`. Installer/checksum remoto coinciden, instalación local
-  exit `0` y app instalada viva. El smoke con 11 filas confirmó una única barra:
-  document y shell no scrollean; sólo la tabla tiene overflow vertical. El release
-  History `...180738` queda superseded; CRLF del fallback Chromium continúa como
-  follow-up separado.
+  `fixvox-tauri-v0.1.0-20260731220417`, source `94114d9`, SHA-256
+  `bc70205e…f70795b`. Installer/checksum remoto coinciden, instalación local
+  exit `0` y app instalada viva. Incluye la sincronización dock/hotkey: si el
+  dictado empieza por clic, el primer `Alt+Space` ya detiene la sesión. El release
+  History `...20260730182241` queda superseded; CRLF del fallback Chromium
+  continúa como follow-up separado.
 - Standard Product UX cerró su operación local. Pi Chat Batch 2, App Audit y el
   roadmap de usuarios registrados están pausados hasta nueva priorización.
 - La evidencia detallada no se duplica aquí: permanece en las tracks, specs,

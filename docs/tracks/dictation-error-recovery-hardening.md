@@ -355,6 +355,28 @@ Orden:
   muestra una única barra dentro de la tabla. No se registró texto crudo ni hubo
   provider calls. El release `...180738` queda superseded.
 
+## Receipt De Release Dock/Hotkey — 2026-07-31
+
+- Source `94114d9cb76bb01da24cea5442e995e468cef26c` quedó commiteado y
+  pusheado a `main`; `HEAD == origin/main` antes del build. El fix sincroniza la
+  state machine de la tecla de dictado cuando la captura empieza por clic en el
+  dock, por lo que el primer `Alt+Space` ya detiene la sesión. También conserva
+  los ajustes pendientes de onboarding y routing AOS incluidos en el árbol.
+- Gates: 97 archivos/510 tests frontend, LSP y context audit verdes. El release
+  script repitió 47 archivos/267 tests focales, build frontend,
+  `cargo fmt --check`, `cargo check`, `cargo test --no-run` y bundle NSIS.
+- Prerelease unsigned:
+  `fixvox-tauri-v0.1.0-20260731220417`; installer `29,623,077` bytes. SHA-256
+  local, checksum publicado y redescarga:
+  `bc70205ec30d5eb50914c73a1eeeb09c8c6b5582105cf0102f394cb84f70795b`.
+- Release:
+  `https://github.com/jpsala/fixvox-releases/releases/tag/fixvox-tauri-v0.1.0-20260731220417`.
+  Installer directo:
+  `https://github.com/jpsala/fixvox-releases/releases/download/fixvox-tauri-v0.1.0-20260731220417/Fixvox-Tauri-Setup.exe`.
+- El asset redescargado se instaló localmente con exit `0`; versión `0.1.0` y
+  executable canónico bajo `%LOCALAPPDATA%/Fixvox Tauri` confirmados. La app
+  instalada quedó viva. No hubo deploy cloud ni provider calls.
+
 ## Pendiente
 
 1. Continuar la matriz capture → STT → postprocess → delivery sólo para errores
