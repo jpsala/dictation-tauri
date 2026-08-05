@@ -44,7 +44,7 @@ test('failed health restores backup and verifies rollback', async () => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'admin-deploy-rollback-'))
   try {
     const { broker, calls } = fixture(temp, { healthFailsOnce: true })
-    await assert.rejects(() => broker.deploy(hash), /rollback restored and verified/)
+    await assert.rejects(() => broker.deploy(hash), /rollback restored and verified\. health failed/)
     assert.deepEqual(calls.map(([name]) => name), ['check', 'check', 'backup', 'copy', 'restart', 'health', 'restore', 'restart', 'health'])
   } finally { await fs.rm(temp, { recursive: true, force: true }) }
 })

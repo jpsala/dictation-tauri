@@ -31,11 +31,11 @@ export class AdminDeployBroker {
         await this.operations.copy(this.sourceRoot, this.targetRoot, this.manifest)
         await this.operations.restart()
         await this.operations.health()
-      } catch {
+      } catch (deploymentError) {
         await this.operations.restore(this.targetRoot, backup)
         await this.operations.restart()
         await this.operations.health()
-        throw new Error('Admin deploy failed; rollback restored and verified.')
+        throw new Error(`Admin deploy failed; rollback restored and verified. ${deploymentError.message}`)
       }
       await fs.writeFile(`${backup}.json`, JSON.stringify({ sourceHash, result: 'success' }), { mode: 0o600 })
       return { ok: true, sourceHash, backupId: path.basename(backup), health: 'ok' }

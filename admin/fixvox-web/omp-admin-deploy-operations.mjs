@@ -272,7 +272,7 @@ export function createAdminDeployOperations(config, dependencies = {}) {
       await execute('/usr/sbin/runuser', ['-u', config.adminUser, '--', '/usr/bin/env', `HOME=${config.adminHome}`, `XDG_RUNTIME_DIR=/run/user/${config.adminUid}`, `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${config.adminUid}/bus`, '/usr/bin/systemctl', '--user', 'restart', 'fixvox-admin-web.service'], { timeoutMs: 60_000 })
     },
     async health() {
-      for (const url of [config.localHealthUrl, config.publicHealthUrl]) {
+      for (const [label, url] of [['local', config.localHealthUrl], ['public', config.publicHealthUrl]]) {
         const deadline = Date.now() + 30_000
         let healthy = false
         do {
@@ -283,7 +283,7 @@ export function createAdminDeployOperations(config, dependencies = {}) {
           }
           if (!healthy) await pause(250)
         } while (!healthy && Date.now() < deadline)
-        if (!healthy) throw new Error('Admin health check failed.')
+        if (!healthy) throw new Error(`Admin ${label} health check failed.`)
       }
       if (transaction?.targetRoot) await clearJournal(transaction.targetRoot)
       for (const target of cleanup) await filesystem.rm(target, { recursive: true, force: true })
