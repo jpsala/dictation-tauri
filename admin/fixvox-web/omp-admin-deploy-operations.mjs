@@ -267,7 +267,7 @@ export function createAdminDeployOperations(config, dependencies = {}) {
       }
     },
     async restart() {
-      await execute('/usr/bin/systemctl', ['--user', `--machine=${config.adminUser}@.host`, 'restart', 'fixvox-admin-web.service'], { timeoutMs: 60_000 })
+      await execute('/usr/sbin/runuser', ['-u', config.adminUser, '--', '/usr/bin/env', `HOME=${config.adminHome}`, `XDG_RUNTIME_DIR=/run/user/${config.adminUid}`, `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${config.adminUid}/bus`, '/usr/bin/systemctl', '--user', 'restart', 'fixvox-admin-web.service'], { timeoutMs: 60_000 })
     },
     async health() {
       for (const url of [config.localHealthUrl, config.publicHealthUrl]) {

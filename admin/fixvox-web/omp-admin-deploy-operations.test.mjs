@@ -197,11 +197,11 @@ test('a restart after durable commit but before stale-directory cleanup keeps th
 
 
 
-test('Admin restart targets the configured user systemd session without changing process identity', async () => {
+test('Admin restart targets the configured user systemd session through fixed runuser arguments', async () => {
   const calls = []
-  const operations = createAdminDeployOperations({ sourceRoot: '/source', adminUser: 'jpsal' }, { run: async (...args) => calls.push(args) })
+  const operations = createAdminDeployOperations({ sourceRoot: '/source', adminUser: 'jpsal', adminHome: '/home/jpsal', adminUid: 1234 }, { run: async (...args) => calls.push(args) })
   await operations.restart()
-  assert.deepEqual(calls, [['/usr/bin/systemctl', ['--user', '--machine=jpsal@.host', 'restart', 'fixvox-admin-web.service'], {
+  assert.deepEqual(calls, [['/usr/sbin/runuser', ['-u', 'jpsal', '--', '/usr/bin/env', 'HOME=/home/jpsal', 'XDG_RUNTIME_DIR=/run/user/1234', 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1234/bus', '/usr/bin/systemctl', '--user', 'restart', 'fixvox-admin-web.service'], {
     timeoutMs: 60_000,
   }]])
 })
