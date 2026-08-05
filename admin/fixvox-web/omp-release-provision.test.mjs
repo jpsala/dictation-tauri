@@ -45,6 +45,7 @@ test('services and deploy recipe remain disabled without the explicit enable swi
   assert.match(authBrokerUnit, /ReadWritePaths=\/home\/jpsal\/\.omp/)
   assert.match(provision, /OMP_AUTH_BROKER_URL':'http:\/\/127\.0\.0\.1:8765'/)
   assert.match(provision, /auth-broker status --json/)
+  assert.match(provision, /for attempt in \$\(seq 1 20\)/)
 })
 
 test('release config exposes only typed fixed recipes and no credentials', () => {
