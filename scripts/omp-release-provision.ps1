@@ -120,7 +120,12 @@ PY
   sudo install -d -o fixvox-agent -g fixvox-agent -m 0700 /var/lib/fixvox-agent/.omp
   sudo install -o fixvox-agent -g fixvox-agent -m 0600 /home/jpsal/.omp/auth-broker.token /var/lib/fixvox-agent/.omp/auth-broker.token
   sudo systemctl enable --now fixvox-omp-auth-broker.service fixvox-admin-deploy-helper.service fixvox-release-broker.service
-  sudo -u fixvox-agent env HOME=/var/lib/fixvox-agent OMP_AUTH_BROKER_URL=http://127.0.0.1:8765 /opt/fixvox-agent/bin/omp auth-broker status --json | grep -q '"ok":true'
+  broker_ready=0
+  for attempt in $(seq 1 20); do
+    if sudo -u fixvox-agent env HOME=/var/lib/fixvox-agent OMP_AUTH_BROKER_URL=http://127.0.0.1:8765 /opt/fixvox-agent/bin/omp auth-broker status --json | grep -q '"ok":true'; then broker_ready=1; break; fi
+    sleep 1
+  done
+  [[ $broker_ready == 1 ]]
   systemctl --user restart fixvox-admin-web.service
 else
   sudo systemctl disable fixvox-omp-auth-broker.service fixvox-admin-deploy-helper.service fixvox-release-broker.service >/dev/null 2>&1 || true
