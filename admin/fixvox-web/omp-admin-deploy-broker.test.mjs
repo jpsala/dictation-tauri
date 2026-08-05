@@ -14,7 +14,7 @@ function fixture(temp, overrides = {}) {
   const calls = []
   const operations = {
     inspect: async () => ({ hash, branch: 'main', clean: true, ...overrides.state }),
-    check: async (file) => calls.push(['check', path.basename(file)]),
+    check: async (file) => calls.push(['check', file]),
     backup: async (_root, _manifest, backup) => { calls.push(['backup']); await fs.writeFile(backup, 'backup') },
     copy: async () => { calls.push(['copy']); if (overrides.copyFails) throw new Error('copy failed') },
     restart: async () => calls.push(['restart']),
@@ -33,6 +33,10 @@ test('admin deploy requires exact clean main hash and bounded manifest', async (
     const result = await broker.deploy(hash)
     assert.equal(result.sourceHash, hash)
     assert.deepEqual(calls.map(([name]) => name), ['check', 'check', 'backup', 'copy', 'restart', 'health'])
+    assert.deepEqual(calls.slice(0, 2).map(([, file]) => file), [
+      path.join('/source', 'admin', 'fixvox-web', 'server.mjs'),
+      path.join('/source', 'admin', 'fixvox-web', 'public/app.js'),
+    ])
   } finally { await fs.rm(temp, { recursive: true, force: true }) }
 })
 

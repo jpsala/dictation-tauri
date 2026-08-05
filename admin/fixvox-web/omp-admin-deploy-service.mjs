@@ -29,6 +29,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let config
   try { config = JSON.parse(await fs.readFile(configPath, 'utf8')) } catch { throw new Error('Admin deploy helper config is invalid.') }
   const broker = new AdminDeployBroker({ sourceRoot: config.sourceRoot, targetRoot: config.targetRoot, backupRoot: config.backupRoot, manifest: ADMIN_DEPLOY_MANIFEST, operations: createAdminDeployOperations(config) })
+  await broker.operations.reconcile(config.targetRoot)
   await fs.rm(socketPath, { force: true })
   const server = createAdminDeployServer(broker)
   server.listen(socketPath, async () => {

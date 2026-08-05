@@ -1,7 +1,7 @@
 param(
   [switch]$ConfirmProduction,
-  [ValidateRange(5, 120)]
-  [int]$ReadinessTimeoutSeconds = 30
+  [ValidateRange(1, 10)]
+  [int]$UploadAttempts = 3
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,7 +12,7 @@ if (-not $ConfirmProduction) {
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $adminRoot = Join-Path $repo 'admin/fixvox-web'
-$runtimeFiles = @(
+$files = @(
   'server.mjs',
   'omp-chat-access.mjs',
   'omp-remote-policy.mjs',
@@ -29,32 +29,36 @@ $runtimeFiles = @(
   'omp-admin-deploy-broker.mjs',
   'omp-admin-deploy-operations.mjs',
   'omp-admin-deploy-service.mjs',
-  'omp-admin-deploy-client.mjs'
+  'omp-admin-deploy-client.mjs',
+  'public/app.js',
+  'public/styles.css'
 )
-$publicFiles = @('public/app.js', 'public/styles.css')
-$files = @($runtimeFiles + $publicFiles)
 $remoteHost = 'vps'
-$remoteRoot = '/home/jpsal/dev/dictation-tauri/admin/fixvox-web'
-$backupRoot = '/home/jpsal/.local/state/fixvox-admin-backups'
 $runId = Get-Date -Format 'yyyyMMdd-HHmmss'
 $remoteStage = "/tmp/fixvox-admin-deploy-$runId"
-$remoteBackup = "$backupRoot/$runId.tar.gz"
+$remoteBundle = "$remoteStage/bundle.tar.gz"
 $localBundle = Join-Path ([IO.Path]::GetTempPath()) "fixvox-admin-deploy-$runId.tar.gz"
-$remoteBundle = "/tmp/fixvox-admin-deploy-$runId.tar.gz"
 $windowsTar = Join-Path $env:SystemRoot 'System32/tar.exe'
-$remoteChecks = (@($runtimeFiles + 'public/app.js') | ForEach-Object { "node --check '$remoteStage/$_'" }) -join '; '
-$remoteCopies = ($files | ForEach-Object { "cp '$remoteStage/$_' '$remoteRoot/$_'" }) -join '; '
+$quotedFiles = ($files | ForEach-Object { "'$_'" }) -join ' '
+$remoteChecks = ($files | Where-Object { $_.EndsWith('.mjs') -or $_.EndsWith('.js') } | ForEach-Object { "node --check '$remoteStage/content/$_'" }) -join '; '
 
 function Invoke-Checked {
   param(
     [Parameter(Mandatory)] [string]$FilePath,
     [string[]]$ArgumentList = @()
   )
-
   & $FilePath @ArgumentList
-  if ($LASTEXITCODE -ne 0) {
-    throw "Command failed ($LASTEXITCODE): $FilePath $($ArgumentList -join ' ')"
-  }
+  if ($LASTEXITCODE -ne 0) { throw "Command failed ($LASTEXITCODE): $FilePath" }
+}
+
+function Get-CheckedOutput {
+  param(
+    [Parameter(Mandatory)] [string]$FilePath,
+    [string[]]$ArgumentList = @()
+  )
+  $output = & $FilePath @ArgumentList
+  if ($LASTEXITCODE -ne 0) { throw "Command failed ($LASTEXITCODE): $FilePath" }
+  return ($output | Out-String).Trim()
 }
 
 function Invoke-Remote {
@@ -71,58 +75,33 @@ function Get-Sha256([string]$Path) {
   } finally { $stream.Dispose() }
 }
 
-function Send-BundleWithRetry([string]$Path, [string]$Destination) {
-  for ($attempt = 1; $attempt -le 3; $attempt++) {
-    & scp $Path $Destination
-    if ($LASTEXITCODE -eq 0) { return }
-    if ($attempt -lt 3) { Start-Sleep -Seconds (2 * $attempt) }
-  }
-  throw "Bundle upload failed after 3 attempts."
-}
-
-function Wait-ForAdminReadiness {
-  $deadline = (Get-Date).AddSeconds($ReadinessTimeoutSeconds)
-  do {
-    & ssh $remoteHost 'curl -fsS http://127.0.0.1:8787/healthz'
-    if ($LASTEXITCODE -eq 0) { return }
-    Start-Sleep -Seconds 2
-  } while ((Get-Date) -lt $deadline)
-
-  throw "Admin readiness did not pass within $ReadinessTimeoutSeconds seconds."
-}
-
 foreach ($file in $files) {
-  if (-not (Test-Path (Join-Path $adminRoot $file))) {
-    throw "Missing deploy file: $file"
-  }
+  if (-not (Test-Path (Join-Path $adminRoot $file) -PathType Leaf)) { throw "Missing deploy file: $file" }
 }
 
-$replacementStarted = $false
+$sourceHash = Get-CheckedOutput 'git' @('-C', $repo, 'rev-parse', 'HEAD')
+$branch = Get-CheckedOutput 'git' @('-C', $repo, 'rev-parse', '--abbrev-ref', 'HEAD')
+$dirty = Get-CheckedOutput 'git' @('-C', $repo, 'status', '--porcelain=v1', '--untracked-files=all')
+if ($sourceHash -notmatch '^[a-f0-9]{40}$' -or $branch -ne 'main' -or $dirty) {
+  throw 'Admin deploy requires the exact clean local main commit used by the release broker.'
+}
+
 try {
   Invoke-Checked -FilePath $windowsTar -ArgumentList (@('-czf', $localBundle, '-C', $adminRoot) + $files)
   $bundleHash = Get-Sha256 $localBundle
-  Invoke-Remote "mkdir -p '$backupRoot'; rm -rf '$remoteStage' '$remoteBundle'; mkdir -p '$remoteStage'; tar -czf '$remoteBackup' -C '$remoteRoot' ."
-  Send-BundleWithRetry $localBundle "${remoteHost}:$remoteBundle"
-  Invoke-Remote "echo '$bundleHash  $remoteBundle' | sha256sum -c -; tar -xzf '$remoteBundle' -C '$remoteStage'; $remoteChecks"
-
-  $replacementStarted = $true
-  Invoke-Remote "$remoteCopies; systemctl --user restart fixvox-admin-web.service"
-  Wait-ForAdminReadiness
-  Invoke-Remote "rm -rf '$remoteStage'"
-  Write-Host "Admin deploy complete. Backup: $remoteBackup" -ForegroundColor Green
-} catch {
-  $deployError = $_
-  if ($replacementStarted) {
-    try {
-      Invoke-Remote "tar -xzf '$remoteBackup' -C '$remoteRoot'; systemctl --user restart fixvox-admin-web.service"
-      Wait-ForAdminReadiness
-    } catch {
-      throw "Admin deploy failed and rollback could not be verified. Backup: $remoteBackup. Error: $($_.Exception.Message)"
-    }
-    throw "Admin deploy failed; rollback restored from $remoteBackup. Original error: $($deployError.Exception.Message)"
+  Invoke-Remote "rm -rf '$remoteStage'; mkdir -p '$remoteStage/content'"
+  $uploaded = $false
+  for ($attempt = 1; $attempt -le $UploadAttempts; $attempt++) {
+    & scp $localBundle "${remoteHost}:$remoteBundle"
+    if ($LASTEXITCODE -eq 0) { $uploaded = $true; break }
+    if ($attempt -lt $UploadAttempts) { Start-Sleep -Seconds (2 * $attempt) }
   }
-  throw
+  if (-not $uploaded) { throw "Bundle upload failed after $UploadAttempts attempts." }
+
+  Invoke-Remote "echo '$bundleHash  $remoteBundle' | sha256sum -c -; tar -xzf '$remoteBundle' -C '$remoteStage/content'; $remoteChecks; (cd '$remoteStage/content' && sha256sum $quotedFiles > manifest.sha256 && sha256sum -c manifest.sha256)"
+  Invoke-Remote "sudo -u fixvox-release env OMP_ADMIN_DEPLOY_SOCKET=/run/fixvox-release/admin-deploy.sock /usr/bin/node /opt/fixvox-agent/runtime/omp-admin-deploy-client.mjs --source-hash '$sourceHash'"
+  Write-Host "Admin deploy broker accepted source $sourceHash after verified staging." -ForegroundColor Green
 } finally {
   Remove-Item -LiteralPath $localBundle -Force -ErrorAction SilentlyContinue
-  try { Invoke-Remote "rm -rf '$remoteStage' '$remoteBundle'" } catch { }
+  try { Invoke-Remote "rm -rf '$remoteStage'" } catch { }
 }

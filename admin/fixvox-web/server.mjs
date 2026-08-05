@@ -405,20 +405,16 @@ class OmpRpcProcess {
     }
     const controller = new AbortController()
     this.hostCalls.set(id, controller)
-    this.emit({ type: 'tool_execution_start', toolCallId, toolName })
     const update = async (partialResult) => {
       await this.writeFrame({ type: 'host_tool_update', id, partialResult })
-      this.emit({ type: 'tool_execution_update', toolCallId, toolName, partialResult })
     }
     try {
       const result = await this.hostTools.execute(toolName, event.arguments, { requestUi: (request, signal) => this.requestHostUi(request, signal), sessionId: this.sessionId, signal: controller.signal, update })
       await this.writeFrame({ type: 'host_tool_result', id, result })
-      this.emit({ type: 'tool_execution_end', toolCallId, toolName, result, isError: false })
     } catch (error) {
       const message = controller.signal.aborted ? 'Host tool cancelled.' : error instanceof Error ? error.message : 'Host tool failed.'
       const result = { content: [{ type: 'text', text: message }] }
       await this.writeFrame({ type: 'host_tool_result', id, result, isError: true })
-      this.emit({ type: 'tool_execution_end', toolCallId, toolName, result, isError: true })
     } finally {
       this.hostCalls.delete(id)
     }

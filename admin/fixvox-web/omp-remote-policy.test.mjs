@@ -44,10 +44,48 @@ test('remote policy preserves root allowlist, secret denial, confirmations and r
   assert.equal(classifyRemoteToolCall('write', { path: `${cwd}/src/app.ts` }, { cwd, roots }).decision, 'confirm')
   assert.equal(classifyRemoteToolCall('edit', { path: `${cwd}/src/app.ts` }, { cwd, roots }).decision, 'confirm')
   assert.equal(classifyRemoteToolCall('bash', { command: 'npm run check' }, { cwd, roots }).decision, 'confirm')
+  assert.equal(classifyRemoteToolCall('bash', { command: 'npm run check', cwd: '/tmp' }, { cwd, roots }).category, 'bash_outside_roots')
   assert.equal(classifyRemoteToolCall('bash', { command: 'printenv' }, { cwd, roots }).category, 'secret_discovery')
   assert.equal(classifyRemoteToolCall('bash', { command: 'git push origin main' }, { cwd, roots }).category, 'release_bypass')
   assert.equal(classifyRemoteToolCall('release_git_push', { repoId: 'dictation' }, { cwd, roots }).category, 'release_broker')
   assert.deepEqual(remoteAgentRoots(roots.join(path.delimiter)), roots.map((root) => path.resolve(root)))
+})
+
+test('secret file families and discovery commands are denied before confirmation without blocking normal files', () => {
+  const protectedPaths = [
+    '.dev.vars',
+    'config/production.env',
+    '.wrangler/state.json',
+    'config/auth.json',
+    'keys/id_rsa',
+    'keys/deploy.key',
+    'keys/identity.pem',
+    'keys/client.p12',
+  ]
+  for (const relative of protectedPaths) {
+    const result = classifyRemoteToolCall('read', { path: `${cwd}/${relative}` }, { cwd, roots })
+    assert.equal(result.decision, 'deny', relative)
+    assert.equal(result.category, 'secret_path', relative)
+  }
+  for (const relative of ['src/environment.ts', 'src/auth.json.ts', 'certificates/identity.pem.example', 'docs/key-management.txt']) {
+    assert.equal(classifyRemoteToolCall('read', { path: `${cwd}/${relative}` }, { cwd, roots }).decision, 'allow', relative)
+  }
+  for (const command of [
+    'cat .dev.vars',
+    "find . -name '*.env'",
+    'ls .wrangler',
+    'cat config/auth.json',
+    'sed -n 1p keys/id_ed25519',
+    'cat keys/deploy.key',
+    'cat keys/identity.pem',
+  ]) {
+    const result = classifyRemoteToolCall('bash', { command }, { cwd, roots })
+    assert.equal(result.decision, 'deny', command)
+    assert.equal(result.category, 'secret_discovery', command)
+  }
+  for (const command of ['node scripts/environment-check.mjs', 'cat src/auth.json.ts', 'npm run check']) {
+    assert.equal(classifyRemoteToolCall('bash', { command }, { cwd, roots }).decision, 'confirm', command)
+  }
 })
 
 test('realpath canonicalization prevents an approved-root symlink from escaping policy', async () => {
@@ -61,6 +99,32 @@ test('realpath canonicalization prevents an approved-root symlink from escaping 
   try {
     const resolved = await resolveRemoteToolInput('read', { path: path.join(root, 'linked-outside', 'secret.txt') }, root)
     assert.equal(classifyRemoteToolCall('read', resolved, { cwd: root, roots: [root] }).decision, 'deny')
+    const resolvedBash = await resolveRemoteToolInput('bash', { command: 'pwd', cwd: path.join(root, 'linked-outside') }, root)
+    assert.equal(classifyRemoteToolCall('bash', resolvedBash, { cwd: root, roots: [root] }).category, 'bash_outside_roots')
+  } finally {
+    await fs.rm(temp, { recursive: true, force: true })
+  }
+})
+
+test('write resolution follows every symlink hop and fails closed on cycles', async () => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'omp-policy-chain-'))
+  const root = path.join(temp, 'workspace')
+  const outside = path.join(temp, 'outside')
+  await fs.mkdir(root)
+  await fs.mkdir(outside)
+  await fs.symlink(outside, path.join(root, 'b'), process.platform === 'win32' ? 'junction' : 'dir')
+  await fs.symlink(path.join(root, 'b'), path.join(root, 'a'), process.platform === 'win32' ? 'junction' : 'dir')
+  try {
+    const resolved = await resolveRemoteToolInput('write', { path: path.join(root, 'a', 'new.txt') }, root)
+    assert.equal(path.dirname(resolved.path), path.resolve(outside))
+    assert.equal(classifyRemoteToolCall('write', resolved, { cwd: root, roots: [root] }).category, 'write_outside_roots')
+    if (process.platform !== 'win32') {
+      await fs.symlink(path.join(root, 'cycle-b'), path.join(root, 'cycle-a'), 'dir')
+      await fs.symlink(path.join(root, 'cycle-a'), path.join(root, 'cycle-b'), 'dir')
+      const cyclic = await resolveRemoteToolInput('write', { path: path.join(root, 'cycle-a', 'new.txt') }, root)
+      assert.equal(cyclic.__pathResolutionFailed, true)
+      assert.equal(classifyRemoteToolCall('write', cyclic, { cwd: root, roots: [root] }).category, 'path_resolution_failed')
+    }
   } finally {
     await fs.rm(temp, { recursive: true, force: true })
   }

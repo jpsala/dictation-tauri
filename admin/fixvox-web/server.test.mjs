@@ -359,6 +359,57 @@ test('legacy token sessions cannot start or command the OMP subprocess', async (
   }
 })
 
+test('Worker credentials stay server-side and are absent from browser payloads and the OMP subprocess', async () => {
+  const probeFile = path.join(os.tmpdir(), `fixvox-omp-worker-env-${process.pid}-${Date.now()}.json`)
+  const probeScript = `${probeFile}.mjs`
+  const workerKeys = ['ADMIN_API_KEY', 'ADMIN_VIEW_API_KEY', 'ADMIN_EDIT_API_KEY', 'ADMIN_PUBLISH_API_KEY']
+  const probeSource = [
+    "import fs from 'node:fs';",
+    "if (process.argv.includes('--version')) { process.stdout.write('omp/17.2.8\\n'); process.exit(0); }",
+    `fs.writeFileSync(${JSON.stringify(probeFile)}, JSON.stringify(Object.fromEntries(${JSON.stringify(workerKeys)}.map((key) => [key, process.env[key] ?? null]))));`,
+    "process.stdout.write(JSON.stringify({ type: 'ready', protocolVersion: 1, supportedProtocolVersions: [1, 2], maxFrameBytes: 1048576, maxReassembledFrameBytes: 67108864 }) + '\\n');",
+    "let input = '';",
+    "process.stdin.setEncoding('utf8');",
+    "process.stdin.on('data', (chunk) => { input += chunk; while (input.includes('\\n')) { const index = input.indexOf('\\n'); const line = input.slice(0, index); input = input.slice(index + 1); if (!line.trim()) continue; const message = JSON.parse(line); const data = message.type === 'get_state' ? { sessionId: 'worker-env-probe' } : undefined; process.stdout.write(JSON.stringify({ type: 'response', id: message.id, command: message.type, success: true, ...(data ? { data } : {}) }) + '\\n'); } });",
+  ].join('\n')
+  const backend = http.createServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ ok: true, role: 'owner' }))
+  })
+  await fs.writeFile(probeScript, probeSource)
+  await new Promise((resolve) => backend.listen(18988, '127.0.0.1', resolve))
+  try {
+    await withServer({
+      FIXVOX_ADMIN_MOCK: '0',
+      FIXVOX_ADMIN_ENV: 'local',
+      FIXVOX_ADMIN_LOCAL_AUTH_FIXTURE: '1',
+      FIXVOX_ADMIN_BASE_URL: 'http://127.0.0.1:18988',
+      ADMIN_API_KEY: 'worker-admin-secret',
+      ADMIN_VIEW_API_KEY: 'worker-view-secret',
+      ADMIN_EDIT_API_KEY: 'worker-edit-secret',
+      ADMIN_PUBLISH_API_KEY: 'worker-publish-secret',
+      OMP_CHAT_BIN: process.execPath,
+      OMP_CHAT_ARGS: probeScript,
+    }, async () => {
+      const browserPayload = JSON.stringify(await (await fetch(`${baseUrl}/api/admin/env`)).json())
+      for (const secret of ['worker-admin-secret', 'worker-view-secret', 'worker-edit-secret', 'worker-publish-secret']) assert.doesNotMatch(browserPayload, new RegExp(secret))
+      const command = await fetch(`${baseUrl}/api/pi-chat/command`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ command: { type: 'get_state' } }),
+      })
+      assert.equal(command.status, 200)
+      const ompEnv = JSON.parse(await fs.readFile(probeFile, 'utf8'))
+      assert.deepEqual(ompEnv, Object.fromEntries(workerKeys.map((key) => [key, null])))
+    })
+  } finally {
+    backend.close()
+    await once(backend, 'close')
+    await fs.rm(probeFile, { force: true })
+    await fs.rm(probeScript, { force: true })
+  }
+})
+
 test('OMP stop waits for the exact child to close before restart and escalates a stuck child', async () => {
   const lifecycleFile = path.join(os.tmpdir(), `fixvox-omp-lifecycle-${process.pid}-${Date.now()}.jsonl`)
   const firstMarker = `${lifecycleFile}.first`
@@ -653,6 +704,9 @@ test('OMP Chat handles ready and prompt settlement using actual OMP events', asy
   assert.match(handler, /event\.type === 'ready'/)
   assert.match(handler, /event\.type === 'prompt_result'/)
   assert.match(handler, /event\.type === 'agent_end'/)
+  assert.match(handler, /event\.type === 'auto_compaction_start'/)
+  assert.match(handler, /event\.type === 'auto_compaction_end'/)
+  assert.doesNotMatch(handler, /event\.type === '(?:compaction_start|compaction_end|queue_update)'/)
   assert.match(promptBridge, /event\.type === 'agent_end'/)
   assert.match(promptBridge, /event\.type === 'prompt_result'/)
 })

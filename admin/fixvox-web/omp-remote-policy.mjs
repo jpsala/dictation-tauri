@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { realpath } from 'node:fs/promises'
+import { lstat, readlink } from 'node:fs/promises'
 import path from 'node:path'
 
 const SAFE_ENV_KEYS = new Set([
@@ -10,16 +10,21 @@ const SAFE_ENV_KEYS = new Set([
 const SECRET_ENV_NAME = /(TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|COOKIE|SESSION|AUTH)/i
 const PROTECTED_PATH_PARTS = [
   /(^|[/\\])\.env(?:\.|$)/i,
+  /(^|[/\\])[^/\\]+\.env$/i,
+  /(^|[/\\])\.dev\.vars(?:\.|$)/i,
+  /(^|[/\\])\.wrangler([/\\]|$)/i,
   /(^|[/\\])\.ssh([/\\]|$)/i,
   /(^|[/\\])\.gnupg([/\\]|$)/i,
   /(^|[/\\])\.aws([/\\]|$)/i,
   /(^|[/\\])\.cloudflared([/\\]|$)/i,
   /(^|[/\\])\.(?:omp|pi)[/\\]agent[/\\](?:auth|sessions)([/\\]|$)/i,
+  /(^|[/\\])auth\.json$/i,
+  /(^|[/\\])(?:id_(?:rsa|dsa|ecdsa|ed25519)|private[-_.]?key(?:\.[^/\\]+)?|[^/\\]+\.(?:key|pem|p12|pfx))$/i,
   /(^|[/\\])(?:credentials?|secrets?)(?:\.[^/\\]+)?$/i,
   /(^|[/\\])(?:stores?|sessions?|backups?|private-exports?)([/\\]|$)/i,
   /\.(?:sqlite|sqlite3|db)$/i,
 ]
-const SECRET_DISCOVERY_COMMAND = /(?:^|[;&|()\s])(?:env|printenv|set|export\s+-p|compgen\s+-e)(?:$|[;&|()\s])|\/proc\/(?:self|\$?\w+|\d+)\/environ|\.env(?:\s|$)|\.ssh(?:\/|\s|$)|credential|secret/i
+const SECRET_DISCOVERY_COMMAND = /(?:^|[;&|()\s'"/\\])(?:env|printenv|set|export\s+-p|compgen\s+-e)(?=$|[;&|()\s'"/\\])|\/proc\/(?:self|\$?\w+|\d+)\/environ|(?:^|[;&|()\s'"/\\])(?:\.env(?:\.[^\s'";&|/\\]+)?|[^\s'";&|/\\]*\.env|\.dev\.vars(?:\.[^\s'";&|/\\]+)?|\.wrangler|auth\.json|id_(?:rsa|dsa|ecdsa|ed25519)|private[-_.]?key(?:\.[^\s'";&|/\\]+)?|[^\s'";&|/\\]+\.(?:key|pem|p12|pfx))(?=$|[;&|()\s'"/\\])|credential|secret/i
 const RELEASE_BYPASS_COMMAND = /\bgit\b[^\n;&|]{0,200}\b(?:commit|push|tag)\b|(?:^|[;&|()\s])(?:systemctl|docker|wrangler|scp|ssh)(?:$|[;&|()\s])|(?:admin-web-deploy|cloud-deploy|release-windows)/i
 
 function canonical(value) {
@@ -90,33 +95,61 @@ export function remoteAgentRoots(value, fallbackCwd = process.cwd()) {
   return roots.length ? [...new Set(roots)] : [canonical(fallbackCwd)]
 }
 
-async function resolveWriteTarget(absolute) {
-  let cursor = path.dirname(absolute)
-  const suffix = [path.basename(absolute)]
-  while (true) {
+async function resolvePhysicalPath(absolute) {
+  const initial = path.resolve(absolute)
+  let resolved = path.parse(initial).root
+  let pending = path.relative(resolved, initial).split(path.sep).filter(Boolean)
+  const followed = new Set()
+  let hops = 0
+  while (pending.length) {
+    const component = pending.shift()
+    const candidate = path.join(resolved, component)
+    let metadata
     try {
-      const parent = await realpath(cursor)
-      return path.join(parent, ...suffix)
-    } catch {
-      const next = path.dirname(cursor)
-      if (next === cursor) return absolute
-      suffix.unshift(path.basename(cursor))
-      cursor = next
+      metadata = await lstat(candidate)
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+      return path.join(candidate, ...pending)
     }
+    if (!metadata.isSymbolicLink()) {
+      resolved = candidate
+      continue
+    }
+    const identity = canonical(candidate)
+    if (followed.has(identity) || ++hops > 64) {
+      throw Object.assign(new Error('Path resolution encountered a symbolic-link cycle.'), { code: 'ELOOP' })
+    }
+    followed.add(identity)
+    const linked = path.resolve(path.dirname(candidate), await readlink(candidate))
+    const linkedRoot = path.parse(linked).root
+    pending = [...path.relative(linkedRoot, linked).split(path.sep).filter(Boolean), ...pending]
+    resolved = linkedRoot
   }
+  return resolved
 }
 
 export async function resolveRemoteToolInput(toolName, input, cwd = process.cwd()) {
   const name = String(toolName || '')
   const payload = input && typeof input === 'object' ? { ...input } : {}
+  if (name === 'bash' && typeof payload.cwd === 'string') {
+    const absolute = path.resolve(cwd, payload.cwd)
+    try {
+      payload.cwd = await resolvePhysicalPath(absolute)
+    } catch {
+      payload.__pathResolutionFailed = true
+      payload.cwd = absolute
+    }
+    return payload
+  }
   if (!['read', 'grep', 'find', 'ls', 'write', 'edit'].includes(name) || typeof payload.path !== 'string') return payload
   const absolute = path.resolve(cwd, payload.path)
   try {
-    payload.path = await realpath(absolute)
-    return payload
+    payload.path = await resolvePhysicalPath(absolute)
   } catch {
-    return { ...payload, path: name === 'write' ? await resolveWriteTarget(absolute) : absolute }
+    payload.path = absolute
+    payload.__pathResolutionFailed = true
   }
+  return payload
 }
 
 export function classifyRemoteToolCall(toolName, input, options = {}) {
@@ -124,6 +157,9 @@ export function classifyRemoteToolCall(toolName, input, options = {}) {
   const roots = (options.roots || [cwd]).map(canonical)
   const name = String(toolName || '')
   const payload = input && typeof input === 'object' ? input : {}
+  if (payload.__pathResolutionFailed) {
+    return { decision: 'deny', category: 'path_resolution_failed', reason: 'Path could not be resolved safely.' }
+  }
 
   if (name.startsWith('release_')) {
     const enabled = ['release_git_status', 'release_git_diff', 'release_git_commit', 'release_git_push', 'release_deploy']
@@ -159,6 +195,10 @@ export function classifyRemoteToolCall(toolName, input, options = {}) {
   }
 
   if (name === 'bash') {
+    const executionCwd = path.resolve(cwd, String(payload.cwd || cwd))
+    const executionRoot = matchingRoot(executionCwd, roots)
+    if (!executionRoot) return { decision: 'deny', category: 'bash_outside_roots', reason: 'Shell cwd is outside approved workspaces.' }
+    if (protectedPath(executionCwd)) return { decision: 'deny', category: 'secret_path', reason: 'Shell cwd cannot be a sensitive path.' }
     const command = String(payload.command || '').trim()
     if (!command) return { decision: 'deny', category: 'empty_command', reason: 'Empty shell command.' }
     if (SECRET_DISCOVERY_COMMAND.test(command)) {

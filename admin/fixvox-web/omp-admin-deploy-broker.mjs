@@ -21,9 +21,10 @@ export class AdminDeployBroker {
     const runId = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`
     const backup = path.join(this.backupRoot, `${runId}.tar.gz`)
     try {
+      if (this.operations.reconcile) await this.operations.reconcile(this.targetRoot)
       const state = await this.operations.inspect(this.sourceRoot)
       if (state.hash !== sourceHash || state.branch !== 'main' || state.clean !== true) throw Object.assign(new Error('Deploy source is not the exact clean main hash.'), { status: 409 })
-      for (const file of this.manifest) await this.operations.check(path.join(this.sourceRoot, file))
+      for (const file of this.manifest) await this.operations.check(path.join(this.sourceRoot, 'admin', 'fixvox-web', file))
       await fs.mkdir(this.backupRoot, { recursive: true })
       await this.operations.backup(this.targetRoot, this.manifest, backup)
       try {

@@ -292,10 +292,9 @@ function handleOmpEvent(event, assistantId) {
     tool.status = event.isError ? 'error' : 'done'; tool.body = toolText(event.result)
     state.tools.set(id, tool); renderActivity(); return
   }
-  if (event.type === 'compaction_start') { state.status = 'OMP compactando contexto...'; renderHeader(); return }
-  if (event.type === 'compaction_end') { state.status = event.aborted ? 'Compactación abortada' : 'Contexto compactado'; renderHeader(); return }
+  if (event.type === 'auto_compaction_start') { state.status = 'OMP compactando contexto...'; renderHeader(); return }
+  if (event.type === 'auto_compaction_end') { state.status = event.aborted ? 'Compactación abortada' : 'Contexto compactado'; renderHeader(); return }
   if (event.type === 'auto_retry_start') { state.status = `Reintentando (${event.attempt || 1})`; renderHeader(); return }
-  if (event.type === 'queue_update') { state.status = 'Cola OMP actualizada'; renderHeader(); return }
   if (event.type === 'message_end' || event.type === 'turn_end') {
     const finalText = event.message?.role === 'assistant' ? extractAssistantText(event.message) : extractLastAssistantText(event.messages)
     if (finalText.trim()) setMessage(assistantId, finalText)

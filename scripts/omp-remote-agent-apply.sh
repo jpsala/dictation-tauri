@@ -29,27 +29,82 @@ REPOS=(dictation-tauri constelaciones)
 SWAPPED=()
 RUNTIME_APPLIED=0
 RELEASE_WAS_ACTIVE=0
+ADMIN_HELPER_WAS_ACTIVE=0
+
+verify_health() {
+  sudo systemctl is-active --quiet fixvox-workspace-broker.service || return 1
+  sudo systemctl is-active --quiet fixvox-constelaciones-read-broker.service || return 1
+  systemctl --user is-active --quiet fixvox-admin-web.service || return 1
+  if [[ $RELEASE_WAS_ACTIVE == 1 ]]; then sudo systemctl is-active --quiet fixvox-release-broker.service || return 1; fi
+  if [[ $ADMIN_HELPER_WAS_ACTIVE == 1 ]]; then sudo systemctl is-active --quiet fixvox-admin-deploy-helper.service || return 1; fi
+  sudo test "$(sudo stat -c %a /run/fixvox-agent/workspace-broker.sock)" = 660 || return 1
+  sudo test "$(sudo stat -c %a /run/fixvox-agent/constelaciones-read.sock)" = 660 || return 1
+  curl -fsS http://127.0.0.1:8787/healthz >/dev/null || return 1
+  curl -fsS https://fixvox.jpsala.dev/healthz >/dev/null || return 1
+}
 
 restore_runtime() {
   [[ $RUNTIME_APPLIED == 1 ]] || return 0
-  sudo rm -rf "$OPT_ROOT/runtime"
-  sudo mkdir -p "$OPT_ROOT/runtime"
-  sudo tar -xzf "$BACKUP_ROOT/runtime-and-units.tar.gz" -C /
-  sudo systemctl daemon-reload
+  sha256sum -c "$BACKUP_ROOT/runtime-and-units.tar.gz.sha256" || return 1
+  sudo rm -rf "$OPT_ROOT/runtime" || return 1
+  sudo mkdir -p "$OPT_ROOT/runtime" || return 1
+  sudo tar -xzf "$BACKUP_ROOT/runtime-and-units.tar.gz" -C / || return 1
+  sudo tar -dzf "$BACKUP_ROOT/runtime-and-units.tar.gz" -C / || return 1
+  sudo systemctl daemon-reload || return 1
 }
 
 rollback() {
-  local code=$?
+  local original_code=$?
+  local rollback_failed=0
+  local repo backup failed current_moved
   trap - ERR
+  set +e
   for repo in "${SWAPPED[@]}"; do
-    sudo rm -rf "$MIRROR_ROOT/$repo"
-    sudo mv "$MIRROR_ROOT/.backup-$RUN_ID-$repo" "$MIRROR_ROOT/$repo" || true
+    backup="$MIRROR_ROOT/.backup-$RUN_ID-$repo"
+    failed="$MIRROR_ROOT/.failed-$RUN_ID-$repo"
+    if ! sudo test -d "$backup"; then
+      echo "Rollback backup missing for $repo" >&2
+      rollback_failed=1
+      continue
+    fi
+    if ! sudo rm -rf "$failed"; then rollback_failed=1; continue; fi
+    current_moved=0
+    if sudo test -e "$MIRROR_ROOT/$repo"; then
+      if ! sudo mv "$MIRROR_ROOT/$repo" "$failed"; then rollback_failed=1; continue; fi
+      current_moved=1
+    fi
+    if ! sudo mv "$backup" "$MIRROR_ROOT/$repo"; then
+      echo "Rollback restore rename failed for $repo" >&2
+      rollback_failed=1
+      if [[ $current_moved == 1 ]] && ! sudo mv "$failed" "$MIRROR_ROOT/$repo"; then
+        echo "Rollback recovery rename also failed for $repo" >&2
+      fi
+      continue
+    fi
+    if ! sudo -u fixvox-workspace test "$(sudo -u fixvox-workspace git -C "$MIRROR_ROOT/$repo" rev-parse HEAD)" = "$(cat "$BACKUP_ROOT/$repo.previous-commit")"; then
+      echo "Rollback commit verification failed for $repo" >&2
+      rollback_failed=1
+    fi
+    if [[ $current_moved == 1 ]] && ! sudo rm -rf "$failed"; then rollback_failed=1; fi
   done
-  restore_runtime || true
-  sudo systemctl restart fixvox-workspace-broker.service fixvox-constelaciones-read-broker.service || true
-  if [[ $RELEASE_WAS_ACTIVE == 1 ]]; then sudo systemctl restart fixvox-release-broker.service || true; fi
-  systemctl --user restart fixvox-admin-web.service || true
-  exit "$code"
+  if ! restore_runtime; then
+    echo 'Runtime rollback restore or archive verification failed' >&2
+    rollback_failed=1
+  fi
+  if ! sudo systemctl restart fixvox-workspace-broker.service fixvox-constelaciones-read-broker.service; then rollback_failed=1; fi
+  if [[ $RELEASE_WAS_ACTIVE == 1 ]] && ! sudo systemctl restart fixvox-release-broker.service; then rollback_failed=1; fi
+  if [[ $ADMIN_HELPER_WAS_ACTIVE == 1 ]] && ! sudo systemctl restart fixvox-admin-deploy-helper.service; then rollback_failed=1; fi
+  if ! systemctl --user restart fixvox-admin-web.service; then rollback_failed=1; fi
+  if ! verify_health; then
+    echo 'Rollback health verification failed' >&2
+    rollback_failed=1
+  fi
+  if [[ $rollback_failed != 0 ]]; then
+    echo "Rollout failed with status $original_code and rollback was not verified" >&2
+    exit 70
+  fi
+  echo "Rollout failed with status $original_code; rollback restored and verified" >&2
+  exit "$original_code"
 }
 trap rollback ERR
 
@@ -59,7 +114,11 @@ sudo tar -czf "$BACKUP_ROOT/runtime-and-units.tar.gz" -C / \
   etc/systemd/system/fixvox-workspace-broker.service \
   etc/systemd/system/fixvox-constelaciones-read-broker.service \
   etc/systemd/system/fixvox-release-broker.service \
-  etc/systemd/system/fixvox-admin-deploy-helper.service
+  etc/systemd/system/fixvox-admin-deploy-helper.service \
+  opt/fixvox-agent/run-omp.sh
+sha256sum "$BACKUP_ROOT/runtime-and-units.tar.gz" > "$BACKUP_ROOT/runtime-and-units.tar.gz.sha256"
+if sudo systemctl is-active --quiet fixvox-release-broker.service; then RELEASE_WAS_ACTIVE=1; fi
+if sudo systemctl is-active --quiet fixvox-admin-deploy-helper.service; then ADMIN_HELPER_WAS_ACTIVE=1; fi
 
 for file in "${RUNTIME_FILES[@]}"; do
   node --check "$STAGE/admin/fixvox-web/$file"
@@ -74,7 +133,7 @@ if [[ $SYNC_MIRRORS == 1 ]]; then
     rm -rf "/tmp/fixvox-agent-$RUN_ID-$repo"
     git clone --depth 1 --branch main "$origin" "/tmp/fixvox-agent-$RUN_ID-$repo"
     if git -C "/tmp/fixvox-agent-$RUN_ID-$repo" ls-files \
-      | grep -Ei '(^|/)(\.env($|\.)|auth\.json$|credentials?($|\.)|sessions?/|private-exports?/|[^/]+\.(sqlite|sqlite3|db)$)' \
+      | grep -Ei '(^|/)(\.env($|\.)|[^/]+\.env$|\.dev\.vars($|\.)|\.wrangler(/|$)|auth\.json$|id_(rsa|dsa|ecdsa|ed25519)$|private[-_.]?key($|\.)|[^/]+\.(key|pem|p12|pfx)$|credentials?($|\.)|sessions?/|private-exports?/|[^/]+\.(sqlite|sqlite3|db)$)' \
       | grep -Eiv '\.env\.(example|sample|template)$' | grep -q .; then
       echo "Tracked sensitive path rejected in $repo" >&2
       exit 1
@@ -94,6 +153,7 @@ if [[ $SYNC_MIRRORS == 1 ]]; then
   done
 fi
 
+RUNTIME_APPLIED=1
 sudo install -d -o root -g root -m 0755 "$OPT_ROOT/runtime"
 for file in "${RUNTIME_FILES[@]}"; do
   sudo install -o root -g root -m 0644 "$STAGE/admin/fixvox-web/$file" "$OPT_ROOT/runtime/$file"
@@ -102,7 +162,6 @@ sudo install -o root -g root -m 0755 "$STAGE/admin/fixvox-web/run-isolated-omp.s
 for unit in fixvox-workspace-broker.service fixvox-constelaciones-read-broker.service fixvox-release-broker.service fixvox-admin-deploy-helper.service; do
   sudo install -o root -g root -m 0644 "$STAGE/admin/fixvox-web/systemd/$unit" "/etc/systemd/system/$unit"
 done
-RUNTIME_APPLIED=1
 sudo systemctl daemon-reload
 
 if [[ $SYNC_MIRRORS == 1 ]]; then
@@ -110,21 +169,18 @@ if [[ $SYNC_MIRRORS == 1 ]]; then
   sudo systemctl stop fixvox-workspace-broker.service
   if sudo systemctl is-active --quiet fixvox-release-broker.service; then RELEASE_WAS_ACTIVE=1; sudo systemctl stop fixvox-release-broker.service; fi
   for repo in "${REPOS[@]}"; do
+    sudo -u fixvox-workspace git -C "$MIRROR_ROOT/$repo" rev-parse HEAD > "$BACKUP_ROOT/$repo.previous-commit"
     sudo mv "$MIRROR_ROOT/$repo" "$MIRROR_ROOT/.backup-$RUN_ID-$repo"
-    sudo mv "$MIRROR_ROOT/.candidate-$RUN_ID-$repo" "$MIRROR_ROOT/$repo"
     SWAPPED+=("$repo")
+    sudo mv "$MIRROR_ROOT/.candidate-$RUN_ID-$repo" "$MIRROR_ROOT/$repo"
   done
 fi
 
 sudo systemctl restart fixvox-workspace-broker.service fixvox-constelaciones-read-broker.service
 if [[ $RELEASE_WAS_ACTIVE == 1 ]]; then sudo systemctl restart fixvox-release-broker.service; fi
+if [[ $ADMIN_HELPER_WAS_ACTIVE == 1 ]]; then sudo systemctl restart fixvox-admin-deploy-helper.service; fi
 systemctl --user restart fixvox-admin-web.service
 sleep 1
-sudo systemctl is-active --quiet fixvox-workspace-broker.service
-sudo systemctl is-active --quiet fixvox-constelaciones-read-broker.service
-systemctl --user is-active --quiet fixvox-admin-web.service
-sudo test "$(sudo stat -c %a /run/fixvox-agent/workspace-broker.sock)" = 660
-sudo test "$(sudo stat -c %a /run/fixvox-agent/constelaciones-read.sock)" = 660
 if sudo -u fixvox-agent test -r "$MIRROR_ROOT/dictation-tauri/package.json"; then
   echo 'Provider user can read workspace directly' >&2
   exit 1
@@ -135,8 +191,7 @@ if sudo -u fixvox-workspace test -r /var/lib/fixvox-agent/.omp/agent/auth.json; 
 fi
 sudo -u fixvox-agent env OMP_CHAT_WORKSPACE_BROKER_SOCKET=/run/fixvox-agent/workspace-broker.sock \
   node --input-type=module -e "import {createBrokerOperations} from '$OPT_ROOT/runtime/omp-workspace-broker-client.mjs'; const o=createBrokerOperations(process.env.OMP_CHAT_WORKSPACE_BROKER_SOCKET); const b=await o.read.readFile('$MIRROR_ROOT/dictation-tauri/package.json'); if(!b.length) process.exit(1)"
-curl -fsS http://127.0.0.1:8787/healthz >/dev/null
-curl -fsS https://fixvox.jpsala.dev/healthz >/dev/null
+verify_health
 
 for repo in "${SWAPPED[@]}"; do
   sudo install -d -o root -g root -m 0700 "/var/lib/fixvox-workspace/rollout-backups/$RUN_ID"
