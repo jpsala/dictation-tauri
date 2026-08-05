@@ -20,7 +20,8 @@ $manifest = @(
   'admin/fixvox-web/omp-admin-deploy-service.mjs', 'admin/fixvox-web/omp-admin-deploy-client.mjs',
   'admin/fixvox-web/release-recipes.example.json', 'admin/fixvox-web/admin-deploy.example.json',
   'admin/fixvox-web/systemd/fixvox-release-broker.service',
-  'admin/fixvox-web/systemd/fixvox-admin-deploy-helper.service'
+  'admin/fixvox-web/systemd/fixvox-admin-deploy-helper.service',
+  'admin/fixvox-web/systemd/fixvox-omp-auth-broker.service'
 )
 
 function Invoke-Checked([string]$FilePath, [string[]]$ArgumentList = @()) { & $FilePath @ArgumentList; if ($LASTEXITCODE -ne 0) { throw "Command failed: $FilePath" } }
@@ -52,7 +53,7 @@ set -Eeuo pipefail
 stage=$1; run=$2; register=$3; enable=$4
 backup=/home/jpsal/.local/state/fixvox-release-provision/$run
 mkdir -p "$backup"
-sudo tar --ignore-failed-read -czf "$backup/pre-provision.tar.gz" -C / etc/fixvox-release etc/systemd/system/fixvox-release-broker.service etc/systemd/system/fixvox-admin-deploy-helper.service opt/fixvox-agent/runtime 2>/dev/null || true
+sudo tar --ignore-failed-read -czf "$backup/pre-provision.tar.gz" -C / etc/fixvox-release etc/systemd/system/fixvox-release-broker.service etc/systemd/system/fixvox-admin-deploy-helper.service etc/systemd/system/fixvox-omp-auth-broker.service opt/fixvox-agent/runtime 2>/dev/null || true
 sudo groupadd --system fixvox-release-broker 2>/dev/null || true
 id fixvox-release >/dev/null 2>&1 || sudo useradd --system --create-home --home-dir /var/lib/fixvox-release --shell /usr/sbin/nologin fixvox-release
 sudo usermod -a -G fixvox-release-broker fixvox-release
@@ -70,6 +71,7 @@ sudo install -o root -g fixvox-release-broker -m 0640 "$stage/admin/fixvox-web/r
 sudo install -o root -g fixvox-release-broker -m 0640 "$stage/admin/fixvox-web/admin-deploy.example.json" /etc/fixvox-release/admin-deploy.json
 sudo install -o root -g root -m 0644 "$stage/admin/fixvox-web/systemd/fixvox-release-broker.service" /etc/systemd/system/fixvox-release-broker.service
 sudo install -o root -g root -m 0644 "$stage/admin/fixvox-web/systemd/fixvox-admin-deploy-helper.service" /etc/systemd/system/fixvox-admin-deploy-helper.service
+sudo install -o root -g root -m 0644 "$stage/admin/fixvox-web/systemd/fixvox-omp-auth-broker.service" /etc/systemd/system/fixvox-omp-auth-broker.service
 sudo install -d -o fixvox-release -g fixvox-release -m 0700 /var/lib/fixvox-release/.ssh /var/lib/fixvox-release/audit
 sudo -u fixvox-release git config --global --replace-all safe.directory /var/lib/fixvox-workspace/repos/dictation-tauri
 sudo -u fixvox-release git config --global user.name 'Fixvox Release'
@@ -105,7 +107,7 @@ p=Path('/etc/fixvox-release/release.json'); o=json.loads(p.read_text()); o['reci
 PY
   python3 - <<'PY'
 from pathlib import Path
-p=Path.home()/'.config/dictation-tauri/admin-web.env'; lines=p.read_text().splitlines(); updates={'OMP_CHAT_RELEASE_BROKER_ENABLED':'1','OMP_CHAT_RELEASE_BROKER_SOCKET':'/run/fixvox-release/release.sock'}; out=[]; seen=set()
+p=Path.home()/'.config/dictation-tauri/admin-web.env'; lines=p.read_text().splitlines(); updates={'OMP_CHAT_RELEASE_BROKER_ENABLED':'1','OMP_CHAT_RELEASE_BROKER_SOCKET':'/run/fixvox-release/release.sock','OMP_AUTH_BROKER_URL':'http://127.0.0.1:8765'}; out=[]; seen=set()
 for line in lines:
  k=line.split('=',1)[0] if '=' in line else ''
  if k in updates: out.append(f'{k}={updates[k]}'); seen.add(k)
@@ -114,10 +116,14 @@ for k,v in updates.items():
  if k not in seen: out.append(f'{k}={v}')
 p.write_text('\n'.join(out)+'\n')
 PY
-  sudo systemctl enable --now fixvox-admin-deploy-helper.service fixvox-release-broker.service
+  sudo -u jpsal env HOME=/home/jpsal PI_CODING_AGENT_DIR=/home/jpsal/.omp/agent /opt/fixvox-agent/bin/omp auth-broker token >/dev/null
+  sudo install -d -o fixvox-agent -g fixvox-agent -m 0700 /var/lib/fixvox-agent/.omp
+  sudo install -o fixvox-agent -g fixvox-agent -m 0600 /home/jpsal/.omp/auth-broker.token /var/lib/fixvox-agent/.omp/auth-broker.token
+  sudo systemctl enable --now fixvox-omp-auth-broker.service fixvox-admin-deploy-helper.service fixvox-release-broker.service
+  sudo -u fixvox-agent env HOME=/var/lib/fixvox-agent OMP_AUTH_BROKER_URL=http://127.0.0.1:8765 /opt/fixvox-agent/bin/omp auth-broker status --json | grep -q '"ok":true'
   systemctl --user restart fixvox-admin-web.service
 else
-  sudo systemctl disable fixvox-admin-deploy-helper.service fixvox-release-broker.service >/dev/null 2>&1 || true
+  sudo systemctl disable fixvox-omp-auth-broker.service fixvox-admin-deploy-helper.service fixvox-release-broker.service >/dev/null 2>&1 || true
 fi
 printf 'run=%s key=%s enabled=%s status=ok\n' "$run" "$register" "$enable" > "$backup/receipt.txt"
 '@

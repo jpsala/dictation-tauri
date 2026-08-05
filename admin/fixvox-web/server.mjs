@@ -33,6 +33,7 @@ const REMOTE_AGENT_WORKSPACE_SOCKET = path.resolve(process.env.OMP_CHAT_WORKSPAC
 const REMOTE_AGENT_RELEASE_ENABLED = process.env.OMP_CHAT_RELEASE_BROKER_ENABLED === '1'
 const REMOTE_AGENT_RELEASE_SOCKET = path.resolve(process.env.OMP_CHAT_RELEASE_BROKER_SOCKET || path.join(REMOTE_AGENT_HOME, 'run', 'release-broker.sock'))
 const REMOTE_AGENT_ROOTS = remoteAgentRoots(process.env.OMP_CHAT_AGENT_ROOTS, repoRoot)
+const REMOTE_AGENT_AUTH_BROKER_URL = process.env.OMP_AUTH_BROKER_URL || ''
 const ADMIN_BASE_URL = (process.env.FIXVOX_ADMIN_BASE_URL || 'https://auth-fixvox.jpsala.dev').replace(/\/+$/g, '')
 const ADMIN_ENV = process.env.FIXVOX_ADMIN_ENV || (ADMIN_BASE_URL.includes('127.0.0.1') || ADMIN_BASE_URL.includes('localhost') ? 'local' : 'production')
 const sessions = new Map()
@@ -82,6 +83,7 @@ function ompProcessEnv() {
       workspaceBrokerSocket: REMOTE_AGENT_WORKSPACE_SOCKET,
       releaseBrokerSocket: REMOTE_AGENT_RELEASE_SOCKET,
       releaseBrokerEnabled: REMOTE_AGENT_RELEASE_ENABLED,
+      authBrokerUrl: REMOTE_AGENT_AUTH_BROKER_URL,
     })
   }
   const env = { ...process.env }
