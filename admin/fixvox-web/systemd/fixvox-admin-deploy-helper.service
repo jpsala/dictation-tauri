@@ -22,7 +22,7 @@ ProtectHome=read-only
 ReadOnlyPaths=/etc/fixvox-release /opt/fixvox-agent/runtime /var/lib/fixvox-workspace/repos/dictation-tauri
 ReadWritePaths=/home/jpsal/dev/dictation-tauri/admin/fixvox-web /home/jpsal/.local/state/fixvox-admin-backups /run/fixvox-release
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SETGID CAP_SETUID
 
 [Install]
 WantedBy=multi-user.target
