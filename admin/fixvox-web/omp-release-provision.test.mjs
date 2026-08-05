@@ -37,6 +37,7 @@ test('services and deploy recipe remain disabled without the explicit enable swi
   assert.match(deployUnit, /CapabilityBoundingSet=.*CAP_SETGID.*CAP_SETUID/)
   assert.match(deployUnit, /RestrictAddressFamilies=.*AF_NETLINK/)
   assert.match(deployUnit, /AmbientCapabilities=CAP_SETGID CAP_SETUID/)
+  assert.match(deployUnit, /ReadWritePaths=\/home\/jpsal\/dev\/dictation-tauri\/admin /)
 })
 
 test('release config exposes only typed fixed recipes and no credentials', () => {
