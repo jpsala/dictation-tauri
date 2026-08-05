@@ -67,6 +67,13 @@ export function buildRemoteAgentEnv(source, options = {}) {
   if (options.workspaceBrokerSocket) env.OMP_CHAT_WORKSPACE_BROKER_SOCKET = canonical(options.workspaceBrokerSocket)
   if (options.releaseBrokerSocket) env.OMP_CHAT_RELEASE_BROKER_SOCKET = canonical(options.releaseBrokerSocket)
   if (options.releaseBrokerEnabled) env.OMP_CHAT_RELEASE_BROKER_ENABLED = '1'
+  if (options.authBrokerUrl) {
+    const broker = new URL(String(options.authBrokerUrl))
+    if (broker.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(broker.hostname)) {
+      throw new Error('OMP auth broker must use a loopback HTTP endpoint.')
+    }
+    env.OMP_AUTH_BROKER_URL = broker.href.replace(/\/$/, '')
+  }
   env.OMP_CHAT_REMOTE_AGENT = '1'
   return env
 }
@@ -238,5 +245,5 @@ export function auditRecord({ toolName, classification, approved, sessionId, now
 }
 
 export function containsSensitiveEnvName(env) {
-  return Object.keys(env || {}).some((key) => SECRET_ENV_NAME.test(key))
+  return Object.keys(env || {}).some((key) => key !== 'OMP_AUTH_BROKER_URL' && SECRET_ENV_NAME.test(key))
 }

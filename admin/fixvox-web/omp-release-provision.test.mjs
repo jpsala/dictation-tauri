@@ -5,6 +5,7 @@ import test from 'node:test'
 const provision = await fs.readFile(new URL('../../scripts/omp-release-provision.ps1', import.meta.url), 'utf8')
 const releaseUnit = await fs.readFile(new URL('./systemd/fixvox-release-broker.service', import.meta.url), 'utf8')
 const deployUnit = await fs.readFile(new URL('./systemd/fixvox-admin-deploy-helper.service', import.meta.url), 'utf8')
+const authBrokerUnit = await fs.readFile(new URL('./systemd/fixvox-omp-auth-broker.service', import.meta.url), 'utf8')
 let recipe
 try { recipe = JSON.parse(await fs.readFile(new URL('./release-recipes.example.json', import.meta.url), 'utf8')) }
 catch { throw new Error('Release recipe fixture must be valid JSON.') }
@@ -15,6 +16,7 @@ test('release provisioning is dry-run by default with separate key and enable ga
   assert.match(provision, /\[switch\]\$EnableReleaseBroker/)
   assert.ok(provision.indexOf('if (-not $ConfirmProduction)') < provision.indexOf('ssh-keygen'))
   assert.match(provision, /DRY RUN: no users, keys, GitHub settings, services, configs, credentials, or feature flags changed/)
+  assert.ok(provision.indexOf('if [[ $enable == 1 ]]') < provision.indexOf('omp auth-broker token'))
 })
 
 test('deploy key is repo-specific, write-enabled and never copied to agent/workspace', () => {
@@ -30,7 +32,7 @@ test('deploy key is repo-specific, write-enabled and never copied to agent/works
 test('services and deploy recipe remain disabled without the explicit enable switch', () => {
   assert.equal(recipe.recipes['fixvox-admin-vps'].enabled, false)
   assert.match(provision, /if \[\[ \$enable == 1 \]\]/)
-  assert.match(provision, /systemctl disable fixvox-admin-deploy-helper\.service fixvox-release-broker\.service/)
+  assert.match(provision, /systemctl disable fixvox-omp-auth-broker\.service fixvox-admin-deploy-helper\.service fixvox-release-broker\.service/)
   assert.match(releaseUnit, /User=fixvox-release/)
   assert.match(deployUnit, /User=root/)
   assert.match(deployUnit, /OMP_ADMIN_DEPLOY_CONFIG=\/etc\/fixvox-release\/admin-deploy\.json/)
@@ -38,6 +40,11 @@ test('services and deploy recipe remain disabled without the explicit enable swi
   assert.match(deployUnit, /RestrictAddressFamilies=.*AF_NETLINK/)
   assert.match(deployUnit, /AmbientCapabilities=CAP_SETGID CAP_SETUID/)
   assert.match(deployUnit, /ReadWritePaths=\/home\/jpsal\/dev\/dictation-tauri\/admin /)
+  assert.match(authBrokerUnit, /User=jpsal/)
+  assert.match(authBrokerUnit, /--bind=127\.0\.0\.1:8765/)
+  assert.match(authBrokerUnit, /ReadWritePaths=\/home\/jpsal\/\.omp/)
+  assert.match(provision, /OMP_AUTH_BROKER_URL':'http:\/\/127\.0\.0\.1:8765'/)
+  assert.match(provision, /auth-broker status --json/)
 })
 
 test('release config exposes only typed fixed recipes and no credentials', () => {

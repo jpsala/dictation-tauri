@@ -21,13 +21,15 @@ const cwd = roots[0]
 test('isolated OMP environment strips credentials and exports only broker policy coordinates', () => {
   const env = buildRemoteAgentEnv({ PATH: '/usr/bin', HOME: '/home/jpsal', API_TOKEN: 'secret', ADMIN_API_KEY: 'secret', LANG: 'C.UTF-8' }, {
     home: '/home/fixvox-agent', user: 'fixvox-agent', auditPath: '/home/fixvox-agent/audit/operations.jsonl', roots,
-    constelacionesSocket: '/run/fixvox-agent/constelaciones.sock', workspaceBrokerSocket: '/run/fixvox-agent/workspace.sock', releaseBrokerSocket: '/run/fixvox-agent/release.sock', releaseBrokerEnabled: true,
+    constelacionesSocket: '/run/fixvox-agent/constelaciones.sock', workspaceBrokerSocket: '/run/fixvox-agent/workspace.sock', releaseBrokerSocket: '/run/fixvox-agent/release.sock', releaseBrokerEnabled: true, authBrokerUrl: 'http://127.0.0.1:8765',
   })
   assert.equal(env.API_TOKEN, undefined)
   assert.equal(env.ADMIN_API_KEY, undefined)
   assert.equal(env.OMP_CHAT_RELEASE_BROKER_ENABLED, '1')
+  assert.equal(env.OMP_AUTH_BROKER_URL, 'http://127.0.0.1:8765')
   assert.equal(env.OMP_CHAT_REMOTE_AGENT, '1')
   assert.equal(containsSensitiveEnvName(env), false)
+  assert.throws(() => buildRemoteAgentEnv({}, { authBrokerUrl: 'https://broker.example.com' }), /loopback HTTP endpoint/)
 })
 
 test('OMP RPC args use documented isolation, session continuity and no Pi-only flags', () => {

@@ -1,0 +1,23 @@
+[Unit]
+Description=Fixvox central OMP credential broker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jpsal
+Group=jpsal
+Environment=HOME=/home/jpsal
+Environment=PI_CODING_AGENT_DIR=/home/jpsal/.omp/agent
+ExecStart=/opt/fixvox-agent/bin/omp auth-broker serve --bind=127.0.0.1:8765
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/jpsal/.omp
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
