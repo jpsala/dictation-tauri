@@ -114,6 +114,7 @@ export function createAdminDeployOperations(config, dependencies = {}) {
   const filesystem = dependencies.filesystem || fs
   const execute = dependencies.run || run
   const request = dependencies.fetch || fetch
+  const pause = dependencies.pause || ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)))
   const sourceAdmin = path.join(config.sourceRoot, 'admin', 'fixvox-web')
   let transaction
   let cleanup = []
@@ -272,8 +273,17 @@ export function createAdminDeployOperations(config, dependencies = {}) {
     },
     async health() {
       for (const url of [config.localHealthUrl, config.publicHealthUrl]) {
-        const response = await request(url, { signal: AbortSignal.timeout(30_000) })
-        if (!response.ok) throw new Error('Admin health check failed.')
+        const deadline = Date.now() + 30_000
+        let healthy = false
+        do {
+          try {
+            healthy = (await request(url, { signal: AbortSignal.timeout(5_000) })).ok
+          } catch {
+            healthy = false
+          }
+          if (!healthy) await pause(250)
+        } while (!healthy && Date.now() < deadline)
+        if (!healthy) throw new Error('Admin health check failed.')
       }
       if (transaction?.targetRoot) await clearJournal(transaction.targetRoot)
       for (const target of cleanup) await filesystem.rm(target, { recursive: true, force: true })

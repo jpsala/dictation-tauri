@@ -205,3 +205,23 @@ test('Admin restart targets the configured user systemd session through fixed ru
     timeoutMs: 60_000,
   }]])
 })
+
+test('Admin health retries startup races before checking the public endpoint', async () => {
+  const requests = []
+  const pauses = []
+  const operations = createAdminDeployOperations({
+    sourceRoot: '/source',
+    localHealthUrl: 'http://local/healthz',
+    publicHealthUrl: 'https://public/healthz',
+  }, {
+    fetch: async (url) => {
+      requests.push(url)
+      if (requests.length === 1) throw new Error('connection refused')
+      return { ok: true }
+    },
+    pause: async (milliseconds) => pauses.push(milliseconds),
+  })
+  await operations.health()
+  assert.deepEqual(requests, ['http://local/healthz', 'http://local/healthz', 'https://public/healthz'])
+  assert.deepEqual(pauses, [250])
+})
