@@ -10,9 +10,9 @@ Group=fixvox-release-broker
 RuntimeDirectory=fixvox-release
 RuntimeDirectoryMode=0770
 RuntimeDirectoryPreserve=yes
-Environment=PI_ADMIN_DEPLOY_SOCKET=/run/fixvox-release/admin-deploy.sock
-Environment=PI_ADMIN_DEPLOY_CONFIG=/etc/fixvox-release/admin-deploy.json
-ExecStart=/usr/bin/node /opt/fixvox-agent/runtime/pi-admin-deploy-service.mjs
+Environment=OMP_ADMIN_DEPLOY_SOCKET=/run/fixvox-release/admin-deploy.sock
+Environment=OMP_ADMIN_DEPLOY_CONFIG=/etc/fixvox-release/admin-deploy.json
+ExecStart=/usr/bin/node /opt/fixvox-agent/runtime/omp-admin-deploy-service.mjs
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=true

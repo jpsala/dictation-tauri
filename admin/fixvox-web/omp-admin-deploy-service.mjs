@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises'
 import http from 'node:http'
-import { AdminDeployBroker } from './pi-admin-deploy-broker.mjs'
-import { ADMIN_DEPLOY_MANIFEST, createAdminDeployOperations } from './pi-admin-deploy-operations.mjs'
+import { AdminDeployBroker } from './omp-admin-deploy-broker.mjs'
+import { ADMIN_DEPLOY_MANIFEST, createAdminDeployOperations } from './omp-admin-deploy-operations.mjs'
 
 export function createAdminDeployServer(broker) {
   return http.createServer(async (request, response) => {
@@ -23,8 +23,8 @@ export function createAdminDeployServer(broker) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const socketPath = process.env.PI_ADMIN_DEPLOY_SOCKET
-  const configPath = process.env.PI_ADMIN_DEPLOY_CONFIG
+  const socketPath = process.env.OMP_ADMIN_DEPLOY_SOCKET
+  const configPath = process.env.OMP_ADMIN_DEPLOY_CONFIG
   if (!socketPath || !configPath) throw new Error('Admin deploy helper is not configured.')
   let config
   try { config = JSON.parse(await fs.readFile(configPath, 'utf8')) } catch { throw new Error('Admin deploy helper config is invalid.') }

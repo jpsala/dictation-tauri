@@ -47,7 +47,7 @@ export function createConstelacionesReadBroker({ dbPath, now = () => new Date() 
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const socketPath = process.env.PI_CHAT_CONSTELACIONES_SOCKET
+  const socketPath = process.env.OMP_CHAT_CONSTELACIONES_SOCKET
   const dbPath = process.env.CONSTELACIONES_READ_DB
   if (!socketPath || !dbPath) throw new Error('Broker socket and read database are required.')
   await fs.rm(socketPath, { force: true })

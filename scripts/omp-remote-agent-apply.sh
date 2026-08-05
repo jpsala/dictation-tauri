@@ -8,22 +8,22 @@ BACKUP_ROOT="/home/jpsal/.local/state/fixvox-agent-rollouts/$RUN_ID"
 OPT_ROOT=/opt/fixvox-agent
 MIRROR_ROOT=/var/lib/fixvox-workspace/repos
 RUNTIME_FILES=(
-  pi-chat-access.mjs
-  pi-remote-policy.mjs
-  pi-remote-agent-core.mjs
-  pi-remote-agent-extension.mjs
-  pi-workspace-broker-client.mjs
-  pi-workspace-broker.mjs
+  omp-chat-access.mjs
+  omp-remote-policy.mjs
+  omp-host-tools.mjs
+  omp-rpc-framing.mjs
+  omp-workspace-broker-client.mjs
+  omp-workspace-broker.mjs
   constelaciones-read-adapter.mjs
   constelaciones-read-broker.mjs
-  pi-release-broker.mjs
-  pi-release-broker-client.mjs
-  pi-release-git-runner.mjs
-  pi-release-service.mjs
-  pi-admin-deploy-broker.mjs
-  pi-admin-deploy-operations.mjs
-  pi-admin-deploy-service.mjs
-  pi-admin-deploy-client.mjs
+  omp-release-broker.mjs
+  omp-release-broker-client.mjs
+  omp-release-git-runner.mjs
+  omp-release-service.mjs
+  omp-admin-deploy-broker.mjs
+  omp-admin-deploy-operations.mjs
+  omp-admin-deploy-service.mjs
+  omp-admin-deploy-client.mjs
 )
 REPOS=(dictation-tauri constelaciones)
 SWAPPED=()
@@ -55,9 +55,11 @@ trap rollback ERR
 
 mkdir -p "$BACKUP_ROOT"
 sudo tar -czf "$BACKUP_ROOT/runtime-and-units.tar.gz" -C / \
-  opt/fixvox-agent/runtime opt/fixvox-agent/run-pi.sh \
+  opt/fixvox-agent/runtime \
   etc/systemd/system/fixvox-workspace-broker.service \
-  etc/systemd/system/fixvox-constelaciones-read-broker.service
+  etc/systemd/system/fixvox-constelaciones-read-broker.service \
+  etc/systemd/system/fixvox-release-broker.service \
+  etc/systemd/system/fixvox-admin-deploy-helper.service
 
 for file in "${RUNTIME_FILES[@]}"; do
   node --check "$STAGE/admin/fixvox-web/$file"
@@ -96,9 +98,10 @@ sudo install -d -o root -g root -m 0755 "$OPT_ROOT/runtime"
 for file in "${RUNTIME_FILES[@]}"; do
   sudo install -o root -g root -m 0644 "$STAGE/admin/fixvox-web/$file" "$OPT_ROOT/runtime/$file"
 done
-sudo install -o root -g root -m 0755 "$STAGE/admin/fixvox-web/run-isolated-pi.sh" "$OPT_ROOT/run-pi.sh"
-sudo install -o root -g root -m 0644 "$STAGE/admin/fixvox-web/systemd/fixvox-workspace-broker.service" /etc/systemd/system/fixvox-workspace-broker.service
-sudo install -o root -g root -m 0644 "$STAGE/admin/fixvox-web/systemd/fixvox-constelaciones-read-broker.service" /etc/systemd/system/fixvox-constelaciones-read-broker.service
+sudo install -o root -g root -m 0755 "$STAGE/admin/fixvox-web/run-isolated-omp.sh" "$OPT_ROOT/run-omp.sh"
+for unit in fixvox-workspace-broker.service fixvox-constelaciones-read-broker.service fixvox-release-broker.service fixvox-admin-deploy-helper.service; do
+  sudo install -o root -g root -m 0644 "$STAGE/admin/fixvox-web/systemd/$unit" "/etc/systemd/system/$unit"
+done
 RUNTIME_APPLIED=1
 sudo systemctl daemon-reload
 
@@ -126,12 +129,12 @@ if sudo -u fixvox-agent test -r "$MIRROR_ROOT/dictation-tauri/package.json"; the
   echo 'Provider user can read workspace directly' >&2
   exit 1
 fi
-if sudo -u fixvox-workspace test -r /var/lib/fixvox-agent/.pi/agent/auth.json; then
+if sudo -u fixvox-workspace test -r /var/lib/fixvox-agent/.omp/agent/auth.json; then
   echo 'Workspace user can read provider auth' >&2
   exit 1
 fi
-sudo -u fixvox-agent env PI_CHAT_WORKSPACE_BROKER_SOCKET=/run/fixvox-agent/workspace-broker.sock \
-  node --input-type=module -e "import {createBrokerOperations} from '$OPT_ROOT/runtime/pi-workspace-broker-client.mjs'; const o=createBrokerOperations(process.env.PI_CHAT_WORKSPACE_BROKER_SOCKET); const b=await o.read.readFile('$MIRROR_ROOT/dictation-tauri/package.json'); if(!b.length) process.exit(1)"
+sudo -u fixvox-agent env OMP_CHAT_WORKSPACE_BROKER_SOCKET=/run/fixvox-agent/workspace-broker.sock \
+  node --input-type=module -e "import {createBrokerOperations} from '$OPT_ROOT/runtime/omp-workspace-broker-client.mjs'; const o=createBrokerOperations(process.env.OMP_CHAT_WORKSPACE_BROKER_SOCKET); const b=await o.read.readFile('$MIRROR_ROOT/dictation-tauri/package.json'); if(!b.length) process.exit(1)"
 curl -fsS http://127.0.0.1:8787/healthz >/dev/null
 curl -fsS https://fixvox.jpsala.dev/healthz >/dev/null
 

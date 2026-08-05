@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import test from 'node:test'
 
-const rollout = await fs.readFile(new URL('../../scripts/pi-remote-agent-rollout.ps1', import.meta.url), 'utf8')
-const apply = await fs.readFile(new URL('../../scripts/pi-remote-agent-apply.sh', import.meta.url), 'utf8')
+const rollout = await fs.readFile(new URL('../../scripts/omp-remote-agent-rollout.ps1', import.meta.url), 'utf8')
+const apply = await fs.readFile(new URL('../../scripts/omp-remote-agent-apply.sh', import.meta.url), 'utf8')
 
 test('rollout defaults to dry-run and gates every remote mutation', () => {
   assert.match(rollout, /\[switch\]\$ConfirmProduction/)
@@ -13,7 +13,7 @@ test('rollout defaults to dry-run and gates every remote mutation', () => {
 })
 
 test('rollout uses exact manifest, one verified bundle, bounded retry and cleanup', () => {
-  for (const file of ['pi-remote-agent-extension.mjs', 'pi-workspace-broker.mjs', 'constelaciones-read-broker.mjs', 'pi-release-broker.mjs', 'pi-release-broker-client.mjs', 'pi-release-git-runner.mjs', 'pi-release-service.mjs', 'run-isolated-pi.sh', 'fixvox-workspace-broker.service', 'fixvox-constelaciones-read-broker.service']) {
+  for (const file of ['omp-host-tools.mjs', 'omp-rpc-framing.mjs', 'omp-workspace-broker.mjs', 'constelaciones-read-broker.mjs', 'omp-release-broker.mjs', 'omp-release-broker-client.mjs', 'omp-release-git-runner.mjs', 'omp-release-service.mjs', 'run-isolated-omp.sh', 'fixvox-workspace-broker.service', 'fixvox-constelaciones-read-broker.service']) {
     assert.ok(rollout.includes(file))
   }
   assert.match(rollout, /Get-Sha256/)
@@ -36,6 +36,6 @@ test('remote apply fails dirty mirrors, rejects secrets and swaps on one filesys
 })
 
 test('rollout never copies or archives provider OAuth', () => {
-  assert.doesNotMatch(`${rollout}\n${apply}`, /(?:cp|install|tar)[^\n]*(?:auth\.json|\.pi\/agent\/auth)/i)
+  assert.doesNotMatch(`${rollout}\n${apply}`, /(?:cp|install|tar)[^\n]*(?:auth\.json|\.omp\/agent\/auth)/i)
   assert.match(apply, /workspace user can read provider auth/i)
 })

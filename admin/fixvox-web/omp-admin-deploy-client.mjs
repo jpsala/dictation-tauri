@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import http from 'node:http'
 
-const socketPath = process.env.PI_ADMIN_DEPLOY_SOCKET
+const socketPath = process.env.OMP_ADMIN_DEPLOY_SOCKET
 const index = process.argv.indexOf('--source-hash')
 const sourceHash = index >= 0 ? process.argv[index + 1] : ''
 if (!socketPath || !/^[a-f0-9]{40}$/.test(sourceHash)) throw new Error('Admin deploy client is not configured.')

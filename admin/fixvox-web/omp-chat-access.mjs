@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 
-export class PiChatAccessCoordinator {
+export class OmpChatAccessCoordinator {
   constructor({ now = () => Date.now(), ttlMs = 65_000 } = {}) {
     this.now = now
     this.ttlMs = ttlMs
@@ -9,7 +9,7 @@ export class PiChatAccessCoordinator {
   }
 
   beginPrompt(sessionKey) {
-    if (this.activeSession) throw Object.assign(new Error('Pi Chat is busy with another request.'), { status: 409 })
+    if (this.activeSession) throw Object.assign(new Error('OMP Chat is busy with another request.'), { status: 409 })
     this.activeSession = sessionKey
   }
 
@@ -39,7 +39,7 @@ export class PiChatAccessCoordinator {
   }
 }
 
-export function piChatSessionKey(req, principal) {
+export function ompChatSessionKey(req, principal) {
   const cookie = req.headers.cookie || ''
   const token = cookie.match(/(?:^|;\s*)fixvox_admin_session=([^;]+)/)?.[1]
   const identity = token || principal?.sub || principal?.email

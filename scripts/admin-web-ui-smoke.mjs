@@ -68,8 +68,8 @@ try {
   await snap(page, 'people')
 
   await page.locator('#messages [data-select-entity]', { hasText: 'Tu cuenta' }).click()
-  await page.getByTitle('Pi Chat').click()
-  check('chat title rendered', (await page.locator('.pi-header h1').innerText()) === 'Pi Chat')
+  await page.getByTitle('OMP Chat').click()
+  check('chat title rendered', (await page.locator('.pi-header h1').innerText()) === 'OMP Chat')
   check('selected person reaches chat', (await page.locator('#main-subtitle').innerText()).includes('selección: Juan Pablo Sala'))
   check('send disabled when empty', await page.locator('#send-button').isDisabled())
   check('abort disabled while idle', await page.locator('#abort-button').isDisabled())
@@ -122,8 +122,8 @@ try {
   await page.getByRole('heading', { name: 'Historial de cambios' }).waitFor({ timeout: 10_000 })
   check('audit view is read only', await page.locator('#messages form, #messages button').count() === 0)
 
-  await page.getByTitle('Pi Chat').click()
-  check('chat context subtitle renders', (await page.locator('#main-subtitle').innerText()).includes('vista: Pi Chat'))
+  await page.getByTitle('OMP Chat').click()
+  check('chat context subtitle renders', (await page.locator('#main-subtitle').innerText()).includes('vista: OMP Chat'))
   await page.locator('#prompt').fill('LINE1')
   await page.locator('#prompt').press('Shift+Enter')
   await page.locator('#prompt').pressSequentially('LINE2')
@@ -143,11 +143,11 @@ try {
   check('final message event renders', await page.getByText('FIXVOX_FINAL_MESSAGE_OK').isVisible())
   await page.locator('#prompt').fill('FIXVOX_UI_REQUEST_SELECT')
   await page.locator('#send-button').click()
-  await page.getByText('Pi necesita una respuesta: Elegí ambiente').waitFor({ timeout: 10_000 })
-  check('select request renders', await page.getByText('Pi necesita una respuesta: Elegí ambiente').isVisible())
+  await page.getByText('OMP necesita una respuesta: Elegí ambiente').waitFor({ timeout: 10_000 })
+  check('select request renders', await page.getByText('OMP necesita una respuesta: Elegí ambiente').isVisible())
   await page.locator('[data-request-action="option"][data-value="local"]').click()
-  await page.getByText('Pi necesita una respuesta: Elegí ambiente').waitFor({ state: 'detached', timeout: 10_000 })
-  check('select response clears request', !(await page.getByText('Pi necesita una respuesta: Elegí ambiente').isVisible().catch(() => false)))
+  await page.getByText('OMP necesita una respuesta: Elegí ambiente').waitFor({ state: 'detached', timeout: 10_000 })
+  check('select response clears request', !(await page.getByText('OMP necesita una respuesta: Elegí ambiente').isVisible().catch(() => false)))
 
   report.screenshot = await snap(page, 'ui-smoke')
   report.screenshots.final = report.screenshot

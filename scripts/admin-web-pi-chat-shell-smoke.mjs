@@ -49,7 +49,7 @@ try {
   browser = await chromium.launch({ headless: true })
   const page = await browser.newPage({ viewport: viewports[0] })
   await page.goto(`${baseUrl}/admin/pi`, { waitUntil: 'networkidle' })
-  await page.getByTitle('Pi Chat').click()
+  await page.getByTitle('OMP Chat').click()
 
   for (const viewport of viewports) {
     await page.setViewportSize(viewport)

@@ -14,10 +14,10 @@ $remoteBundle = "/tmp/fixvox-release-provision-$runId.tar.gz"
 $localBundle = Join-Path ([IO.Path]::GetTempPath()) "fixvox-release-provision-$runId.tar.gz"
 $windowsTar = Join-Path $env:SystemRoot 'System32/tar.exe'
 $manifest = @(
-  'admin/fixvox-web/pi-release-broker.mjs', 'admin/fixvox-web/pi-release-broker-client.mjs',
-  'admin/fixvox-web/pi-release-git-runner.mjs', 'admin/fixvox-web/pi-release-service.mjs',
-  'admin/fixvox-web/pi-admin-deploy-broker.mjs', 'admin/fixvox-web/pi-admin-deploy-operations.mjs',
-  'admin/fixvox-web/pi-admin-deploy-service.mjs', 'admin/fixvox-web/pi-admin-deploy-client.mjs',
+  'admin/fixvox-web/omp-release-broker.mjs', 'admin/fixvox-web/omp-release-broker-client.mjs',
+  'admin/fixvox-web/omp-release-git-runner.mjs', 'admin/fixvox-web/omp-release-service.mjs',
+  'admin/fixvox-web/omp-admin-deploy-broker.mjs', 'admin/fixvox-web/omp-admin-deploy-operations.mjs',
+  'admin/fixvox-web/omp-admin-deploy-service.mjs', 'admin/fixvox-web/omp-admin-deploy-client.mjs',
   'admin/fixvox-web/release-recipes.example.json', 'admin/fixvox-web/admin-deploy.example.json',
   'admin/fixvox-web/systemd/fixvox-release-broker.service',
   'admin/fixvox-web/systemd/fixvox-admin-deploy-helper.service'
@@ -62,7 +62,7 @@ sudo chown -R fixvox-workspace:fixvox-workspace /var/lib/fixvox-workspace/repos/
 sudo find /var/lib/fixvox-workspace/repos/dictation-tauri -type d -exec chmod 0771 {} +
 sudo find /var/lib/fixvox-workspace/repos/dictation-tauri -type f -exec chmod 0660 {} +
 sudo install -d -o root -g root -m 0755 /opt/fixvox-agent/runtime
-for f in pi-release-broker.mjs pi-release-broker-client.mjs pi-release-git-runner.mjs pi-release-service.mjs pi-admin-deploy-broker.mjs pi-admin-deploy-operations.mjs pi-admin-deploy-service.mjs pi-admin-deploy-client.mjs; do
+for f in omp-release-broker.mjs omp-release-broker-client.mjs omp-release-git-runner.mjs omp-release-service.mjs omp-admin-deploy-broker.mjs omp-admin-deploy-operations.mjs omp-admin-deploy-service.mjs omp-admin-deploy-client.mjs; do
   sudo install -o root -g root -m 0644 "$stage/admin/fixvox-web/$f" "/opt/fixvox-agent/runtime/$f"
 done
 sudo install -d -o root -g fixvox-release-broker -m 0750 /etc/fixvox-release
@@ -105,7 +105,7 @@ p=Path('/etc/fixvox-release/release.json'); o=json.loads(p.read_text()); o['reci
 PY
   python3 - <<'PY'
 from pathlib import Path
-p=Path.home()/'.config/dictation-tauri/admin-web.env'; lines=p.read_text().splitlines(); updates={'PI_CHAT_RELEASE_BROKER_ENABLED':'1','PI_CHAT_RELEASE_BROKER_SOCKET':'/run/fixvox-release/release.sock'}; out=[]; seen=set()
+p=Path.home()/'.config/dictation-tauri/admin-web.env'; lines=p.read_text().splitlines(); updates={'OMP_CHAT_RELEASE_BROKER_ENABLED':'1','OMP_CHAT_RELEASE_BROKER_SOCKET':'/run/fixvox-release/release.sock'}; out=[]; seen=set()
 for line in lines:
  k=line.split('=',1)[0] if '=' in line else ''
  if k in updates: out.append(f'{k}={updates[k]}'); seen.add(k)

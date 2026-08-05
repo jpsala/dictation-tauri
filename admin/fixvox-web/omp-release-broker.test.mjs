@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { ReleaseBroker, sensitiveReleasePath } from './pi-release-broker.mjs'
+import { ReleaseBroker, sensitiveReleasePath } from './omp-release-broker.mjs'
 
 const hashA = 'a'.repeat(40)
 const hashB = 'b'.repeat(40)

@@ -21,8 +21,8 @@
       "cwd": "/var/lib/fixvox-workspace/repos/dictation-tauri",
       "home": "/var/lib/fixvox-release",
       "rollbackId": "admin-backup",
-      "env": { "PI_ADMIN_DEPLOY_SOCKET": "/run/fixvox-release/admin-deploy.sock" },
-      "deploy": { "file": "/usr/bin/node", "args": ["/opt/fixvox-agent/runtime/pi-admin-deploy-client.mjs"], "timeoutMs": 300000 },
+      "env": { "OMP_ADMIN_DEPLOY_SOCKET": "/run/fixvox-release/admin-deploy.sock" },
+      "deploy": { "file": "/usr/bin/node", "args": ["/opt/fixvox-agent/runtime/omp-admin-deploy-client.mjs"], "timeoutMs": 300000 },
       "health": { "file": "/usr/bin/curl", "args": ["-fsS", "http://127.0.0.1:8787/healthz"], "timeoutMs": 30000 },
       "rollback": { "file": "/usr/bin/true", "args": [], "timeoutMs": 30000 }
     }

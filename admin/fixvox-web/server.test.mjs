@@ -148,8 +148,8 @@ test('local auth fixture fails closed outside loopback local mode', async () => 
   assert.match(stderr, /restricted to the local loopback backend/)
 })
 
-test('isolated and unrestricted Pi modes are mutually exclusive', async () => {
-  const child = spawn(process.execPath, ['server.mjs'], { cwd: new URL('.', import.meta.url), env: { ...process.env, FIXVOX_ADMIN_SKIP_ENV_FILES: '1', FIXVOX_ADMIN_MOCK: '1', PI_CHAT_UNRESTRICTED_OWNER: '1', PI_CHAT_REMOTE_AGENT_ENABLED: '1' }, stdio: ['ignore', 'ignore', 'pipe'] })
+test('isolated and unrestricted OMP modes are mutually exclusive', async () => {
+  const child = spawn(process.execPath, ['server.mjs'], { cwd: new URL('.', import.meta.url), env: { ...process.env, FIXVOX_ADMIN_SKIP_ENV_FILES: '1', FIXVOX_ADMIN_MOCK: '1', OMP_CHAT_UNRESTRICTED_OWNER: '1', OMP_CHAT_REMOTE_AGENT_ENABLED: '1' }, stdio: ['ignore', 'ignore', 'pipe'] })
   let stderr = ''
   child.stderr.on('data', (chunk) => { stderr += chunk.toString() })
   const [code] = await once(child, 'exit')
@@ -157,10 +157,10 @@ test('isolated and unrestricted Pi modes are mutually exclusive', async () => {
   assert.match(stderr, /cannot enable isolated and unrestricted modes together/)
 })
 
-test('unrestricted owner mode requires recent Google auth at the Pi perimeter', async () => {
-  await withServer({ PI_CHAT_UNRESTRICTED_OWNER: '1', PI_CHAT_REMOTE_AGENT_ENABLED: '0', FIXVOX_ADMIN_MOCK_AUTHENTICATED_AT: String(Date.now() - 11 * 60 * 1000) }, async () => {
+test('unrestricted owner mode requires recent Google auth at the OMP perimeter', async () => {
+  await withServer({ OMP_CHAT_UNRESTRICTED_OWNER: '1', OMP_CHAT_REMOTE_AGENT_ENABLED: '0', FIXVOX_ADMIN_MOCK_AUTHENTICATED_AT: String(Date.now() - 11 * 60 * 1000) }, async () => {
     const envResponse = await fetch(`${baseUrl}/api/admin/env`)
-    assert.equal((await envResponse.json()).piMode, 'unrestricted-owner')
+    assert.equal((await envResponse.json()).ompMode, 'unrestricted-owner')
     assert.equal((await fetch(`${baseUrl}/api/pi-chat/health`)).status, 403)
     assert.equal((await fetch(`${baseUrl}/api/pi-chat/command`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: { type: 'get_state' } }) })).status, 403)
     assert.equal((await fetch(`${baseUrl}/api/pi-chat/prompt`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: 'hello' }) })).status, 403)
@@ -168,7 +168,7 @@ test('unrestricted owner mode requires recent Google auth at the Pi perimeter', 
 })
 
 test('recent owner gets an exact unwrapped prompt in unrestricted mode', async () => {
-  await withServer({ PI_CHAT_UNRESTRICTED_OWNER: '1', PI_CHAT_REMOTE_AGENT_ENABLED: '0' }, async () => {
+  await withServer({ OMP_CHAT_UNRESTRICTED_OWNER: '1', OMP_CHAT_REMOTE_AGENT_ENABLED: '0' }, async () => {
     assert.equal((await fetch(`${baseUrl}/api/pi-chat/health`)).status, 200)
     assert.equal((await fetch(`${baseUrl}/api/pi-chat/command`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: { type: 'get_state' } }) })).status, 200)
     const envPayload = await (await fetch(`${baseUrl}/api/admin/env`)).json()
@@ -323,10 +323,10 @@ test('stale OAuth receives 403 before the publish broker', async () => {
   }
 })
 
-test('legacy token sessions cannot start or command the Pi subprocess', async () => {
-  const probeFile = path.join(os.tmpdir(), `fixvox-pi-env-${process.pid}-${Date.now()}.txt`)
-  const probeScript = path.join(os.tmpdir(), `fixvox-pi-env-${process.pid}-${Date.now()}.mjs`)
-  await fs.writeFile(probeScript, `import fs from 'node:fs';\nconst file = process.env.PI_PROBE_FILE;\nif (file) fs.writeFileSync(file, process.env.ADMIN_PUBLISH_API_KEY || 'missing');\nif (process.argv.includes('--version')) process.exit(0);\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', (chunk) => { for (const line of chunk.split('\\n')) { if (!line.trim()) continue; const message = JSON.parse(line); process.stdout.write(JSON.stringify({ type: 'response', id: message.id, success: true, response: { data: {} } }) + '\\n'); } });`)
+test('legacy token sessions cannot start or command the OMP subprocess', async () => {
+  const probeFile = path.join(os.tmpdir(), `fixvox-omp-env-${process.pid}-${Date.now()}.txt`)
+  const probeScript = path.join(os.tmpdir(), `fixvox-omp-env-${process.pid}-${Date.now()}.mjs`)
+  await fs.writeFile(probeScript, `import fs from 'node:fs';\nconst file = process.env.OMP_PROBE_FILE;\nif (file) fs.writeFileSync(file, process.env.ADMIN_PUBLISH_API_KEY || 'missing');\nif (process.argv.includes('--version')) process.exit(0);\nprocess.stdout.write(JSON.stringify({ type: 'ready', protocolVersion: 1, supportedProtocolVersions: [1, 2], maxFrameBytes: 1048576, maxReassembledFrameBytes: 67108864 }) + '\\n');\nprocess.stdin.setEncoding('utf8');\nprocess.stdin.on('data', (chunk) => { for (const line of chunk.split('\\n')) { if (!line.trim()) continue; const message = JSON.parse(line); process.stdout.write(JSON.stringify({ type: 'response', id: message.id, command: message.type, success: true, data: message.type === 'get_state' ? { sessionId: 'probe' } : {} }) + '\\n'); } });`)
   try {
     await withServer({
       FIXVOX_ADMIN_MOCK: '0',
@@ -335,9 +335,9 @@ test('legacy token sessions cannot start or command the Pi subprocess', async ()
       FIXVOX_ADMIN_WEB_TOKEN: 'local-token',
       FIXVOX_ADMIN_PASSWORD: 'local-token',
       ADMIN_PUBLISH_API_KEY: 'publish-secret',
-      PI_CHAT_BIN: process.execPath,
-      PI_CHAT_ARGS: probeScript,
-      PI_PROBE_FILE: probeFile,
+      OMP_CHAT_BIN: process.execPath,
+      OMP_CHAT_ARGS: probeScript,
+      OMP_PROBE_FILE: probeFile,
     }, async () => {
       const login = await fetch(`${baseUrl}/login`, { method: 'POST', body: new URLSearchParams({ token: 'local-token' }), redirect: 'manual' })
       assert.equal(login.status, 302)
@@ -359,7 +359,100 @@ test('legacy token sessions cannot start or command the Pi subprocess', async ()
   }
 })
 
-test('viewer and editor roles cannot access Pi Chat routes', async () => {
+test('OMP stop waits for the exact child to close before restart and escalates a stuck child', async () => {
+  const lifecycleFile = path.join(os.tmpdir(), `fixvox-omp-lifecycle-${process.pid}-${Date.now()}.jsonl`)
+  const firstMarker = `${lifecycleFile}.first`
+  const pidFile = `${lifecycleFile}.pid`
+  const probeScript = `${lifecycleFile}.mjs`
+  const probeSource = [
+    "import fs from 'node:fs';",
+    "const lifecycleFile = process.env.OMP_LIFECYCLE_FILE;",
+    "const firstMarker = process.env.OMP_FIRST_MARKER;",
+    "const pidFile = process.env.OMP_PID_FILE;",
+    "if (process.argv.includes('--version')) process.exit(0);",
+    "const record = (event) => fs.appendFileSync(lifecycleFile, JSON.stringify({ event, pid: process.pid, at: Date.now() }) + '\\n');",
+    "let priorPid = 0;",
+    "try { priorPid = Number(fs.readFileSync(pidFile, 'utf8')); } catch {}",
+    "if (priorPid) { try { process.kill(priorPid, 0); record('overlap'); } catch {} }",
+    "let first = false;",
+    "try { fs.writeFileSync(firstMarker, String(process.pid), { flag: 'wx' }); first = true; } catch {}",
+    "fs.writeFileSync(pidFile, String(process.pid));",
+    "record('start');",
+    "process.stdout.write(JSON.stringify({ type: 'ready', protocolVersion: 1, supportedProtocolVersions: [1, 2], maxFrameBytes: 1048576, maxReassembledFrameBytes: 67108864 }) + '\\n');",
+    "let input = '';",
+    "process.stdin.setEncoding('utf8');",
+    "process.stdin.on('data', (chunk) => { input += chunk; while (input.includes('\\n')) { const index = input.indexOf('\\n'); const line = input.slice(0, index); input = input.slice(index + 1); if (!line.trim()) continue; const message = JSON.parse(line); process.stdout.write(JSON.stringify({ type: 'response', id: message.id, success: true, data: { sessionId: String(process.pid) } }) + '\\n'); } });",
+    "process.stdin.on('end', () => { record('stdin-end'); if (!first) process.exit(0); });",
+    "process.on('SIGTERM', () => { record('term'); if (!first) process.exit(0); });",
+    "setInterval(() => {}, 1000);",
+  ].join('\n')
+  const backend = http.createServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ ok: true, role: 'owner' }))
+  })
+  const sendCommand = (type) => fetch(`${baseUrl}/api/pi-chat/command`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ command: { type } }),
+  })
+  const lifecycleEvents = async () => {
+    try {
+      return (await fs.readFile(lifecycleFile, 'utf8')).trim().split('\n').filter(Boolean).map((line) => JSON.parse(line))
+    } catch (error) {
+      if (error.code === 'ENOENT') return []
+      throw error
+    }
+  }
+
+  await fs.writeFile(probeScript, probeSource)
+  await new Promise((resolve) => backend.listen(18988, '127.0.0.1', resolve))
+  try {
+    await withServer({
+      FIXVOX_ADMIN_MOCK: '0',
+      FIXVOX_ADMIN_ENV: 'local',
+      FIXVOX_ADMIN_LOCAL_AUTH_FIXTURE: '1',
+      FIXVOX_ADMIN_BASE_URL: 'http://127.0.0.1:18988',
+      OMP_CHAT_BIN: process.execPath,
+      OMP_CHAT_ARGS: probeScript,
+      OMP_CHAT_REMOTE_AGENT_ENABLED: '0',
+      OMP_CHAT_UNRESTRICTED_OWNER: '0',
+      OMP_LIFECYCLE_FILE: lifecycleFile,
+      OMP_FIRST_MARKER: firstMarker,
+      OMP_PID_FILE: pidFile,
+    }, async () => {
+      const initial = await sendCommand('get_state')
+      assert.equal(initial.status, 200)
+      const firstPid = (await initial.json()).response.data.sessionId
+
+      const stopping = sendCommand('stop')
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if ((await lifecycleEvents()).some(({ event }) => event === 'stdin-end')) break
+        await new Promise((resolve) => setTimeout(resolve, 25))
+      }
+      assert.ok((await lifecycleEvents()).some(({ event }) => event === 'stdin-end'))
+      const restarting = sendCommand('get_state')
+      assert.equal((await stopping).status, 200)
+      const restarted = await restarting
+      assert.equal(restarted.status, 200)
+      const secondPid = (await restarted.json()).response.data.sessionId
+      assert.notEqual(secondPid, firstPid)
+
+      const stable = await sendCommand('get_state')
+      assert.equal((await stable.json()).response.data.sessionId, secondPid)
+      const events = await lifecycleEvents()
+      assert.equal(events.filter(({ event }) => event === 'start').length, 2)
+      if (process.platform !== 'win32') assert.ok(events.some(({ event, pid }) => event === 'term' && String(pid) === firstPid))
+      assert.equal(events.some(({ event }) => event === 'overlap'), false)
+      assert.equal((await sendCommand('stop')).status, 200)
+    })
+  } finally {
+    backend.close()
+    await once(backend, 'close')
+    await Promise.all([lifecycleFile, firstMarker, pidFile, probeScript].map((file) => fs.rm(file, { force: true })))
+  }
+})
+
+test('viewer and editor roles cannot access stable OMP Chat routes', async () => {
   for (const role of ['viewer', 'editor']) {
     await withServer({ FIXVOX_ADMIN_MOCK_EMAIL: `${role}@example.com`, FIXVOX_ADMIN_MOCK_ROLE: role }, async () => {
       const health = await fetch(`${baseUrl}/api/pi-chat/health`)
@@ -544,25 +637,27 @@ test('usage endpoint and workbench expose only redacted bounded operational metr
   assert.match(appSource, /cobertura parcial/)
 })
 
-test('Control Room keeps Pi Chat as a visible primary navigation area', async () => {
+test('Control Room keeps OMP Chat as a visible primary navigation area', async () => {
   const appSource = await fs.readFile(new URL('./public/app.js', import.meta.url), 'utf8')
-  assert.match(appSource, /chat:\s*\{\s*label:\s*'Pi Chat'/)
+  assert.match(appSource, /chat:\s*\{\s*label:\s*'OMP Chat'/)
   assert.ok(appSource.indexOf("if (key === 'chat')") < appSource.indexOf('const area = CONTROL_ROOM_AREAS[key]', appSource.indexOf('function wireDynamicEvents')))
 })
 
-test('Pi Chat renders only assistant messages and waits until the RPC run settles', async () => {
+test('OMP Chat handles ready and prompt settlement using actual OMP events', async () => {
   const appSource = await fs.readFile(new URL('./public/app.js', import.meta.url), 'utf8')
   const serverSource = await fs.readFile(new URL('./server.mjs', import.meta.url), 'utf8')
-  const handler = appSource.slice(appSource.indexOf('function handlePiEvent'), appSource.indexOf('function handleUiRequest'))
+  const handler = appSource.slice(appSource.indexOf('function handleOmpEvent'), appSource.indexOf('function handleUiRequest'))
   const promptBridge = serverSource.slice(serverSource.indexOf('async prompt(message, onEvent)'), serverSource.indexOf('subscribe(handler)'))
 
   assert.match(appSource, /value\.role\s*&&\s*value\.role\s*!==\s*'assistant'/)
-  assert.match(handler, /event\.message\?\.role\s*===\s*'assistant'/)
-  assert.doesNotMatch(promptBridge, /event\.type\s*===\s*'agent_end'\)\s*finish/)
-  assert.match(promptBridge, /event\.type\s*===\s*'agent_settled'\)\s*finish/)
+  assert.match(handler, /event\.type === 'ready'/)
+  assert.match(handler, /event\.type === 'prompt_result'/)
+  assert.match(handler, /event\.type === 'agent_end'/)
+  assert.match(promptBridge, /event\.type === 'agent_end'/)
+  assert.match(promptBridge, /event\.type === 'prompt_result'/)
 })
 
-test('Pi Chat owns the viewport and hides activity without affecting other Admin views', async () => {
+test('OMP Chat owns the viewport and hides activity without affecting other Admin views', async () => {
   const appSource = await fs.readFile(new URL('./public/app.js', import.meta.url), 'utf8')
   const styles = await fs.readFile(new URL('./public/styles.css', import.meta.url), 'utf8')
   const chatShellRule = styles.indexOf('/* Pi Chat viewport shell:')

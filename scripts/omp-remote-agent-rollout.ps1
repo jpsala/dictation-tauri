@@ -14,26 +14,28 @@ $remoteBundle = "/tmp/fixvox-agent-rollout-$runId.tar.gz"
 $localBundle = Join-Path ([IO.Path]::GetTempPath()) "fixvox-agent-rollout-$runId.tar.gz"
 $windowsTar = Join-Path $env:SystemRoot 'System32/tar.exe'
 $manifest = @(
-  'admin/fixvox-web/pi-chat-access.mjs',
-  'admin/fixvox-web/pi-remote-policy.mjs',
-  'admin/fixvox-web/pi-remote-agent-core.mjs',
-  'admin/fixvox-web/pi-remote-agent-extension.mjs',
-  'admin/fixvox-web/pi-workspace-broker-client.mjs',
-  'admin/fixvox-web/pi-workspace-broker.mjs',
+  'admin/fixvox-web/omp-chat-access.mjs',
+  'admin/fixvox-web/omp-remote-policy.mjs',
+  'admin/fixvox-web/omp-host-tools.mjs',
+  'admin/fixvox-web/omp-rpc-framing.mjs',
+  'admin/fixvox-web/omp-workspace-broker-client.mjs',
+  'admin/fixvox-web/omp-workspace-broker.mjs',
   'admin/fixvox-web/constelaciones-read-adapter.mjs',
   'admin/fixvox-web/constelaciones-read-broker.mjs',
-  'admin/fixvox-web/pi-release-broker.mjs',
-  'admin/fixvox-web/pi-release-broker-client.mjs',
-  'admin/fixvox-web/pi-release-git-runner.mjs',
-  'admin/fixvox-web/pi-release-service.mjs',
-  'admin/fixvox-web/pi-admin-deploy-broker.mjs',
-  'admin/fixvox-web/pi-admin-deploy-operations.mjs',
-  'admin/fixvox-web/pi-admin-deploy-service.mjs',
-  'admin/fixvox-web/pi-admin-deploy-client.mjs',
-  'admin/fixvox-web/run-isolated-pi.sh',
+  'admin/fixvox-web/omp-release-broker.mjs',
+  'admin/fixvox-web/omp-release-broker-client.mjs',
+  'admin/fixvox-web/omp-release-git-runner.mjs',
+  'admin/fixvox-web/omp-release-service.mjs',
+  'admin/fixvox-web/omp-admin-deploy-broker.mjs',
+  'admin/fixvox-web/omp-admin-deploy-operations.mjs',
+  'admin/fixvox-web/omp-admin-deploy-service.mjs',
+  'admin/fixvox-web/omp-admin-deploy-client.mjs',
+  'admin/fixvox-web/run-isolated-omp.sh',
   'admin/fixvox-web/systemd/fixvox-workspace-broker.service',
   'admin/fixvox-web/systemd/fixvox-constelaciones-read-broker.service',
-  'scripts/pi-remote-agent-apply.sh'
+  'admin/fixvox-web/systemd/fixvox-release-broker.service',
+  'admin/fixvox-web/systemd/fixvox-admin-deploy-helper.service',
+  'scripts/omp-remote-agent-apply.sh'
 )
 $nodeFiles = $manifest | Where-Object { $_.EndsWith('.mjs') }
 
@@ -62,7 +64,7 @@ foreach ($file in $manifest) {
 foreach ($file in $nodeFiles) {
   Invoke-Checked -FilePath 'node' -ArgumentList @('--check', (Join-Path $repo $file))
 }
-Invoke-Checked -FilePath 'bash' -ArgumentList @('-n', (Join-Path $repo 'scripts/pi-remote-agent-apply.sh'))
+Invoke-Checked -FilePath 'bash' -ArgumentList @('-n', (Join-Path $repo 'scripts/omp-remote-agent-apply.sh'))
 
 if (-not $ConfirmProduction) {
   Write-Host 'DRY RUN: no VPS files, services, mirrors, credentials, or feature flags were changed.' -ForegroundColor Cyan
@@ -84,8 +86,8 @@ try {
   if (-not $uploaded) { throw "Bundle upload failed after $UploadAttempts attempts." }
   Invoke-Remote "echo '$bundleHash  $remoteBundle' | sha256sum -c -; tar -xzf '$remoteBundle' -C '$remoteStage'"
   $sync = if ($SyncMirrors) { '1' } else { '0' }
-  Invoke-Remote "bash '$remoteStage/scripts/pi-remote-agent-apply.sh' '$remoteStage' '$runId' '$sync'"
-  Write-Host "Pi remote-agent rollout complete. Run: $runId; mirror sync: $SyncMirrors" -ForegroundColor Green
+  Invoke-Remote "bash '$remoteStage/scripts/omp-remote-agent-apply.sh' '$remoteStage' '$runId' '$sync'"
+  Write-Host "OMP remote-agent rollout complete. Run: $runId; mirror sync: $SyncMirrors" -ForegroundColor Green
 } finally {
   Remove-Item -LiteralPath $localBundle -Force -ErrorAction SilentlyContinue
   try { Invoke-Remote "rm -rf '$remoteStage' '$remoteBundle'" } catch { }

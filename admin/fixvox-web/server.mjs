@@ -7,31 +7,32 @@ import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { fileURLToPath } from 'node:url'
 import { accountHandleForGoogleSubject, annotateCurrentAdminAccount, redactGoogleEmail } from './account-identity.mjs'
-import { buildRemoteAgentEnv, remoteAgentArgs, remoteAgentRoots } from './pi-remote-policy.mjs'
-import { PiChatAccessCoordinator, piChatSessionKey } from './pi-chat-access.mjs'
+import { createOmpHostTools } from './omp-host-tools.mjs'
+import { OmpRpcChunkReassembler, defaultOmpMaxFrameBytes } from './omp-rpc-framing.mjs'
+import { buildRemoteAgentEnv, ompRemoteAgentArgs, remoteAgentRoots } from './omp-remote-policy.mjs'
+import { OmpChatAccessCoordinator, ompChatSessionKey } from './omp-chat-access.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..', '..')
 const publicDir = path.join(__dirname, 'public')
 const PORT = Number(process.env.FIXVOX_ADMIN_PORT || 8787)
 const HOST = process.env.FIXVOX_ADMIN_HOST || '127.0.0.1'
-const PI_CWD = path.resolve(process.env.PI_CHAT_CWD || repoRoot)
-const PI_BIN = process.env.PI_CHAT_BIN || 'pi'
-const PI_ARGS = splitArgs(process.env.PI_CHAT_ARGS || '')
-const REMOTE_AGENT_ENABLED = process.env.PI_CHAT_REMOTE_AGENT_ENABLED === '1'
-const UNRESTRICTED_OWNER_MODE = process.env.PI_CHAT_UNRESTRICTED_OWNER === '1'
-const OWNER_PI_IDLE_MS = Math.max(60_000, Number(process.env.PI_CHAT_OWNER_IDLE_MS || 30 * 60_000))
-if (REMOTE_AGENT_ENABLED && UNRESTRICTED_OWNER_MODE) throw new Error('Pi Chat cannot enable isolated and unrestricted modes together.')
-const REMOTE_AGENT_HOME = path.resolve(process.env.PI_CHAT_AGENT_HOME || path.join(process.env.HOME || repoRoot, '.local', 'share', 'fixvox-agent'))
-const REMOTE_AGENT_DIR = path.resolve(process.env.PI_CHAT_AGENT_DIR || path.join(REMOTE_AGENT_HOME, '.pi', 'agent'))
-const REMOTE_AGENT_SESSION_DIR = path.resolve(process.env.PI_CHAT_AGENT_SESSION_DIR || path.join(REMOTE_AGENT_HOME, 'sessions'))
-const REMOTE_AGENT_AUDIT_PATH = path.resolve(process.env.PI_CHAT_AGENT_AUDIT_PATH || path.join(REMOTE_AGENT_HOME, 'audit', 'operations.jsonl'))
-const REMOTE_AGENT_CONSTELACIONES_SOCKET = path.resolve(process.env.PI_CHAT_CONSTELACIONES_SOCKET || path.join(REMOTE_AGENT_HOME, 'run', 'constelaciones-read.sock'))
-const REMOTE_AGENT_WORKSPACE_SOCKET = path.resolve(process.env.PI_CHAT_WORKSPACE_BROKER_SOCKET || path.join(REMOTE_AGENT_HOME, 'run', 'workspace-broker.sock'))
-const REMOTE_AGENT_RELEASE_ENABLED = process.env.PI_CHAT_RELEASE_BROKER_ENABLED === '1'
-const REMOTE_AGENT_RELEASE_SOCKET = path.resolve(process.env.PI_CHAT_RELEASE_BROKER_SOCKET || path.join(REMOTE_AGENT_HOME, 'run', 'release-broker.sock'))
-const REMOTE_AGENT_ROOTS = remoteAgentRoots(process.env.PI_CHAT_AGENT_ROOTS, repoRoot)
-const REMOTE_AGENT_EXTENSION = path.resolve(process.env.PI_CHAT_AGENT_EXTENSION || path.join(__dirname, 'pi-remote-agent-extension.mjs'))
+const OMP_CWD = path.resolve(process.env.OMP_CHAT_CWD || repoRoot)
+const OMP_BIN = process.env.OMP_CHAT_BIN || 'omp'
+const OMP_FORBIDDEN_FLAGS = new Set(['--name', '--exclude-tools', '--approve', '--no-approve', '--no-context-files', '--no-builtin-tools', '--no-prompt-templates'])
+const OMP_ARGS = splitArgs(process.env.OMP_CHAT_ARGS || '')
+const REMOTE_AGENT_ENABLED = process.env.OMP_CHAT_REMOTE_AGENT_ENABLED === '1'
+const UNRESTRICTED_OWNER_MODE = process.env.OMP_CHAT_UNRESTRICTED_OWNER === '1'
+const OWNER_OMP_IDLE_MS = Math.max(60_000, Number(process.env.OMP_CHAT_OWNER_IDLE_MS || 30 * 60_000))
+if (REMOTE_AGENT_ENABLED && UNRESTRICTED_OWNER_MODE) throw new Error('OMP Chat cannot enable isolated and unrestricted modes together.')
+const REMOTE_AGENT_HOME = path.resolve(process.env.OMP_CHAT_AGENT_HOME || path.join(process.env.HOME || repoRoot, '.local', 'share', 'fixvox-agent'))
+const REMOTE_AGENT_SESSION_DIR = path.resolve(process.env.OMP_CHAT_AGENT_SESSION_DIR || path.join(REMOTE_AGENT_HOME, 'sessions'))
+const REMOTE_AGENT_AUDIT_PATH = path.resolve(process.env.OMP_CHAT_AGENT_AUDIT_PATH || path.join(REMOTE_AGENT_HOME, 'audit', 'operations.jsonl'))
+const REMOTE_AGENT_CONSTELACIONES_SOCKET = path.resolve(process.env.OMP_CHAT_CONSTELACIONES_SOCKET || path.join(REMOTE_AGENT_HOME, 'run', 'constelaciones-read.sock'))
+const REMOTE_AGENT_WORKSPACE_SOCKET = path.resolve(process.env.OMP_CHAT_WORKSPACE_BROKER_SOCKET || path.join(REMOTE_AGENT_HOME, 'run', 'workspace-broker.sock'))
+const REMOTE_AGENT_RELEASE_ENABLED = process.env.OMP_CHAT_RELEASE_BROKER_ENABLED === '1'
+const REMOTE_AGENT_RELEASE_SOCKET = path.resolve(process.env.OMP_CHAT_RELEASE_BROKER_SOCKET || path.join(REMOTE_AGENT_HOME, 'run', 'release-broker.sock'))
+const REMOTE_AGENT_ROOTS = remoteAgentRoots(process.env.OMP_CHAT_AGENT_ROOTS, repoRoot)
 const ADMIN_BASE_URL = (process.env.FIXVOX_ADMIN_BASE_URL || 'https://auth-fixvox.jpsala.dev').replace(/\/+$/g, '')
 const ADMIN_ENV = process.env.FIXVOX_ADMIN_ENV || (ADMIN_BASE_URL.includes('127.0.0.1') || ADMIN_BASE_URL.includes('localhost') ? 'local' : 'production')
 const sessions = new Map()
@@ -60,23 +61,21 @@ const PRIVILEGED_OAUTH_MAX_AGE_MS = 10 * 60 * 1000
 const MOCK_MODE = process.env.FIXVOX_ADMIN_MOCK === '1'
 const LOCAL_AUTH_FIXTURE = process.env.FIXVOX_ADMIN_LOCAL_AUTH_FIXTURE === '1'
 const ADMIN_CREDENTIAL_ENV_KEYS = ['ADMIN_API_KEY', 'ADMIN_VIEW_API_KEY', 'ADMIN_EDIT_API_KEY', 'ADMIN_PUBLISH_API_KEY']
+const OMP_READY_TIMEOUT_MS = 10_000
+const OMP_COMMAND_TIMEOUT_MS = 15_000
+const OMP_STOP_PHASE_TIMEOUT_MS = 1_000
 function localLoopbackBackend() {
   try { return ADMIN_ENV === 'local' && ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(ADMIN_BASE_URL).hostname) }
   catch { return false }
 }
-if (LOCAL_AUTH_FIXTURE && !localLoopbackBackend()) {
-  throw new Error('Local auth fixture is restricted to the local loopback backend.')
-}
-if (SKIP_ENV_FILES && !MOCK_MODE && !localLoopbackBackend()) {
-  throw new Error('Skipping Admin env files is restricted to mock mode or a local loopback backend.')
-}
+if (LOCAL_AUTH_FIXTURE && !localLoopbackBackend()) throw new Error('Local auth fixture is restricted to the local loopback backend.')
+if (SKIP_ENV_FILES && !MOCK_MODE && !localLoopbackBackend()) throw new Error('Skipping Admin env files is restricted to mock mode or a local loopback backend.')
 
-function piProcessEnv() {
+function ompProcessEnv() {
   if (REMOTE_AGENT_ENABLED) {
     return buildRemoteAgentEnv(process.env, {
       home: REMOTE_AGENT_HOME,
-      user: process.env.PI_CHAT_AGENT_USER || 'fixvox-agent',
-      agentDir: REMOTE_AGENT_DIR,
+      user: process.env.OMP_CHAT_AGENT_USER || 'fixvox-agent',
       auditPath: REMOTE_AGENT_AUDIT_PATH,
       roots: REMOTE_AGENT_ROOTS,
       constelacionesSocket: REMOTE_AGENT_CONSTELACIONES_SOCKET,
@@ -90,13 +89,9 @@ function piProcessEnv() {
   return env
 }
 
-function piRuntimeArgs() {
-  if (UNRESTRICTED_OWNER_MODE || !REMOTE_AGENT_ENABLED) return [...PI_ARGS, '--mode', 'rpc', '--approve', '--name', 'fixvox-admin-owner-pi']
-  return remoteAgentArgs({
-    extensionPath: REMOTE_AGENT_EXTENSION,
-    sessionDir: REMOTE_AGENT_SESSION_DIR,
-    releaseBrokerEnabled: REMOTE_AGENT_RELEASE_ENABLED,
-  })
+function ompRuntimeArgs() {
+  if (REMOTE_AGENT_ENABLED) return [...OMP_ARGS, ...ompRemoteAgentArgs({ sessionDir: REMOTE_AGENT_SESSION_DIR, releaseBrokerEnabled: REMOTE_AGENT_RELEASE_ENABLED })]
+  return [...OMP_ARGS, '--mode', 'rpc', '--auto-approve', '--profile', 'fixvox-admin-owner', '--session-dir', REMOTE_AGENT_SESSION_DIR, '--continue']
 }
 
 function loadEnvFile(file) {
@@ -109,150 +104,356 @@ function loadEnvFile(file) {
 }
 
 function splitArgs(value) {
-  return value.split(' ').map((part) => part.trim()).filter(Boolean)
+  const args = value.split(' ').map((part) => part.trim()).filter(Boolean)
+  const forbidden = args.find((arg) => OMP_FORBIDDEN_FLAGS.has(arg.split('=')[0]))
+  if (forbidden) throw new Error(`OMP_CHAT_ARGS contains unsupported Pi-only flag: ${forbidden}`)
+  return args
 }
 
-class PiRpcProcess {
+function objectFrame(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+class OmpRpcProcess {
   constructor() {
+    this.activePrompt = null
     this.decoder = new StringDecoder('utf8')
     this.eventHandlers = new Set()
+    this.frameDecoder = new OmpRpcChunkReassembler()
+    this.hostCalls = new Map()
+    this.hostUiRequests = new Map()
+    this.closedChildren = new WeakSet()
+    this.idleTimer = null
+    this.lastError = undefined
+    this.maxFrameBytes = defaultOmpMaxFrameBytes
     this.pending = new Map()
     this.process = null
+    this.readyFrame = null
     this.requestId = 0
+    this.sessionId = undefined
+    this.starting = null
+    this.stopping = null
     this.stderr = ''
     this.stdoutBuffer = ''
-    this.lastError = undefined
-    this.idleTimer = null
+    this.hostTools = REMOTE_AGENT_ENABLED ? createOmpHostTools({
+      auditPath: REMOTE_AGENT_AUDIT_PATH,
+      constelacionesSocket: REMOTE_AGENT_CONSTELACIONES_SOCKET,
+      cwd: OMP_CWD,
+      releaseBrokerEnabled: REMOTE_AGENT_RELEASE_ENABLED,
+      releaseBrokerSocket: REMOTE_AGENT_RELEASE_SOCKET,
+      roots: REMOTE_AGENT_ROOTS,
+      workspaceBrokerSocket: REMOTE_AGENT_WORKSPACE_SOCKET,
+    }) : null
   }
   touchActivity() {
     if (!UNRESTRICTED_OWNER_MODE) return
     clearTimeout(this.idleTimer)
-    this.idleTimer = setTimeout(() => this.stop(), OWNER_PI_IDLE_MS)
+    this.idleTimer = setTimeout(() => this.stop(), OWNER_OMP_IDLE_MS)
     this.idleTimer.unref?.()
   }
   get running() { return this.process?.exitCode === null && !this.process.killed }
   async health() {
-    const cwdOk = fs.existsSync(path.join(PI_CWD, 'package.json'))
-    if (!cwdOk) return { ok: false, cwd: PI_CWD, piBin: PI_BIN, process: this.running ? 'running' : 'stopped', error: 'PI_CHAT_CWD no parece repo valido.', instructions: 'Configura PI_CHAT_CWD apuntando al repo dictation-tauri.' }
-    const version = await getPiVersion()
-    return { ok: version.ok, cwd: PI_CWD, piBin: PI_BIN, piVersion: version.version, process: this.running ? 'running' : 'stopped', error: version.error, instructions: version.ok ? undefined : 'Instala Pi o configura PI_CHAT_BIN.' }
+    const cwdOk = fs.existsSync(path.join(OMP_CWD, 'package.json'))
+    if (!cwdOk) return { ok: false, cwd: OMP_CWD, ompBin: OMP_BIN, runtime: 'omp', process: this.running ? 'running' : 'stopped', error: 'OMP_CHAT_CWD no parece repo válido.', instructions: 'Configura OMP_CHAT_CWD apuntando al repo dictation-tauri.' }
+    const version = await getOmpVersion()
+    return { ok: version.ok, cwd: OMP_CWD, ompBin: OMP_BIN, ompVersion: version.version, protocolVersion: this.readyFrame?.negotiatedProtocolVersion || this.readyFrame?.protocolVersion, runtime: 'omp', process: this.running ? 'running' : 'stopped', error: version.error, instructions: version.ok ? undefined : 'Instala OMP o configura OMP_CHAT_BIN.' }
   }
   async ensureStarted() {
-    if (this.running) { this.touchActivity(); return }
-    const child = spawn(PI_BIN, piRuntimeArgs(), {
-      cwd: PI_CWD,
-      env: piProcessEnv(),
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-    })
+    if (this.stopping) await this.stopping
+    if (this.running && this.readyFrame) { this.touchActivity(); return }
+    if (!this.starting) {
+      if (this.process) throw new Error('OMP RPC anterior todavía está terminando.')
+      this.starting = this.startProcess()
+    }
+    try { await this.starting } finally { this.starting = null }
+  }
+  async startProcess() {
+    const child = spawn(OMP_BIN, ompRuntimeArgs(), { cwd: OMP_CWD, env: ompProcessEnv(), stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
     this.process = child
     this.stderr = ''
     this.stdoutBuffer = ''
     this.lastError = undefined
+    this.readyFrame = null
+    this.maxFrameBytes = defaultOmpMaxFrameBytes
+    this.decoder = new StringDecoder('utf8')
+    this.frameDecoder = new OmpRpcChunkReassembler()
+    const ready = new Promise((resolve, reject) => { this.readyResolve = resolve; this.readyReject = reject })
+    const readyTimer = setTimeout(() => this.failProtocol(new Error(`Timeout esperando ready de OMP RPC después de ${OMP_READY_TIMEOUT_MS} ms.`)), OMP_READY_TIMEOUT_MS)
     child.stdout.on('data', (chunk) => this.handleStdout(chunk))
-    child.stderr.on('data', (chunk) => { this.stderr += chunk.toString() })
-    child.once('error', (error) => this.handleExit(error))
-    child.once('exit', (code, signal) => this.handleExit(new Error(`Pi RPC terminó${code === null ? '' : ` con código ${code}`}${signal ? ` (${signal})` : ''}.${this.stderr ? ` stderr: ${this.stderr}` : ''}`)))
-    await new Promise((resolve) => setTimeout(resolve, 200))
-    this.touchActivity()
-    if (!this.running) throw new Error(this.lastError || `No se pudo iniciar Pi RPC. ${this.stderr}`)
+    child.stderr.on('data', (chunk) => { this.stderr = `${this.stderr}${chunk.toString()}`.slice(-65_536) })
+    child.once('error', (error) => { if (this.process === child) this.failProtocol(error) })
+    child.once('close', (code, signal) => {
+      this.closedChildren.add(child)
+      this.handleExit(child, new Error(`OMP RPC terminó${code === null ? '' : ` con código ${code}`}${signal ? ` (${signal})` : ''}.${this.stderr ? ` stderr: ${this.stderr}` : ''}`))
+    })
+    try {
+      const readyFrame = await ready
+      if (Array.isArray(readyFrame.supportedProtocolVersions) && readyFrame.supportedProtocolVersions.includes(2)) {
+        await this.sendCommandStarted({ type: 'negotiate_protocol', protocolVersion: 2 }, OMP_COMMAND_TIMEOUT_MS, `protocol-${++this.requestId}`)
+        readyFrame.negotiatedProtocolVersion = 2
+      }
+      if (this.hostTools) await this.sendCommandStarted({ type: 'set_host_tools', tools: this.hostTools.definitions }, OMP_COMMAND_TIMEOUT_MS, `host-tools-${++this.requestId}`)
+      await this.sendCommandStarted({ type: 'set_session_name', name: REMOTE_AGENT_ENABLED ? 'fixvox-admin-remote-agent' : 'fixvox-admin-owner' }, OMP_COMMAND_TIMEOUT_MS, `session-name-${++this.requestId}`)
+      this.touchActivity()
+    } catch (error) {
+      await this.terminateChild(child)
+      throw error
+    } finally {
+      clearTimeout(readyTimer)
+      this.readyResolve = undefined
+      this.readyReject = undefined
+    }
   }
-  async send(command, timeoutMs = 15_000) {
+  async send(command, timeoutMs = OMP_COMMAND_TIMEOUT_MS) {
+    if (command?.type === 'abort' || command?.type === 'new_session') this.cancelHostUiRequests()
     await this.ensureStarted()
-    const id = `web-${++this.requestId}`
-    const payload = { ...command, id }
+    return this.sendCommandStarted(command, timeoutMs, `web-${++this.requestId}`)
+  }
+  sendCommandStarted(command, timeoutMs, id) {
+    if (!this.process?.stdin.writable) return Promise.reject(new Error('OMP RPC no está iniciado.'))
+    if (!command?.type) return Promise.reject(new Error('El comando OMP RPC requiere type.'))
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      const timeout = command.type === 'prompt' || timeoutMs === null ? undefined : setTimeout(() => {
         this.pending.delete(id)
-        reject(new Error(`Timeout esperando respuesta de Pi para ${command.type || 'unknown'}.`))
+        reject(new Error(`Timeout esperando respuesta de OMP para ${command.type}.`))
       }, timeoutMs)
-      this.pending.set(id, { resolve, reject, timeout })
-      this.process.stdin.write(`${JSON.stringify(payload)}\n`, (error) => {
-        if (!error) return
-        clearTimeout(timeout)
-        this.pending.delete(id)
-        reject(error)
-      })
+      this.pending.set(id, { command: command.type, resolve, reject, timeout })
+      this.writeFrame({ ...command, id }).catch((error) => { clearTimeout(timeout); this.pending.delete(id); reject(error) })
     })
   }
-  async sendExtensionUiResponse(response) {
+  async writeFrame(frame) {
+    const line = `${JSON.stringify(frame)}\n`
+    if (Buffer.byteLength(line, 'utf8') > this.maxFrameBytes) throw new Error('El comando excede el límite de frame de OMP RPC.')
+    const child = this.process
+    if (!child?.stdin.writable) throw new Error('OMP RPC no está iniciado.')
+    await new Promise((resolve, reject) => child.stdin.write(line, (error) => error ? reject(error) : resolve()))
+  }
+  async respondToUiRequest(response) {
+    const pending = this.hostUiRequests.get(String(response.id || ''))
+    if (pending) {
+      this.hostUiRequests.delete(String(response.id))
+      clearTimeout(pending.timeout)
+      pending.cleanup()
+      pending.resolve(response)
+      return
+    }
     await this.ensureStarted()
-    this.process.stdin.write(`${JSON.stringify({ ...response, type: 'extension_ui_response' })}\n`)
+    await this.writeFrame({ ...response, type: 'extension_ui_response' })
+  }
+  requestHostUi(request, signal) {
+    if (!this.eventHandlers.size) return Promise.reject(new Error('Approval required, but no interactive UI is connected.'))
+    const id = `host-ui-${++this.requestId}`
+    return new Promise((resolve) => {
+      const finish = (response) => {
+        const pending = this.hostUiRequests.get(id)
+        if (!pending) return
+        this.hostUiRequests.delete(id)
+        clearTimeout(pending.timeout)
+        pending.cleanup()
+        resolve(response)
+      }
+      const abort = () => finish({ id, cancelled: true })
+      const timeout = setTimeout(() => finish({ id, cancelled: true, timedOut: true }), Math.max(1, Number(request.timeout) || 60_000))
+      const cleanup = () => signal?.removeEventListener('abort', abort)
+      this.hostUiRequests.set(id, { cleanup, resolve, timeout })
+      signal?.addEventListener('abort', abort, { once: true })
+      this.emit({ type: 'extension_ui_request', id, method: request.method, title: request.title, message: request.message, timeout: request.timeout })
+    })
+  }
+  cancelHostUiRequests() {
+    for (const [id, pending] of this.hostUiRequests) {
+      clearTimeout(pending.timeout)
+      pending.cleanup()
+      pending.resolve({ id, cancelled: true })
+    }
+    this.hostUiRequests.clear()
+  }
+  async waitForChildClose(child, timeoutMs) {
+    if (this.closedChildren.has(child)) return true
+    return new Promise((resolve) => {
+      const finish = (closed) => {
+        clearTimeout(timer)
+        child.removeListener('close', onClose)
+        resolve(closed)
+      }
+      const onClose = () => finish(true)
+      const timer = setTimeout(() => finish(false), timeoutMs)
+      timer.unref?.()
+      child.once('close', onClose)
+    })
+  }
+  async terminateChild(child) {
+    if (this.closedChildren.has(child)) return
+    if (child.stdin.writable) child.stdin.end()
+    if (await this.waitForChildClose(child, OMP_STOP_PHASE_TIMEOUT_MS)) return
+    child.kill('SIGTERM')
+    if (await this.waitForChildClose(child, OMP_STOP_PHASE_TIMEOUT_MS)) return
+    child.kill('SIGKILL')
+    if (!await this.waitForChildClose(child, OMP_STOP_PHASE_TIMEOUT_MS)) throw new Error('OMP RPC no terminó después de SIGKILL.')
   }
   async stop() {
-    clearTimeout(this.idleTimer)
-    this.idleTimer = null
-    const child = this.process
-    if (!child) return
-    child.kill('SIGTERM')
-    this.process = null
-    for (const handler of this.eventHandlers) handler({ type: 'agent_settled', reason: 'stopped' })
+    if (this.stopping) return this.stopping
+    const stopping = (async () => {
+      clearTimeout(this.idleTimer)
+      this.idleTimer = null
+      this.cancelHostUiRequests()
+      for (const controller of this.hostCalls.values()) controller.abort()
+      this.hostCalls.clear()
+      const child = this.process
+      if (child) await this.terminateChild(child)
+    })()
+    this.stopping = stopping
+    try {
+      await stopping
+    } finally {
+      if (this.stopping === stopping) this.stopping = null
+    }
   }
   async prompt(message, onEvent) {
     await this.ensureStarted()
+    if (this.activePrompt) throw new Error('Ya hay un prompt OMP activo.')
+    if (this.readyFrame) onEvent({ ...this.readyFrame, type: 'ready' })
+    const id = `prompt-${++this.requestId}`
     return new Promise((resolve, reject) => {
+      let acknowledged = false
+      let completed = false
       let settled = false
-      const unsubscribe = this.subscribe((event) => {
-        onEvent(event)
-        if (event.type === 'agent_settled') finish()
-        const update = event.assistantMessageEvent
-        if (event.type === 'message_update' && update?.type === 'error') finish(new Error(update.error || update.reason || 'Pi error'))
-      })
       const finish = (error) => {
         if (settled) return
+        if (error) {
+          settled = true
+          unsubscribe()
+          this.activePrompt = null
+          reject(error)
+          return
+        }
+        completed = true
+        if (!acknowledged) return
         settled = true
         unsubscribe()
-        error ? reject(error) : resolve()
+        this.activePrompt = null
+        resolve()
       }
-      this.send({ type: 'prompt', message }, 30_000).then(onEvent).catch(finish)
+      const unsubscribe = this.subscribe((event) => {
+        onEvent(event)
+        if (event.type === 'agent_end' && event.isTerminal !== false) finish()
+        if (event.type === 'prompt_result' && event.id === id && event.agentInvoked === false) finish()
+      })
+      this.activePrompt = { id, finish }
+      this.sendCommandStarted({ type: 'prompt', message, streamingBehavior: 'steer' }, null, id).then((response) => {
+        onEvent(response)
+        acknowledged = true
+        if (response.data?.agentInvoked === false || completed) finish()
+      }).catch(finish)
     })
   }
   subscribe(handler) { this.eventHandlers.add(handler); return () => this.eventHandlers.delete(handler) }
+  emit(event) { for (const handler of this.eventHandlers) handler(event) }
   handleStdout(chunk) {
     this.stdoutBuffer += typeof chunk === 'string' ? chunk : this.decoder.write(chunk)
     while (true) {
       const index = this.stdoutBuffer.indexOf('\n')
-      if (index === -1) return
+      if (index === -1) {
+        if (Buffer.byteLength(this.stdoutBuffer, 'utf8') > this.maxFrameBytes) this.failProtocol(new Error('El frame físico sin terminar excede el límite de OMP RPC.'))
+        return
+      }
       const rawLine = this.stdoutBuffer.slice(0, index).replace(/\r$/, '')
       this.stdoutBuffer = this.stdoutBuffer.slice(index + 1)
       if (!rawLine.trim()) continue
-      this.handleLine(rawLine)
+      try {
+        if (Buffer.byteLength(rawLine, 'utf8') + 1 > this.maxFrameBytes) throw new Error('El frame físico excede el límite de OMP RPC.')
+        const frame = this.frameDecoder.push(JSON.parse(rawLine))
+        if (frame) this.handleFrame(frame)
+      } catch (error) {
+        this.failProtocol(error instanceof Error ? error : new Error(String(error)))
+        this.process?.kill('SIGTERM')
+        return
+      }
     }
   }
-  handleLine(rawLine) {
+  handleFrame(event) {
     this.touchActivity()
-    let event
-    try { event = JSON.parse(rawLine) } catch (error) { this.lastError = `No pude parsear JSONL Pi: ${error}`; return }
+    if (event.type === 'ready') {
+      if (this.readyFrame || !Number.isSafeInteger(event.protocolVersion) || event.protocolVersion < 1) throw new Error('OMP RPC envió ready inválido o duplicado.')
+      this.frameDecoder.setLimits(event.maxFrameBytes, event.maxReassembledFrameBytes)
+      if (Number.isSafeInteger(event.maxFrameBytes) && event.maxFrameBytes > 0) this.maxFrameBytes = event.maxFrameBytes
+      this.readyFrame = event
+      this.readyResolve?.(event)
+      return
+    }
     if (event.type === 'response' && typeof event.id === 'string') {
       const pending = this.pending.get(event.id)
       if (pending) {
         clearTimeout(pending.timeout)
         this.pending.delete(event.id)
-        event.success === false ? pending.reject(new Error(String(event.error || 'Pi RPC error'))) : pending.resolve(event)
-      }
+        if (objectFrame(event.data) && typeof event.data.sessionId === 'string') this.sessionId = event.data.sessionId
+        event.success === false ? pending.reject(new Error(String(event.error || 'OMP RPC error'))) : pending.resolve(event)
+      } else if (this.activePrompt?.id === event.id && event.success === false) this.activePrompt.finish(new Error(String(event.error || 'OMP RPC prompt error')))
       return
     }
-    for (const handler of this.eventHandlers) handler(event)
+    if (event.type === 'host_tool_call') { void this.executeHostTool(event); return }
+    if (event.type === 'host_tool_cancel') { this.hostCalls.get(String(event.targetId || ''))?.abort(); return }
+    this.emit(event)
   }
-  handleExit(error) {
+  async executeHostTool(event) {
+    const id = String(event.id || '')
+    const toolCallId = String(event.toolCallId || id)
+    const toolName = String(event.toolName || '')
+    if (!id || !toolName || !objectFrame(event.arguments) || !this.hostTools) {
+      if (id) await this.writeFrame({ type: 'host_tool_result', id, isError: true, result: { content: [{ type: 'text', text: 'Invalid or unavailable host tool request.' }] } })
+      return
+    }
+    const controller = new AbortController()
+    this.hostCalls.set(id, controller)
+    this.emit({ type: 'tool_execution_start', toolCallId, toolName })
+    const update = async (partialResult) => {
+      await this.writeFrame({ type: 'host_tool_update', id, partialResult })
+      this.emit({ type: 'tool_execution_update', toolCallId, toolName, partialResult })
+    }
+    try {
+      const result = await this.hostTools.execute(toolName, event.arguments, { requestUi: (request, signal) => this.requestHostUi(request, signal), sessionId: this.sessionId, signal: controller.signal, update })
+      await this.writeFrame({ type: 'host_tool_result', id, result })
+      this.emit({ type: 'tool_execution_end', toolCallId, toolName, result, isError: false })
+    } catch (error) {
+      const message = controller.signal.aborted ? 'Host tool cancelled.' : error instanceof Error ? error.message : 'Host tool failed.'
+      const result = { content: [{ type: 'text', text: message }] }
+      await this.writeFrame({ type: 'host_tool_result', id, result, isError: true })
+      this.emit({ type: 'tool_execution_end', toolCallId, toolName, result, isError: true })
+    } finally {
+      this.hostCalls.delete(id)
+    }
+  }
+  failProtocol(error) {
     this.lastError = error.message
+    this.readyReject?.(error)
     for (const pending of this.pending.values()) { clearTimeout(pending.timeout); pending.reject(error) }
     this.pending.clear()
+    this.cancelHostUiRequests()
+    for (const controller of this.hostCalls.values()) controller.abort()
+    this.hostCalls.clear()
+    this.activePrompt?.finish(error)
+    this.activePrompt = null
+  }
+  handleExit(child, error) {
+    if (this.process !== child) return
+    this.failProtocol(error)
     this.process = null
+    this.readyFrame = null
   }
 }
-const pi = new PiRpcProcess()
-const piAccess = new PiChatAccessCoordinator()
+const omp = new OmpRpcProcess()
+const ompAccess = new OmpChatAccessCoordinator()
 
-async function getPiVersion() {
+async function getOmpVersion() {
   return new Promise((resolve) => {
-    const child = spawn(PI_BIN, [...PI_ARGS, '--version'], { env: piProcessEnv(), stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
-    let stdout = '', stderr = ''
-    const timeout = setTimeout(() => { child.kill('SIGKILL'); resolve({ ok: false, error: 'Timeout ejecutando pi --version' }) }, 5000)
+    const child = spawn(OMP_BIN, [...OMP_ARGS, '--version'], { env: ompProcessEnv(), stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    let stdout = '', stderr = '', settled = false
+    const finish = (result) => { if (settled) return; settled = true; clearTimeout(timeout); resolve(result) }
+    const timeout = setTimeout(() => { child.kill('SIGKILL'); finish({ ok: false, error: 'Timeout ejecutando omp --version' }) }, 5000)
     child.stdout.on('data', (chunk) => { stdout += chunk.toString() })
     child.stderr.on('data', (chunk) => { stderr += chunk.toString() })
-    child.once('error', (error) => { clearTimeout(timeout); resolve({ ok: false, error: error.message }) })
-    child.once('exit', (code) => { clearTimeout(timeout); resolve(code === 0 ? { ok: true, version: stdout.trim() } : { ok: false, error: stderr.trim() || stdout.trim() }) })
+    child.once('error', (error) => finish({ ok: false, error: error.message }))
+    child.once('exit', (code) => finish(code === 0 ? { ok: true, version: stdout.trim() } : { ok: false, error: stderr.trim() || stdout.trim() }))
   })
 }
 
@@ -473,7 +674,7 @@ function mockSessionState() {
   return {
     sessionId: 'mock-local-session',
     sessionName: 'fixvox-local-ui-lab',
-    sessionFile: path.join(PI_CWD, '.pi', 'sessions', 'fixvox-local-ui-lab.jsonl'),
+    sessionFile: path.join(OMP_CWD, '.omp', 'sessions', 'fixvox-local-ui-lab.jsonl'),
     messageCount: 12,
     pendingMessageCount: 0,
     isStreaming: false,
@@ -1001,7 +1202,8 @@ function mockUsage() {
   }
 }
 async function mockPrompt(message, send) {
-  send({ type: 'web_status', status: 'Pi está trabajando…' })
+  send({ type: 'ready', protocolVersion: 1, supportedProtocolVersions: [1, 2], negotiatedProtocolVersion: 2, maxFrameBytes: 1048576, maxReassembledFrameBytes: 67108864 })
+  send({ type: 'web_status', status: 'OMP está trabajando…' })
   const toolId = `mock-tool-${Date.now()}`
   send({ type: 'tool_execution_start', toolCallId: toolId, toolName: 'fixvox.local_ui_probe', extensionPath: 'mock/local' })
   await new Promise((resolve) => setTimeout(resolve, 120))
@@ -1066,9 +1268,9 @@ function mockAdmin(pathname) {
   return null
 }
 
-function piPromptMessage(message) {
+function ompPromptMessage(message) {
   if (UNRESTRICTED_OWNER_MODE) return message
-  return `${message}\n\nContexto: estas en Fixvox Admin Web remoto, repo /home/jpsal/dev/dictation-tauri. Guardrails: no push, deploy, systemd/tunnel, policy mutation, secrets ni acciones destructivas sin confirmacion explicita de JP. No imprimir tokens, emails completos, account IDs, device IDs completos, transcripts, selected text ni audio.`
+  return `${message}\n\nContexto: estás en Fixvox Admin Web remoto, repo /home/jpsal/dev/dictation-tauri. Guardrails: commit, push y deploy sólo mediante el release broker y su confirmación; systemd, tunnel, policy mutation, secrets y acciones destructivas están bloqueadas. No imprimir tokens, emails completos, account IDs, device IDs completos, transcripts, selected text ni audio.`
 }
 
 function html(res, body) {
@@ -1196,21 +1398,21 @@ const server = http.createServer(async (req, res) => {
         mock: MOCK_MODE,
         localAuthFixture: LOCAL_AUTH_FIXTURE,
         adminBaseUrl: MOCK_MODE ? 'mock://fixvox-admin' : ADMIN_BASE_URL,
-        piCwd: PI_CWD,
-        piMode: UNRESTRICTED_OWNER_MODE ? 'unrestricted-owner' : REMOTE_AGENT_ENABLED ? 'isolated' : 'standard',
+        ompCwd: OMP_CWD,
+        ompMode: UNRESTRICTED_OWNER_MODE ? 'unrestricted-owner' : REMOTE_AGENT_ENABLED ? 'isolated' : 'standard',
         user: session ? { provider: session.provider, emailRedacted: session.email ? redactGoogleEmail(session.email) : null, name: session.name || null } : null,
       guardrails: UNRESTRICTED_OWNER_MODE ? [] : [
         'No push/deploy/systemd/tunnel sin aprobacion explicita.',
         'No mutar policies/users en production sin confirmacion explicita.',
         'No imprimir tokens, account IDs crudos, device IDs completos, transcripts ni audio.',
         ],
-      unrestrictedOwnerWarning: UNRESTRICTED_OWNER_MODE ? 'Pi tiene la misma autoridad que la identidad jpsal del VPS.' : undefined,
+      unrestrictedOwnerWarning: UNRESTRICTED_OWNER_MODE ? 'OMP tiene la misma autoridad que la identidad jpsal del VPS.' : undefined,
       })
     }
     if (url.pathname === '/api/pi-chat/health') {
       if (UNRESTRICTED_OWNER_MODE) await requireRecentGoogleRole(req, ['owner'])
       else await requireGoogleRole(req, ['owner'])
-      return sendJson(res, 200, MOCK_MODE ? { ok: true, cwd: PI_CWD, piBin: PI_BIN, piVersion: '0.80.2-mock', process: 'mock' } : await pi.health())
+      return sendJson(res, 200, MOCK_MODE ? { ok: true, cwd: OMP_CWD, ompBin: OMP_BIN, ompVersion: '17.2.8-mock', protocolVersion: 2, runtime: 'omp', process: 'mock' } : await omp.health())
     }
     if (url.pathname === '/api/pi-chat/command' && req.method === 'POST') {
       let principal = UNRESTRICTED_OWNER_MODE ? await requireRecentGoogleRole(req, ['owner']) : await requireGoogleRole(req, ['owner'])
@@ -1218,40 +1420,40 @@ const server = http.createServer(async (req, res) => {
       const command = body.command || body
       if (command?.type === 'extension_ui_response') {
         principal = await requireRecentGoogleRole(req, ['owner'])
-        piAccess.consumeConfirmation(command.id, piChatSessionKey(req, principal))
-        if (!MOCK_MODE) await pi.sendExtensionUiResponse(command)
+        ompAccess.consumeConfirmation(command.id, ompChatSessionKey(req, principal))
+        if (!MOCK_MODE) await omp.respondToUiRequest(command)
         return sendJson(res, 200, { ok: true })
       }
       if (MOCK_MODE) return sendJson(res, 200, mockCommand(command))
       if (command?.type === 'stop') {
-        await pi.stop()
-        piAccess.cancelAll()
+        await omp.stop()
+        ompAccess.cancelAll()
         return sendJson(res, 200, { ok: true })
       }
-      return sendJson(res, 200, { ok: true, response: await pi.send(command) })
+      return sendJson(res, 200, { ok: true, response: await omp.send(command) })
     }
     if (url.pathname === '/api/pi-chat/prompt' && req.method === 'POST') {
       const principal = UNRESTRICTED_OWNER_MODE ? await requireRecentGoogleRole(req, ['owner']) : await requireGoogleRole(req, ['owner'])
-      const sessionKey = piChatSessionKey(req, principal)
+      const sessionKey = ompChatSessionKey(req, principal)
       const body = JSON.parse(await readBody(req) || '{}')
       const message = String(body.message || '').trim()
       if (!message) return sendJson(res, 400, { ok: false, error: 'Mensaje requerido.' })
-      piAccess.beginPrompt(sessionKey)
+      ompAccess.beginPrompt(sessionKey)
       res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive' })
       const send = (event) => {
-        piAccess.registerConfirmation(event, sessionKey)
+        ompAccess.registerConfirmation(event, sessionKey)
         res.write(`data: ${JSON.stringify(event)}\n\n`)
       }
       send({ type: 'web_status', status: 'starting' })
       try {
-        const effectiveMessage = piPromptMessage(message)
+        const effectiveMessage = ompPromptMessage(message)
         if (MOCK_MODE) await mockPrompt(effectiveMessage, send)
-        else await pi.prompt(effectiveMessage, send)
+        else await omp.prompt(effectiveMessage, send)
         send({ type: 'web_status', status: 'done' })
       } catch (error) {
-        send({ type: 'web_error', error: error instanceof Error ? error.message : 'Pi error' })
+        send({ type: 'web_error', error: error instanceof Error ? error.message : 'OMP error' })
       } finally {
-        piAccess.endPrompt(sessionKey)
+        ompAccess.endPrompt(sessionKey)
       }
       return res.end()
     }
@@ -1432,4 +1634,4 @@ const server = http.createServer(async (req, res) => {
   }
 })
 
-server.listen(PORT, HOST, () => console.log(`Fixvox admin web listening on http://${HOST}:${PORT} cwd=${PI_CWD}`))
+server.listen(PORT, HOST, () => console.log(`Fixvox admin web listening on http://${HOST}:${PORT} cwd=${OMP_CWD}`))

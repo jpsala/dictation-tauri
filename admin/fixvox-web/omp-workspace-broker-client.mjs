@@ -19,32 +19,29 @@ function request(socketPath, route, body, signal) {
 
 export function createBrokerOperations(socketPath) {
   const call = (route, body, signal) => request(socketPath, route, body, signal)
-  const readFile = async (file) => Buffer.from((await call('/v1/read', { path: file })).content, 'base64')
-  const access = async (file) => { await call('/v1/access', { path: file }) }
+  const readFile = async (file, signal) => Buffer.from((await call('/v1/read', { path: file }, signal)).content, 'base64')
+  const access = async (file, signal) => { await call('/v1/access', { path: file }, signal) }
+  const writeFile = async (file, content, signal) => { await call('/v1/write', { path: file, content }, signal) }
   return {
     read: { readFile, access },
     find: {
-      exists: async (target) => (await call('/v1/exists', { path: target })).exists,
-      glob: async (pattern, cwd, options) => (await call('/v1/glob', { pattern, cwd, ...options })).paths,
+      exists: async (target, signal) => (await call('/v1/exists', { path: target }, signal)).exists,
+      glob: async (pattern, cwd, options, signal) => (await call('/v1/glob', { pattern, cwd, ...options }, signal)).paths,
     },
     ls: {
-      exists: async (target) => (await call('/v1/exists', { path: target })).exists,
-      stat: async (target) => {
-        const result = await call('/v1/stat', { path: target })
+      exists: async (target, signal) => (await call('/v1/exists', { path: target }, signal)).exists,
+      stat: async (target, signal) => {
+        const result = await call('/v1/stat', { path: target }, signal)
         return { isDirectory: () => result.directory }
       },
-      readdir: async (target) => (await call('/v1/readdir', { path: target })).entries,
+      readdir: async (target, limit, signal) => (await call('/v1/readdir', { path: target, limit }, signal)).entries,
     },
     grep: async (params, signal) => (await call('/v1/grep', params, signal)).matches,
     write: {
-      writeFile: async (file, content) => { await call('/v1/write', { path: file, content }) },
-      mkdir: async (dir) => { await call('/v1/mkdir', { path: dir }) },
+      writeFile,
+      mkdir: async (dir, signal) => { await call('/v1/mkdir', { path: dir }, signal) },
     },
-    edit: {
-      readFile,
-      access,
-      writeFile: async (file, content) => { await call('/v1/write', { path: file, content }) },
-    },
+    edit: { readFile, access, writeFile },
     bash: {
       exec: async (command, cwd, { onData, signal, timeout }) => {
         const result = await call('/v1/bash', { command, cwd, timeout }, signal)

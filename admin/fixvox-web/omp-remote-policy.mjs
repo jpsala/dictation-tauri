@@ -14,7 +14,7 @@ const PROTECTED_PATH_PARTS = [
   /(^|[/\\])\.gnupg([/\\]|$)/i,
   /(^|[/\\])\.aws([/\\]|$)/i,
   /(^|[/\\])\.cloudflared([/\\]|$)/i,
-  /(^|[/\\])\.pi[/\\]agent[/\\](?:auth|sessions)([/\\]|$)/i,
+  /(^|[/\\])\.(?:omp|pi)[/\\]agent[/\\](?:auth|sessions)([/\\]|$)/i,
   /(^|[/\\])(?:credentials?|secrets?)(?:\.[^/\\]+)?$/i,
   /(^|[/\\])(?:stores?|sessions?|backups?|private-exports?)([/\\]|$)/i,
   /\.(?:sqlite|sqlite3|db)$/i,
@@ -56,34 +56,28 @@ export function buildRemoteAgentEnv(source, options = {}) {
     env.USER = String(options.user)
     env.LOGNAME = String(options.user)
   }
-  if (options.agentDir) env.PI_CODING_AGENT_DIR = canonical(options.agentDir)
-  if (options.auditPath) env.PI_CHAT_AGENT_AUDIT_PATH = canonical(options.auditPath)
-  if (Array.isArray(options.roots)) env.PI_CHAT_AGENT_ROOTS = options.roots.map(canonical).join(path.delimiter)
-  if (options.constelacionesSocket) env.PI_CHAT_CONSTELACIONES_SOCKET = canonical(options.constelacionesSocket)
-  if (options.workspaceBrokerSocket) env.PI_CHAT_WORKSPACE_BROKER_SOCKET = canonical(options.workspaceBrokerSocket)
-  if (options.releaseBrokerSocket) env.PI_CHAT_RELEASE_BROKER_SOCKET = canonical(options.releaseBrokerSocket)
-  if (options.releaseBrokerEnabled) env.PI_CHAT_RELEASE_BROKER_ENABLED = '1'
-  env.PI_CHAT_REMOTE_AGENT = '1'
+  if (options.auditPath) env.OMP_CHAT_AGENT_AUDIT_PATH = canonical(options.auditPath)
+  if (Array.isArray(options.roots)) env.OMP_CHAT_AGENT_ROOTS = options.roots.map(canonical).join(path.delimiter)
+  if (options.constelacionesSocket) env.OMP_CHAT_CONSTELACIONES_SOCKET = canonical(options.constelacionesSocket)
+  if (options.workspaceBrokerSocket) env.OMP_CHAT_WORKSPACE_BROKER_SOCKET = canonical(options.workspaceBrokerSocket)
+  if (options.releaseBrokerSocket) env.OMP_CHAT_RELEASE_BROKER_SOCKET = canonical(options.releaseBrokerSocket)
+  if (options.releaseBrokerEnabled) env.OMP_CHAT_RELEASE_BROKER_ENABLED = '1'
+  env.OMP_CHAT_REMOTE_AGENT = '1'
   return env
 }
 
-export function remoteAgentArgs(options = {}) {
-  const extensionPath = canonical(options.extensionPath)
+export function ompRemoteAgentArgs(options = {}) {
   const sessionDir = canonical(options.sessionDir)
-  const tools = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls', 'constelaciones_future_appointments']
-  if (options.releaseBrokerEnabled) tools.push('release_git_status', 'release_git_diff', 'release_git_commit', 'release_git_push', 'release_deploy')
   return [
     '--mode', 'rpc',
-    '--no-approve',
+    '--auto-approve',
+    '--no-tools',
     '--no-extensions',
     '--no-skills',
-    '--no-prompt-templates',
-    '--no-context-files',
-    '--no-builtin-tools',
-    '--tools', tools.join(','),
-    '--extension', extensionPath,
+    '--no-rules',
+    '--profile', 'fixvox-admin-remote-agent',
     '--session-dir', sessionDir,
-    '--name', 'fixvox-admin-remote-agent',
+    '--continue',
   ]
 }
 
@@ -147,7 +141,7 @@ export function classifyRemoteToolCall(toolName, input, options = {}) {
     const target = path.resolve(cwd, rawPath)
     const root = matchingRoot(target, roots)
     if (!root) return { decision: 'deny', category: 'read_outside_roots', reason: 'Read path is outside approved workspaces.' }
-    if (protectedPath(target)) return { decision: 'deny', category: 'secret_path', reason: 'Sensitive paths are never available to Pi Chat.' }
+    if (protectedPath(target)) return { decision: 'deny', category: 'secret_path', reason: 'Sensitive paths are never available to OMP Chat.' }
     return { decision: 'allow', category: 'read', scope: scopeForPath(target, root) }
   }
 

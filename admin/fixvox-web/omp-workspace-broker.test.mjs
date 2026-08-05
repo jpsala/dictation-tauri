@@ -4,11 +4,11 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import { once } from 'node:events'
-import { createBrokerOperations } from './pi-workspace-broker-client.mjs'
-import { createWorkspaceBroker } from './pi-workspace-broker.mjs'
+import { createBrokerOperations } from './omp-workspace-broker-client.mjs'
+import { createWorkspaceBroker } from './omp-workspace-broker.mjs'
 
 test('workspace broker performs bounded repo operations and blocks escapes/secrets', async () => {
-  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'pi-workspace-broker-'))
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'omp-workspace-broker-'))
   const root = path.join(temp, 'workspace')
   await fs.mkdir(root)
   await fs.writeFile(path.join(root, 'read.txt'), 'hello')
@@ -24,7 +24,7 @@ test('workspace broker performs bounded repo operations and blocks escapes/secre
   await fs.mkdir(outside)
   await fs.writeFile(path.join(outside, 'outside.txt'), 'secret needle')
   await fs.symlink(outside, path.join(root, 'linked-outside'), process.platform === 'win32' ? 'junction' : 'dir')
-  const socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\pi-workspace-${process.pid}-${Date.now()}` : path.join(temp, 'broker.sock')
+  const socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\omp-workspace-${process.pid}-${Date.now()}` : path.join(temp, 'broker.sock')
   const server = createWorkspaceBroker({ roots: [root] })
   server.listen(socketPath)
   await once(server, 'listening')

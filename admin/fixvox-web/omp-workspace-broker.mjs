@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs/promises'
 import http from 'node:http'
 import path from 'node:path'
-import { classifyRemoteToolCall, remoteAgentRoots, resolveRemoteToolInput } from './pi-remote-policy.mjs'
+import { classifyRemoteToolCall, remoteAgentRoots, resolveRemoteToolInput } from './omp-remote-policy.mjs'
 
 const MAX_BODY = 2 * 1024 * 1024
 const MAX_OUTPUT = 64 * 1024
@@ -49,6 +49,7 @@ async function grepFiles(input, roots) {
     let buffer = ''
     let outputBytes = 0
     const rawMatches = []
+    let stderr = ''
     const timer = setTimeout(() => child.kill('SIGKILL'), 10_000)
     child.stdout.on('data', (chunk) => {
       outputBytes += chunk.length
@@ -65,11 +66,19 @@ async function grepFiles(input, roots) {
         } catch {}
       }
     })
+    child.stderr.on('data', (chunk) => {
+      if (stderr.length < 16 * 1024) stderr += chunk.toString().slice(0, 16 * 1024 - stderr.length)
+    })
     child.once('error', reject)
     child.once('close', async (code, signal) => {
       clearTimeout(timer)
+      const stderrLines = stderr.trim().split(/\r?\n/).filter(Boolean)
+      const ignoredWindowsJunctionError = process.platform === 'win32'
+        && code === 2
+        && stderrLines.length > 0
+        && stderrLines.every((line) => /untrusted mount point\. \(os error 448\)$/.test(line))
       if (signal === 'SIGKILL' && outputBytes <= 1024 * 1024) return reject(new Error('Grep timed out.'))
-      if (code && code !== 1 && rawMatches.length < limit) return reject(new Error('Grep failed.'))
+      if (code && code !== 1 && rawMatches.length < limit && !ignoredWindowsJunctionError) return reject(new Error('Grep failed.'))
       const matches = []
       for (const match of rawMatches) {
         try {
@@ -200,9 +209,9 @@ export function createWorkspaceBroker({ roots }) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const socketPath = process.env.PI_CHAT_WORKSPACE_BROKER_SOCKET
-  if (!socketPath) throw new Error('PI_CHAT_WORKSPACE_BROKER_SOCKET is required.')
-  const server = createWorkspaceBroker({ roots: remoteAgentRoots(process.env.PI_CHAT_WORKSPACE_ROOTS) })
+  const socketPath = process.env.OMP_CHAT_WORKSPACE_BROKER_SOCKET
+  if (!socketPath) throw new Error('OMP_CHAT_WORKSPACE_BROKER_SOCKET is required.')
+  const server = createWorkspaceBroker({ roots: remoteAgentRoots(process.env.OMP_CHAT_WORKSPACE_ROOTS) })
   await fs.rm(socketPath, { force: true })
   server.listen(socketPath, async () => {
     await fs.chmod(socketPath, 0o660)

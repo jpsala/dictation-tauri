@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { ReleaseBroker, createReleaseBrokerServer } from './pi-release-broker.mjs'
-import { createGitReleaseRunner } from './pi-release-git-runner.mjs'
+import { ReleaseBroker, createReleaseBrokerServer } from './omp-release-broker.mjs'
+import { createGitReleaseRunner } from './omp-release-git-runner.mjs'
 
-const enabled = process.env.PI_CHAT_RELEASE_BROKER_ENABLED === '1'
-const socketPath = process.env.PI_CHAT_RELEASE_BROKER_SOCKET
-const configPath = process.env.PI_CHAT_RELEASE_CONFIG
-const journalPath = process.env.PI_CHAT_RELEASE_JOURNAL
+const enabled = process.env.OMP_CHAT_RELEASE_BROKER_ENABLED === '1'
+const socketPath = process.env.OMP_CHAT_RELEASE_BROKER_SOCKET
+const configPath = process.env.OMP_CHAT_RELEASE_CONFIG
+const journalPath = process.env.OMP_CHAT_RELEASE_JOURNAL
 if (!enabled) throw new Error('Release broker is disabled.')
 if (!socketPath || !configPath || !journalPath) throw new Error('Release broker paths are not configured.')
 

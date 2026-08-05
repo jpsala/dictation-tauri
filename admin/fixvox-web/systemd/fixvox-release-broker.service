@@ -10,12 +10,12 @@ Group=fixvox-release-broker
 RuntimeDirectory=fixvox-release
 RuntimeDirectoryMode=0770
 RuntimeDirectoryPreserve=yes
-Environment=PI_CHAT_RELEASE_BROKER_ENABLED=1
-Environment=PI_CHAT_RELEASE_BROKER_SOCKET=/run/fixvox-release/release.sock
-Environment=PI_CHAT_RELEASE_CONFIG=/etc/fixvox-release/release.json
-Environment=PI_CHAT_RELEASE_JOURNAL=/var/lib/fixvox-release/audit/release.jsonl
-Environment=PI_ADMIN_DEPLOY_SOCKET=/run/fixvox-release/admin-deploy.sock
-ExecStart=/usr/bin/node /opt/fixvox-agent/runtime/pi-release-service.mjs
+Environment=OMP_CHAT_RELEASE_BROKER_ENABLED=1
+Environment=OMP_CHAT_RELEASE_BROKER_SOCKET=/run/fixvox-release/release.sock
+Environment=OMP_CHAT_RELEASE_CONFIG=/etc/fixvox-release/release.json
+Environment=OMP_CHAT_RELEASE_JOURNAL=/var/lib/fixvox-release/audit/release.jsonl
+Environment=OMP_ADMIN_DEPLOY_SOCKET=/run/fixvox-release/admin-deploy.sock
+ExecStart=/usr/bin/node /opt/fixvox-agent/runtime/omp-release-service.mjs
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=true

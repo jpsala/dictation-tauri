@@ -6,7 +6,7 @@ function setHtml(node, html) {
 const app = $('#app')
 
 const CONTROL_ROOM_AREAS = {
-  chat: { label: 'Pi Chat', description: 'Asistencia contextual para operar Fixvox de forma segura.', renderer: 'chat', icon: 'chat' },
+  chat: { label: 'OMP Chat', description: 'Asistencia contextual para operar Fixvox de forma segura.', renderer: 'chat', icon: 'chat' },
   people: { label: 'Personas', description: 'Cuentas, equipos vinculados y acceso efectivo.', dataTab: 'accounts', renderer: 'accounts', icon: 'accounts' },
   access: { label: 'Planes y acceso', description: 'Roles, acceso operativo y asignaciones autorizadas.', dataTab: 'settings', renderer: 'settings', icon: 'policies' },
   behavior: { label: 'Comportamiento', description: 'Dictado, presets y comportamiento de producto.', dataTab: 'policies', renderer: 'policies', configurationTab: 'presets', icon: 'policies' },
@@ -72,7 +72,7 @@ function cleanText(value) {
 function statusLabel(value) {
   const text = cleanText(value || '')
   if (!text) return 'Listo'
-  if (/codex|token|left|%|thinking|tool/i.test(text)) return 'Pi está trabajando…'
+  if (/codex|token|left|%|thinking|tool/i.test(text)) return 'OMP está trabajando…'
   return text.length > 44 ? `${text.slice(0, 41)}…` : text
 }
 function shortPath(value) {
@@ -181,10 +181,10 @@ async function refreshEnv() {
 async function refreshHealth() {
   try {
     state.health = await jsonFetch('/api/pi-chat/health')
-    state.status = state.health.ok ? (state.running ? state.status : 'Listo') : 'Pi no listo'
+    state.status = state.health.ok ? (state.running ? state.status : 'Listo') : 'OMP no listo'
   } catch (error) {
     state.health = { ok: false, error: error.message, process: 'stopped' }
-    state.status = 'Pi error'
+    state.status = 'OMP error'
   }
   renderAll()
 }
@@ -203,15 +203,9 @@ async function renameSession() {
   await sendCommand({ type: 'set_session_name', name: state.sessionNameDraft.trim() })
   await refreshSession()
 }
-async function cloneSession() {
-  if (!state.health?.ok) return
-  await sendCommand({ type: 'clone' })
-  addMessage('system', 'Sesión Pi clonada desde el punto actual.')
-  await refreshSession()
-}
 async function newSession() {
   await sendCommand({ type: 'new_session' })
-  state.messages = [{ id: crypto.randomUUID(), role: 'system', content: 'Nueva sesión Pi iniciada.' }]
+  state.messages = [{ id: crypto.randomUUID(), role: 'system', content: 'Nueva sesión OMP iniciada.' }]
   state.tools.clear()
   state.uiRequests.clear()
   state.sessionNameDraft = ''
@@ -219,7 +213,7 @@ async function newSession() {
   await refreshSession()
   renderAll()
 }
-async function abortPi() {
+async function abortOmp() {
   if (state.controller) state.controller.abort()
   try { await sendCommand({ type: 'abort' }) } catch {}
   state.running = false
@@ -235,13 +229,13 @@ async function submitPrompt(textOverride, displayTextOverride) {
   addMessage('user', displayText)
   const assistantId = addMessage('assistant', '')
   state.running = true
-  state.status = 'Pi está trabajando...'
+  state.status = 'OMP está trabajando...'
   state.controller = new AbortController()
   renderAll()
   try {
     const response = await fetch('/api/pi-chat/prompt', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: promptWithUiContext(text) }), signal: state.controller.signal })
-    if (!response.ok || !response.body) throw new Error('Pi no aceptó el prompt')
-    await readSse(response.body, (event) => handlePiEvent(event, assistantId))
+    if (!response.ok || !response.body) throw new Error('OMP no aceptó el prompt')
+    await readSse(response.body, (event) => handleOmpEvent(event, assistantId))
   } catch (error) {
     if (error.name !== 'AbortError') appendMessage(assistantId, `\n\n⚠️ ${error.message}`)
   } finally {
@@ -275,9 +269,11 @@ async function readSse(body, onEvent) {
     if (done) break
   }
 }
-function handlePiEvent(event, assistantId) {
-  if (event.type === 'web_status') { state.status = statusLabel(event.status || 'Pi'); renderHeader(); return }
-  if (event.type === 'web_error') { appendMessage(assistantId, `\n\n⚠️ ${event.error || 'Error de Pi'}`); return }
+function handleOmpEvent(event, assistantId) {
+  if (event.type === 'ready') { state.status = `OMP RPC v${event.negotiatedProtocolVersion || event.protocolVersion || 1} listo`; renderHeader(); return }
+  if (event.type === 'prompt_result') { if (event.agentInvoked === false) state.status = 'Listo'; renderHeader(); return }
+  if (event.type === 'web_status') { state.status = statusLabel(event.status || 'OMP'); renderHeader(); return }
+  if (event.type === 'web_error') { appendMessage(assistantId, `\n\n⚠️ ${event.error || 'Error de OMP'}`); return }
   if (event.type === 'extension_ui_request') { handleUiRequest(event, assistantId); return }
   if (event.type === 'tool_execution_start') {
     const id = String(event.toolCallId || crypto.randomUUID())
@@ -296,10 +292,10 @@ function handlePiEvent(event, assistantId) {
     tool.status = event.isError ? 'error' : 'done'; tool.body = toolText(event.result)
     state.tools.set(id, tool); renderActivity(); return
   }
-  if (event.type === 'compaction_start') { state.status = 'Pi compactando contexto...'; renderHeader(); return }
+  if (event.type === 'compaction_start') { state.status = 'OMP compactando contexto...'; renderHeader(); return }
   if (event.type === 'compaction_end') { state.status = event.aborted ? 'Compactación abortada' : 'Contexto compactado'; renderHeader(); return }
   if (event.type === 'auto_retry_start') { state.status = `Reintentando (${event.attempt || 1})`; renderHeader(); return }
-  if (event.type === 'queue_update') { state.status = 'Cola Pi actualizada'; renderHeader(); return }
+  if (event.type === 'queue_update') { state.status = 'Cola OMP actualizada'; renderHeader(); return }
   if (event.type === 'message_end' || event.type === 'turn_end') {
     const finalText = event.message?.role === 'assistant' ? extractAssistantText(event.message) : extractLastAssistantText(event.messages)
     if (finalText.trim()) setMessage(assistantId, finalText)
@@ -318,19 +314,19 @@ function handlePiEvent(event, assistantId) {
       const finalText = extractAssistantText(update.message) || extractAssistantText(update) || update.content || ''
       if (finalText.trim()) setMessage(assistantId, finalText)
     }
-    if (update.type === 'thinking_delta') { state.status = 'Pi está razonando...'; renderHeader() }
-    if (update.type === 'error') appendMessage(assistantId, `\n\n⚠️ ${update.error || update.reason || 'Error de Pi'}`)
+    if (update.type === 'thinking_delta') { state.status = 'OMP está razonando...'; renderHeader() }
+    if (update.type === 'error') appendMessage(assistantId, `\n\n⚠️ ${update.error || update.reason || 'Error de OMP'}`)
   }
 }
 function handleUiRequest(event, assistantId) {
   const method = String(event.method || '')
-  if (method === 'setStatus') { state.status = statusLabel(event.statusText || 'Pi'); renderHeader(); return }
-  if (method === 'setTitle') { state.status = statusLabel(event.title || 'Pi'); renderHeader(); return }
+  if (method === 'setStatus') { state.status = statusLabel(event.statusText || 'OMP'); renderHeader(); return }
+  if (method === 'setTitle') { state.status = statusLabel(event.title || 'OMP'); renderHeader(); return }
   if (method === 'set_editor_text') { const input = $('#prompt'); if (input) input.value = String(event.text || ''); return }
   if (method === 'notify' || method === 'setWidget') return
   const id = String(event.id || crypto.randomUUID())
   state.uiRequests.set(id, { ...event, id })
-  appendMessage(assistantId, '\n\nPi necesita una respuesta en la UI.\n\n')
+  appendMessage(assistantId, '\n\nOMP necesita una respuesta en la UI.\n\n')
   renderUiRequests()
 }
 async function respondUiRequest(id, response) {
@@ -627,9 +623,9 @@ function renderShell() {
               <div class="request-list" id="requests"></div>
               <div class="messages" id="messages"></div>
               <form class="composer" id="composer">
-                <textarea id="prompt" aria-label="Mensaje para Pi"></textarea>
+                <textarea id="prompt" aria-label="Mensaje para OMP"></textarea>
                 <div class="composer-run-buttons"><button class="composer-icon primary" type="button" id="send-button" title="Enviar" aria-label="Enviar">${sendIcon()}</button><button class="composer-icon" type="button" id="abort-button" title="Abortar" aria-label="Abortar">${stopIcon()}</button></div>
-                <button class="composer-icon" type="button" id="new-inline" title="Nueva sesión Pi" aria-label="Nueva sesión Pi">${newIcon()}</button>
+                <button class="composer-icon" type="button" id="new-inline" title="Nueva sesión OMP" aria-label="Nueva sesión OMP">${newIcon()}</button>
               </form>
             </section>
             <aside class="activity-card" id="activity"></aside>
@@ -639,7 +635,7 @@ function renderShell() {
     </div>`)
   $('#composer').onsubmit = (event) => { event.preventDefault(); submitPrompt().catch(alertError) }
   $('#send-button').onclick = () => submitPrompt().catch(alertError)
-  $('#abort-button').onclick = () => abortPi().catch(alertError)
+  $('#abort-button').onclick = () => abortOmp().catch(alertError)
   $('#new-inline').onclick = () => newSession().catch(alertError)
   $('#prompt').oninput = () => renderMessages()
   $('#prompt').onkeydown = (event) => {
@@ -687,14 +683,14 @@ function renderHeader() {
   const title = viewTitle(state.activeView)
   const description = area?.description || (state.activeView === 'chat' ? 'Asistencia contextual para la entidad seleccionada.' : 'Control Room operativo de Fixvox.')
   const icon = state.activeView === 'chat' ? chatIcon() : navIcon(area?.icon || state.activeView)
-  setHtml(header, `<div><div class="title-line"><span class="title-icon" aria-hidden="true">${icon}</span><div><h1>${esc(title)}</h1><p>${esc(description)}</p></div></div></div><div class="chips"><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `Pi ${esc(health.piVersion || '')}` : 'Pi no listo'}</span><span class="chip ${state.running ? 'primary' : ''}">${esc(statusLabel(state.status))}</span><span class="chip ${state.env?.production ? 'prod' : 'local'}">${esc(envName)}</span></div>`)
+  setHtml(header, `<div><div class="title-line"><span class="title-icon" aria-hidden="true">${icon}</span><div><h1>${esc(title)}</h1><p>${esc(description)}</p></div></div></div><div class="chips"><span class="chip ${health?.ok ? 'ok' : 'warn'}">${health?.ok ? `OMP ${esc(health.ompVersion || '')} · RPC v${esc(health.protocolVersion || 1)}` : 'OMP no listo'}</span><span class="chip ${state.running ? 'primary' : ''}">${esc(statusLabel(state.status))}</span><span class="chip ${state.env?.production ? 'prod' : 'local'}">${esc(envName)}</span></div>`)
   const cwd = $('#cwd-label')
   if (cwd) setHtml(cwd, state.activeView === 'chat' && health?.ok ? `cwd: <code>${esc(shortPath(health.cwd))}</code> · ${esc(health.process || '')}` : '')
 }
 function renderHealthWarning() {
   const box = $('#health-warning'); if (!box) return
   if (state.health?.ok || !state.health?.error) { setHtml(box, ''); return }
-  setHtml(box, `<div class="alert warning"><strong>${esc(state.health.error)}</strong><br>${esc(state.health.instructions || '')}<br>cwd: <code>${esc(state.health.cwd || '')}</code> · bin: <code>${esc(state.health.piBin || '')}</code></div>`)
+  setHtml(box, `<div class="alert warning"><strong>${esc(state.health.error)}</strong><br>${esc(state.health.instructions || '')}<br>cwd: <code>${esc(state.health.cwd || '')}</code> · bin: <code>${esc(state.health.ompBin || '')}</code></div>`)
 }
 function renderMessages() {
   const box = $('#messages'); if (!box) return
@@ -708,7 +704,7 @@ function renderMessages() {
     const shouldKeepScroll = state.lastAdminViewRendered === state.activeView
     const previousScrollTop = shouldKeepScroll ? box.scrollTop : 0
     if (title) title.textContent = viewTitle(state.activeView)
-    if (subtitle) subtitle.textContent = `Contexto para Pi · ${uiContextSummary()}`
+    if (subtitle) subtitle.textContent = `Contexto para OMP · ${uiContextSummary()}`
     if (composer) composer.hidden = true
     setHtml(box, renderAdminWorkbench(state.activeView))
     box.scrollTop = previousScrollTop
@@ -719,12 +715,12 @@ function renderMessages() {
   if (title) title.textContent = 'Conversación'
   if (subtitle) subtitle.textContent = `Enter envía · Shift+Enter agrega línea · ${uiContextSummary()}`
   if (composer) composer.hidden = false
-  setHtml(box, state.messages.length ? state.messages.map((message) => messageBubble(message)).join('') : '<div class="empty-state"><strong>Listo para trabajar</strong><span>Pedile a Pi que revise UI, admin, policies o un cambio local. Nada toca production en modo mock.</span></div>')
+  setHtml(box, state.messages.length ? state.messages.map((message) => messageBubble(message)).join('') : '<div class="empty-state"><strong>Listo para trabajar</strong><span>Pedile a OMP que revise UI, admin, policies o un cambio local. Nada toca production en modo mock.</span></div>')
   box.scrollTop = box.scrollHeight
   const input = $('#prompt')
   if (input) {
     input.disabled = !state.health?.ok || state.running
-    input.placeholder = state.health?.ok ? 'Escribí una instrucción para Pi… (Enter envía, Shift+Enter baja línea)' : 'Pi todavía no está listo en este entorno.'
+    input.placeholder = state.health?.ok ? 'Escribí una instrucción para OMP… (Enter envía, Shift+Enter baja línea)' : 'OMP todavía no está listo en este entorno.'
   }
   const send = $('#send-button')
   const abort = $('#abort-button')
@@ -744,11 +740,11 @@ function renderMessages() {
   }
 }
 function viewTitle(view) {
-  return CONTROL_ROOM_AREAS[view]?.label || { chat: 'Pi', dashboard: 'Control Room', accounts: 'Personas', devices: 'Equipos', policies: 'Configuración', usage: 'Uso', settings: 'Acceso', account: 'Mi cuenta' }[view] || 'Control Room'
+  return CONTROL_ROOM_AREAS[view]?.label || { chat: 'OMP', dashboard: 'Control Room', accounts: 'Personas', devices: 'Equipos', policies: 'Configuración', usage: 'Uso', settings: 'Acceso', account: 'Mi cuenta' }[view] || 'Control Room'
 }
 function messageBubble(message) {
   const role = message.role === 'user' ? (state.env?.user?.name || 'Vos') : message.role === 'system' ? 'Sistema' : 'agente'
-  const fallback = message.role === 'assistant' && state.running && !message.content ? 'Trabajando…' : message.content || (message.role === 'assistant' ? 'Pi terminó sin texto visible. Revisá la actividad técnica.' : '')
+  const fallback = message.role === 'assistant' && state.running && !message.content ? 'Trabajando…' : message.content || (message.role === 'assistant' ? 'OMP terminó sin texto visible. Revisá la actividad técnica.' : '')
   return `<div class="message-row ${message.role}"><article class="bubble"><div class="bubble-label">${esc(role)}</div><div class="markdown-lite">${renderMarkdownLite(fallback)}</div></article></div>`
 }
 function renderMarkdownLite(text) {
@@ -766,12 +762,12 @@ function renderUiRequests() {
     const title = request.title || request.question || (method === 'select' ? 'Elegí una opción' : method === 'input' ? 'Completá el dato pedido' : method === 'editor' ? 'Editá el contenido' : 'Confirmación')
     const message = request.context || request.message || request.description || ''
     const options = Array.isArray(request.options) ? request.options.slice(0, 4) : []
-    const header = `<div class="request-head"><strong>Pi necesita una respuesta: ${esc(title)}</strong>${message ? `<div class="muted">${esc(message)}</div>` : ''}<small>Tipo: ${esc(method)}</small></div>`
+    const header = `<div class="request-head"><strong>OMP necesita una respuesta: ${esc(title)}</strong>${message ? `<div class="muted">${esc(message)}</div>` : ''}<small>Tipo: ${esc(method)}</small></div>`
     if (method === 'select') {
       return `<div class="request-card" data-request="${esc(request.id)}">${header}<div class="button-row">${options.map((option) => { const label = typeof option === 'string' ? option : option.label || option.title || 'Opción'; return `<button class="button small primary" data-request-action="option" data-value="${esc(label)}">${esc(label)}</button>` }).join('')}<button class="button small" data-request-action="cancel">Cancelar</button></div></div>`
     }
     if (method === 'input' || method === 'editor') {
-      return `<div class="request-card" data-request="${esc(request.id)}">${header}<textarea ${method === 'editor' ? 'class="editor"' : ''} placeholder="${esc(request.placeholder || 'Respuesta para Pi')}" >${esc(request.prefill || request.text || '')}</textarea><div class="button-row end"><button class="button small" data-request-action="cancel">Cancelar</button><button class="button small primary" data-request-action="respond">Enviar</button></div></div>`
+      return `<div class="request-card" data-request="${esc(request.id)}">${header}<textarea ${method === 'editor' ? 'class="editor"' : ''} placeholder="${esc(request.placeholder || 'Respuesta para OMP')}" >${esc(request.prefill || request.text || '')}</textarea><div class="button-row end"><button class="button small" data-request-action="cancel">Cancelar</button><button class="button small primary" data-request-action="respond">Enviar</button></div></div>`
     }
     if (method === 'confirm') {
       return `<div class="request-card" data-request="${esc(request.id)}">${header}<div class="button-row end"><button class="button small" data-request-action="reject">No</button><button class="button small primary" data-request-action="confirm">Sí</button></div></div>`
@@ -786,7 +782,7 @@ function renderActivity() {
   const visibleTools = state.showAllTools ? tools : tools.slice(0, 8)
   const hiddenToolCount = Math.max(0, tools.length - visibleTools.length)
   const adminPanel = state.activeView === 'chat' ? `<div class="activity-section"><div class="section-head"><div><span class="section-icon">F</span><strong>Fixvox admin</strong></div></div><div class="data-tabs">${['accounts','devices','policies','usage'].map((tab) => `<button class="data-tab ${state.dataTab === tab ? 'active' : ''}" data-tab="${tab}">${tab}</button>`).join('')}</div><div id="admin-data" class="admin-data"></div></div>` : ''
-  setHtml(box, `<div class="activity-section session"><div class="section-head"><div><span class="section-icon">S</span><strong>Sesión Pi</strong></div><button class="icon-button mini" id="refresh-session" title="Refrescar sesión">↻</button></div>${state.session ? `<p><strong>${esc(sessionTitle)}</strong><br><code>${esc(shortPath(state.session.sessionFile || ''))}</code></p><div class="chips wrap"><span class="chip">${state.session.messageCount ?? 0} mensajes</span>${state.session.pendingMessageCount ? `<span class="chip warn">${state.session.pendingMessageCount} pendientes</span>` : ''}${state.session.isStreaming ? '<span class="chip primary">streaming</span>' : ''}${state.session.isCompacting ? '<span class="chip">compactando</span>' : ''}</div><div class="rename-row"><input id="session-name" value="${esc(state.sessionNameDraft)}" placeholder="Nombre visible"><button class="icon-button mini" id="rename-session">✓</button></div><button class="button full" id="clone-session">Clonar sesión</button>` : `<p class="muted">No hay estado de sesión cargado.</p><button class="button full" id="refresh-session-empty">Refrescar sesión</button>`}</div><div class="activity-section"><div class="section-head"><div><span class="section-icon">T</span><strong>Actividad técnica</strong></div><span class="muted">${tools.length} tools</span></div>${hiddenToolCount ? `<button class="button tiny" id="toggle-tools">Ver ${hiddenToolCount} tools anteriores</button>` : state.showAllTools && tools.length > 8 ? '<button class="button tiny" id="toggle-tools">Mostrar solo actividad reciente</button>' : ''}<div class="tool-list">${visibleTools.length ? visibleTools.map(toolCard).join('') : '<p class="muted">Sin tools todavía.</p>'}</div></div>${adminPanel}`)
+  setHtml(box, `<div class="activity-section session"><div class="section-head"><div><span class="section-icon">S</span><strong>Sesión OMP</strong></div><button class="icon-button mini" id="refresh-session" title="Refrescar sesión">↻</button></div>${state.session ? `<p><strong>${esc(sessionTitle)}</strong><br><code>${esc(shortPath(state.session.sessionFile || ''))}</code></p><div class="chips wrap"><span class="chip">${state.session.messageCount ?? 0} mensajes</span>${state.session.pendingMessageCount ? `<span class="chip warn">${state.session.pendingMessageCount} pendientes</span>` : ''}${state.session.isStreaming ? '<span class="chip primary">streaming</span>' : ''}${state.session.isCompacting ? '<span class="chip">compactando</span>' : ''}</div><div class="rename-row"><input id="session-name" value="${esc(state.sessionNameDraft)}" placeholder="Nombre visible"><button class="icon-button mini" id="rename-session">✓</button></div>` : `<p class="muted">No hay estado de sesión cargado.</p><button class="button full" id="refresh-session-empty">Refrescar sesión</button>`}</div><div class="activity-section"><div class="section-head"><div><span class="section-icon">T</span><strong>Actividad técnica</strong></div><span class="muted">${tools.length} tools</span></div>${hiddenToolCount ? `<button class="button tiny" id="toggle-tools">Ver ${hiddenToolCount} tools anteriores</button>` : state.showAllTools && tools.length > 8 ? '<button class="button tiny" id="toggle-tools">Mostrar solo actividad reciente</button>' : ''}<div class="tool-list">${visibleTools.length ? visibleTools.map(toolCard).join('') : '<p class="muted">Sin tools todavía.</p>'}</div></div>${adminPanel}`)
   if (adminPanel) renderAdminData()
   wireDynamicEvents()
 }
@@ -1224,7 +1220,6 @@ function wireDynamicEvents() {
   const refreshButtons = ['refresh-session','refresh-session-empty']
   for (const id of refreshButtons) { const el = document.getElementById(id); if (el) el.onclick = () => refreshSession().catch(alertError) }
   const rename = $('#rename-session'); if (rename) rename.onclick = () => renameSession().catch(alertError)
-  const clone = $('#clone-session'); if (clone) clone.onclick = () => cloneSession().catch(alertError)
   const toggleTools = $('#toggle-tools'); if (toggleTools) toggleTools.onclick = () => { state.showAllTools = !state.showAllTools; renderActivity() }
   const name = $('#session-name'); if (name) name.oninput = (event) => { state.sessionNameDraft = event.currentTarget.value }
   document.querySelectorAll('[data-request]').forEach((card) => {

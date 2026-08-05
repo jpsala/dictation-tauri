@@ -5,7 +5,7 @@ import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import test from 'node:test'
-import { createGitReleaseRunner } from './pi-release-git-runner.mjs'
+import { createGitReleaseRunner } from './omp-release-git-runner.mjs'
 
 const exec = promisify(execFile)
 const hashA = 'a'.repeat(40)
@@ -13,7 +13,7 @@ const hashA = 'a'.repeat(40)
 async function git(cwd, ...args) { return exec('git', args, { cwd }) }
 
 test('Git runner enforces exact remote, allowlisted commit paths and fast-forward push', async () => {
-  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'pi-release-git-'))
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'omp-release-git-'))
   const bare = path.join(temp, 'remote.git')
   const work = path.join(temp, 'work')
   await git(temp, 'init', '--bare', bare)
@@ -49,7 +49,7 @@ test('Git runner enforces exact remote, allowlisted commit paths and fast-forwar
 })
 
 test('deploy runner executes exact health check and rollback recipe on failure', async () => {
-  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'pi-release-deploy-'))
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'omp-release-deploy-'))
   const deployed = path.join(temp, 'deployed.txt')
   const rolledBack = path.join(temp, 'rolled-back.txt')
   const runner = createGitReleaseRunner()

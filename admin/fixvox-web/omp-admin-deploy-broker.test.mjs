@@ -5,8 +5,8 @@ import path from 'node:path'
 import http from 'node:http'
 import test from 'node:test'
 import { once } from 'node:events'
-import { AdminDeployBroker } from './pi-admin-deploy-broker.mjs'
-import { createAdminDeployServer } from './pi-admin-deploy-service.mjs'
+import { AdminDeployBroker } from './omp-admin-deploy-broker.mjs'
+import { createAdminDeployServer } from './omp-admin-deploy-service.mjs'
 
 const hash = 'a'.repeat(40)
 

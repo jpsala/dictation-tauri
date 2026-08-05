@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
-import { sensitiveReleasePath } from './pi-release-broker.mjs'
+import { sensitiveReleasePath } from './omp-release-broker.mjs'
 
 function execute(file, args, options = {}) {
   return new Promise((resolve, reject) => {

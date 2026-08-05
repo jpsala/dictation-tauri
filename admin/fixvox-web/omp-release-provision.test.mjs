@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import test from 'node:test'
 
-const provision = await fs.readFile(new URL('../../scripts/pi-release-provision.ps1', import.meta.url), 'utf8')
+const provision = await fs.readFile(new URL('../../scripts/omp-release-provision.ps1', import.meta.url), 'utf8')
 const releaseUnit = await fs.readFile(new URL('./systemd/fixvox-release-broker.service', import.meta.url), 'utf8')
 const deployUnit = await fs.readFile(new URL('./systemd/fixvox-admin-deploy-helper.service', import.meta.url), 'utf8')
 let recipe
@@ -33,7 +33,7 @@ test('services and deploy recipe remain disabled without the explicit enable swi
   assert.match(provision, /systemctl disable fixvox-admin-deploy-helper\.service fixvox-release-broker\.service/)
   assert.match(releaseUnit, /User=fixvox-release/)
   assert.match(deployUnit, /User=root/)
-  assert.match(deployUnit, /PI_ADMIN_DEPLOY_CONFIG=\/etc\/fixvox-release\/admin-deploy\.json/)
+  assert.match(deployUnit, /OMP_ADMIN_DEPLOY_CONFIG=\/etc\/fixvox-release\/admin-deploy\.json/)
 })
 
 test('release config exposes only typed fixed recipes and no credentials', () => {
