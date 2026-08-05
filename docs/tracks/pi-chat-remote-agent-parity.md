@@ -346,7 +346,10 @@ reemplazado por OMP nativo:
 - perfil, sesiones y estado bajo `/var/lib/fixvox-agent`, sin reutilizar
   `~/.pi/agent`;
 - operaciones de host mediante brokers root-pinned y contratos acotados;
-- rollout y deploy verificados en source `1bc44fe`, con health local y público.
+- credencial OpenAI Codex centralizada en `fixvox-omp-auth-broker.service`,
+  loopback-only; el perfil aislado conserva sólo el bearer del broker;
+- rollout y deploy verificados en source `2219e89`, con health local/público y
+  prompt real `OMP_RUNTIME_OK`.
 
 No reactivar `PI_CHAT_BIN`, extensiones `pi-remote-*` ni el modo Trusted Owner
 descrito arriba. La implementación vigente vive en los módulos `omp-*` de
