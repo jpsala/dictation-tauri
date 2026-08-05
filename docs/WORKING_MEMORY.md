@@ -3,7 +3,7 @@
 Router operativo corto; el detalle durable vive en topics, tracks, specs y
 decisiones.
 
-Última actualización: 2026-07-31.
+Última actualización: 2026-08-05.
 
 ## Foco Único De Ejecución
 
@@ -18,6 +18,11 @@ decisiones.
 - El runtime cloud/self-hosted y Checkpoint F están cerrados. Estado, receipts,
   rollback y hashes viven en las tracks de cloud/VPS y en Spec 019; cualquier
   operación nueva requiere un brief y gate explícitos.
+- Fixvox Admin conserva la superficie “Pi Chat”, pero su runtime efectivo ya es
+  OMP nativo: binario root-pinned `/opt/fixvox-agent/bin/omp`, RPC `--mode rpc
+  --auto-approve`, perfil/sesiones aislados bajo `/var/lib/fixvox-agent` y
+  brokers acotados para workspaces, Constelaciones y releases. El cutover
+  productivo quedó activo en source `1bc44fe`.
 - Desktop mantiene compatibilidad `CF-DESKTOP`; OAuth/account linkage y prompt
   parity quedaron corregidos. Smokes reales, instalación, release, provider,
   VPS, DNS y deploy siguen gated.
