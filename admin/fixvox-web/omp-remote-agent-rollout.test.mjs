@@ -17,6 +17,8 @@ const bashExecutable = (() => {
 const rollout = await fs.readFile(new URL('../../scripts/omp-remote-agent-rollout.ps1', import.meta.url), 'utf8')
 const apply = await fs.readFile(new URL('../../scripts/omp-remote-agent-apply.sh', import.meta.url), 'utf8')
 const adminDeploy = await fs.readFile(new URL('../../scripts/admin-web-deploy.ps1', import.meta.url), 'utf8')
+const launcher = await fs.readFile(new URL('./run-isolated-omp.sh', import.meta.url), 'utf8')
+const rpcSmoke = await fs.readFile(new URL('../../scripts/omp-remote-agent-rpc-smoke.mjs', import.meta.url), 'utf8')
 
 test('rollout defaults to dry-run and gates every remote mutation', () => {
   assert.match(rollout, /\[switch\]\$ConfirmProduction/)
@@ -33,6 +35,24 @@ test('rollout uses exact manifest, one verified bundle, bounded retry and cleanu
   assert.match(rollout, /sha256sum -c/)
   assert.match(rollout, /UploadAttempts/)
   assert.match(rollout, /tar -xzf/)
+})
+
+test('isolated launcher uses a root-pinned OMP executable that rollout installs and backs up exactly', () => {
+  assert.match(launcher, /\/opt\/fixvox-agent\/bin\/omp/)
+  assert.doesNotMatch(launcher, /\/home\/jpsal\/\.local\/bin\/omp/)
+  assert.match(apply, /OMP_SOURCE_BIN=\/home\/jpsal\/\.local\/bin\/omp/)
+  assert.match(apply, /sudo tar -czf[\s\S]*opt\/fixvox-agent/)
+  assert.match(apply, /sudo install [^\n]*"\$OMP_SOURCE_BIN" "\$OPT_ROOT\/bin\/omp"/)
+  assert.match(apply, /sudo -u fixvox-agent test -x "\$OPT_ROOT\/bin\/omp"/)
+  assert.match(apply, /sudo rm -rf "\$OPT_ROOT"/)
+})
+
+test('RPC smoke uses supported OMP flags, configurable executable, and fail-fast child lifecycle', () => {
+  assert.doesNotMatch(rpcSmoke, /--offline/)
+  assert.match(rpcSmoke, /process\.env\.OMP_CHAT_BIN/)
+  assert.match(rpcSmoke, /child\.once\('error'/)
+  assert.match(rpcSmoke, /child\.once\('close'/)
+  assert.match(rpcSmoke, /if \(processFailure\) throw processFailure/)
 })
 
 test('remote apply fails dirty mirrors, rejects secrets, and makes rollback fail closed', () => {
@@ -97,6 +117,9 @@ async function createApplyFixture(options = {}) {
   await fs.mkdir(path.join(root, 'opt', 'runtime'), { recursive: true })
   await fs.writeFile(path.join(root, 'opt', 'runtime', 'old-runtime'), 'original')
   await fs.writeFile(path.join(root, 'opt', 'run-omp.sh'), 'original launcher')
+  const sourceOmp = path.join(root, 'source-omp')
+  await fs.writeFile(sourceOmp, '#!/usr/bin/env bash\nexit 0\n')
+  await fs.chmod(sourceOmp, 0o755)
   for (const file of runtimeFiles) await fs.writeFile(path.join(stage, 'admin', 'fixvox-web', file), 'export {}')
   await fs.writeFile(path.join(stage, 'admin', 'fixvox-web', 'run-isolated-omp.sh'), '#!/bin/sh')
   for (const unit of ['fixvox-workspace-broker.service', 'fixvox-constelaciones-read-broker.service', 'fixvox-release-broker.service', 'fixvox-admin-deploy-helper.service']) {
@@ -111,8 +134,9 @@ async function createApplyFixture(options = {}) {
 
   const sudo = `#!/usr/bin/env bash
 set -u
+requested_user=
 while [[ \${1:-} == -* ]]; do
-  if [[ $1 == -u ]]; then shift 2; else shift; fi
+  if [[ $1 == -u ]]; then requested_user=$2; shift 2; else shift; fi
 done
 cmd=\${1:?}; shift
 echo "sudo:$cmd:$*" >> "$MOCK_LOG"
@@ -131,8 +155,10 @@ case "$cmd" in
     count=0; [[ -f "$MOCK_ROOT/install-count" ]] && count=$(cat "$MOCK_ROOT/install-count")
     count=$((count + 1)); echo "$count" > "$MOCK_ROOT/install-count"
     if [[ \${FAIL_INSTALL_AT:-0} == "$count" ]]; then exit 46; fi
-    /usr/bin/mkdir -p "$(dirname "\${@: -1}")"
-    /usr/bin/cp "\${@: -2:1}" "\${@: -1}" ;;
+    target="\${@: -1}"
+    /usr/bin/mkdir -p "$(dirname "$target")"
+    /usr/bin/cp "\${@: -2:1}" "$target"
+    if [[ " $* " == *" -m 0755 "* ]]; then /usr/bin/chmod 0755 "$target"; fi ;;
   tar)
     if [[ $1 == -czf ]]; then
       /usr/bin/rm -rf "$MOCK_ROOT/runtime-snapshot"
@@ -147,7 +173,10 @@ case "$cmd" in
   systemctl) "$MOCK_BIN/systemctl" "$@" ;;
   git) "$MOCK_BIN/git" "$@" ;;
   stat) echo 660 ;;
-  test) /usr/bin/test "$@" ;;
+  test)
+    if [[ $requested_user == fixvox-agent && \${1:-} == -r && \${2:-} == *"/mirrors/dictation-tauri/package.json" ]]; then exit 1; fi
+    if [[ $requested_user == fixvox-workspace && \${1:-} == -r && \${2:-} == *"/var/lib/fixvox-agent/.omp/agent/auth.json" ]]; then exit 1; fi
+    /usr/bin/test "$@" ;;
   chown|find) exit 0 ;;
   *) "$cmd" "$@" ;;
 esac
@@ -189,6 +218,7 @@ esac
     .replace('BACKUP_ROOT="/home/jpsal/.local/state/fixvox-agent-rollouts/$RUN_ID"', `BACKUP_ROOT="${fixtureRoot}/backups/$RUN_ID"`)
     .replace('OPT_ROOT=/opt/fixvox-agent', `OPT_ROOT="${fixtureRoot}/opt"`)
     .replace('MIRROR_ROOT=/var/lib/fixvox-workspace/repos', `MIRROR_ROOT="${fixtureRoot}/mirrors"`)
+    .replace('OMP_SOURCE_BIN=/home/jpsal/.local/bin/omp', `OMP_SOURCE_BIN="${fixtureRoot}/source-omp"`)
     .replaceAll('/home/jpsal/dev/$repo', `${fixtureRoot}/rescue/$repo`)
     .replaceAll('/etc/systemd/system', `${fixtureRoot}/etc/systemd/system`)
     .replaceAll('/tmp/fixvox-agent-$RUN_ID-$repo', `${fixtureRoot}/tmp/fixvox-agent-$RUN_ID-$repo`)
@@ -225,6 +255,22 @@ esac
     ], { env, encoding: 'utf8' }),
   }
 }
+
+test('successful remote apply installs an executable OMP copy outside the protected home path', async () => {
+  const fixture = await createApplyFixture()
+  try {
+    const result = fixture.result()
+    assert.equal(result.status, 0, result.stderr)
+    const installed = path.join(fixture.root, 'opt', 'bin', 'omp')
+    const calls = await fs.readFile(fixture.log, 'utf8')
+    if (process.platform !== 'win32') assert.equal((await fs.stat(installed)).mode & 0o111, 0o111)
+    assert.match(calls, /sudo:install:.*-m 0755 .*\/opt\/bin\/omp/)
+    assert.match(calls, /sudo:test:-x .*\/opt\/bin\/omp/)
+    assert.match(calls, /sudo:.*\/opt\/bin\/omp:--version/)
+  } finally {
+    await fs.rm(fixture.root, { recursive: true, force: true })
+  }
+})
 
 test('remote apply restores the original mirror when the candidate-to-current rename fails', async () => {
   const fixture = await createApplyFixture({ syncMirrors: true, failCandidateRename: true })

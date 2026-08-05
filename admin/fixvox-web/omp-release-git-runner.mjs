@@ -83,9 +83,14 @@ export function createGitReleaseRunner() {
         await runExact(recipe.deploy, ['--source-hash', expectedHash])
         await runExact(recipe.health)
         return { hash: expectedHash, health: 'ok', rollback: recipe.rollbackId }
-      } catch (error) {
-        await runExact(recipe.rollback, ['--source-hash', expectedHash]).catch(() => {})
-        throw new Error('Deploy or health check failed; rollback attempted.')
+      } catch (deployError) {
+        try {
+          await runExact(recipe.rollback, ['--source-hash', expectedHash])
+          await runExact(recipe.health)
+        } catch (rollbackError) {
+          throw new AggregateError([deployError, rollbackError], 'Deploy failed and rollback could not be verified.')
+        }
+        throw new Error('Deploy failed; rollback completed and health verified.', { cause: deployError })
       }
     },
   }

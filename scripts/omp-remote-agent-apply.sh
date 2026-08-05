@@ -7,6 +7,7 @@ SYNC_MIRRORS=${3:-0}
 BACKUP_ROOT="/home/jpsal/.local/state/fixvox-agent-rollouts/$RUN_ID"
 OPT_ROOT=/opt/fixvox-agent
 MIRROR_ROOT=/var/lib/fixvox-workspace/repos
+OMP_SOURCE_BIN=/home/jpsal/.local/bin/omp
 RUNTIME_FILES=(
   omp-chat-access.mjs
   omp-remote-policy.mjs
@@ -46,8 +47,7 @@ verify_health() {
 restore_runtime() {
   [[ $RUNTIME_APPLIED == 1 ]] || return 0
   sha256sum -c "$BACKUP_ROOT/runtime-and-units.tar.gz.sha256" || return 1
-  sudo rm -rf "$OPT_ROOT/runtime" || return 1
-  sudo mkdir -p "$OPT_ROOT/runtime" || return 1
+  sudo rm -rf "$OPT_ROOT" || return 1
   sudo tar -xzf "$BACKUP_ROOT/runtime-and-units.tar.gz" -C / || return 1
   sudo tar -dzf "$BACKUP_ROOT/runtime-and-units.tar.gz" -C / || return 1
   sudo systemctl daemon-reload || return 1
@@ -110,16 +110,16 @@ trap rollback ERR
 
 mkdir -p "$BACKUP_ROOT"
 sudo tar -czf "$BACKUP_ROOT/runtime-and-units.tar.gz" -C / \
-  opt/fixvox-agent/runtime \
+  opt/fixvox-agent \
   etc/systemd/system/fixvox-workspace-broker.service \
   etc/systemd/system/fixvox-constelaciones-read-broker.service \
   etc/systemd/system/fixvox-release-broker.service \
-  etc/systemd/system/fixvox-admin-deploy-helper.service \
-  opt/fixvox-agent/run-omp.sh
+  etc/systemd/system/fixvox-admin-deploy-helper.service
 sha256sum "$BACKUP_ROOT/runtime-and-units.tar.gz" > "$BACKUP_ROOT/runtime-and-units.tar.gz.sha256"
 if sudo systemctl is-active --quiet fixvox-release-broker.service; then RELEASE_WAS_ACTIVE=1; fi
 if sudo systemctl is-active --quiet fixvox-admin-deploy-helper.service; then ADMIN_HELPER_WAS_ACTIVE=1; fi
 
+test -x "$OMP_SOURCE_BIN"
 for file in "${RUNTIME_FILES[@]}"; do
   node --check "$STAGE/admin/fixvox-web/$file"
 done
@@ -154,11 +154,14 @@ if [[ $SYNC_MIRRORS == 1 ]]; then
 fi
 
 RUNTIME_APPLIED=1
-sudo install -d -o root -g root -m 0755 "$OPT_ROOT/runtime"
+sudo install -d -o root -g root -m 0755 "$OPT_ROOT/runtime" "$OPT_ROOT/bin"
+sudo install -o root -g root -m 0755 "$OMP_SOURCE_BIN" "$OPT_ROOT/bin/omp"
 for file in "${RUNTIME_FILES[@]}"; do
   sudo install -o root -g root -m 0644 "$STAGE/admin/fixvox-web/$file" "$OPT_ROOT/runtime/$file"
 done
 sudo install -o root -g root -m 0755 "$STAGE/admin/fixvox-web/run-isolated-omp.sh" "$OPT_ROOT/run-omp.sh"
+sudo -u fixvox-agent test -x "$OPT_ROOT/bin/omp"
+sudo -u fixvox-agent "$OPT_ROOT/bin/omp" --version >/dev/null
 for unit in fixvox-workspace-broker.service fixvox-constelaciones-read-broker.service fixvox-release-broker.service fixvox-admin-deploy-helper.service; do
   sudo install -o root -g root -m 0644 "$STAGE/admin/fixvox-web/systemd/$unit" "/etc/systemd/system/$unit"
 done

@@ -9,7 +9,7 @@ import { buildRemoteAgentEnv, ompRemoteAgentArgs } from '../admin/fixvox-web/omp
 
 const repo = path.resolve(import.meta.dirname, '..')
 const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'omp-remote-agent-smoke-'))
-const args = [...ompRemoteAgentArgs({ sessionDir: path.join(temp, 'sessions') }), '--offline']
+const args = ompRemoteAgentArgs({ sessionDir: path.join(temp, 'sessions') })
 const env = buildRemoteAgentEnv(process.env, {
   home: temp,
   user: process.env.USER || process.env.USERNAME || 'fixvox-agent-smoke',
@@ -25,16 +25,22 @@ const hostTools = createOmpHostTools({
   workspaceBrokerSocket: path.join(temp, 'run', 'workspace-broker.sock'),
   constelacionesSocket: path.join(temp, 'run', 'constelaciones-read.sock'),
 })
-const executable = process.platform === 'win32' ? 'cmd.exe' : 'omp'
-const executableArgs = process.platform === 'win32' ? ['/d', '/s', '/c', 'omp.cmd', ...args] : args
+const configuredExecutable = String(process.env.OMP_CHAT_BIN || '').trim()
+const executable = configuredExecutable || (process.platform === 'win32' ? 'cmd.exe' : 'omp')
+const executableArgs = configuredExecutable ? args : process.platform === 'win32' ? ['/d', '/s', '/c', 'omp.cmd', ...args] : args
 const child = spawn(executable, executableArgs, { cwd: repo, env, stdio: ['pipe', 'pipe', 'pipe'] })
 const decoder = new OmpRpcChunkReassembler()
 let buffer = ''
 let stderr = ''
 let ready
+let processFailure
 const responses = new Map()
 
 child.stderr.on('data', (chunk) => { stderr += chunk.toString() })
+child.once('error', (error) => { processFailure = error })
+child.once('close', (code, signal) => {
+  processFailure ||= new Error(`OMP exited before smoke completion (code=${code ?? 'none'}, signal=${signal || 'none'}).`)
+})
 child.stdout.on('data', (chunk) => {
   buffer += chunk.toString()
   while (true) {
@@ -56,6 +62,7 @@ child.stdout.on('data', (chunk) => {
 async function waitFor(predicate, label) {
   const deadline = Date.now() + 20_000
   while (Date.now() < deadline) {
+    if (processFailure) throw processFailure
     const value = predicate()
     if (value) return value
     await new Promise((resolve) => setTimeout(resolve, 50))
@@ -78,7 +85,7 @@ try {
   if (!registered.success) throw new Error('Host tool registration failed.')
   const response = await command('state-1', { type: 'get_state' })
   if (!response.success) throw new Error(`RPC state check failed. ${stderr.slice(-500)}`)
-  process.stdout.write(`${JSON.stringify({ ok: true, protocolVersion: ready.supportedProtocolVersions?.includes(2) ? 2 : ready.protocolVersion, hostTools: registered.data?.toolNames || [], sessionName: response.data?.sessionName || null, offline: true })}\n`)
+  process.stdout.write(`${JSON.stringify({ ok: true, protocolVersion: ready.supportedProtocolVersions?.includes(2) ? 2 : ready.protocolVersion, hostTools: registered.data?.toolNames || [], sessionName: response.data?.sessionName || null, isolated: true })}\n`)
 } finally {
   child.kill('SIGTERM')
   await fs.rm(temp, { recursive: true, force: true })

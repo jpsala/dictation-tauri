@@ -52,12 +52,13 @@ test('deploy runner executes exact health check and rollback recipe on failure',
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'omp-release-deploy-'))
   const deployed = path.join(temp, 'deployed.txt')
   const rolledBack = path.join(temp, 'rolled-back.txt')
+  const healthChecks = path.join(temp, 'health-checks.txt')
   const runner = createGitReleaseRunner()
   const deployScript = path.join(temp, 'deploy.mjs')
   const healthScript = path.join(temp, 'health.mjs')
   const rollbackScript = path.join(temp, 'rollback.mjs')
   await fs.writeFile(deployScript, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(deployed)}, 'yes')`)
-  await fs.writeFile(healthScript, 'process.exit(1)')
+  await fs.writeFile(healthScript, `import fs from 'node:fs'; const file=${JSON.stringify(healthChecks)}; let count=0; try { count=Number(fs.readFileSync(file,'utf8')) } catch {}; count += 1; fs.writeFileSync(file,String(count)); process.exit(count === 1 ? 1 : 0)`)
   await fs.writeFile(rollbackScript, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(rolledBack)}, 'yes')`)
   const recipe = {
     id: 'test', cwd: temp, home: temp, rollbackId: 'test-backup',
@@ -66,9 +67,15 @@ test('deploy runner executes exact health check and rollback recipe on failure',
     rollback: { file: process.execPath, args: [rollbackScript] },
   }
   try {
-    await assert.rejects(() => runner.deploy(recipe, hashA), /rollback attempted/)
+    await assert.rejects(() => runner.deploy(recipe, hashA), /rollback completed and health verified/)
     assert.equal(await fs.readFile(deployed, 'utf8'), 'yes')
     assert.equal(await fs.readFile(rolledBack, 'utf8'), 'yes')
+    assert.equal(await fs.readFile(healthChecks, 'utf8'), '2')
+
+    await fs.rm(healthChecks, { force: true })
+    await fs.writeFile(rollbackScript, 'process.exit(1)')
+    await assert.rejects(() => runner.deploy(recipe, hashA), /rollback could not be verified/)
+    assert.equal(await fs.readFile(healthChecks, 'utf8'), '1')
   } finally {
     await fs.rm(temp, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })
   }

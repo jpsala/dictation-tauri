@@ -30,9 +30,15 @@ export class OmpRpcChunkReassembler {
   }
 
   setLimits(maxFrameBytes, maxReassembledFrameBytes) {
-    if (positiveSafeInteger(maxFrameBytes)) this.maxFrameBytes = maxFrameBytes
-    if (positiveSafeInteger(maxReassembledFrameBytes)) this.maxReassembledFrameBytes = maxReassembledFrameBytes
-    if (this.maxReassembledFrameBytes < this.maxFrameBytes) throw new Error('OMP RPC anunció límites de transporte inconsistentes.')
+    if (!positiveSafeInteger(maxFrameBytes)
+      || !positiveSafeInteger(maxReassembledFrameBytes)
+      || maxFrameBytes > DEFAULT_MAX_FRAME_BYTES
+      || maxReassembledFrameBytes > DEFAULT_MAX_REASSEMBLED_BYTES
+      || maxReassembledFrameBytes < maxFrameBytes) {
+      throw new Error('OMP RPC anunció límites de transporte inválidos.')
+    }
+    this.maxFrameBytes = maxFrameBytes
+    this.maxReassembledFrameBytes = maxReassembledFrameBytes
   }
 
   push(value) {
