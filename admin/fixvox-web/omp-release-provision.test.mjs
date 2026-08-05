@@ -34,7 +34,7 @@ test('services and deploy recipe remain disabled without the explicit enable swi
   assert.match(releaseUnit, /User=fixvox-release/)
   assert.match(deployUnit, /User=root/)
   assert.match(deployUnit, /OMP_ADMIN_DEPLOY_CONFIG=\/etc\/fixvox-release\/admin-deploy\.json/)
-  assert.match(deployUnit, /CapabilityBoundingSet=.*CAP_SETGID.*CAP_SETUID/)
+  assert.doesNotMatch(deployUnit, /CAP_SETGID|CAP_SETUID/)
 })
 
 test('release config exposes only typed fixed recipes and no credentials', () => {

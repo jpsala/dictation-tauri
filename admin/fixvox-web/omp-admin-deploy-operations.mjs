@@ -114,7 +114,6 @@ export function createAdminDeployOperations(config, dependencies = {}) {
   const execute = dependencies.run || run
   const request = dependencies.fetch || fetch
   const sourceAdmin = path.join(config.sourceRoot, 'admin', 'fixvox-web')
-  const serviceEnv = { PATH: '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', HOME: config.adminHome, XDG_RUNTIME_DIR: `/run/user/${config.adminUid}`, DBUS_SESSION_BUS_ADDRESS: `unix:path=/run/user/${config.adminUid}/bus` }
   let transaction
   let cleanup = []
 
@@ -268,7 +267,7 @@ export function createAdminDeployOperations(config, dependencies = {}) {
       }
     },
     async restart() {
-      await execute('/usr/bin/systemctl', ['--user', 'restart', 'fixvox-admin-web.service'], { uid: config.adminUid, gid: config.adminGid, env: serviceEnv, timeoutMs: 60_000 })
+      await execute('/usr/bin/systemctl', ['--user', `--machine=${config.adminUser}@.host`, 'restart', 'fixvox-admin-web.service'], { timeoutMs: 60_000 })
     },
     async health() {
       for (const url of [config.localHealthUrl, config.publicHealthUrl]) {
