@@ -214,7 +214,7 @@ export function createAdminDeployOperations(config, dependencies = {}) {
       const capture = async (args) => {
         const chunks = []
         await new Promise((resolve, reject) => {
-          const child = spawn('/usr/bin/git', args, { cwd: sourceRoot, env: { PATH: '/usr/bin:/bin', HOME: '/nonexistent', LANG: 'C.UTF-8' }, stdio: ['ignore', 'pipe', 'ignore'] })
+          const child = spawn('/usr/bin/git', ['-c', `safe.directory=${sourceRoot}`, ...args], { cwd: sourceRoot, env: { PATH: '/usr/bin:/bin', HOME: '/nonexistent', LANG: 'C.UTF-8' }, stdio: ['ignore', 'pipe', 'ignore'] })
           child.stdout.on('data', (chunk) => chunks.push(chunk)); child.once('error', reject); child.once('close', (code) => code === 0 ? resolve() : reject(new Error('Git source inspection failed.')))
         })
         return Buffer.concat(chunks).toString('utf8').trim()
