@@ -102,8 +102,9 @@ function run(file, args, options = {}) {
     child.once('close', (code) => {
       clearTimeout(timer)
       if (code === 0) return resolve()
-      const error = new Error(`Admin helper command ${path.basename(file)} failed (${code}).`)
-      error.stderr = Buffer.concat(stderr).toString('utf8').slice(-1000)
+      const detail = Buffer.concat(stderr).toString('utf8').trim().replace(/\s+/g, ' ').slice(-500)
+      const error = new Error(`Admin helper command ${path.basename(file)} failed (${code}).${detail ? ` ${detail}` : ''}`)
+      error.stderr = detail
       reject(error)
     })
   })
