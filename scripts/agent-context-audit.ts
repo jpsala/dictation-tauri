@@ -1,9 +1,9 @@
-/// <reference path="../types/aos-runtime.d.ts" />
+/// <reference path="../types/node-shims.d.ts" />
 
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { pathToFileURL } from "node:url";
 import { runAosDoctor } from "./lib/aos-doctor.ts";
+import { validateTraycerRoutingPolicy } from "./traycer-routing-contract.ts";
 
 type Finding = {
   level: "error" | "warn";
@@ -12,69 +12,24 @@ type Finding = {
 
 const root = process.cwd();
 const findings: Finding[] = [];
-const aosHome = process.env.AOS_HOME?.trim() ||
-  (process.platform === "win32"
-    ? "C:\\dev\\os"
-    : join(process.env.HOME ?? "", "dev", "os"));
-type GlobalAosCheck = { ok: boolean; reason?: string };
-let globalAosExists = (_path: string) => false;
-let globalAosCheck: GlobalAosCheck = {
-  ok: false,
-  reason: "AOS_HOME doctor could not be loaded",
+
+const requiredOmpExtensions = ["aos-doctor.ts"];
+const forbiddenLegacyPaths = [
+  ".pi",
+  "aos.manifest.json",
+  "aos.requirements.json",
+  "docs/topics/pi-agentic-os.md",
+  "docs/topics/pi-extension-stack.md",
+  "runtime/aos-flujo.ts",
+  "types/aos-runtime.d.ts",
+];
+const retiredWorkflowSkills: Record<string, true> = {
+  "cerrar-sesion": true,
+  "continuar-sesion": true,
+  "continuar-sesion-con-gol": true,
+  "plan-implementar": true,
+  sigamos: true,
 };
-try {
-  const aosHomeModule = await import(
-    pathToFileURL(join(aosHome, "scripts", "aos-home.ts")).href
-  );
-  const configDir = process.env.PI_CODING_AGENT_DIR ?? join(
-    process.env.USERPROFILE ?? process.env.HOME ?? "",
-    ".pi",
-    "agent",
-  );
-  globalAosExists = (path: string) => aosHomeModule.aosPathExists(path, aosHome);
-  globalAosCheck = aosHomeModule.checkAosHome(
-    aosHome,
-    false,
-    join(configDir, "settings.json"),
-  );
-} catch {
-  // Reported below as a required global contract failure.
-}
-
-const requiredAosPiExtensions = ["aos-doctor.ts"];
-
-const legacyAosPiPrompts = [
-  "adopt-os.md",
-  "align-os-project.md",
-  "cerrar.md",
-  "checkpoint.md",
-  "continuar.md",
-  "gol.md",
-  "guardar-sesion.md",
-  "init-os.md",
-  "nueva-sesion.md",
-  "nueva-sesion-con-gol.md",
-  "os-help.md",
-  "perfect-os.md",
-  "realinear.md",
-  "sigamos.md",
-  "siguiente.md",
-  "threads.md",
-  "update-os.md",
-];
-
-const legacyAosPiExtensions = [
-  "checkpoint-nudge.ts",
-  "os-tools.ts",
-];
-
-const retiredLocalFlowSkills = new Set([
-  "cerrar-sesion",
-  "continuar-sesion",
-  "continuar-sesion-con-gol",
-  "plan-implementar",
-  "sigamos",
-]);
 
 function read(path: string) {
   return readFileSync(join(root, path), "utf8");
@@ -253,12 +208,12 @@ const docsKnowledge = exists("docs/topics/docs-knowledge-system.md")
   ? read("docs/topics/docs-knowledge-system.md")
   : "";
 
-if ((exists("docs/topics/agentic-os-operations.md") || exists("docs/skills/aos-realinear-os") || globalAosExists("docs/skills/aos-realinear-os"))
+if ((exists("docs/topics/agentic-os-operations.md") || exists("docs/skills/aos-realinear-os"))
   && (!agents.includes("aos-realinear-os") || !agents.includes("docs/topics/agentic-os-operations.md"))) {
   add("warn", "AGENTS.md should keep a short `aos-realinear-os` pointer to docs/topics/agentic-os-operations.md");
 }
 
-if ((exists("docs/skills/aos-cerrar-sesion") || globalAosExists("docs/skills/aos-cerrar-sesion")) && !agents.includes("aos-cerrar-sesion")) {
+if (exists("docs/skills/aos-cerrar-sesion") && !agents.includes("aos-cerrar-sesion")) {
   add("warn", "AGENTS.md should keep short pointer for `aos-cerrar-sesion`");
 }
 
@@ -293,9 +248,6 @@ if (exists("docs/topics/docs-knowledge-system.md") && !topicsIndex.includes("top
   add("warn", "docs/topics/docs-knowledge-system.md exists but is not linked from docs/TOPICS.md");
 }
 
-if (exists("docs/topics/pi-agentic-os.md") && !topicsIndex.includes("topics/pi-agentic-os.md")) {
-  add("warn", "docs/topics/pi-agentic-os.md exists but is not linked from docs/TOPICS.md");
-}
 
 const topicFiles = exists("docs/topics")
   ? readdirSync(join(root, "docs", "topics")).filter((name) => name.endsWith(".md")).sort()
@@ -316,7 +268,11 @@ for (const file of topicFiles) {
     }
 
     const status = frontmatterValue(fm, "status");
-    const maxChars = status === "reference" || status === "historical" ? 30000 : 25000;
+    const kind = frontmatterValue(fm, "kind");
+    const maxChars =
+      status === "reference" || status === "historical" || kind === "reference"
+        ? 30000
+        : 25000;
     if (content.length > maxChars) {
       add(
         "warn",
@@ -363,8 +319,8 @@ if (exists("docs/skills")) {
 
   for (const skillDir of skillDirs) {
     const skillName = skillDir.split("/").at(-1) ?? skillDir;
-    if (retiredLocalFlowSkills.has(skillName)) {
-      add("error", `${skillDir} competes with the global /flow planning, implementation, continuity, or close contract`);
+    if (retiredWorkflowSkills[skillName]) {
+      add("error", `${skillDir} competes with the native OMP intent-first workflow`);
     }
   }
 
@@ -398,80 +354,58 @@ if (exists("docs/skills")) {
   }
 }
 
-if (exists(".pi/prompts")) {
-  for (const file of walkMarkdownFiles(join(root, ".pi", "prompts"))) {
-    const promptPath = relative(root, file).replaceAll("\\", "/");
-    const fm = frontmatter(read(promptPath));
-    if (fm) warnIfFrontmatterYamlLooksUnsafe(promptPath, fm);
+for (const path of forbiddenLegacyPaths) {
+  if (exists(path)) add("error", `${path} is a retired Pi/AOS runtime surface; use native OMP project resources`);
+}
+
+const legacyMarkers = [
+  "/flow",
+  "AOS_HOME",
+  "aos.requirements.json",
+  "runtime/aos-flujo",
+  "execution_route",
+];
+const ompHotPaths = [
+  "AGENTS.md",
+  "docs/WORKING_MEMORY.md",
+  "docs/TOPICS.md",
+  "docs/reference/tool-routing.yaml",
+  "docs/skills/README.md",
+  "docs/topics/agent-tool-routing.md",
+  "docs/topics/agentic-os-operations.md",
+  "docs/topics/agentic-os.md",
+  "docs/topics/local-codex-skills.md",
+  "docs/topics/os-quality.md",
+].filter(exists);
+for (const path of ompHotPaths) {
+  const content = read(path);
+  for (const marker of legacyMarkers) {
+    if (content.includes(marker)) add("error", `${path} still references retired runtime marker ${marker}`);
   }
 }
 
-if (!globalAosCheck.ok) {
-  add(
-    "error",
-    `Global AOS package does not satisfy the /flow contract: ${globalAosCheck.reason ?? "unknown doctor failure"}`,
-  );
+if (!exists(".omp/extensions")) {
+  add("error", ".omp/extensions/ is missing; native project commands will not load");
+} else {
+  const extensionNames = new Set(listFileNames(".omp/extensions", ".ts"));
+  for (const extension of requiredOmpExtensions) {
+    if (!extensionNames.has(extension)) {
+      add("error", `.omp/extensions/${extension} is missing; required local AOS command will not load`);
+    }
+  }
 }
 
 try {
-  const requirements = JSON.parse(read("aos.requirements.json"));
-  const flow = requirements?.commands?.flow;
-  if (
-    requirements?.schemaVersion !== 1 ||
-    flow?.contract !== "aos.flow-first" ||
-    flow?.minVersion !== "1.1.0" ||
-    flow?.scope !== "user" ||
-    flow?.cardinality !== 1
-  ) {
-    add(
-      "error",
-      "aos.requirements.json must require exactly one user/package aos.flow-first /flow at version 1.1.0",
-    );
+  const manifest = JSON.parse(read("package.json"));
+  if (manifest?.pi || manifest?.omp) {
+    add("error", "package.json must not declare a top-level Pi/OMP package runtime; project-local OMP resources use .omp/");
   }
 } catch {
-  add("error", "Missing or invalid aos.requirements.json global /flow declaration");
-}
-
-if (exists(".pi/extensions/aos-flujo.ts")) {
-  add(
-    "error",
-    ".pi/extensions/aos-flujo.ts is an unauthorized local copy; /flow must come from the user-scoped AOS package",
-  );
-}
-
-const hasPiAdapter = exists(".pi") || exists(".pi/prompts") || exists(".pi/extensions");
-if (hasPiAdapter) {
-  if (exists(".pi/prompts")) {
-    const promptNames = new Set(listFileNames(".pi/prompts", ".md"));
-    for (const prompt of legacyAosPiPrompts) {
-      if (promptNames.has(prompt)) {
-        const command = prompt.replace(/\.md$/, "");
-        add("warn", `.pi/prompts/${prompt} is a legacy AOS slash command /${command}; /flow is the canonical daily entry`);
-      }
-    }
-  }
-
-  if (!exists(".pi/extensions")) {
-    add("error", "Pi adapter exists but .pi/extensions/ is missing; local project commands will not load");
-  } else {
-    const extensionNames = new Set(listFileNames(".pi/extensions", ".ts"));
-    for (const extension of requiredAosPiExtensions) {
-      if (!extensionNames.has(extension)) {
-        add("error", `.pi/extensions/${extension} is missing; required local AOS command will not load`);
-      }
-    }
-
-    for (const extension of legacyAosPiExtensions) {
-      if (extensionNames.has(extension)) {
-        add("warn", `.pi/extensions/${extension} is a legacy AOS adapter; /flow is canonical`);
-      }
-    }
-
-  }
+  add("error", "Missing or invalid package.json");
 }
 
 if (!exists(".agents/skills")) {
-  // Allowed: .agents/skills is a discovery toggle. Pi sessions keep it disabled to avoid slash noise.
+  // Allowed: .agents/skills is an optional OMP discovery link.
 } else if (exists("docs/skills")) {
   const stats = lstatSync(join(root, ".agents/skills"));
   if (!(stats.isSymbolicLink() || stats.isDirectory())) {
@@ -544,12 +478,11 @@ if (!exists("docs/.generated/context-index.md")) {
     "docs/OS_PROJECTS.md",
     "docs/skills/README.md",
     "docs/tracks/README.md",
-    ...walkMarkdownFiles(join(root, ".pi", "prompts")).map((path) => relative(root, path).replaceAll("\\", "/")),
     ...(
-      exists(".pi/extensions")
-        ? readdirSync(join(root, ".pi", "extensions"), { withFileTypes: true })
+      exists(".omp/extensions")
+        ? readdirSync(join(root, ".omp", "extensions"), { withFileTypes: true })
           .filter((entry) => entry.isFile() && entry.name.endsWith(".ts"))
-          .map((entry) => `.pi/extensions/${entry.name}`)
+          .map((entry) => `.omp/extensions/${entry.name}`)
         : []
     ),
     ...topicFiles.map((file) => `docs/topics/${file}`),
@@ -568,6 +501,12 @@ if (!exists("docs/.generated/context-index.md")) {
 for (const finding of runAosDoctor(root, { includeContextSize: false }).findings) {
   add(finding.level, `AOS doctor [${finding.code}]: ${finding.message}`);
 }
+
+const routingPolicy = exists("docs/reference/tool-routing.yaml") ? read("docs/reference/tool-routing.yaml") : "";
+const portableContract = exists("docs/topics/portable-multiharness-contract.md")
+  ? read("docs/topics/portable-multiharness-contract.md")
+  : "";
+for (const error of validateTraycerRoutingPolicy(routingPolicy, portableContract)) add("error", error);
 
 const errors = findings.filter((finding) => finding.level === "error");
 const warnings = findings.filter((finding) => finding.level === "warn");

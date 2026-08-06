@@ -1,98 +1,87 @@
-version: 9
-policy: flow_first_lean_brief
+version: 14
+policy: traycer_native_intent_first
 
 runtime:
-  daily_entry: /flow
-  source: global_aos_package
-  package_extension: runtime/aos-flujo.ts
-  requirement: aos.requirements.json
-  local_flow_copy: forbidden
+  control_plane: traycer
+  harness: codex
+  fallback_harness: omp
+  fallback_mode: manual_only
+  daily_entry: conversation
+  package_extension: none
+  prompts: none
+  local_runtime_copy: forbidden
 
-flow:
-  think:
-    mode: current_thread
-    outcome: THINK_COMPLETE_or_THINK_BLOCKED
+execution:
+  automatic_fallback: false
+  automatic_new_session: false
+  automatic_send: false
+
+coordination:
+  agents: explicit_user_request_only
+  handoff: demand_only
+  worktrees: isolated_for_concurrency_only
+
+workflow:
+  understand:
+    strategy: current_session
+    outcome: decision_or_explicit_blocker
   plan:
-    mode: current_thread
+    strategy: current_session
+    executes: false
     default: lightweight_implementation_brief
     content:
       - objective
       - observable_behavior
       - explicit_limits
-      - 2_to_4_done_criteria
-      - focused_checks
-    exhaustive_only_for:
-      - security
-      - irreversible_migration
-      - production
-      - multi_repo_coordination
-      - explicit_request
-    outcome: PLAN_READY_or_PLAN_BLOCKED
-  selection:
-    source: docs_working_memory_focus
-    zero: needs_planning_without_plan_preloads_plan
-    one: ready_adjacent_plan_batch_auto_selects
-    many: ready_adjacent_plan_batch_pairs_open_picker
-    non_executable: blocked_complete_waiting_gate_use_reference
-    fail_closed_on_invalid_state_fields_or_path: true
-  inspection: minimum_needed_to_preserve_existing_changes
-  handoff:
-    mode: new_linked_session
-    parent_session: preserved_as_lineage
-    source: context_index_working_memory_and_selected_plan
-    editor: reviewable_not_auto_sent
-    transient_chat: not_implicitly_carried
-    llm_summary: none
-  execution:
-    mode: direct_in_replacement_parent
-    agent_use: explicit_user_request_only
-    writer_count: 1
-    max_batches: 1
-    model_routing:
-      source: selected_plan_frontmatter
-      field: execution_route
-      default: balanced
-      economical: openai-codex/gpt-5.6-luna@high
-      balanced: openai-codex/gpt-5.6-sol@medium
-      strong: openai-codex/gpt-5.6-sol@high
-      semantics:
-        economical: explicit_quota_saving_with_deterministic_checks
-        balanced: normal_time_first_default_for_bounded_work
-        strong: exceptional_ambiguity_or_hard_to_detect_material_failure
-      non_escalators:
-        - priority
-        - file_count
-        - native_stack
-        - contract_or_review
-        - complex_planning
-        - authorized_external_effect
-      manual_controls:
-        ctrl_p: toggle_sol_medium_high
-        ctrl_l: model_selector
-      application: replacement_session_reload_before_handoff
-      visibility: prompt_and_notification
-      unavailable: fail_closed_without_fallback
-      classifier: none
-      terra: excluded_until_local_evidence
-  plan_role: scope_guidance_not_exhaustive_checklist
-  scope_growth: stop_instead_of_completing_adjacent_work
-  checks: minimum_sufficient_nonduplicated_checks
-  documentation: concise_final_state_only
-  authorization: explicit_authorization_is_not_reasked
-  close:
-    mode: current_thread
-    required_after_persisted_hacer: false
-    outcome: CHECKPOINT_SAVED_or_CHECKPOINT_BLOCKED
-    track: compact_only_missing_durable_value
-    working_memory: minimal_state_reference_and_next_action_without_receipts
+      - focused_done_criteria
+  implementation:
+    strategy: current_session_direct
+    tools: native_harness
+    preserves_existing_work: true
+    scope_growth: stop
+  progress:
+    mechanism: native_todos_when_useful
+  persistence:
+    strategy: concise_canonical_update
+    duplicate_receipts: false
+
+delegation:
+  enabled: explicit_user_request_only
+  implicit_handoff: forbidden
+  linked_session: none
+  fallback: none
+
+approval:
+  mode: single_batch_envelope
+  local_reversible: proceed
+  require_for:
+    - accounts
+    - installs
+    - commit
+    - push
+    - deploy
+    - production
+    - external_side_effects
 
 support_tools:
-  orientation: [codemapper, fff]
-  diagnostics: [lsp, lens]
-  judgment: [advisor]
-  human_decision: [ask_user]
-  external_knowledge: [web, librarian]
-  visible_ui: [chrome, cua]
+  orientation:
+    - search
+    - read
+  changes:
+    - edit
+    - write
+  diagnostics:
+    - lsp
+  judgment:
+    - reviewer
+  external_knowledge:
+    - librarian
+    - web
+  human_decision:
+    - ask_user
+  visible_ui:
+    - browser
+    - computer
 
 local_gates:
   - physical_audio
@@ -108,34 +97,27 @@ local_gates:
 
 removed_engines:
   taskflow: removed
-  council: removed
   planner: removed
+  relay: removed
   until_done: removed
   dgoal: removed
   governed_runner: removed
   worktree_bridge: removed
 
 invariants:
-  - prompts_are_reviewable_and_not_auto_sent
-  - no_runtime_state
-  - execution_route_is_explicit_reviewable_and_session_scoped
-  - focused_plan_paths_stay_inside_project
+  - user_intent_is_the_entrypoint
+  - plans_do_not_execute_or_authorize_side_effects
+  - no_project_runtime_state
+  - no_selector_or_phase_command
+  - no_new_session_or_automatic_handoff
+  - no_automatic_send
+  - no_global_package_dependency
   - local_reversible_work_uses_a_lightweight_brief
-  - brief_is_guidance_not_an_exhaustive_checklist
   - implementation_targets_the_observable_result_in_one_pass
-  - no_hardening_compatibility_rollout_or_full_matrix_without_need_or_request
   - material_scope_growth_stops_instead_of_absorbing_adjacent_work
-  - minimum_sufficient_nonduplicated_checks
-  - hacer_uses_a_linked_documentary_handoff
-  - transient_chat_must_be_persisted_before_hacer
-  - hacer_does_not_use_agent
-  - durable_state_update_is_concise
-  - explicit_authorization_is_not_reasked
-  - no_parallel_writers
-  - no_automatic_second_batch
   - project_desktop_gates_are_preserved
 
 local_adapters:
-  - /doctor
-  - speckit
-  - impeccable
+  doctor: product_doctor_extension
+  speckit: docs_skills
+  impeccable: docs_skills_impeccable

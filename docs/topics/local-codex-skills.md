@@ -33,8 +33,9 @@ primary_refs:
 ## Uso
 
 Abrir este topic sólo para crear, revisar o reparar skills locales y su
-discovery. El trabajo diario de pensar, planear, implementar y cerrar entra por
-el `/flow` global; no crear aliases locales que compitan con esas fases.
+discovery. El trabajo diario de pensar, planear e implementar parte de la
+intención conversacional y permanece en la sesión actual; no crear aliases
+locales que compitan con esa ruta.
 
 ## Regla Canónica
 
@@ -42,16 +43,16 @@ el `/flow` global; no crear aliases locales que compitan con esas fases.
 técnica y debe resolver por junction/symlink a ese canon. No duplicar la misma
 skill en dos carpetas reales ni borrar el enlace para limpiar paletas cacheadas.
 
-Las skills AOS portables se descubren desde `C:/dev/os`; el downstream conserva
-sólo capacidades realmente locales:
+OMP descubre las skills mediante `.agents/skills`. El repo conserva sólo
+capacidades realmente locales:
 
 - `aos-doctor`: diagnóstico read-only del contexto de Dictation Tauri;
 - `realinear-os` y `evaluar-skills`: operaciones especializadas;
 - `impeccable`: trabajo UI/frontend;
 - `speckit-*`: workflow SpecKit del producto.
 
-No mantener skills locales de planificación, implementación, continuidad o
-cierre alternativas a `/flow`.
+No mantener skills locales alternativas de planificación, implementación,
+continuidad o cierre.
 
 ## Skill, Topic O Regla
 
@@ -63,8 +64,8 @@ cierre alternativas a `/flow`.
 | Skill híbrida | La acción es descubrible y la lógica vive en un topic/script. | `realinear-os`. |
 
 Antes de crear una skill, confirmar que sea una acción repetible, tenga triggers
-claros, no duplique `/flow` y justifique su costo de metadata. Mantener
-`SKILL.md` corto cuando una fuente canónica ya contiene el procedimiento.
+claros, no duplique el workflow nativo y justifique su costo de metadata.
+Mantener `SKILL.md` corto cuando una fuente canónica ya contiene el procedimiento.
 
 ## Validación
 

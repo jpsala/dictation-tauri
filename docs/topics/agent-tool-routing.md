@@ -5,66 +5,46 @@ kind: policy
 triggers:
   - tool routing
   - routing decision
-  - /flow
+  - OMP
   - elegir herramienta
   - subagente
 primary_refs:
   - docs/reference/tool-routing.yaml
-  - docs/topics/pi-agentic-os.md
-  - aos.requirements.json
+  - AGENTS.md
 ---
 
 # Agent Tool Routing
 
-Dictation Tauri usa una política **flow-first**: una entrada humana, un foco y el
-menor mecanismo suficiente.
+Dictation Tauri usa Traycer y el harness activo de forma **intent-first**: la
+persona expresa el resultado buscado y el agente elige el menor mecanismo
+nativo suficiente. OMP queda fallback standalone/manual bajo demanda.
 
 ## Ruta Canónica
 
 | Intención | Ruta |
 | --- | --- |
-| Entender o decidir | `/flow → Pensar` en el hilo actual |
-| Materializar un brief | `/flow → Planear` en el hilo actual |
-| Seleccionar foco | `/flow → Hacer`; 0 deriva, 1 autoselecciona, N abre picker |
-| Implementar | Hacer abre una sesión nueva enlazada y ejecuta directamente allí |
-| Persistir valor faltante | `/flow → Cerrar`, opcional si Hacer ya cerró correctamente |
+| Entender o decidir | Conversar y converger en el hilo actual. |
+| Materializar un brief | Escribir un plan liviano sin ejecutarlo. |
+| Implementar | Trabajar directamente en la sesión actual con tools OMP nativas. |
+| Mantener progreso | Usar todos nativos cuando el alcance lo justifique. |
+| Persistir valor durable | Actualizar la fuente canónica una sola vez al cerrar. |
 
-## Selección Y Ejecución
-
-Hacer lee sólo `Foco Único De Ejecución` en `WORKING_MEMORY`. Un foco inválido,
-un path fuera de `docs/tracks`/`specs` o campos inconsistentes bloquean antes del
-handoff. Un foco `ready` abre una nueva sesión con linaje, índice, Working Memory
-y brief en el editor; no usa Agent, resumen LLM, runtime state ni auto-send.
-
-Planear usa `balanced` con Sol Medium como ruta normal, incluso para trabajo
-multifile, cross-layer o nativo acotado cuando la decisión ya está tomada y hay
-checks razonables. `strong` con Sol High queda sólo para ambigüedad material,
-arquitectura abierta, seguridad/auth/privacidad, irreversibilidad, alto impacto
-productivo o fallos materiales difíciles de detectar. Prioridad, cantidad de
-archivos, stack nativo, contrato/review, planificación compleja o un efecto
-externo ya autorizado no bastan. `economical` con Luna requiere pedido explícito
-de JP por cuota y checks deterministas. Hacer aplica la ruta en la sesión nueva;
-modelo o auth ausentes bloquean sin fallback. `Ctrl+P` alterna Sol Medium/High y
-`Ctrl+L` conserva la selección manual. No hay Terra, clasificador extra ni
-routing por turno.
-
-Para trabajo local, reversible y barato de rehacer, el brief es orientación y no
-checklist exhaustiva. Inspeccionar sólo lo necesario para preservar cambios,
-resolver el comportamiento observable en una pasada y correr evidencia mínima
-no duplicada. Si el alcance crece materialmente, detenerse.
+No hay selector de fases, paquete global, nueva sesión enlazada, handoff
+automático ni auto-send. Un plan orienta; no ejecuta ni autoriza side effects.
+La implementación conserva el WIP, inspecciona sólo lo necesario y resuelve el
+comportamiento observable en una pasada acotada. Si el alcance crece
+materialmente, se detiene.
 
 ## Herramientas De Apoyo
 
-- CodeMapper/FFF: orientación y búsqueda.
-- LSP/Lens: feedback técnico.
-- Advisor: riesgo, arquitectura o evidencia en conflicto.
-- Web/librarian: conocimiento externo o versionado.
-- Ask User: producto, permisos y side effects reales.
-- Chrome/CUA: UI explícita con aviso inicial.
+- Búsqueda, lectura y edición nativas: orientación y cambios locales.
+- LSP/diagnósticos: feedback técnico cuando corresponde.
+- Reviewer o librarian especializados: juicio o fuentes externas verificables.
+- Ask User: decisiones de producto, permisos y side effects reales.
+- Browser/computer: UI explícita con los gates locales.
 
-Agent se usa únicamente por pedido explícito fuera de Hacer. Taskflow, Council,
-planner, until-done, dgoal, Ponytail, Governed Runner y worktree bridge están
-retirados del runtime AOS actual; no recrearlos como fallback local.
+Los subagentes se usan únicamente por pedido explícito. No recrear planners,
+taskflows, relays, runners, clasificadores, handoffs ni fallbacks locales.
 
 ## Gates
 

@@ -10,8 +10,8 @@ triggers:
   - memoria viva
   - audit docs
   - tracks
-  - /flow
-  - handoff documental
+  - OMP
+  - continuidad documental
   - context index
   - Small Batches
   - small batches
@@ -113,13 +113,13 @@ Cada tanda debe tener:
 
 Separar siempre lo que cruce gates o side effects reales: decisiones nuevas, provider calls, smokes manuales, paste automation, selection real, historial durable y cambios amplios de seguridad/capabilities. Si una tanda empieza a mezclar responsabilidades no relacionadas o vuelve dificil revertir, se divide antes de seguir.
 
-## Continuidad Con `/flow`
+## Continuidad En OMP
 
-`/flow → Hacer` abre una sesión nueva enlazada y precarga un handoff basado sólo
-en índice, Working Memory y brief seleccionado. La implementación ocurre
-directamente en ese hilo, sin Agent ni auto-send. `/flow → Cerrar` queda para
-valor durable todavía faltante y no es obligatorio si Hacer ya dejó el estado
-final correcto.
+La intención se resuelve en la sesión actual. Un plan puede orientar el trabajo,
+pero no ejecuta ni autoriza side effects. La implementación usa tools OMP
+nativas directamente, conserva el WIP y actualiza la fuente durable una sola vez
+cuando aporta valor. No hay selector de fases, nueva sesión enlazada, handoff
+automático ni auto-send.
 
 ## Auditoria
 

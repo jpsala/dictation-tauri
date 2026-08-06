@@ -45,8 +45,8 @@ primary_refs:
 | Norte, AOS, sistema agentico, memoria viva, audit de contexto, Small Batches | [Agentic OS (AOS)](topics/agentic-os.md) | Operacion del sistema agentico escalable del proyecto. |
 | Ponytail, implementacion minima, YAGNI, over-engineering, diff minimo, dependencias innecesarias | [Implementacion minima y Ponytail](topics/minimal-implementation.md) | Politica liviana para resolver con el menor diff correcto, subordinada a AOS y sin instalar paquetes. |
 | `aos-realinear-os`, crear, migrar, actualizar o auditar sistema agentico | [Operaciones del sistema agentico](topics/agentic-os-operations.md) | Como reparar o adaptar AOS sin copiar un template ciego ni manager-only. |
-| Pi, computer use, cua-driver, automatizacion UI real | [Pi Agentic OS](topics/pi-agentic-os.md), [Pi Extension Stack](topics/pi-extension-stack.md) | Politica local para usar Pi/computer use con fixtures, sandbox, evidencia y confirmaciones. |
-| Pi tools, `/flow`, handoff documental, ejecución directa, web research, advisor, lens, paquetes Pi | [Pi Extension Stack](topics/pi-extension-stack.md), [Routing de tools](topics/agent-tool-routing.md) | Usar la superficie flow-first sin copiar runtime ni inventario global. |
+| OMP, computer use, automatización UI real | [Routing de tools](topics/agent-tool-routing.md) | Política nativa para tools agentic, UI explícita, fixtures, sandbox, evidencia y confirmaciones. |
+| Tools OMP, intención conversacional, ejecución directa, web research, reviewer, subagentes | [Routing de tools](topics/agent-tool-routing.md) | Elegir el menor mecanismo nativo sin runtime, paquete o handoff local. |
 | `aos-perfect-os`, dejar en condiciones, calidad agentica | [Calidad Agentica / Perfect OS](topics/os-quality.md) | Checklist de contexto, docs, tracks, skills/adapters, indice y audit. |
 | Skills locales, slash commands, comandos Codex, docs/skills, .agents/skills, pasar a skills, evaluar skills | [Skills locales de Codex](topics/local-codex-skills.md) | Skills portables versionadas en `docs/skills/`; `.agents/skills` es compatibilidad local. |
 | Port Tauri, stack inicial, estructura, comandos, fundacion | [Fundacion Dictation Tauri](topics/dictation-tauri-foundation.md) | Contexto inicial del port y decisiones pendientes. |
@@ -55,7 +55,7 @@ primary_refs:
 | Privacidad, audio, transcripciones, logs, modelos, storage | [Privacidad y datos de dictado](topics/privacy-and-dictation-data.md) | Reglas para tratar datos sensibles de dictado. |
 | SpecKit, spec, plan, tasks.md, feature grande | [SpecKit y planificacion](topics/speckit-workflow.md) | Como trabajar con specs y constitucion. |
 
-| Routing de tools, `/flow`, subagente, advisor | [agent-tool-routing](topics/agent-tool-routing.md), [pi-extension-stack](topics/pi-extension-stack.md) |
+| Routing de tools, OMP, subagente, reviewer | [agent-tool-routing](topics/agent-tool-routing.md) |
 
 ## Documentos Raiz
 
@@ -73,8 +73,9 @@ primary_refs:
 
 - `docs/skills/impeccable/`: skill local para UI/frontend.
 - `docs/skills/speckit-*`: Skills locales para workflow SpecKit.
-- Las skills `aos-*` portables viven upstream; carpetas locales sin prefijo quedan como aliases legacy de compatibilidad.
+- Las skills locales se descubren con `.agents/skills`; no duplicar inventarios o runtimes upstream.
 - `docs/topics/minimal-implementation.md`: politica liviana opcional de implementacion minima/Ponytail; no instala dependencias.
+- `docs/topics/portable-multiharness-contract.md`: Traycer/harness nativo diario, OMP manual y handoff bajo demanda.
 - `.specify/`: infraestructura y templates de SpecKit.
 
 ## Reglas De Mantenimiento

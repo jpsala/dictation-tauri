@@ -30,14 +30,14 @@ No se agrega documentacion por agregar. Una sesion nueva debe leer poco, entende
 
 ## Superficie Operativa
 
-- `/flow`: única entrada cotidiana para Pensar, Planear, Hacer y Cerrar.
+- Intención conversacional: entrada cotidiana para entender, planear o implementar en la sesión actual.
 - `aos-help` / `os help`: mostrar la superficie AOS sin ejecutar cambios.
 - `aos-perfect-os` / `perfect os` / `dejar en condiciones`: auditar y mejorar la capa agentica hasta dejarla óptima.
 - `aos-realinear-os` / `realinear os`: reparar drift de la capa agentica del repo actual.
-- `/doctor`: diagnóstico read-only específico de Dictation Tauri.
+- `/doctor`: diagnóstico read-only específico de Dictation Tauri, descubierto por OMP.
 
-Las operaciones especializadas no compiten con `/flow` para planificación,
-implementación o continuidad.
+Las operaciones especializadas no sustituyen la intención del usuario ni crean
+selectores de fases, nuevas sesiones o handoffs automáticos.
 
 ## Checklist Perfect OS
 
@@ -47,8 +47,8 @@ Revisar por capas y reportar que se aplico, que se omitio y por que:
 2. Docs indexados: todo doc util para agentes esta linkeado desde topic, router, track, README, spec o indice. Docs solo-usuario pueden quedar fuera si su rol es claro.
 3. Docs livianos: topics activos son routers; detalle profundo va a referencias, decisiones, specs o archivo historico.
 4. Continuidad: tracks activas tienen frontmatter, estado, prioridad, fecha, next step y refs existentes; tracks cerradas viven en archive.
-5. Comandos: acciones repetibles tienen skill/prompt barato; la logica durable vive en topic/script/doc canonico.
-6. Adapters: `.agents/skills` queda como junction/symlink estable hacia `docs/skills/`; `.pi` se mantiene como adapter local fino cuando existe; SpecKit se actualiza si aplica.
+5. Comandos: acciones repetibles tienen una skill o extensión fina; la logica durable vive en topic/script/doc canonico.
+6. Adapters: `.agents/skills` queda como junction/symlink estable hacia `docs/skills/`; `.omp/extensions` contiene sólo adapters locales finos; SpecKit se actualiza si aplica.
 7. Audit: `scripts/context-index.ts` y `scripts/agent-context-audit.ts` detectan drift barato y recurrente.
 8. Respeto local: no pisar reglas, decisiones, datos privados ni docs de usuario; preguntar antes de borrar memoria dudosa.
 

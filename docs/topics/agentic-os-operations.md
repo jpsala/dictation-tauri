@@ -73,7 +73,7 @@ No abrir docs largos, specs completas, archivos archivados ni referencias profun
 
 ### Revisar
 
-- Capas locales: core docs, scripts, skills, adapter Codex (`.agents`), requisitos del `/flow` global y extensiones Pi específicas del proyecto, SpecKit si aplica, índice y audit.
+- Capas locales: core docs, scripts, skills, discovery `.agents`, extensiones OMP específicas del proyecto, SpecKit si aplica, índice y audit.
 - Ruta caliente: `AGENTS.md`, indice generado, `WORKING_MEMORY.md`, `TOPICS.md` y tracks activas siguen chicos y no son transcript.
 - Routing: topics relevantes existen, tienen triggers utiles y estan linkeados desde `docs/TOPICS.md`.
 - Continuidad: tracks activas tienen estado, prioridad, fecha, next step y refs que existen; tracks archivadas viven en `docs/tracks/archive/`.
@@ -82,7 +82,7 @@ No abrir docs largos, specs completas, archivos archivados ni referencias profun
 - Specs: specs activas estan indexadas, no tienen prefijos duplicados y tienen `spec.md`.
 - Drift: docs raiz no contradicen la ruta inicial ni el estado real del repo.
 - Archivos sueltos: notas, drafts, handoffs o contexto viejo tienen destino claro.
-- Audit/sync: `scripts/aos-doctor.ts`, `scripts/context-index.ts`, `scripts/context-refresh.ts` y `scripts/agent-context-audit.ts` cubren problemas recurrentes baratos de validar. El audit exige el package global `aos.flow-first`, `aos.requirements.json` compatible y ausencia de una copia local de `/flow`.
+- Audit/sync: `scripts/aos-doctor.ts`, `scripts/context-index.ts`, `scripts/context-refresh.ts` y `scripts/agent-context-audit.ts` cubren problemas recurrentes baratos de validar. El audit exige OMP nativo, el adapter `/doctor` en `.omp/extensions` y ausencia de runtimes, manifests o superficies Pi/AOS retiradas.
 
 ### Corregir Sin Preguntar
 
@@ -126,8 +126,8 @@ Si alguna vez se usa este repo para preparar otro destino, aplicar solo como pat
 1. Leer el destino antes de crear archivos.
 2. Detectar stack, comandos, docs, tests, deploy, datos sensibles y reglas existentes.
 3. Detectar archivos preexistentes de contexto, notas, recomendaciones, drafts o discusiones. No dejarlos sueltos: integrarlos, moverlos a una ubicacion documentada, archivarlos con estado claro o preguntar antes de borrar.
-4. Si ya hay `AGENTS.md`, `docs/`, `.agents/`, `.pi/`, `.specify/` o `specs/`, tratarlo como migracion.
-5. Proponer estructura minima necesaria y adaptada: core docs, topics, tracks, skills, context scripts y adapters que se usen realmente.
+4. Si ya hay `AGENTS.md`, `docs/`, `.agents/`, `.omp/`, `.specify/` o `specs/`, tratarlo como migracion.
+5. Proponer estructura minima necesaria y adaptada: core docs, topics, tracks, skills, context scripts y extensiones que se usen realmente.
 6. Crear backups antes de reemplazar archivos existentes.
 7. Fusionar reglas locales, decisiones y memoria viva en vez de pisarlas.
 8. Reemplazar placeholders por contexto real del proyecto.

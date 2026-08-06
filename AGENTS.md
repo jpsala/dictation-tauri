@@ -19,6 +19,8 @@ No abrir por defecto docs largos (`PROJECT`, `ASSISTANT_RULES`, `DEVELOPMENT`), 
 - Respetar stack, comandos y convenciones; no revertir cambios ajenos.
 - No imprimir secretos ni commitear `.env`, tokens, raw transcripts, audio sensible, build artifacts o caches.
 - Web/internet permitido cuando evita adivinar; no enviar secretos/datos privados/código sensible. Pedir permiso antes de installs o scripts remotos.
+- Browser visible/desatendido usa la capacidad nativa del harness activo; AXI, adapters y Lavish quedan como fallback manual de OMP únicamente. Vivaldi personal sólo si JP lo pide.
+- No usar OMP Browser Relay/`app.relay`; login nuevo y efectos externos sensibles conservan los gates locales. Referencia local: `docs/topics/agent-tool-routing.md`.
 - Modo dev personal permite leer `.env`, logs, audio, transcripciones, bases locales y artifacts cuando ayude; no volcarlos en docs/respuestas.
 - Side effects locales controlados permitidos: CUA/computer-use, apps sandbox, Vite/Tauri/Fixvox local, mic/audio fixtures, provider real con `.env`, clipboard temporal restaurado, hotkeys/clicks y artifacts ignorados.
 - Gated: login/cuentas, pagos/envíos/publicaciones/deploy/push, installs/autostart/tunnels, borrar datos reales, apps/documentos personales, `Alt+Space`, selección real, replace-selection y observer `paste_observed` fuera de task/spec explícita.
@@ -26,9 +28,12 @@ No abrir por defecto docs largos (`PROJECT`, `ASSISTANT_RULES`, `DEVELOPMENT`), 
 - Para features Fixvox-like, volver a `C:/dev/fixvox` como fuente canónica antes de cerrar el lote.
 - Trabajar en small batches/checkpoints verificables y reversibles.
 
-## Paquetes Pi
+## Control plane portable
 
-El repo no instala paquetes Pi project-locales. Hereda la allowlist global vigente de `C:/dev/os`; `Agent` sólo se usa por pedido explícito y según `docs/topics/agent-tool-routing.md`. `.pi/extensions/aos-doctor.ts` es un adapter local del proyecto, no un paquete.
+La interacción diaria usa Traycer con el harness nativo activo. OMP permanece
+standalone/manual y no es invocado por Traycer; `.omp/extensions/aos-doctor.ts`
+conserva sólo la extensión local del producto y `.agents/skills` la discovery
+canónica. El repo no depende de `.traycer` ni de artifacts del manager.
 
 ## Persistencia
 
@@ -51,15 +56,17 @@ bun scripts/context-index.ts && bun scripts/agent-context-audit.ts
 
 No correr smokes físicos/audio/prod/deploy/autostart sin confirmación.
 
-## Comandos AOS
+## Trabajo Agentic
 
-- `/flow` es la única entrada diaria: `Pensar | Planear | Hacer | Cerrar`.
-- Planear usa `balanced` con Sol Medium como ruta normal, incluso para trabajo multifile/cross-layer/nativo acotado. `strong` con Sol High queda sólo para ambigüedad material, arquitectura abierta, seguridad/auth/privacidad, irreversibilidad, alto impacto productivo o fallos materiales difíciles de detectar. `economical` con Luna requiere pedido explícito de JP por cuota y checks deterministas. Hacer bloquea sin fallback si falta modelo o auth.
-- `Ctrl+P` alterna Sol Medium/High; `Ctrl+L` conserva la selección manual de modelo.
-- Hacer sólo avanza con foco `ready`: abre una sesión nueva enlazada, precarga índice, Working Memory y brief para revisión, y ejecuta directamente allí sin Agent ni auto-send.
-- Cerrar compacta sólo valor durable faltante y es opcional si Hacer ya persistió el estado final; `/new` queda para sesiones manuales fuera de ese handoff.
+- La intención conversacional es la entrada diaria: entender, planear o implementar ocurre en la sesión actual.
+- Un plan es orientación revisable; no ejecuta, no autoriza side effects y no abre otra sesión.
+- La implementación usa tools y todos del harness nativo activo, conserva WIP y resuelve el comportamiento observable directamente.
+- No hay selector de fases, handoff automático, auto-send, paquete global ni fallback local.
+- Los subagentes se usan sólo por pedido explícito.
 - `aos-realinear-os` abre `docs/topics/agentic-os-operations.md`; las operaciones manager-only no son motores diarios.
-- No copiar `/flow` ni revivir prompts o skills legacy de planificación, continuidad o cierre dentro del repo.
+- No crear prompts, runtimes o aliases locales que dupliquen este flujo.
+- Cuando otro harness continúe bajo demanda, usar un handoff breve con objetivo,
+  rama/worktree, decisiones, archivos/cambios, checks y siguiente gate.
 
 ## Design Context
 
