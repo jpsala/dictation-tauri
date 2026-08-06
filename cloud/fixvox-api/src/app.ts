@@ -8,11 +8,22 @@ import { limitResponseBody, type ProviderProxy } from "./providers.ts";
 import { handleAdminRoute, type AdminRouteDependencies } from "./routes/admin.ts";
 import { buildDeviceRegisterProjection, buildExecutionPreflightProjection } from "./projections.ts";
 import { buildGoogleOAuthAuthorizeUrl, type OAuthExchange } from "./oauth.ts";
+import {
+  StaleVocabularyRevisionError,
+  VocabularyConflictError,
+  VocabularyRuleNotFoundError,
+  VocabularyValidationError,
+  isRecord,
+  parseExpectedRevision,
+  validateMutationInput,
+  type PersonalVocabularyRepository,
+} from "./personal-vocabulary.ts";
 
 export type DeviceRepository = {
   bindDevice(input: { installIdHash: string; suppliedDeviceId?: string | null; generatedDeviceId: string }): Promise<{ deviceId: string; created: boolean }>;
   resolveDevice(deviceId: string): Promise<{
     deviceId: string;
+    accountId?: string | null;
     accountBudget?: { dailyMicrousd: number | null; monthlyMicrousd: number | null; mode: "block" | "warn" | null } | null;
   } | null>;
   resolveEffectiveProfile(input: { deviceId: string; fallbackProfileId: string }): Promise<{ profileId: string; label: string; version: number; definition: Record<string, unknown>; source: string } | null>;
@@ -42,6 +53,7 @@ export type ApiDependencies = {
   budgetPricing?: BudgetPricingPort;
   budgetShadowReceipt?: (receipt: BudgetShadowEvidence) => void;
   quota?: RuntimeQuota;
+  vocabulary?: PersonalVocabularyRepository;
   admin?: AdminRouteDependencies;
   preflight?: (input: { deviceId: string; usageKind?: string; estimate?: number; idempotencyKey: string }) => Promise<Record<string, unknown>>;
   feedback?: { submit(input: { classification: string; deviceId?: string | null }): Promise<string> };
@@ -57,6 +69,7 @@ export type ApiDependencies = {
     completeOAuthState(stateHash: string, subjectHash: string, verifiedAt: Date): Promise<boolean>;
     failOAuthState(stateHash: string, error: string): Promise<boolean>;
     claimDesktopDevice(input: { sessionHash: string; deviceId: string; installIdHash: string }): Promise<{ deviceId: string; accountId: string } | null>;
+    authorizeProductBearer(input: { tokenHash: string; deviceId: string; accountId: string; now: Date }): Promise<boolean>;
   };
   oauth?: OAuthExchange;
   readiness: Readiness;
@@ -87,10 +100,13 @@ function json(value: unknown, status = 200, headers?: HeadersInit): Response {
 
 function routeTemplate(pathname: string): string {
   if (pathname === "/health" || pathname === "/ready") return pathname;
+  if (pathname === "/product/v1/desktop/bootstrap") return "/product/v1/desktop/bootstrap";
+  if (pathname === "/product/v1/desktop/context") return "/product/v1/desktop/context";
   if (pathname.startsWith("/v2/device/")) return "/v2/device/:action";
   if (pathname.startsWith("/v2/execution/")) return "/v2/execution/:action";
   if (pathname.startsWith("/v1/audio/")) return "/v1/audio/:action";
   if (pathname.startsWith("/v1/chat/")) return "/v1/chat/:action";
+  if (pathname.startsWith("/product/v1/account/vocabulary")) return "/product/v1/account/vocabulary";
   if (pathname.startsWith("/admin/")) return "/admin/*";
   return "/unknown";
 }
@@ -210,6 +226,21 @@ export function createApiHandler(deps: ApiDependencies): (request: Request) => P
       } else if (error instanceof Error && error.message === "device_binding_conflict") {
         code = "device_binding_conflict";
         response = json({ error: "device_binding_conflict", code: "device_binding_conflict" }, 409);
+      } else if (error instanceof StaleVocabularyRevisionError) {
+        code = "stale_revision";
+        response = json({ ok: false, error: { code: "stale_revision", category: "conflict", message: "The vocabulary changed on another device.", retryable: false } }, 409);
+      } else if (error instanceof VocabularyRuleNotFoundError) {
+        code = "not_found";
+        response = json({ ok: false, error: { code: "not_found", category: "request", message: "The vocabulary rule was not found.", retryable: false } }, 404);
+      } else if (error instanceof VocabularyConflictError) {
+        code = "vocabulary_conflict";
+        response = json({ ok: false, error: { code: "vocabulary_conflict", category: "request", message: "The automatic vocabulary rule conflicts with an existing rule.", retryable: false } }, 409);
+      } else if (error instanceof VocabularyValidationError) {
+        code = error.reason === "automatic_confirmation_required" ? error.reason : "invalid_request";
+        const message = error.reason === "automatic_confirmation_required"
+          ? "Short or common automatic triggers require explicit confirmation."
+          : "The vocabulary request is invalid.";
+        response = json({ ok: false, error: { code, category: "request", message, retryable: false } }, 400);
       } else {
         code = "service_unavailable";
         response = json({ error: "service_unavailable", reason: "service_unavailable" }, 503);
@@ -297,7 +328,11 @@ async function dispatch(
       if (!claimed) throw productError(409, "conflict", "auth", false);
       const profile = await deps.devices.resolveEffectiveProfile({ deviceId, fallbackProfileId: "basic" });
       if (!profile) throw productError(503, "service_unavailable", "dependency", true);
-      return productJson({ session: { token: claimProof, expiresAt: new Date(now().getTime() + 5 * 60_000).toISOString() }, context: effectiveContext(profile) });
+      const registered = await deps.devices.resolveDevice(deviceId);
+      return productJson({
+        session: { token: claimProof, expiresAt: new Date(now().getTime() + 5 * 60_000).toISOString() },
+        context: await effectiveProductContext(deps, profile, registered?.accountId ?? null),
+      });
     }
   }
   if (request.method === "GET" && url.pathname === "/product/v1/auth/oauth/callback") {
@@ -379,11 +414,53 @@ async function dispatch(
     const device = await deps.devices.bindDevice({ installIdHash: await sha256(installId), generatedDeviceId: crypto.randomUUID() });
     const profile = await deps.devices.resolveEffectiveProfile({ deviceId: device.deviceId, fallbackProfileId: "basic" });
     if (!profile) throw productError(503, "service_unavailable", "dependency", true);
-    return productJson({ binding: { deviceId: device.deviceId, status: "active" }, context: effectiveContext(profile) });
+    const registered = await deps.devices.resolveDevice(device.deviceId);
+    return productJson({
+      binding: { deviceId: device.deviceId, status: "active" },
+      context: await effectiveProductContext(deps, profile, registered?.accountId ?? null),
+    });
   }
   if (request.method === "GET" && url.pathname === "/product/v1/desktop/context") {
-    const { profile } = await requireRuntimeIdentity(request, deps);
-    return productJson(effectiveContext(profile));
+    const identity = await requireRuntimeIdentity(request, deps);
+    return productJson(await effectiveProductContext(deps, identity.profile, identity.accountId));
+  }
+  if (url.pathname === "/product/v1/account/vocabulary" || url.pathname === "/product/v1/account/vocabulary/rules" || url.pathname.startsWith("/product/v1/account/vocabulary/rules/")) {
+    const identity = await requireVocabularyIdentity(request, deps, now);
+    if (!deps.vocabulary) throw productError(503, "service_unavailable", "dependency", true);
+    if (request.method === "GET" && url.pathname === "/product/v1/account/vocabulary") {
+      const snapshot = await deps.vocabulary.getSnapshot(identity.accountId);
+      const etag = vocabularyEtag(snapshot.revision);
+      const headers = vocabularyHeaders(etag);
+      if (matchesEtag(request.headers.get("if-none-match"), etag)) return new Response(null, { status: 304, headers });
+      return productJson({ ...snapshot, scope: await vocabularyScopeForAccount(identity.accountId) }, 200, headers);
+    }
+    if (request.method === "POST" && url.pathname === "/product/v1/account/vocabulary/rules") {
+      const body = await readJson(request, deps.config.maxRequestBytes);
+      if (!isRecord(body)) throw new VocabularyValidationError("mutation_invalid");
+      const expectedRevision = parseExpectedRevision(body.expectedRevision);
+      const mutationBody = { ...body };
+      delete mutationBody.expectedRevision;
+      const mutation = validateMutationInput(mutationBody) as Parameters<PersonalVocabularyRepository["createRule"]>[0]["mutation"];
+      const result = await deps.vocabulary.createRule({ accountId: identity.accountId, expectedRevision, mutation });
+      return productJson(result, 200, vocabularyHeaders(vocabularyEtag(result.vocabularyRevision)));
+    }
+    const ruleId = decodeRuleId(url.pathname);
+    if (!ruleId) throw new VocabularyRuleNotFoundError();
+    if (request.method === "PATCH") {
+      const body = await readJson(request, deps.config.maxRequestBytes);
+      const expectedRevision = parseExpectedRevision(body.expectedRevision);
+      const mutationBody = { ...body };
+      delete mutationBody.expectedRevision;
+      const mutation = validateMutationInput(mutationBody, { partial: true }) as Parameters<PersonalVocabularyRepository["updateRule"]>[0]["mutation"];
+      const result = await deps.vocabulary.updateRule({ accountId: identity.accountId, ruleId, expectedRevision, mutation });
+      return productJson(result, 200, vocabularyHeaders(vocabularyEtag(result.vocabularyRevision)));
+    }
+    if (request.method === "DELETE") {
+      const body = await readJson(request, deps.config.maxRequestBytes);
+      const expectedRevision = parseExpectedRevision(body.expectedRevision);
+      const result = await deps.vocabulary.deleteRule({ accountId: identity.accountId, ruleId, expectedRevision });
+      return productJson(result, 200, vocabularyHeaders(vocabularyEtag(result.vocabularyRevision)));
+    }
   }
   if (request.method === "POST" && url.pathname === "/product/v1/runtime/transcriptions") {
     const identity = await requireRuntimeIdentity(request, deps);
@@ -507,6 +584,7 @@ async function dispatch(
 
 type RuntimeIdentity = {
   deviceId: string;
+  accountId: string | null;
   accountBudget: { dailyMicrousd: number | null; monthlyMicrousd: number | null; mode: "block" | "warn" | null } | null;
   profile: Awaited<ReturnType<DeviceRepository["resolveEffectiveProfile"]>> & {};
 };
@@ -532,31 +610,102 @@ function rejectSignalEnvelope(value: Record<string, unknown>): void {
     if (Object.keys(dimensions).length > 12 || Object.entries(dimensions).some(([key, item]) => !/^[a-z][a-z0-9_]{0,31}$/.test(key) || (typeof item !== "number" && typeof item !== "boolean") || (typeof item === "number" && !Number.isFinite(item)))) throw productError(400, "invalid_request", "request", false);
   }
 }
-function productJson(data: unknown, status = 200): Response { return json({ ok: true, data }, status); }
+function productJson(data: unknown, status = 200, headers?: HeadersInit): Response { return json({ ok: true, data }, status, headers); }
 function capabilityEnabled(profile: RuntimeIdentity["profile"], capability: string): boolean {
   const configured = profile.definition.capabilities;
   const aliases: Record<string, string[]> = {
     transcription: ["transcription", "dictation"], postprocess: ["postprocess"],
     selection_transform: ["selection_transform", "selectionTransform", "selection"], assistant: ["assistant", "assistant_action", "assistant_actions"],
+    vocabulary: ["vocabulary", "personal_vocabulary", "personalVocabulary"],
   };
   if (Array.isArray(configured)) return (aliases[capability] ?? [capability]).some((name) => configured.includes(name));
   const values = record(configured);
   return (aliases[capability] ?? [capability]).some((name) => values[name] === true);
 }
-function effectiveContext(profile: RuntimeIdentity["profile"]): Record<string, unknown> {
+function effectiveContext(profile: RuntimeIdentity["profile"], vocabularyRevision = "0"): Record<string, unknown> {
   const unlimited = quotaPolicy(profile).unlimited;
+  const capabilities: Record<string, boolean> = {
+    transcription: capabilityEnabled(profile, "transcription"), postprocess: capabilityEnabled(profile, "postprocess"),
+    selectionTransform: capabilityEnabled(profile, "selection_transform"), assistant: capabilityEnabled(profile, "assistant"),
+    feedback: capabilityEnabled(profile, "feedback"), adminSettings: capabilityEnabled(profile, "admin_settings"),
+  };
+  if (capabilityEnabled(profile, "vocabulary")) capabilities.vocabulary = true;
   return {
     profile: { key: profile.profileId, version: profile.version, revision: profile.version },
-    capabilities: {
-      transcription: capabilityEnabled(profile, "transcription"), postprocess: capabilityEnabled(profile, "postprocess"),
-      selectionTransform: capabilityEnabled(profile, "selection_transform"), assistant: capabilityEnabled(profile, "assistant"),
-      feedback: capabilityEnabled(profile, "feedback"), adminSettings: capabilityEnabled(profile, "admin_settings"),
-    },
+    capabilities,
     limits: { quotaClass: unlimited ? "pro-unlimited" : "metered" },
     actions: ["postprocess", "selection_transform", "assistant"].map((kind) => ({ kind, enabled: capabilityEnabled(profile, kind) })),
     authority: { mode: "cloudflare-authority", revision: profile.version },
+    vocabularyRevision,
   };
 }
+
+async function effectiveProductContext(
+  deps: ApiDependencies,
+  profile: RuntimeIdentity["profile"],
+  accountId: string | null | undefined,
+): Promise<Record<string, unknown>> {
+  let vocabularyRevision = "0";
+  let vocabularyScope: string | null = null;
+  if (accountId && deps.vocabulary && capabilityEnabled(profile, "vocabulary")) {
+    vocabularyRevision = (await deps.vocabulary.getSnapshot(accountId)).revision;
+    vocabularyScope = await vocabularyScopeForAccount(accountId);
+  }
+  const context = effectiveContext(profile, vocabularyRevision);
+  if (vocabularyScope) context.vocabularyScope = vocabularyScope;
+  return context;
+}
+
+function vocabularyEtag(revision: string): string {
+  return `"vocabulary-${revision}"`;
+}
+
+function matchesEtag(header: string | null, etag: string): boolean {
+  if (!header) return false;
+  return header.split(",").map((value) => value.trim()).some((value) => value === etag || value === `W/${etag}` || value === "*");
+}
+
+function vocabularyHeaders(etag: string): Headers {
+  return new Headers({
+    ETag: etag,
+    "Cache-Control": "private, no-store",
+    Vary: "If-None-Match",
+  });
+}
+
+async function vocabularyScopeForAccount(accountId: string): Promise<string> {
+  return sha256(`personal-vocabulary:${accountId}`);
+}
+
+function decodeRuleId(pathname: string): string | null {
+  const prefix = "/product/v1/account/vocabulary/rules/";
+  if (!pathname.startsWith(prefix)) return null;
+  let raw: string;
+  try {
+    raw = decodeURIComponent(pathname.slice(prefix.length));
+  } catch {
+    return null;
+  }
+  return /^[0-9a-f-]{36}$/iu.test(raw) ? raw : null;
+}
+
+async function requireVocabularyIdentity(request: Request, deps: ApiDependencies, now: () => Date): Promise<RuntimeIdentity & { accountId: string }> {
+  const identity = await requireRuntimeIdentity(request, deps);
+  if (!identity.accountId) throw productError(401, "unauthenticated", "auth", false);
+  if (!capabilityEnabled(identity.profile, "vocabulary")) throw productError(403, "capability_disabled", "policy", false);
+  const authorization = request.headers.get("authorization")?.trim() ?? "";
+  const match = /^Bearer\s+(\S+)$/iu.exec(authorization);
+  if (!match || !deps.auth) throw productError(401, "unauthenticated", "auth", false);
+  const authorized = await deps.auth.authorizeProductBearer({
+    tokenHash: await sha256(match[1]),
+    deviceId: identity.deviceId,
+    accountId: identity.accountId,
+    now: now(),
+  });
+  if (!authorized) throw productError(401, "unauthenticated", "auth", false);
+  return { ...identity, accountId: identity.accountId };
+}
+
 async function requireRuntimeIdentity(request: Request, deps: ApiDependencies, legacy = false): Promise<RuntimeIdentity> {
   const deviceId = request.headers.get("x-device-id")?.trim();
   if (!deviceId) throw legacy ? new HttpError(400, "device_id_required") : productError(401, "unauthenticated", "auth", false);
@@ -564,7 +713,7 @@ async function requireRuntimeIdentity(request: Request, deps: ApiDependencies, l
   if (!device) throw legacy ? new HttpError(403, "device_not_registered") : productError(403, "forbidden", "auth", false);
   const profile = await deps.devices.resolveEffectiveProfile({ deviceId: device.deviceId, fallbackProfileId: "basic" });
   if (!profile) throw legacy ? new HttpError(403, "profile_unavailable") : productError(403, "forbidden", "policy", false);
-  return { deviceId: device.deviceId, accountBudget: device.accountBudget ?? null, profile };
+  return { deviceId: device.deviceId, accountId: device.accountId ?? null, accountBudget: device.accountBudget ?? null, profile };
 }
 function quotaPolicy(profile: RuntimeIdentity["profile"]): { unlimited: boolean; limit: number | null } {
   const quota = record(profile.definition.quota);

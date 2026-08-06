@@ -1,4 +1,6 @@
-type Provider = "anthropic" | "openai" | "openrouter" | "groq" | "xai" | "cerebras";
+import type { DiscoveredEngine, EngineDiscoveryAdapter } from "../../fixvox-core/src/control-plane/engine-catalog";
+
+export type Provider = "anthropic" | "openai" | "openrouter" | "groq" | "xai" | "cerebras";
 type SpeechProvider = "groq" | "openai";
 
 export type ProviderModelCatalogResponse = {
@@ -17,7 +19,7 @@ type ProviderConfig = {
   extraHeaders?: Record<string, string>;
 };
 
-type ProviderKeyBag = Partial<Record<Provider, string | undefined>>;
+export type ProviderKeyBag = Partial<Record<Provider, string | undefined>>;
 
 const PROVIDER_CONFIGS: Record<Provider, ProviderConfig> = {
   anthropic: {
@@ -53,7 +55,6 @@ const FALLBACK_SPEECH_MODELS: Record<SpeechProvider, string[]> = {
 export function isProvider(value: unknown): value is Provider {
   return typeof value === "string" && value in PROVIDER_CONFIGS;
 }
-
 export async function listProviderModels(
   provider: Provider,
   keys: ProviderKeyBag,
@@ -95,8 +96,50 @@ export async function listProviderModels(
   }
 }
 
+/**
+ * Adapter used by the local six-hour catalog job. Fallback lists are useful to
+ * the admin picker but are not authoritative discovery, so only a live list
+ * produces candidates. The adapter itself never publishes a model.
+ */
+export function createProviderEngineDiscoveryAdapter(provider: Provider, keys: ProviderKeyBag): EngineDiscoveryAdapter {
+  return {
+    id: provider,
+    async discover(): Promise<readonly DiscoveredEngine[]> {
+      const result = await listProviderModels(provider, keys);
+      if (result.source !== "live") throw new Error(result.error ?? `${provider}_discovery_unavailable`);
+      // The provider's model endpoint is a mixed capability list. Speech
+      // models must never leak into the selection-transform candidate set;
+      // they are emitted only through the transcription capability below.
+      const speechModelKeys = new Set(result.speechModels.map(modelKey));
+      const llm = result.llmModels.filter((model) => !speechModelKeys.has(modelKey(model))).map((model): DiscoveredEngine => ({
+        engineId: `discovered:${provider}:selectionTransform:${model}`,
+        provider,
+        model,
+        providerLabel: provider,
+        modelLabel: model,
+        kind: "selectionTransform",
+        tier: "balanced",
+      }));
+      const speech = result.speechModels.map((model): DiscoveredEngine => ({
+        engineId: `discovered:${provider}:transcription:${model}`,
+        provider,
+        model,
+        providerLabel: provider,
+        modelLabel: model,
+        kind: "transcription",
+        tier: "balanced",
+      }));
+      return Object.freeze([...llm, ...speech]);
+    },
+  };
+}
+
 function normalizeKey(value: string | undefined): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function modelKey(value: string): string {
+  return value.trim().toLowerCase();
 }
 
 async function fetchModels(provider: Provider, apiKey: string): Promise<string[]> {

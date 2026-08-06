@@ -409,7 +409,7 @@ describe("Bun API adapter", () => {
       async createOAuthState() {}, async attachDesktopOAuthState() { return true; }, async readOAuthState() { return null; },
       async readOAuthResult() { return null; }, async consumeOAuthState() { return { provider: "google", protectedMetadata: "{}" }; },
       async completeOAuthState() { completedOAuth += 1; return true; },
-      async failOAuthState() { return true; }, async claimDesktopDevice() { return { deviceId: "fixture-device-001", accountId: "redacted" }; },
+      async failOAuthState() { return true; }, async claimDesktopDevice() { return { deviceId: "fixture-device-001", accountId: "redacted" }; }, async authorizeProductBearer() { return true; },
     };
     deps.oauth = { async exchangeAndVerify() { return { subject: "fixture-google-subject", verifiedAt: new Date("2026-01-01T00:01:00.000Z") }; } };
     const handler = createApiHandler(deps);

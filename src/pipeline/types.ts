@@ -73,6 +73,7 @@ export type RuntimeTelemetryStageName =
   | "audio-prep"
   | "stt"
   | "postprocess"
+  | "vocabulary"
   | "selection_transform"
   | "delivery";
 
@@ -80,6 +81,7 @@ export type RuntimeTelemetryStageStatus =
   | "started"
   | "skipped"
   | "ok"
+  | "waiting"
   | "failed"
   | "fallback";
 
@@ -120,6 +122,18 @@ export type RuntimeTelemetryStage = {
     strategy?: string;
     evidenceStatus?: DeliveryEvidenceStatus;
     confidence?: "low" | "medium" | "high";
+  };
+  vocabulary?: {
+    sessionId?: string;
+    outcome?: string;
+    snapshotRevision?: string;
+    ruleCount?: number;
+    matchCount?: number;
+    automaticCount?: number;
+    askGroupCount?: number;
+    choiceCount?: number;
+    inputLength?: number;
+    outputLength?: number;
   };
   redacted: true;
 };

@@ -92,19 +92,29 @@ import {
   createDockCompanionSyncKey,
   createEmptyDockCompanionSnapshot,
   createVoiceDockState,
+  dockCompanionCommandAckEvent,
   dockCompanionCommandEvent,
   dockCompanionStateEvent,
+  dockTeachCorrectionEvent,
   NO_SPEECH_NOTICE_TIMEOUT_MS,
+  VocabularyChoiceSurface,
   VoiceDock,
   type DockActivePreset,
   type DockCommand,
   type DockCompanionCommandPayload,
+  type DockCompanionCommandEnvelope,
   type DockDragEvent,
   type DockCompanionHistoryItem,
   type DockCompanionPresetId,
   type DockCompanionSnapshot,
+  type TeachCorrectionCommandPayload,
   type DockSkinId,
 } from "./voice-dock";
+import {
+  createCompanionCommandBridge,
+} from "./voice-dock/companion-command-bridge";
+import { createCompanionCommandDedupe } from "./voice-dock/companion-command-dedupe";
+import type { DockCompanionCommandAck } from "./voice-dock/companion-state";
 import {
   createSoundCuePolicy,
   requestDictationSoundCue,
@@ -115,6 +125,24 @@ import { runAssistantChatWithHost, type HostAssistantChatMessage } from "./assis
 import { createAssistantQuickResponse, type AssistantQuickResponse } from "./assistant/quick-response";
 import { parseAssistantVoicePrefix } from "./assistant/voice-prefix";
 import { SettingsSurface } from "./settings/SettingsSurface";
+import {
+  createTauriVocabularyClient,
+  findVocabularyRuleForSpoken,
+  saveTeachCorrection,
+  summarizeTeachCorrectionConflict,
+  type TeachCorrectionSaveResult,
+} from "./personal-vocabulary/teach-correction";
+import {
+  TeachCorrectionForm,
+  type TeachCorrectionEvent,
+  type TeachCorrectionFormNotice,
+  type TeachCorrectionSession,
+} from "./personal-vocabulary/TeachCorrectionForm";
+import type { TeachCorrectionConflict } from "./personal-vocabulary/teach-correction";
+import type {
+  PersonalVocabularyRule,
+  PersonalVocabularySnapshot,
+} from "./personal-vocabulary/types";
 import { OnboardingSurface } from "./onboarding/OnboardingSurface";
 import { createAccountFirstFixtureController } from "./onboarding/account-first-flow";
 import { SetupReadinessRouter } from "./onboarding/SetupReadinessRouter";
@@ -123,7 +151,13 @@ import {
   ensureTauriDictationReadiness,
   TauriAccountGate,
 } from "./onboarding/tauri-account-gate";
+import { getFixvoxPersonalVocabularySnapshot } from "./settings/fixvox-cloud-control";
 import { loadSelectionPresetStore } from "./settings/preset-store-control";
+import {
+  hostPresetMenuSyncEventName,
+  syncHostPresetMenuSnapshot,
+  type HostPresetMenuSyncResult,
+} from "./settings/preset-menu-sync";
 import {
   createAutoStopSilencePolicy,
   createMuteOutputPolicy,
@@ -137,6 +171,7 @@ import type {
   DesktopDictationSession,
   IdleDesktopDictationState,
 } from "./desktop-control/types";
+import type { VocabularyChoiceSessionView } from "./personal-vocabulary";
 
 type CaptureUiState = {
   state: CaptureState;
@@ -488,6 +523,15 @@ export function applySelectionTransformOutputToRuntimeResult(input: {
     deliveryReason,
     deliveryTargetAffinity: "saved",
     summary,
+  };
+}
+
+/** Keep the shared transform implementation, but label the no-selection preset
+ * route so V4 can include it without admitting real replace-selection output. */
+export function markPersistentPresetRuntimeResult(runtime: DesktopRuntimeResult): DesktopRuntimeResult {
+  return {
+    ...runtime,
+    vocabularySource: "persistent_preset",
   };
 }
 
@@ -1016,11 +1060,16 @@ export function createDockInputFromUi(input: {
   deliveryEvidence?: PipelineDeliveryEvidence;
   transcriptReview?: TranscriptReview;
   recoveryAction?: DesktopRecoveryAction;
+  desktopSession?: DesktopDictationSession | IdleDesktopDictationState;
 }): DesktopDictationSession | IdleDesktopDictationState {
   const sessionBase = {
     sessionId: input.pipelineUi.summary?.runId ?? "dock-ui-session",
     controlSource: "app_button" as const,
   };
+
+  if (input.desktopSession?.state === "waiting_for_choice") {
+    return input.desktopSession;
+  }
 
   if (input.pipelineUi.status === "running") {
     return { ...sessionBase, state: "transcribing" };
@@ -1216,6 +1265,13 @@ type CompanionSurfaceViewProps = {
   onCommand?: (payload: DockCompanionCommandPayload) => void;
   showRecoveryActions?: boolean;
   showChromeClose?: boolean;
+  teachCorrectionSession?: TeachCorrectionSession;
+  teachCorrectionConflict?: Readonly<{
+    action: "replace_and_remember" | "remember_only";
+    conflict: TeachCorrectionConflict;
+  }>;
+  teachCorrectionBusy?: boolean;
+  teachCorrectionNotice?: TeachCorrectionFormNotice;
 };
 
 function companionActionLabel(command: DockCommand): string {
@@ -1287,6 +1343,10 @@ export function CompanionSurfaceView({
   onCommand,
   showRecoveryActions = true,
   showChromeClose = true,
+  teachCorrectionSession,
+  teachCorrectionConflict,
+  teachCorrectionBusy = false,
+  teachCorrectionNotice,
 }: CompanionSurfaceViewProps) {
   const recoveryActions = (showRecoveryActions ? [
     snapshot.recovery?.primaryAction,
@@ -1847,7 +1907,41 @@ export function CompanionSurfaceView({
             </div>
             {closeButton}
           </div>
-          <label className="dock-preset-picker-search" htmlFor="dock-preset-picker-search">
+          <button
+            type="button"
+            className="dock-teach-correction-launcher"
+            onClick={() => onCommand?.({ source: "dock_companion", command: "teach_correction" })}
+          >
+            <span>
+              <strong>Enseñar corrección</strong>
+              <small>Guardar una grafía exacta desde la selección actual.</small>
+            </span>
+            <span aria-hidden="true">→</span>
+          </button>
+          {teachCorrectionSession ? (
+            <TeachCorrectionForm
+              session={teachCorrectionSession}
+              conflict={teachCorrectionConflict}
+              busy={teachCorrectionBusy}
+              notice={teachCorrectionNotice}
+              onCancel={() => onCommand?.({ source: "dock_companion", command: "close_teach_correction" })}
+              onSubmit={(draft, action, conflictChoice) => onCommand?.({
+                source: "dock_companion",
+                command: "save_teach_correction",
+                sessionId: teachCorrectionSession.sessionId,
+                action,
+                ...(conflictChoice ? { conflictChoice } : {}),
+                draft: {
+                  spoken: draft.spoken,
+                  written: draft.written,
+                  alternatives: [...draft.alternatives],
+                  mode: draft.mode,
+                  automaticConfirmed: draft.automaticConfirmed,
+                },
+              })}
+            />
+          ) : null}
+          {!teachCorrectionSession ? <label className="dock-preset-picker-search" htmlFor="dock-preset-picker-search">
             <span aria-hidden="true">⌕</span>
             <input
               id="dock-preset-picker-search"
@@ -1862,8 +1956,8 @@ export function CompanionSurfaceView({
               autoComplete="off"
               spellCheck={false}
             />
-          </label>
-          <div className="dock-preset-picker-list" role="listbox" aria-label="Preset picker results">
+          </label> : null}
+          {!teachCorrectionSession ? <div className="dock-preset-picker-list" role="listbox" aria-label="Preset picker results">
             {filteredPickerPresets.length === 0 ? (
               <div className="dock-preset-picker-empty">No presets found</div>
             ) : filteredPickerPresets.map((preset, index) => {
@@ -1892,11 +1986,11 @@ export function CompanionSurfaceView({
                 </button>
               );
             })}
-          </div>
-          <div className="dock-preset-picker-footer">
+          </div> : null}
+          {!teachCorrectionSession ? <div className="dock-preset-picker-footer">
             <span><kbd>↑↓</kbd><kbd>↵</kbd> navigate &amp; select</span>
             <span><kbd>Esc</kbd> close</span>
-          </div>
+          </div> : null}
         </section>
       ) : null}
 
@@ -2047,22 +2141,32 @@ function createPresetPickerSnapshot(): DockCompanionSnapshot {
   return createEmptyDockCompanionSnapshot();
 }
 
+const companionCommandBridge = createCompanionCommandBridge({
+  emitToMain: (payload: DockCompanionCommandEnvelope) =>
+    emitTo("main", dockCompanionCommandEvent, payload),
+  emitGlobal: (payload: DockCompanionCommandEnvelope) =>
+    emit(dockCompanionCommandEvent, payload),
+  writeStorageFallback: (payload: DockCompanionCommandEnvelope) => {
+    // A teaching draft can contain private spoken/written text. Never persist it.
+    if (payload.command === "save_teach_correction") {
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        dockCompanionCommandStorageKey,
+        JSON.stringify({ id: payload.commandId, payload }),
+      );
+    } catch {
+      // Best-effort fallback after both Tauri event routes failed.
+    }
+  },
+});
+
 function dispatchDockCompanionCommand(payload: DockCompanionCommandPayload): void {
   if (!isTauri()) {
     return;
   }
-
-  try {
-    window.localStorage.setItem(
-      dockCompanionCommandStorageKey,
-      JSON.stringify({ id: `${Date.now()}-${Math.random()}`, payload }),
-    );
-  } catch {
-    // Best-effort fallback bridge; Tauri events remain the primary route.
-  }
-
-  void emitTo("main", dockCompanionCommandEvent, payload)
-    .catch(() => emit(dockCompanionCommandEvent, payload).catch(() => undefined));
+  void companionCommandBridge.send(payload);
 }
 
 function CompanionSurface({ surface }: { surface: "companion" | "preset-picker" }) {
@@ -2071,6 +2175,13 @@ function CompanionSurface({ surface }: { surface: "companion" | "preset-picker" 
       ? createPresetPickerSnapshot()
       : readStoredDockCompanionSnapshot() ?? createEmptyDockCompanionSnapshot(),
   );
+  const [teachCorrectionSession, setTeachCorrectionSession] = useState<TeachCorrectionSession>();
+  const [teachCorrectionConflict, setTeachCorrectionConflict] = useState<Readonly<{
+    action: "replace_and_remember" | "remember_only";
+    conflict: TeachCorrectionConflict;
+  }>>();
+  const [teachCorrectionNotice, setTeachCorrectionNotice] = useState<TeachCorrectionFormNotice>();
+  const [teachCorrectionBusy, setTeachCorrectionBusy] = useState(false);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -2119,6 +2230,99 @@ function CompanionSurface({ surface }: { surface: "companion" | "preset-picker" 
     return () => window.removeEventListener("focus", refreshPickerSnapshot);
   }, [surface]);
 
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<DockCompanionCommandAck>(dockCompanionCommandAckEvent, (event) => {
+      if (!disposed) {
+        companionCommandBridge.acknowledge(event.payload);
+      }
+    }).then((nextUnlisten) => {
+      if (disposed) {
+        nextUnlisten?.();
+        return;
+      }
+      unlisten = nextUnlisten;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (surface !== "preset-picker" || !isTauri()) {
+      return;
+    }
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<TeachCorrectionEvent>(dockTeachCorrectionEvent, (event) => {
+      if (disposed) return;
+      if (import.meta.env.DEV) {
+        (window as unknown as {
+          __dictationTeachCorrectionEventReceived?: Readonly<{
+            kind: TeachCorrectionEvent["kind"];
+            receivedAt: string;
+          }>;
+        }).__dictationTeachCorrectionEventReceived = {
+          kind: event.payload.kind,
+          receivedAt: new Date().toISOString(),
+        };
+      }
+      if (event.payload.kind === "open") {
+        setTeachCorrectionSession(event.payload.session);
+        setTeachCorrectionConflict(undefined);
+        setTeachCorrectionNotice(undefined);
+        setTeachCorrectionBusy(false);
+        return;
+      }
+      if (event.payload.kind === "close") {
+        setTeachCorrectionSession(undefined);
+        setTeachCorrectionConflict(undefined);
+        setTeachCorrectionNotice(undefined);
+        setTeachCorrectionBusy(false);
+        return;
+      }
+      if (event.payload.kind === "pending") {
+        setTeachCorrectionConflict(undefined);
+        setTeachCorrectionBusy(true);
+        setTeachCorrectionNotice({ tone: "idle", message: "Guardando la regla… La selección actual todavía no se modifica." });
+        return;
+      }
+      if (event.payload.kind === "choice_required") {
+        setTeachCorrectionConflict({
+          action: event.payload.action,
+          conflict: event.payload.conflict,
+        });
+        setTeachCorrectionBusy(false);
+        setTeachCorrectionNotice({
+          tone: "warning",
+          message: "Elegí reemplazar la salida o agregar una alternativa antes de mutar la regla.",
+        });
+        return;
+      }
+      setTeachCorrectionConflict(undefined);
+      setTeachCorrectionBusy(false);
+      setTeachCorrectionNotice({
+        tone: event.payload.status === "saved_and_replaced" || event.payload.status === "saved_only" ? "success" : event.payload.status === "conflict" ? "warning" : "danger",
+        message: event.payload.message,
+      });
+    }).then((nextUnlisten) => {
+      if (disposed) {
+        nextUnlisten?.();
+        return;
+      }
+      unlisten = nextUnlisten;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [surface]);
+
   return (
     <main
       className={`companion-shell${snapshot.notice ? " companion-shell--notice" : ""}`}
@@ -2128,6 +2332,10 @@ function CompanionSurface({ surface }: { surface: "companion" | "preset-picker" 
         snapshot={snapshot}
         onCommand={dispatchDockCompanionCommand}
         showChromeClose={false}
+        teachCorrectionSession={teachCorrectionSession}
+        teachCorrectionConflict={teachCorrectionConflict}
+        teachCorrectionBusy={teachCorrectionBusy}
+        teachCorrectionNotice={teachCorrectionNotice}
       />
     </main>
   );
@@ -2149,6 +2357,13 @@ export function DockSurface() {
   const activePresetRef = useRef<DockActivePreset | undefined>(readStoredActivePreset());
   const selectionContextRef = useRef<SelectionContext | undefined>(undefined);
   const presetPickerSelectionCaptureStatusRef = useRef<SelectionCaptureStatus | undefined>(undefined);
+  const presetPickerSelectionTruncatedRef = useRef(false);
+  const teachCorrectionSessionRef = useRef<TeachCorrectionSession | undefined>(undefined);
+  const teachCorrectionConflictRef = useRef<Readonly<{
+    sessionId: string;
+    snapshot: PersonalVocabularySnapshot;
+    existingRule: PersonalVocabularyRule;
+  }> | undefined>(undefined);
   const dockDragRef = useRef<{
     startScreenX: number;
     startScreenY: number;
@@ -2162,6 +2377,13 @@ export function DockSurface() {
   const muteOutputPolicyRef = useRef(createMuteOutputPolicy(defaultUserPreferences));
   const soundCuePolicyRef = useRef(createSoundCuePolicy(defaultUserPreferences));
   const forcePressEnterAfterPasteRef = useRef(false);
+  const [desktopSessionState, setDesktopSessionState] = useState<
+    DesktopDictationSession | IdleDesktopDictationState
+  >({ state: "idle" });
+  const [vocabularyChoiceState, setVocabularyChoiceState] = useState<
+    VocabularyChoiceSessionView | undefined
+  >();
+  const [vocabularyChoiceBusy, setVocabularyChoiceBusy] = useState(false);
   const nativePasteObserver = useMemo(
     () =>
       isTauri() && isTauriNativePasteObserverEnabled()
@@ -2290,6 +2512,14 @@ export function DockSurface() {
       },
       delivery: desktopDelivery,
       allowDesktopDeliverySideEffects: isTauri(),
+      vocabulary: {
+        enabled: true,
+        getSnapshot: getFixvoxPersonalVocabularySnapshot,
+        onChoiceRequired: (state) => {
+          setVocabularyChoiceState(state);
+          return true;
+        },
+      },
       autoStop: autoStopSilencePolicyRef.current,
       prepareDeliveryTargetOnStop: async () => {
         if (!isTauri() || userPreferencesRef.current.followFocusUntilDelivery) {
@@ -2353,6 +2583,7 @@ export function DockSurface() {
   const [dismissedAssistantRunId, setDismissedAssistantRunId] = useState<string | undefined>(undefined);
   const [noSpeechNoticeOpen, setNoSpeechNoticeOpen] = useState(false);
   const persistedHistoryEntryIdRef = useRef<string | undefined>(undefined);
+  const appliedDesktopSessionRef = useRef<DesktopDictationSession | undefined>(undefined);
   const companionSyncKeyRef = useRef<string | undefined>(undefined);
   const recoveryOperationPendingRef = useRef(false);
   const latestAttemptBlocksHistoryPasteRef = useRef(false);
@@ -2360,6 +2591,46 @@ export function DockSurface() {
   const hostCommandHandlerRef = useRef<
     ((payload: ResolvedTauriHostCommandPayload) => void | Promise<void>) | undefined
   >(undefined);
+  const companionCommandHandlerRef = useRef<
+    ((payload: DockCompanionCommandPayload) => void) | undefined
+  >(undefined);
+
+  function applyHostPresetMenuSyncResult(result: HostPresetMenuSyncResult): void {
+    const snapshot = result.snapshot;
+    const activePresetId = snapshot.activePresetId?.trim();
+    if (activePresetId) {
+      const preset = snapshot.presets.find((item) => item.id === activePresetId);
+      if (!preset) {
+        return;
+      }
+      const nextPreset: DockActivePreset = {
+        presetId: activePresetId,
+        presetName: preset.name,
+        appKey: "global",
+      };
+      activePresetRef.current = nextPreset;
+      setActivePreset(nextPreset);
+      storeActivePreset(nextPreset);
+      return;
+    }
+
+    const hadActivePreset = Boolean(activePresetRef.current?.presetId);
+    activePresetRef.current = undefined;
+    setActivePreset(undefined);
+    storeActivePreset(undefined);
+    if (hadActivePreset && (result.activePresetCleared || result.feedbackMessage)) {
+      const message = result.feedbackMessage ?? "No preset is active.";
+      setCapture({ state: "idle", message });
+      setPipelineUi((current) => ({ ...current, status: "idle", message }));
+    }
+  }
+
+  async function syncActivePresetMenu(activePresetId = activePresetRef.current?.presetId): Promise<void> {
+    const result = await syncHostPresetMenuSnapshot({ activePresetId });
+    if (result) {
+      applyHostPresetMenuSyncResult(result);
+    }
+  }
 
   useEffect(() => {
     if (!isTauri()) {
@@ -2367,16 +2638,33 @@ export function DockSurface() {
     }
 
     void loadSelectionPresetStore()
-      .then(() => {
-        const storedPresetId = activePresetRef.current?.presetId;
-        const presetId = normalizeDockPresetId(storedPresetId);
-        if (presetId) {
-          selectActivePreset(presetId);
-        } else if (storedPresetId) {
-          clearActivePreset();
-        }
-      })
+      .then(() => syncActivePresetMenu(activePresetRef.current?.presetId))
       .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen<HostPresetMenuSyncResult>(hostPresetMenuSyncEventName, (event) => {
+      if (!disposed) {
+        applyHostPresetMenuSyncResult(event.payload);
+      }
+    }).then((nextUnlisten) => {
+      if (disposed) {
+        nextUnlisten?.();
+        return;
+      }
+      unlisten = nextUnlisten;
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -2465,6 +2753,11 @@ export function DockSurface() {
   }, []);
 
   useEffect(() => {
+    if (desktopSessionState.state === "waiting_for_choice") {
+      // Do not persist the pre-choice projection. History must contain the
+      // final resolved/cancelled delivery output exactly once.
+      return;
+    }
     const entry = createHistoryEntryFromSummary(pipelineUi.summary);
     if (!entry || persistedHistoryEntryIdRef.current === entry.id || !isTauri()) {
       return;
@@ -2474,7 +2767,7 @@ export function DockSurface() {
     void invoke<ResultHistoryEntry[]>("append_result_history_entry", { entry })
       .then((entries) => setResultHistoryEntries(entries))
       .catch(() => undefined);
-  }, [pipelineUi.summary]);
+  }, [desktopSessionState.state, pipelineUi.summary]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2615,29 +2908,35 @@ export function DockSurface() {
           allowProviderCall: true,
         });
         if (response.status !== "ok") {
-          return applySelectionTransformFailureToRuntimeResult({
-            runtime: input.runtime,
-            code: response.error.code,
-            reason: selectionTransformFailureReason(response.error.code),
-          });
+          return markPersistentPresetRuntimeResult(
+            applySelectionTransformFailureToRuntimeResult({
+              runtime: input.runtime,
+              code: response.error.code,
+              reason: selectionTransformFailureReason(response.error.code),
+            }),
+          );
         }
-        return applySelectionTransformOutputToRuntimeResult({
-          runtime: input.runtime,
-          output: response.text,
-          deliveryStrategy: userPreferencesRef.current.reviewBeforeDelivery ? "review_only" : "paste_send",
-          reason: userPreferencesRef.current.reviewBeforeDelivery
-            ? "Managed preset voice transform is available for review before delivery."
-            : "Managed preset voice transform inserted the preset output.",
-        });
+        return markPersistentPresetRuntimeResult(
+          applySelectionTransformOutputToRuntimeResult({
+            runtime: input.runtime,
+            output: response.text,
+            deliveryStrategy: userPreferencesRef.current.reviewBeforeDelivery ? "review_only" : "paste_send",
+            reason: userPreferencesRef.current.reviewBeforeDelivery
+              ? "Managed preset voice transform is available for review before delivery."
+              : "Managed preset voice transform inserted the preset output.",
+          }),
+        );
       } catch {
-        return applySelectionTransformFailureToRuntimeResult({
-          runtime: input.runtime,
-        });
+        return markPersistentPresetRuntimeResult(
+          applySelectionTransformFailureToRuntimeResult({
+            runtime: input.runtime,
+          }),
+        );
       }
     }
 
     if (!selectedText) {
-      return applySelectionTransformToRuntimeResult(input);
+      return markPersistentPresetRuntimeResult(applySelectionTransformToRuntimeResult(input));
     }
 
     if (isTauri()) {
@@ -2678,7 +2977,7 @@ export function DockSurface() {
       }
     }
 
-    return applySelectionTransformToRuntimeResult(input);
+    return markPersistentPresetRuntimeResult(applySelectionTransformToRuntimeResult(input));
   }
 
   function queueDictationSoundCue(cue: DictationSoundCue) {
@@ -2735,6 +3034,8 @@ export function DockSurface() {
 
     await playStartSoundCueBeforeMute();
     const session = await desktopSession.start();
+    setDesktopSessionState(session);
+    setVocabularyChoiceState(undefined);
     setDesktopRecoveryAction(session.recoveryAction);
     if (session.state === "listening") {
       dictationKeyStateRef.current = markDictationKeyLatched(
@@ -2773,6 +3074,7 @@ export function DockSurface() {
     try {
       await rememberSelectionTransformContext();
       const session = await desktopSession.stop();
+      setDesktopSessionState(session);
       queueDictationSoundCue("stop");
       setDesktopRecoveryAction(session.recoveryAction);
       const result = getAppSessionCaptureResult(session);
@@ -2788,6 +3090,14 @@ export function DockSurface() {
 
       if (isNoSpeechOutcome(summary, session.error?.message)) {
         showNoSpeechNotice(summary);
+        return;
+      }
+
+      if (session.state === "waiting_for_choice") {
+        applyDesktopControlSessionToUi(
+          session,
+          "Vocabulary choice surface is waiting for a decision.",
+        );
         return;
       }
 
@@ -2839,7 +3149,13 @@ export function DockSurface() {
   }
 
   async function cancelCapture() {
+    if (desktopSessionState.state === "waiting_for_choice") {
+      await cancelVocabularyChoice();
+      return;
+    }
     const session = await desktopSession.cancel();
+    setDesktopSessionState(session);
+    setVocabularyChoiceState(undefined);
     dictationKeyStateRef.current = resetDictationKeyState(
       dictationKeyStateRef.current,
     );
@@ -3210,6 +3526,7 @@ export function DockSurface() {
       deliveryEvidence,
       transcriptReview,
       recoveryAction: desktopRecoveryAction,
+      desktopSession: desktopSessionState,
     }),
     {
       canPasteLastSafe: canCopyTranscript,
@@ -3386,6 +3703,10 @@ export function DockSurface() {
   }
 
   function selectActivePreset(presetId: DockCompanionPresetId) {
+    if (!isSelectionTransformPresetAvailable(presetId)) {
+      clearActivePreset("The selected preset is no longer available.");
+      return;
+    }
     const nextPreset: DockActivePreset = {
       presetId,
       presetName: presetDisplayName(presetId),
@@ -3394,16 +3715,25 @@ export function DockSurface() {
     activePresetRef.current = nextPreset;
     setActivePreset(nextPreset);
     storeActivePreset(nextPreset);
+    void syncActivePresetMenu(presetId).catch(() => undefined);
   }
 
-  function clearActivePreset() {
+  function clearActivePreset(feedbackMessage?: string) {
     activePresetRef.current = undefined;
     selectionContextRef.current = undefined;
     setActivePreset(undefined);
     storeActivePreset(undefined);
+    if (feedbackMessage) {
+      setCapture({ state: "idle", message: feedbackMessage });
+      setPipelineUi((current) => ({ ...current, status: "idle", message: feedbackMessage }));
+    }
+    void syncActivePresetMenu(undefined).catch(() => undefined);
   }
 
   function closeCompanionSurfaces() {
+    if (desktopSessionState.state === "waiting_for_choice") {
+      void cancelVocabularyChoice();
+    }
     if (recoveryKey) {
       setDismissedRecoveryKey(recoveryKey);
       settleDockAfterRecovery("Recovery dismissed. Latest result remains available in History.", pipelineUi.summary);
@@ -3413,6 +3743,9 @@ export function DockSurface() {
     historyTargetNeedsFocusRestoreRef.current = false;
     setSettingsPanelOpen(false);
     setDismissedAssistantRunId(companionSnapshot.assistant.runId);
+    teachCorrectionSessionRef.current = undefined;
+    teachCorrectionConflictRef.current = undefined;
+    emitTeachCorrectionEvent({ kind: "close" });
   }
 
   function selectHistoryEntry(entryId: string) {
@@ -3450,8 +3783,12 @@ export function DockSurface() {
       };
   }
 
-  async function openPresetPicker(targetSnapshot?: TauriDesktopDeliveryTarget) {
+async function openPresetPicker(targetSnapshot?: TauriDesktopDeliveryTarget) {
+    teachCorrectionSessionRef.current = undefined;
+    teachCorrectionConflictRef.current = undefined;
+    emitTeachCorrectionEvent({ kind: "close" });
     presetPickerSelectionCaptureStatusRef.current = isTauri() ? "failed" : undefined;
+    presetPickerSelectionTruncatedRef.current = false;
     if (isTauri()) {
       savedDeliveryTargetRef.current = targetSnapshot?.inputLike
         ? targetSnapshot
@@ -3460,6 +3797,7 @@ export function DockSurface() {
         forceTargetClipboardFallback: true,
       });
       presetPickerSelectionCaptureStatusRef.current = outcome?.status ?? "failed";
+      presetPickerSelectionTruncatedRef.current = outcome?.truncated === true;
     }
 
     const hasSelection = Boolean(selectionContextRef.current?.selectedText?.trim());
@@ -3514,6 +3852,7 @@ export function DockSurface() {
     if (action === "selection_capture_failed") {
       clearActivePreset();
       presetPickerSelectionCaptureStatusRef.current = undefined;
+      presetPickerSelectionTruncatedRef.current = false;
       const message = "Selected text could not be captured safely. No preset was activated.";
       setCapture({ state: "idle", message });
       setPipelineUi({ status: "error", operation: "selection_transform", message });
@@ -3523,6 +3862,7 @@ export function DockSurface() {
       selectActivePreset(presetId);
       selectionContextRef.current = undefined;
       presetPickerSelectionCaptureStatusRef.current = undefined;
+      presetPickerSelectionTruncatedRef.current = false;
       const message = `${presetDisplayName(presetId)} is active for future dictation.`;
       setCapture({ state: "idle", message });
       setPipelineUi({ status: "idle", message, summary: pipelineUi.summary });
@@ -3616,12 +3956,181 @@ export function DockSurface() {
     } finally {
       selectionContextRef.current = undefined;
       presetPickerSelectionCaptureStatusRef.current = undefined;
+      presetPickerSelectionTruncatedRef.current = false;
     }
   }
 
-  function handleHostCommandPayload(payload: ResolvedTauriHostCommandPayload) {
+  function emitTeachCorrectionEvent(event: TeachCorrectionEvent) {
+    if (!isTauri()) return;
+    void emitTo("preset-picker", dockTeachCorrectionEvent, event)
+      .then(() => {
+        if (import.meta.env.DEV) {
+          recordPresetPickerMainDebug({
+            lastTeachCorrectionEvent: event.kind,
+            teachCorrectionEventStatus: "emitted",
+          });
+        }
+      })
+      .catch(() => {
+        if (import.meta.env.DEV) {
+          recordPresetPickerMainDebug({
+            lastTeachCorrectionEvent: event.kind,
+            teachCorrectionEventStatus: "failed",
+          });
+        }
+      });
+  }
+
+  function openTeachCorrection() {
+    const selection = selectionContextRef.current;
+    const target = savedDeliveryTargetRef.current;
+    const hasSafeSelection = Boolean(
+      selection?.selectedText?.trim() &&
+      target?.inputLike &&
+      presetPickerSelectionCaptureStatusRef.current === "ok" &&
+      !presetPickerSelectionTruncatedRef.current,
+    );
+    if (!hasSafeSelection || !selection?.selectedText) {
+      if (import.meta.env.DEV) {
+        recordPresetPickerMainDebug({
+          lastAction: "teach_correction_invalid",
+          hadSafeSelection: hasSafeSelection,
+          selectedTextLength: selection?.textLength ?? 0,
+        });
+      }
+      emitTeachCorrectionEvent({
+        kind: "result",
+        sessionId: teachCorrectionSessionRef.current?.sessionId ?? "none",
+        status: "invalid",
+        message: "No hay una selección segura disponible. La regla no se guardó.",
+      });
+      return;
+    }
+
+    const session: TeachCorrectionSession = {
+      sessionId: `teach-correction-${Date.now()}`,
+      spoken: selection.selectedText,
+      selectionLength: selection.textLength,
+      selectionTruncated: presetPickerSelectionTruncatedRef.current,
+    };
+    teachCorrectionSessionRef.current = session;
+    teachCorrectionConflictRef.current = undefined;
+    if (import.meta.env.DEV) {
+      recordPresetPickerMainDebug({
+        lastAction: "teach_correction_open_requested",
+        hadSafeSelection: true,
+        selectedTextLength: session.selectionLength,
+      });
+    }
+    emitTeachCorrectionEvent({ kind: "open", session });
+  }
+
+  async function saveTeachCorrectionFromPicker(
+    payload: Extract<TeachCorrectionCommandPayload, { command: "save_teach_correction" }>,
+  ) {
+    const session = teachCorrectionSessionRef.current;
+    const selection = selectionContextRef.current;
+    const target = savedDeliveryTargetRef.current;
+    if (!session || payload.sessionId !== session.sessionId || !selection?.selectedText || !target?.inputLike) {
+      emitTeachCorrectionEvent({ kind: "result", sessionId: payload.sessionId, status: "invalid", message: "La selección ya no está disponible. Volvé a abrir el picker." });
+      return;
+    }
+
+    const client = createTauriVocabularyClient(invoke);
+    let result: TeachCorrectionSaveResult;
+    try {
+      const pendingConflict = teachCorrectionConflictRef.current?.sessionId === session.sessionId
+        ? teachCorrectionConflictRef.current
+        : undefined;
+      if (pendingConflict && !payload.conflictChoice) {
+        emitTeachCorrectionEvent({
+          kind: "choice_required",
+          sessionId: session.sessionId,
+          action: payload.action,
+          conflict: summarizeTeachCorrectionConflict(pendingConflict.existingRule),
+        });
+        return;
+      }
+
+      const snapshot = pendingConflict?.snapshot ?? await client.readSnapshot();
+      const existingRule = pendingConflict?.existingRule ?? findVocabularyRuleForSpoken(snapshot, payload.draft.spoken);
+      if (existingRule && !payload.conflictChoice) {
+        teachCorrectionConflictRef.current = {
+          sessionId: session.sessionId,
+          snapshot,
+          existingRule,
+        };
+        emitTeachCorrectionEvent({
+          kind: "choice_required",
+          sessionId: session.sessionId,
+          action: payload.action,
+          conflict: summarizeTeachCorrectionConflict(existingRule),
+        });
+        return;
+      }
+
+      emitTeachCorrectionEvent({ kind: "pending", sessionId: session.sessionId });
+      result = await saveTeachCorrection({
+        draft: payload.draft,
+        snapshot,
+        action: payload.action,
+        ...(existingRule ? { existingRule } : {}),
+        ...(payload.conflictChoice ? { conflictChoice: payload.conflictChoice } : {}),
+        selection: {
+          selectionId: selection.selectionId,
+          selectedText: selection.selectedText,
+          truncated: session.selectionTruncated,
+          target,
+        },
+      }, client);
+    } catch (error) {
+      const errorText = error instanceof Error
+        ? error.message
+        : typeof error === "object" && error !== null
+          ? JSON.stringify(error) ?? String(error)
+          : String(error);
+      result = {
+        status: /stale|conflict|409|revision/i.test(errorText) ? "conflict" : "network_error",
+        error: error instanceof Error ? error.message : "vocabulary_read_failed",
+        draftPreserved: true,
+      };
+    }
+
+    teachCorrectionConflictRef.current = undefined;
+
+    emitTeachCorrectionEvent({
+      kind: "result",
+      sessionId: session.sessionId,
+      status: result.status,
+      message: describeTeachCorrectionSaveResult(result),
+    });
+  }
+
+  function describeTeachCorrectionSaveResult(result: TeachCorrectionSaveResult): string {
+    switch (result.status) {
+      case "saved_and_replaced":
+        return result.cacheRefreshError
+          ? "Regla guardada y selección reemplazada. La caché se actualizará al volver a intentar."
+          : "Regla guardada y selección reemplazada."
+      case "saved_only":
+        return result.cacheRefreshError
+          ? "Regla guardada. La selección quedó sin cambios y la caché se actualizará al volver a intentar."
+          : "Regla guardada. La selección quedó sin cambios."
+      case "saved_selection_unchanged":
+        return "Regla guardada, pero la selección cambió o el target no está disponible. No se modificó el texto actual."
+      case "conflict":
+        return "La revisión cambió en otro dispositivo. El borrador se conserva; actualizá desde Settings y reconciliá por ID."
+      case "network_error":
+        return "No pudimos guardar la regla. El borrador se conserva y la selección no se modificó."
+      case "invalid":
+        return "Revisá el texto correcto y el modo elegido. El borrador se conserva."
+    }
+  }
+
+  async function handleHostCommandPayload(payload: ResolvedTauriHostCommandPayload) {
     switch (payload.command) {
       case "select_preset":
+        await loadSelectionPresetStore().catch(() => undefined);
         if (payload.presetId) {
           selectActivePreset(payload.presetId);
         }
@@ -3817,6 +4326,17 @@ export function DockSurface() {
       case "clear_result_history":
         void clearResultHistory();
         break;
+      case "teach_correction":
+        openTeachCorrection();
+        break;
+      case "close_teach_correction":
+        teachCorrectionSessionRef.current = undefined;
+        teachCorrectionConflictRef.current = undefined;
+        emitTeachCorrectionEvent({ kind: "close" });
+        break;
+      case "save_teach_correction":
+        void saveTeachCorrectionFromPicker(payload);
+        break;
       case "close_companion":
         closeCompanionSurfaces();
         break;
@@ -3877,6 +4397,48 @@ export function DockSurface() {
     await invoke("move_dock_shell_position", { x: nextX, y: nextY });
   }
 
+  async function resolveVocabularyChoice(choice: string) {
+    const waiting = vocabularyChoiceState;
+    if (!waiting || vocabularyChoiceBusy) {
+      return;
+    }
+
+    setVocabularyChoiceBusy(true);
+    try {
+      const session = await desktopSession.resolveVocabularyChoice({
+        sessionId: waiting.sessionId,
+        groupId: waiting.group.id,
+        choice,
+      });
+      applyDesktopControlSessionToUi(
+        session,
+        "Vocabulary choice did not produce a delivered result.",
+      );
+    } finally {
+      setVocabularyChoiceBusy(false);
+    }
+  }
+
+  async function cancelVocabularyChoice() {
+    const waiting = vocabularyChoiceState;
+    if (!waiting || vocabularyChoiceBusy) {
+      return;
+    }
+
+    setVocabularyChoiceBusy(true);
+    try {
+      const session = await desktopSession.cancelVocabularyResolution({
+        sessionId: waiting.sessionId,
+      });
+      applyDesktopControlSessionToUi(
+        session,
+        "Vocabulary choice was cancelled; original text was preserved.",
+      );
+    } finally {
+      setVocabularyChoiceBusy(false);
+    }
+  }
+
   function handleVoiceDockCommand(command: DockCommand) {
     switch (command) {
       case "start":
@@ -3913,6 +4475,28 @@ export function DockSurface() {
     session: DesktopDictationSession,
     failureMessage: string,
   ) {
+    if (appliedDesktopSessionRef.current === session) {
+      return;
+    }
+    appliedDesktopSessionRef.current = session;
+    setDesktopSessionState(session);
+    if (session.state === "waiting_for_choice") {
+      setVocabularyChoiceState(session.vocabulary);
+      setPipelineUi({
+        status: "running",
+        message: "Esperando elección antes de entregar.",
+        summary: getAppSessionSummary(session),
+      });
+      const result = getAppSessionCaptureResult(session);
+      setCapture({
+        state: result?.ok ? "captured" : "failed",
+        message: "Esperando elección antes de entregar.",
+        result,
+      });
+      return;
+    }
+
+    setVocabularyChoiceState(undefined);
     setDesktopRecoveryAction(session.recoveryAction);
 
     if (session.state === "listening") {
@@ -3973,8 +4557,22 @@ export function DockSurface() {
     });
   }
 
+  useEffect(
+    () => desktopSession.subscribeVocabularySettlement((session) => {
+      applyDesktopControlSessionToUi(
+        session,
+        "Vocabulary fallback completed, but delivery needs recovery.",
+      );
+    }),
+    [desktopSession],
+  );
+
   useEffect(() => {
     hostCommandHandlerRef.current = handleHostCommandPayload;
+  });
+
+  useEffect(() => {
+    companionCommandHandlerRef.current = handleCompanionCommandPayload;
   });
 
   useEffect(() => {
@@ -4010,6 +4608,14 @@ export function DockSurface() {
         return;
       }
 
+      if (command === "teach_correction") {
+        handleCompanionCommandPayload({
+          source: "dock_companion",
+          command: "teach_correction",
+        });
+        return;
+      }
+
       handleHostCommandPayload({ ...payload, command });
     };
 
@@ -4033,19 +4639,89 @@ export function DockSurface() {
 
     let disposed = false;
     let unlisten: (() => void) | undefined;
-    const handledStorageCommandIds = new Set<string>();
+    // The event, global-event, and storage routes are at-least-once. Claim a
+    // command before invoking the handler so an ack timeout cannot replay an
+    // already-executed command through the fallback route. The bounded TTL
+    // keeps this process-local cache from growing across a long-lived dock.
+    const seenCompanionCommandIds = createCompanionCommandDedupe();
+
+    const recordCompanionCommandTransport = (
+      route: "tauri_event" | "storage_fallback",
+      payload: DockCompanionCommandEnvelope,
+    ) => {
+      if (!import.meta.env.DEV) {
+        return;
+      }
+      (window as unknown as {
+        __dictationCompanionCommandTransport?: Readonly<{
+          route: "tauri_event" | "storage_fallback";
+          command: DockCompanionCommandPayload["command"];
+          receivedAt: string;
+          commandId?: string;
+        }>;
+      }).__dictationCompanionCommandTransport = {
+        route,
+        command: payload.command,
+        receivedAt: new Date().toISOString(),
+        commandId: payload.commandId,
+      };
+    };
+
+    const acknowledgeCommand = (payload: DockCompanionCommandEnvelope) => {
+      if (!payload.commandId) {
+        return;
+      }
+      void emit<DockCompanionCommandAck>(dockCompanionCommandAckEvent, {
+        commandId: payload.commandId,
+        command: payload.command,
+        handled: true,
+      }).catch(() => undefined);
+    };
+
+    const dispatchToCurrentHandler = (
+      route: "tauri_event" | "storage_fallback",
+      payload: DockCompanionCommandEnvelope,
+    ) => {
+      const handler = companionCommandHandlerRef.current;
+      if (!handler) {
+        return false;
+      }
+
+      if (payload.commandId && !seenCompanionCommandIds.claim(payload.commandId)) {
+        // A late ack or storage replay is still answered authoritatively, but
+        // never invokes the product command twice. Keep the first successful
+        // route in the DEV signal; a fallback replay is not authoritative
+        // evidence that the product handler ran there.
+        acknowledgeCommand(payload);
+        return true;
+      }
+
+      recordCompanionCommandTransport(route, payload);
+      try {
+        handler(payload);
+        acknowledgeCommand(payload);
+        return true;
+      } catch {
+        // Leave the acknowledgement pending so the source can use its fallback.
+        seenCompanionCommandIds.release(payload.commandId);
+        return false;
+      }
+    };
 
     const handleStoredCommand = (raw: string | null) => {
       if (!raw) {
         return;
       }
       try {
-        const parsed = JSON.parse(raw) as { id?: string; payload?: DockCompanionCommandPayload };
-        if (!parsed.id || !parsed.payload || handledStorageCommandIds.has(parsed.id)) {
+        const parsed = JSON.parse(raw) as { id?: string; payload?: DockCompanionCommandEnvelope };
+        if (
+          !parsed.id ||
+          !parsed.payload ||
+          parsed.payload.commandId !== parsed.id
+        ) {
           return;
         }
-        handledStorageCommandIds.add(parsed.id);
-        handleCompanionCommandPayload(parsed.payload);
+        dispatchToCurrentHandler("storage_fallback", parsed.payload);
       } catch {
         // Ignore malformed fallback bridge payloads.
       }
@@ -4059,9 +4735,9 @@ export function DockSurface() {
 
     window.addEventListener("storage", handleStorage);
 
-    void listen<DockCompanionCommandPayload>(dockCompanionCommandEvent, (event) => {
+    void listen<DockCompanionCommandEnvelope>(dockCompanionCommandEvent, (event) => {
       if (!disposed) {
-        handleCompanionCommandPayload(event.payload);
+        dispatchToCurrentHandler("tauri_event", event.payload);
       }
     }).then((nextUnlisten) => {
       if (disposed) {
@@ -4077,7 +4753,7 @@ export function DockSurface() {
       window.removeEventListener("storage", handleStorage);
       unlisten?.();
     };
-  }, [pipelineUi.summary, recoveryKey, resultHistoryEntries, settingsPanelOpen]);
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -4232,6 +4908,16 @@ export function DockSurface() {
             void invoke("show_dock_context_menu").catch(() => undefined);
           }}
         />
+
+        {vocabularyChoiceState ? (
+          <VocabularyChoiceSurface
+            state={vocabularyChoiceState}
+            disabled={vocabularyChoiceBusy}
+            onChoice={(choice) => void resolveVocabularyChoice(choice)}
+            onKeepOriginal={() => void resolveVocabularyChoice("__keep_original__")}
+            onCancel={() => void cancelVocabularyChoice()}
+          />
+        ) : null}
 
         {companionSnapshot.visible && (
           <section className="dock-companion-panel" aria-label="Dock companion">

@@ -3,6 +3,23 @@ use serde::Serialize;
 pub const SELECTION_CAPTURE_COMMAND: &str = "capture_selection_context";
 pub const MAX_SELECTION_CAPTURE_CHARS: usize = 2_000;
 
+/// Preserve the host's selected text byte-for-byte (including edge
+/// whitespace) while still rejecting an all-whitespace selection and refusing
+/// to expose a partial capture.
+fn preserve_captured_selection(text: String) -> Option<(String, bool)> {
+    if text.trim().is_empty() {
+        return None;
+    }
+
+    let truncated = text.chars().count() > MAX_SELECTION_CAPTURE_CHARS;
+    let selected_text = if truncated {
+        text.chars().take(MAX_SELECTION_CAPTURE_CHARS).collect()
+    } else {
+        text
+    };
+    Some((selected_text, truncated))
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SelectionCaptureStatus {
@@ -338,22 +355,11 @@ mod platform {
                 }
             }
 
-            let normalized = text.trim().to_string();
-            if normalized.is_empty() {
+            let Some((selected_text, truncated)) = super::preserve_captured_selection(text) else {
                 return Ok(no_selection(
                     Some(target_snapshot),
                     "UI Automation selection text was empty.",
                 ));
-            }
-
-            let truncated = normalized.chars().count() > MAX_SELECTION_CAPTURE_CHARS;
-            let selected_text = if truncated {
-                normalized
-                    .chars()
-                    .take(MAX_SELECTION_CAPTURE_CHARS)
-                    .collect()
-            } else {
-                normalized
             };
 
             Ok(SelectionCaptureOutcome {
@@ -409,8 +415,8 @@ mod platform {
                 continue;
             }
             thread::sleep(Duration::from_millis(180));
-            let candidate = read_clipboard_text().unwrap_or_default().trim().to_string();
-            if !candidate.is_empty() && candidate != sentinel {
+            let candidate = read_clipboard_text().unwrap_or_default();
+            if !candidate.trim().is_empty() && candidate != sentinel {
                 copied = Some(candidate);
                 break;
             }
@@ -422,13 +428,7 @@ mod platform {
             let _ = clear_clipboard_text();
         }
 
-        let copied = copied?;
-        let truncated = copied.chars().count() > MAX_SELECTION_CAPTURE_CHARS;
-        let selected_text = if truncated {
-            copied.chars().take(MAX_SELECTION_CAPTURE_CHARS).collect()
-        } else {
-            copied
-        };
+        let (selected_text, truncated) = super::preserve_captured_selection(copied?)?;
 
         Some(SelectionCaptureOutcome {
             status: SelectionCaptureStatus::Ok,
@@ -731,5 +731,21 @@ mod tests {
         assert!(outcome.redacted);
         assert!(!outcome.truncated);
         assert_eq!(outcome.reason.as_deref(), Some("synthetic no selection"));
+    }
+
+    #[test]
+    fn captured_selection_preserves_edge_whitespace_without_accepting_partial_text() {
+        let (selected, truncated) = preserve_captured_selection("  borde exacto  ".to_string())
+            .expect("non-empty selection should be retained");
+        assert_eq!(selected, "  borde exacto  ");
+        assert!(!truncated);
+
+        assert!(preserve_captured_selection(" \n\t ".to_string()).is_none());
+
+        let oversized = format!(" {} ", "x".repeat(MAX_SELECTION_CAPTURE_CHARS + 1));
+        let (selected, truncated) = preserve_captured_selection(oversized)
+            .expect("oversized selection should be represented as truncated");
+        assert!(truncated);
+        assert_eq!(selected.chars().count(), MAX_SELECTION_CAPTURE_CHARS);
     }
 }

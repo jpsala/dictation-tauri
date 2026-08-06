@@ -1,10 +1,16 @@
 #![allow(dead_code)]
 
+use crate::personal_vocabulary_cache::{
+    read_personal_vocabulary_cache, resolve_personal_vocabulary_cache_path,
+    write_personal_vocabulary_cache_atomic, PersonalVocabularyCacheFile,
+    PersonalVocabularySnapshot,
+};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     process::Command,
-    sync::{Mutex, OnceLock},
+    sync::{Arc, Condvar, Mutex, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -270,6 +276,29 @@ struct ProductEnvelope<T> {
     data: T,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FixvoxPersonalVocabularyStatus {
+    pub(crate) status: String,
+    pub(crate) revision: Option<String>,
+    pub(crate) rule_count: usize,
+    pub(crate) cache_path: String,
+    pub(crate) redacted: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FixvoxPersonalVocabularyMutationResult {
+    pub(crate) status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) rule: Option<crate::personal_vocabulary_cache::PersonalVocabularyRule>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) vocabulary_revision: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) cache_refresh_status: Option<String>,
+    pub(crate) redacted: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ProductDesktopBinding {
@@ -353,6 +382,11 @@ pub(crate) trait DeviceRegisterHttpClient {
 static FIXVOX_HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 static FIXVOX_DEVICE_CONFIRMATION: OnceLock<Mutex<Option<FixvoxDeviceConfirmation>>> =
     OnceLock::new();
+type VocabularyRefreshResult = Result<FixvoxPersonalVocabularyStatus, FixvoxCloudError>;
+type VocabularyRefreshFlightState = (Mutex<Option<VocabularyRefreshResult>>, Condvar);
+static PERSONAL_VOCABULARY_REFRESH_IN_FLIGHT: OnceLock<
+    Mutex<HashMap<String, Arc<VocabularyRefreshFlightState>>>,
+> = OnceLock::new();
 
 pub(crate) fn fixvox_http_client() -> Result<reqwest::Client, FixvoxCloudError> {
     if let Some(client) = FIXVOX_HTTP_CLIENT.get() {
@@ -1006,6 +1040,7 @@ fn build_device_state_from_product_context(
     let assistant = capability("assistant");
     let feedback = capability("feedback");
     let admin_settings = capability("adminSettings");
+    let vocabulary = capability("vocabulary");
     let mut capabilities = Vec::new();
     if transcription {
         capabilities.extend(["dictation".to_string(), "managed_stt".to_string()]);
@@ -1027,6 +1062,9 @@ fn build_device_state_from_product_context(
     }
     if admin_settings {
         capabilities.push("admin_settings".to_string());
+    }
+    if vocabulary {
+        capabilities.push("vocabulary".to_string());
     }
     let product_capabilities = FixvoxPolicyCapabilities {
         can_use_managed_transcription: transcription,
@@ -1268,7 +1306,13 @@ fn product_capabilities_for_policy_template(policy_id: &str) -> Vec<String> {
         "basic-anonymous" => vec![],
         "translate-only" => vec!["translate", "managed_llm"],
         "dictation-basic" | "alpha-basic" => {
-            vec!["dictation", "postprocess", "managed_stt", "managed_llm"]
+            vec![
+                "dictation",
+                "postprocess",
+                "managed_stt",
+                "managed_llm",
+                "vocabulary",
+            ]
         }
         "pro" | "alpha-full" => vec![
             "translate",
@@ -1280,6 +1324,7 @@ fn product_capabilities_for_policy_template(policy_id: &str) -> Vec<String> {
             "advanced_settings",
             "managed_stt",
             "managed_llm",
+            "vocabulary",
         ],
         "power-admin" | "power" | "admin" => vec![
             "translate",
@@ -1293,6 +1338,7 @@ fn product_capabilities_for_policy_template(policy_id: &str) -> Vec<String> {
             "managed_stt",
             "managed_llm",
             "admin_settings",
+            "vocabulary",
         ],
         _ => vec![],
     }
@@ -2073,6 +2119,10 @@ pub(crate) async fn poll_fixvox_cloud_login_with_env(
             state.session_secret = Some(claim.data.session.token);
             state.expires_at = Some(claim.data.session.expires_at);
             persist_auth_session_state(&path, &state)?;
+            // Vocabulary refresh is best-effort after account linking.  Login
+            // remains successful when the network is unavailable because the
+            // cache module preserves the last-known-good snapshot.
+            let _ = refresh_personal_vocabulary_with_reqwest(env_lookup).await;
         }
         "denied" => {
             state.status = "error".to_string();
@@ -2231,7 +2281,9 @@ pub(crate) fn policy_allows_admin_settings() -> bool {
 
 #[tauri::command]
 pub async fn get_fixvox_cloud_status() -> Result<FixvoxCloudStatus, FixvoxCloudError> {
-    ensure_fixvox_device_bootstrapped_with_reqwest(&read_env_value).await
+    let status = ensure_fixvox_device_bootstrapped_with_reqwest(&read_env_value).await?;
+    let _ = refresh_personal_vocabulary_with_reqwest(&read_env_value).await;
+    Ok(status)
 }
 
 #[tauri::command]
@@ -2261,6 +2313,111 @@ pub async fn refresh_fixvox_policy() -> Result<FixvoxCloudStatus, FixvoxCloudErr
 }
 
 #[tauri::command]
+pub async fn refresh_fixvox_personal_vocabulary(
+) -> Result<FixvoxPersonalVocabularyStatus, FixvoxCloudError> {
+    refresh_personal_vocabulary_with_reqwest(&read_env_value).await
+}
+
+/// Read the last-known-good vocabulary owned by the host. The renderer uses
+/// this as an execution snapshot; it never receives auth/session state and it
+/// never needs to call the provider or cloud during delivery.
+#[tauri::command]
+pub fn get_fixvox_personal_vocabulary_snapshot(
+) -> Result<PersonalVocabularySnapshot, FixvoxCloudError> {
+    let cache_path = resolve_personal_vocabulary_cache_path(&read_env_value)
+        .map_err(|error| vocabulary_cache_error(&error.code))?;
+    let device_path = resolve_device_state_path(&read_env_value)?;
+    let device_state = read_device_state(&device_path)?.ok_or_else(|| {
+        error(
+            "FIXVOX_VOCABULARY_DEVICE_MISSING",
+            "Personal vocabulary requires a bootstrapped device.",
+        )
+    })?;
+    let scope = device_state
+        .policy_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.runtime_policy.as_ref())
+        .and_then(|policy| policy.get("vocabularyScope"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            error(
+                "FIXVOX_VOCABULARY_SCOPE_MISSING",
+                "Personal vocabulary scope is unavailable until the account is linked.",
+            )
+        })?
+        .to_string();
+    let auth_path = resolve_auth_session_state_path(&read_env_value)?;
+    let auth_state = read_auth_session_state(&auth_path)?.ok_or_else(|| {
+        error(
+            "FIXVOX_VOCABULARY_AUTH_MISSING",
+            "Personal vocabulary requires a signed-in account.",
+        )
+    })?;
+    if auth_state.session_secret.is_none() {
+        return Err(error(
+            "FIXVOX_VOCABULARY_AUTH_MISSING",
+            "Personal vocabulary requires a signed-in account.",
+        ));
+    }
+
+    let cached = read_personal_vocabulary_cache(&cache_path, &scope)
+        .map_err(|error| vocabulary_cache_error(&error.code))?;
+    Ok(cached
+        .map(|file| file.snapshot)
+        .unwrap_or(PersonalVocabularySnapshot {
+            revision: "0".to_string(),
+            rules: Vec::new(),
+            scope: Some(scope),
+        }))
+}
+
+#[tauri::command]
+pub async fn create_fixvox_personal_vocabulary_rule(
+    expected_revision: String,
+    mutation: serde_json::Value,
+) -> Result<FixvoxPersonalVocabularyMutationResult, FixvoxCloudError> {
+    mutate_fixvox_personal_vocabulary(
+        reqwest::Method::POST,
+        "/product/v1/account/vocabulary/rules".to_string(),
+        expected_revision,
+        mutation,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn update_fixvox_personal_vocabulary_rule(
+    rule_id: String,
+    expected_revision: String,
+    mutation: serde_json::Value,
+) -> Result<FixvoxPersonalVocabularyMutationResult, FixvoxCloudError> {
+    let rule_id = validate_personal_vocabulary_rule_id(&rule_id)?;
+    mutate_fixvox_personal_vocabulary(
+        reqwest::Method::PATCH,
+        format!("/product/v1/account/vocabulary/rules/{rule_id}"),
+        expected_revision,
+        mutation,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn delete_fixvox_personal_vocabulary_rule(
+    rule_id: String,
+    expected_revision: String,
+) -> Result<FixvoxPersonalVocabularyMutationResult, FixvoxCloudError> {
+    let rule_id = validate_personal_vocabulary_rule_id(&rule_id)?;
+    mutate_fixvox_personal_vocabulary(
+        reqwest::Method::DELETE,
+        format!("/product/v1/account/vocabulary/rules/{rule_id}"),
+        expected_revision,
+        serde_json::json!({}),
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn activate_fixvox_device(
     invite_code: String,
 ) -> Result<FixvoxCloudStatus, FixvoxCloudError> {
@@ -2272,6 +2429,459 @@ pub async fn start_fixvox_cloud_login(
     open_external_browser: Option<bool>,
 ) -> Result<FixvoxCloudLoginStartStatus, FixvoxCloudError> {
     start_fixvox_cloud_login_with_env(&read_env_value, open_external_browser.unwrap_or(false)).await
+}
+
+fn resolve_personal_vocabulary_context(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<(PathBuf, String, String, String), FixvoxCloudError> {
+    let cache_path = resolve_personal_vocabulary_cache_path(env_lookup)
+        .map_err(|error| vocabulary_cache_error(&error.code))?;
+    let device_path = resolve_device_state_path(env_lookup)?;
+    let device_state = read_device_state(&device_path)?.ok_or_else(|| {
+        error(
+            "FIXVOX_VOCABULARY_DEVICE_MISSING",
+            "Personal vocabulary requires a bootstrapped device.",
+        )
+    })?;
+    let device_id = device_state.device_id.clone().ok_or_else(|| {
+        error(
+            "FIXVOX_VOCABULARY_DEVICE_MISSING",
+            "Personal vocabulary requires a registered device.",
+        )
+    })?;
+    let scope = device_state
+        .policy_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.runtime_policy.as_ref())
+        .and_then(|policy| policy.get("vocabularyScope"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            error(
+                "FIXVOX_VOCABULARY_SCOPE_MISSING",
+                "Personal vocabulary scope is unavailable until the account is linked.",
+            )
+        })?
+        .to_string();
+    let auth_path = resolve_auth_session_state_path(env_lookup)?;
+    let auth_state = read_auth_session_state(&auth_path)?.ok_or_else(|| {
+        error(
+            "FIXVOX_VOCABULARY_AUTH_MISSING",
+            "Personal vocabulary requires a signed-in account.",
+        )
+    })?;
+    let session_secret = auth_state.session_secret.ok_or_else(|| {
+        error(
+            "FIXVOX_VOCABULARY_AUTH_MISSING",
+            "Personal vocabulary requires a signed-in account.",
+        )
+    })?;
+    Ok((cache_path, scope, device_id, session_secret))
+}
+
+fn validate_personal_vocabulary_rule_id(value: &str) -> Result<String, FixvoxCloudError> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+    {
+        return Err(error(
+            "FIXVOX_VOCABULARY_RULE_ID_INVALID",
+            "Personal vocabulary rule id was invalid.",
+        ));
+    }
+    Ok(value.to_string())
+}
+
+fn validate_personal_vocabulary_revision(value: &str) -> Result<String, FixvoxCloudError> {
+    let value = value.trim();
+    if value.is_empty()
+        || !value.chars().all(|character| character.is_ascii_digit())
+        || (value.len() > 1 && value.starts_with('0'))
+    {
+        return Err(error(
+            "FIXVOX_VOCABULARY_REVISION_INVALID",
+            "Personal vocabulary revision was invalid.",
+        ));
+    }
+    Ok(value.to_string())
+}
+
+async fn mutate_fixvox_personal_vocabulary(
+    method: reqwest::Method,
+    endpoint_path: String,
+    expected_revision: String,
+    mutation: serde_json::Value,
+) -> Result<FixvoxPersonalVocabularyMutationResult, FixvoxCloudError> {
+    let expected_revision = validate_personal_vocabulary_revision(&expected_revision)?;
+    let (_cache_path, _scope, device_id, session_secret) =
+        resolve_personal_vocabulary_context(&read_env_value)?;
+    let mut body = match mutation {
+        serde_json::Value::Object(map) => map,
+        _ => {
+            return Err(error(
+                "FIXVOX_VOCABULARY_MUTATION_INVALID",
+                "Personal vocabulary mutation did not match the expected object contract.",
+            ));
+        }
+    };
+    body.insert(
+        "expectedRevision".to_string(),
+        serde_json::Value::String(expected_revision),
+    );
+    let client = fixvox_http_client()?;
+    let response = client
+        .request(
+            method,
+            join_url(&resolve_backend_base_url(&read_env_value)?, &endpoint_path),
+        )
+        .header("X-Device-Id", &device_id)
+        .bearer_auth(&session_secret)
+        .json(&serde_json::Value::Object(body))
+        .send()
+        .await
+        .map_err(|_| {
+            error(
+                "FIXVOX_VOCABULARY_MUTATION_FAILED",
+                "Personal vocabulary mutation could not reach the account service.",
+            )
+        })?;
+
+    let status = response.status();
+    if status == reqwest::StatusCode::CONFLICT {
+        return Err(error(
+            "FIXVOX_VOCABULARY_CONFLICT",
+            "Personal vocabulary changed on another device; refresh before saving again.",
+        ));
+    }
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Err(error(
+            "FIXVOX_VOCABULARY_RULE_NOT_FOUND",
+            "Personal vocabulary rule no longer exists.",
+        ));
+    }
+    if !status.is_success() {
+        return Err(error(
+            "FIXVOX_VOCABULARY_MUTATION_FAILED",
+            "Personal vocabulary mutation was rejected by the account service.",
+        ));
+    }
+
+    let envelope = response
+        .json::<ProductEnvelope<serde_json::Value>>()
+        .await
+        .map_err(|_| {
+            error(
+                "FIXVOX_VOCABULARY_RESPONSE_INVALID",
+                "Personal vocabulary mutation response was invalid.",
+            )
+        })?;
+    if !envelope.ok || !envelope.data.is_object() {
+        return Err(error(
+            "FIXVOX_VOCABULARY_RESPONSE_INVALID",
+            "Personal vocabulary mutation response was invalid.",
+        ));
+    }
+    let vocabulary_revision = envelope
+        .data
+        .get("vocabularyRevision")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            error(
+                "FIXVOX_VOCABULARY_RESPONSE_INVALID",
+                "Personal vocabulary mutation response did not include a revision.",
+            )
+        })?;
+    let rule = envelope
+        .data
+        .get("rule")
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|_| {
+            error(
+                "FIXVOX_VOCABULARY_RESPONSE_INVALID",
+                "Personal vocabulary mutation returned an invalid rule.",
+            )
+        })?;
+
+    // The server mutation is authoritative.  Only now refresh the local
+    // projection, and retain the mutation result when the refresh itself is
+    // temporarily unavailable.
+    let cache_refresh_status = match refresh_personal_vocabulary_with_reqwest(&read_env_value).await
+    {
+        Ok(status) => Some(status.status),
+        Err(_) => Some("refresh_failed".to_string()),
+    };
+    Ok(FixvoxPersonalVocabularyMutationResult {
+        status: "mutated".to_string(),
+        rule,
+        vocabulary_revision: Some(vocabulary_revision),
+        cache_refresh_status,
+        redacted: true,
+    })
+}
+
+async fn refresh_personal_vocabulary_with_reqwest(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+) -> Result<FixvoxPersonalVocabularyStatus, FixvoxCloudError> {
+    let cache_path = resolve_personal_vocabulary_cache_path(env_lookup)
+        .map_err(|error| vocabulary_cache_error(&error.code))?;
+    let device_path = resolve_device_state_path(env_lookup)?;
+    let device_state = read_device_state(&device_path)?.ok_or_else(|| {
+        error(
+            "FIXVOX_VOCABULARY_DEVICE_MISSING",
+            "Personal vocabulary requires a bootstrapped device.",
+        )
+    })?;
+    let device_id = device_state.device_id.clone().ok_or_else(|| {
+        error(
+            "FIXVOX_VOCABULARY_DEVICE_MISSING",
+            "Personal vocabulary requires a registered device.",
+        )
+    })?;
+    let scope = device_state
+        .policy_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.runtime_policy.as_ref())
+        .and_then(|policy| policy.get("vocabularyScope"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            error(
+                "FIXVOX_VOCABULARY_SCOPE_MISSING",
+                "Personal vocabulary scope is unavailable until the account is linked.",
+            )
+        })?
+        .to_string();
+    let auth_path = resolve_auth_session_state_path(env_lookup)?;
+    let auth_state = read_auth_session_state(&auth_path)?.ok_or_else(|| {
+        error(
+            "FIXVOX_VOCABULARY_AUTH_MISSING",
+            "Personal vocabulary requires a signed-in account.",
+        )
+    })?;
+    let session_secret = auth_state.session_secret.clone().ok_or_else(|| {
+        error(
+            "FIXVOX_VOCABULARY_AUTH_MISSING",
+            "Personal vocabulary requires a signed-in account.",
+        )
+    })?;
+    let cached = read_personal_vocabulary_cache(&cache_path, &scope)
+        .map_err(|error| vocabulary_cache_error(&error.code))?;
+    let (flight, owner) = begin_personal_vocabulary_refresh(&scope);
+    if !owner {
+        return wait_for_personal_vocabulary_refresh(flight).await;
+    }
+    let result = refresh_personal_vocabulary_http(
+        env_lookup,
+        &cache_path,
+        &scope,
+        &device_id,
+        &session_secret,
+        cached,
+    )
+    .await;
+    finish_personal_vocabulary_refresh(&scope, flight, result.clone());
+    result
+}
+
+async fn refresh_personal_vocabulary_http(
+    env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+    cache_path: &Path,
+    scope: &str,
+    device_id: &str,
+    session_secret: &str,
+    cached: Option<PersonalVocabularyCacheFile>,
+) -> Result<FixvoxPersonalVocabularyStatus, FixvoxCloudError> {
+    let client = fixvox_http_client()?;
+    let mut request = client
+        .get(join_url(
+            &resolve_backend_base_url(env_lookup)?,
+            "/product/v1/account/vocabulary",
+        ))
+        .header("X-Device-Id", device_id)
+        .bearer_auth(session_secret);
+    if let Some(etag) = cached.as_ref().map(|cache| cache.etag.as_str()) {
+        request = request.header("If-None-Match", etag);
+    }
+    let response = request.send().await.map_err(|_| {
+        error(
+            "FIXVOX_VOCABULARY_UNAVAILABLE",
+            "Personal vocabulary could not be refreshed.",
+        )
+    });
+    let response = match response {
+        Ok(response) => response,
+        Err(_error) if cached.is_some() => {
+            return Ok(vocabulary_cache_status(
+                cache_path,
+                cached.as_ref().unwrap(),
+                "offline_last_known_good",
+            ))
+        }
+        Err(error) => return Err(error),
+    };
+    if response.status() == reqwest::StatusCode::NOT_MODIFIED {
+        return cached
+            .as_ref()
+            .map(|cache| vocabulary_cache_status(cache_path, cache, "not_modified"))
+            .ok_or_else(|| {
+                error(
+                    "FIXVOX_VOCABULARY_RESPONSE_INVALID",
+                    "Personal vocabulary response was not usable.",
+                )
+            });
+    }
+    if !response.status().is_success() {
+        return cached
+            .as_ref()
+            .map(|cache| vocabulary_cache_status(cache_path, cache, "offline_last_known_good"))
+            .ok_or_else(|| {
+                error(
+                    "FIXVOX_VOCABULARY_UNAVAILABLE",
+                    "Personal vocabulary could not be refreshed.",
+                )
+            });
+    }
+    let etag = response
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let envelope = response
+        .json::<ProductEnvelope<PersonalVocabularySnapshot>>()
+        .await;
+    let envelope = match envelope {
+        Ok(envelope)
+            if envelope.ok
+                && envelope.data.scope.as_deref() == Some(scope)
+                && !etag.trim().is_empty() =>
+        {
+            envelope
+        }
+        _ => {
+            return cached
+                .as_ref()
+                .map(|cache| vocabulary_cache_status(cache_path, cache, "invalid_last_known_good"))
+                .ok_or_else(|| {
+                    error(
+                        "FIXVOX_VOCABULARY_RESPONSE_INVALID",
+                        "Personal vocabulary response was not usable.",
+                    )
+                });
+        }
+    };
+    let file = write_personal_vocabulary_cache_atomic(
+        cache_path,
+        scope,
+        envelope.data,
+        &etag,
+        &current_unix_timestamp_string(),
+    );
+    let file = match file {
+        Ok(file) => file,
+        Err(error) if error.code == "cache_snapshot_stale" && cached.is_some() => {
+            return Ok(vocabulary_cache_status(
+                cache_path,
+                cached.as_ref().expect("cached snapshot exists"),
+                "stale_last_known_good",
+            ));
+        }
+        Err(error) => return Err(vocabulary_cache_error(&error.code)),
+    };
+    Ok(vocabulary_cache_status(cache_path, &file, "updated"))
+}
+
+fn begin_personal_vocabulary_refresh(scope: &str) -> (Arc<VocabularyRefreshFlightState>, bool) {
+    let flights = PERSONAL_VOCABULARY_REFRESH_IN_FLIGHT.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = flights
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(existing) = guard.get(scope) {
+        return (existing.clone(), false);
+    }
+    let flight = Arc::new((Mutex::new(None), Condvar::new()));
+    guard.insert(scope.to_string(), flight.clone());
+    (flight, true)
+}
+
+fn finish_personal_vocabulary_refresh(
+    scope: &str,
+    flight: Arc<VocabularyRefreshFlightState>,
+    result: VocabularyRefreshResult,
+) {
+    let (state, signal) = &*flight;
+    let mut guard = state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = Some(result);
+    signal.notify_all();
+    if let Some(flights) = PERSONAL_VOCABULARY_REFRESH_IN_FLIGHT.get() {
+        let mut guard = flights
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if guard
+            .get(scope)
+            .is_some_and(|current| Arc::ptr_eq(current, &flight))
+        {
+            guard.remove(scope);
+        }
+    }
+}
+
+async fn wait_for_personal_vocabulary_refresh(
+    flight: Arc<VocabularyRefreshFlightState>,
+) -> VocabularyRefreshResult {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (state, signal) = &*flight;
+        let mut guard = state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        while guard.is_none() {
+            guard = signal
+                .wait(guard)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+        }
+        guard.as_ref().cloned().unwrap_or_else(|| {
+            Err(error(
+                "FIXVOX_VOCABULARY_REFRESH_FAILED",
+                "Personal vocabulary refresh failed.",
+            ))
+        })
+    })
+    .await
+    .unwrap_or_else(|_| {
+        Err(error(
+            "FIXVOX_VOCABULARY_REFRESH_FAILED",
+            "Personal vocabulary refresh failed.",
+        ))
+    })
+}
+
+fn vocabulary_cache_status(
+    path: &Path,
+    cache: &PersonalVocabularyCacheFile,
+    status: &str,
+) -> FixvoxPersonalVocabularyStatus {
+    FixvoxPersonalVocabularyStatus {
+        status: status.to_string(),
+        revision: Some(cache.snapshot.revision.clone()),
+        rule_count: cache.snapshot.rules.len(),
+        cache_path: path.to_string_lossy().to_string(),
+        redacted: true,
+    }
+}
+
+fn vocabulary_cache_error(code: &str) -> FixvoxCloudError {
+    error(
+        code,
+        "Personal vocabulary cache could not be read or written.",
+    )
 }
 
 fn register_or_refresh_device_with_client(
@@ -3843,5 +4453,61 @@ mod tests {
             .expect_err("failed assignment should fail closed");
 
         assert_eq!(denied.code, "FIXVOX_POLICY_UNTRUSTED");
+    }
+
+    #[test]
+    fn personal_vocabulary_refresh_is_single_flight_per_scope() {
+        let scope = format!(
+            "single-flight-test-{}-{}",
+            std::process::id(),
+            current_unix_timestamp()
+        );
+        let started = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let joined = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let reads = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let status = FixvoxPersonalVocabularyStatus {
+            status: "updated".to_string(),
+            revision: Some("2".to_string()),
+            rule_count: 1,
+            cache_path: "redacted".to_string(),
+            redacted: true,
+        };
+
+        std::thread::scope(|threads| {
+            let owner_scope = scope.clone();
+            let owner_started = started.clone();
+            let owner_joined = joined.clone();
+            let owner_reads = reads.clone();
+            let owner_status = status.clone();
+            threads.spawn(move || {
+                let (owner_flight, owner) = begin_personal_vocabulary_refresh(&owner_scope);
+                assert!(owner);
+                owner_started.wait();
+                owner_joined.wait();
+                owner_reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                finish_personal_vocabulary_refresh(&owner_scope, owner_flight, Ok(owner_status));
+            });
+
+            let waiter_scope = scope.clone();
+            let waiter_started = started.clone();
+            let waiter_joined = joined.clone();
+            let waiter_status = status.clone();
+            threads.spawn(move || {
+                waiter_started.wait();
+                let (joined_flight, owner) = begin_personal_vocabulary_refresh(&waiter_scope);
+                assert!(!owner);
+                waiter_joined.wait();
+                let joined_result = tauri::async_runtime::block_on(
+                    wait_for_personal_vocabulary_refresh(joined_flight),
+                )
+                .expect("joined refresh result");
+                assert_eq!(joined_result, waiter_status);
+            });
+        });
+
+        assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 1);
+        let (next_flight, next_owner) = begin_personal_vocabulary_refresh(&scope);
+        assert!(next_owner);
+        finish_personal_vocabulary_refresh(&scope, next_flight, Ok(status));
     }
 }

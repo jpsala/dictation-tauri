@@ -32,8 +32,15 @@ describe("Companion host window", () => {
 
   it("keeps the preset picker compact and hides it when focus moves elsewhere", () => {
     const source = readFileSync("src-tauri/src/companion_window.rs", "utf8");
+    const lib = readFileSync("src-tauri/src/lib.rs", "utf8");
     const appSource = readFileSync("src/App.tsx", "utf8");
     const config = readFileSync("src-tauri/tauri.conf.json", "utf8");
+    const defaultCapabilities = JSON.parse(
+      readFileSync("src-tauri/capabilities/default.json", "utf8"),
+    ) as { windows: string[]; permissions: string[] };
+    const pickerCapabilities = JSON.parse(
+      readFileSync("src-tauri/capabilities/preset-picker.json", "utf8"),
+    ) as { windows: string[]; permissions: string[] };
 
     expect(source).toContain("const PRESET_PICKER_WINDOW_WIDTH: i32 = 380");
     expect(source).toContain("const PRESET_PICKER_WINDOW_HEIGHT: i32 = 320");
@@ -46,5 +53,11 @@ describe("Companion host window", () => {
     expect(config).toContain('"label": "preset-picker"');
     expect(config).toContain('"width": 380');
     expect(config).toContain('"height": 320');
+    expect(defaultCapabilities.windows).not.toContain("preset-picker");
+    expect(pickerCapabilities.windows).toEqual(["preset-picker"]);
+    expect(pickerCapabilities.permissions).toEqual(["core:event:default"]);
+    expect(source).toContain("get_preset_picker_window_state");
+    expect(source).toContain("foreground: is_picker_foreground(&window)");
+    expect(lib).toContain("companion_window::get_preset_picker_window_state");
   });
 });

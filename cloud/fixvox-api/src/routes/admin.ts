@@ -1,9 +1,10 @@
 import type { PostgresAdminRepository } from "../postgres/admin-repository.ts";
 import type { PostgresAuthSessionRepository } from "../postgres/auth-session-repository.ts";
 import type { PostgresProfileCommandRepository, ProfileCommandResult } from "../postgres/profile-command-repository.ts";
+import type { PostgresEngineCatalogRepository } from "../postgres/engine-catalog-repository.ts";
 
 export type AdminCapability = "view" | "edit" | "publish";
-export type AdminRouteDependencies = { repository: PostgresAdminRepository; profileCommands: PostgresProfileCommandRepository; keys: Partial<Record<AdminCapability, string>>; sessions?: PostgresAuthSessionRepository };
+export type AdminRouteDependencies = { repository: PostgresAdminRepository; profileCommands: PostgresProfileCommandRepository; keys: Partial<Record<AdminCapability, string>>; sessions?: PostgresAuthSessionRepository; engineCatalog?: PostgresEngineCatalogRepository };
 type AdminRole = "viewer" | "editor" | "publisher" | "owner";
 type BearerPrincipal = { capability: AdminCapability; recentGoogle: boolean; staticCredential: boolean };
 type ControlRoomPrincipal = BearerPrincipal & { principalKey: string; role: AdminRole };
@@ -69,7 +70,14 @@ function profileCommandFailure(cause: unknown): Response {
   if (message === "invalid_body" || message === "invalid_confirmation") return error(message, 400);
   return error("service_unavailable", 503);
 }
-
+function engineCatalogFailure(cause: unknown): Response {
+  const message = cause instanceof Error ? cause.message : "";
+  if (message === "engine_catalog_stale_revision") return error("stale_revision", 409);
+  if (message === "engine_catalog_not_found") return error("not_found", 404);
+  if (message === "engine_catalog_retired" || message === "engine_catalog_default_effort_unknown") return error("invalid_definition", 422);
+  if (message === "invalid_body" || message === "invalid_confirmation") return error(message, 400);
+  return error("service_unavailable", 503);
+}
 export async function handleAdminRoute(request: Request, url: URL, deps: AdminRouteDependencies): Promise<Response | null> {
   const canonical = url.pathname.startsWith("/product/v1/control-room/");
   if (!canonical && !url.pathname.startsWith("/admin/")) return null;
@@ -112,8 +120,31 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
           return cors(request, profileCommandResponse(result, "rollback"));
         } catch (cause) { return cors(request, profileCommandFailure(cause)); }
       }
+      const engineLifecycleMatch = url.pathname.match(/^\/product\/v1\/control-room\/(?:engine-catalog|engines)\/([^/]+)\/(publish|retire|review)$/);
+      if (engineLifecycleMatch && request.method === "POST") {
+        if (!deps.engineCatalog || !permitted(operator, "publish") || !["publisher", "owner"].includes(operator.role) || !operator.recentGoogle) return cors(request, error("forbidden", 403));
+        try {
+          const command = await body(request);
+          const engineId = decodeURIComponent(engineLifecycleMatch[1]);
+          const expectedRevision = Number(command.expectedRevision);
+          const confirmation = record(command.confirmation);
+          const action = engineLifecycleMatch[2] as "publish" | "retire" | "review";
+          if (!Number.isInteger(expectedRevision) || expectedRevision < 0) throw new Error("invalid_body");
+          if (Object.keys(command).some((key) => !["expectedRevision", "confirmation"].includes(key)) || confirmation.action !== action || confirmation.engineId !== engineId || Number(confirmation.expectedRevision) !== expectedRevision || confirmation.phrase !== `${action.toUpperCase()} ${engineId} REV ${expectedRevision}`) throw new Error("invalid_confirmation");
+          const result = action === "publish"
+            ? await deps.engineCatalog.publish({ engineId, expectedRevision, actorRef: operator.principalKey, occurredAt: new Date().toISOString() })
+            : action === "retire"
+              ? await deps.engineCatalog.retire({ engineId, expectedRevision, actorRef: operator.principalKey, occurredAt: new Date().toISOString() })
+              : await deps.engineCatalog.review({ engineId, expectedRevision, actorRef: operator.principalKey, occurredAt: new Date().toISOString() });
+          return cors(request, json({ ok: true, data: { engine: result.entry, audit: result.audit, idempotentReplay: result.idempotentReplay } }));
+        } catch (cause) { return cors(request, engineCatalogFailure(cause)); }
+      }
       if (request.method !== "GET") return cors(request, error("not_implemented", 501));
       if (url.pathname === `${prefix}/profiles`) return cors(request, json({ ok: true, profiles: await deps.repository.profiles() }));
+      if (url.pathname === `${prefix}/engine-catalog`) {
+        if (!deps.engineCatalog) return cors(request, error("not_implemented", 501));
+        return cors(request, json({ ok: true, engines: await deps.engineCatalog.list(), audits: await deps.engineCatalog.catalogAudits(page.limit) }));
+      }
       if (url.pathname === `${prefix}/configuration` || url.pathname === `${prefix}/engines` || url.pathname === `${prefix}/prompts` || url.pathname === `${prefix}/groups`) return cors(request, json({ ok: true, ...await deps.repository.catalog() }));
       if (url.pathname === `${prefix}/accounts`) return cors(request, json({ ok: true, ...await deps.repository.accounts(page) }));
       if (url.pathname === `${prefix}/devices`) return cors(request, json({ ok: true, ...await deps.repository.devices(page) }));

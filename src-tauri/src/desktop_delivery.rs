@@ -58,6 +58,15 @@ pub struct DesktopPasteObservationResult {
     target_after: DesktopTargetSnapshot,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceCapturedSelectionResult {
+    pub status: &'static str,
+    pub reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub captured_length: Option<usize>,
+}
+
 #[tauri::command]
 pub fn capture_desktop_delivery_target() -> Result<DesktopDeliveryTarget, String> {
     let target = platform::capture_desktop_delivery_target()?;
@@ -176,6 +185,165 @@ pub fn deliver_text_to_desktop_target(
         press_enter_after_paste.unwrap_or(false),
         focus_target_before_paste,
     )
+}
+
+/// Re-captures the saved host selection immediately before replacing it.
+///
+/// The target is a complete desktop-delivery lease (frame/process/class and
+/// the captured focus metadata), not a bare HWND.  We fail closed when the
+/// lease no longer identifies the same host window or when the selected text
+/// changed/truncated.  A successful vocabulary mutation therefore cannot
+/// accidentally replace a different selection after the picker stole focus.
+#[tauri::command]
+pub fn replace_captured_selection_if_unchanged(
+    app: tauri::AppHandle,
+    target: DesktopDeliveryTarget,
+    selection_id: String,
+    expected_selection: String,
+    selection_truncated: bool,
+    replacement: String,
+) -> Result<ReplaceCapturedSelectionResult, String> {
+    if selection_id.trim().is_empty() {
+        return Ok(ReplaceCapturedSelectionResult {
+            status: "selection_changed",
+            reason: "The saved selection lease was incomplete; selection was left unchanged."
+                .to_string(),
+            captured_length: None,
+        });
+    }
+    if !target.input_like
+        || target.frame_hwnd.trim().is_empty()
+        || target.window_class.trim().is_empty()
+        || target.process_id == 0
+        || target.reason.trim().is_empty()
+        || target
+            .focus_hwnd
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
+        || target
+            .focus_class
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .is_empty()
+        || target.focus_process_id.unwrap_or_default() == 0
+    {
+        return Ok(ReplaceCapturedSelectionResult {
+            status: "target_unavailable",
+            reason: "The saved delivery lease was incomplete or not editable; selection was left unchanged.".to_string(),
+            captured_length: None,
+        });
+    }
+    if expected_selection.is_empty() || replacement.is_empty() {
+        return Ok(ReplaceCapturedSelectionResult {
+            status: "selection_changed",
+            reason: "The saved selection or replacement was empty; selection was left unchanged."
+                .to_string(),
+            captured_length: None,
+        });
+    }
+    if selection_truncated {
+        return Ok(ReplaceCapturedSelectionResult {
+            status: "selection_changed",
+            reason: "The captured selection was truncated; replacement is disabled to avoid a partial edit.".to_string(),
+            captured_length: None,
+        });
+    }
+
+    if let Err(reason) = platform::validate_target_lease(&target) {
+        return Ok(ReplaceCapturedSelectionResult {
+            status: "target_unavailable",
+            reason,
+            captured_length: None,
+        });
+    }
+
+    let outcome = crate::selection_capture::capture_selection_context_for_target_with_clipboard(
+        target.frame_hwnd.clone(),
+    );
+    let captured_length = outcome
+        .selection
+        .as_ref()
+        .map(|selection| selection.text_length);
+    if outcome.truncated {
+        return Ok(ReplaceCapturedSelectionResult {
+            status: "selection_changed",
+            reason: "The current host selection is truncated; replacement was not attempted."
+                .to_string(),
+            captured_length,
+        });
+    }
+
+    if let Err(reason) = platform::validate_target_focus(&target) {
+        return Ok(ReplaceCapturedSelectionResult {
+            status: "selection_changed",
+            reason,
+            captured_length,
+        });
+    }
+
+    let selected_text = outcome
+        .selection
+        .as_ref()
+        .and_then(|selection| selection.selected_text.as_deref())
+        .filter(|selection| !selection.trim().is_empty());
+    if selected_text != Some(expected_selection.as_str()) {
+        let target_unavailable = matches!(
+            outcome.status,
+            crate::selection_capture::SelectionCaptureStatus::NoForegroundTarget
+                | crate::selection_capture::SelectionCaptureStatus::UnsupportedPlatform
+                | crate::selection_capture::SelectionCaptureStatus::UnsupportedTarget
+                | crate::selection_capture::SelectionCaptureStatus::Timeout
+                | crate::selection_capture::SelectionCaptureStatus::Failed
+        );
+        let reason = match outcome.status {
+            crate::selection_capture::SelectionCaptureStatus::NoForegroundTarget
+            | crate::selection_capture::SelectionCaptureStatus::UnsupportedPlatform => {
+                "The saved host target is no longer available; selection was left unchanged."
+            }
+            crate::selection_capture::SelectionCaptureStatus::NoSelection => {
+                "The host no longer reports a selection; selection was left unchanged."
+            }
+            crate::selection_capture::SelectionCaptureStatus::UnsupportedTarget
+            | crate::selection_capture::SelectionCaptureStatus::Timeout
+            | crate::selection_capture::SelectionCaptureStatus::Failed => {
+                "The saved host target could not be re-captured safely; selection was left unchanged."
+            }
+            _ => "The host selection changed before save completed; selection was left unchanged.",
+        };
+        let status = if target_unavailable {
+            "target_unavailable"
+        } else {
+            "selection_changed"
+        };
+        return Ok(ReplaceCapturedSelectionResult {
+            status,
+            reason: reason.to_string(),
+            captured_length,
+        });
+    }
+
+    match deliver_text_to_desktop_target(
+        app,
+        replacement,
+        target,
+        Some(false),
+        Some(true),
+        Some(true),
+    ) {
+        Ok(_) => Ok(ReplaceCapturedSelectionResult {
+            status: "replaced",
+            reason: "The host selection matched the saved snapshot and was replaced.".to_string(),
+            captured_length,
+        }),
+        Err(reason) => Ok(ReplaceCapturedSelectionResult {
+            status: "target_unavailable",
+            reason: format!("The host target could not be replaced safely: {reason}"),
+            captured_length,
+        }),
+    }
 }
 
 fn resolve_focus_target_before_paste(
@@ -447,6 +615,84 @@ mod platform {
             reason,
             cache_reason: None,
         })
+    }
+
+    pub fn validate_target_lease(target: &DesktopDeliveryTarget) -> Result<(), String> {
+        let hwnd = parse_hwnd(&target.frame_hwnd)?;
+        if hwnd.is_null() || unsafe { IsWindow(hwnd) } == 0 {
+            return Err("Saved delivery target window is no longer available.".to_string());
+        }
+
+        let mut process_id = 0u32;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, &mut process_id);
+        }
+        if process_id == 0 || process_id != target.process_id {
+            return Err(
+                "Saved delivery target process no longer matches the captured lease.".to_string(),
+            );
+        }
+
+        let current_class = get_class_name(hwnd);
+        if current_class != target.window_class {
+            return Err(
+                "Saved delivery target class no longer matches the captured lease.".to_string(),
+            );
+        }
+
+        if let Some(saved_focus) = target.focus_hwnd.as_deref() {
+            let focus_hwnd = parse_hwnd(saved_focus)?;
+            if focus_hwnd.is_null() || unsafe { IsWindow(focus_hwnd) } == 0 {
+                return Err("Saved delivery focus control is no longer available.".to_string());
+            }
+        }
+        Ok(())
+    }
+
+    /// Validate the child control after the saved frame has been restored. A
+    /// frame can contain multiple inputs; matching only PID/class or selected
+    /// text would allow replacement in the wrong control.
+    pub fn validate_target_focus(target: &DesktopDeliveryTarget) -> Result<(), String> {
+        let frame_hwnd = parse_hwnd(&target.frame_hwnd)?;
+        let expected = target
+            .focus_hwnd
+            .as_deref()
+            .and_then(|value| parse_hwnd(value).ok())
+            .ok_or_else(|| "Saved delivery focus control is incomplete.".to_string())?;
+        let focused = focused_control_for_frame(frame_hwnd)
+            .ok_or_else(|| "The saved delivery focus control is no longer focused.".to_string())?;
+
+        if !focused_control_matches_lease(target, &focused) || focused.hwnd != expected {
+            return Err(
+                "The saved delivery focus control changed before selection replacement."
+                    .to_string(),
+            );
+        }
+
+        Ok(())
+    }
+
+    fn focused_control_matches_lease(
+        target: &DesktopDeliveryTarget,
+        focused: &FocusedControl,
+    ) -> bool {
+        let Some(saved_hwnd) = target
+            .focus_hwnd
+            .as_deref()
+            .and_then(|value| parse_hwnd(value).ok())
+        else {
+            return false;
+        };
+        let Some(saved_class) = target.focus_class.as_deref() else {
+            return false;
+        };
+        let Some(saved_process_id) = target.focus_process_id else {
+            return false;
+        };
+
+        focused.hwnd == saved_hwnd
+            && focused.class_name == saved_class
+            && focused.process_id == saved_process_id
     }
 
     fn focused_control_for_frame(frame_hwnd: HWND) -> Option<FocusedControl> {
@@ -1619,8 +1865,9 @@ mod platform {
     mod tests {
         use super::{
             classify_clipboard_snapshot, combine_paste_and_restore_results,
-            did_observe_inserted_text, is_expected_foreground, is_native_edit_class_name,
-            ClipboardFormatDescriptor, ClipboardSnapshot, HWND,
+            did_observe_inserted_text, focused_control_matches_lease, is_expected_foreground,
+            is_native_edit_class_name, ClipboardFormatDescriptor, ClipboardSnapshot,
+            DesktopDeliveryTarget, FocusedControl, HWND,
         };
         use std::ptr;
 
@@ -1668,6 +1915,39 @@ mod platform {
             assert!(!is_native_edit_class_name("Chrome_RenderWidgetHostHWND"));
             assert!(!is_native_edit_class_name("ConsoleWindowClass"));
             assert!(!is_native_edit_class_name("Scintilla"));
+        }
+
+        #[test]
+        fn focus_lease_rejects_a_second_input_in_the_same_frame() {
+            let target = DesktopDeliveryTarget {
+                frame_hwnd: "100".to_string(),
+                window_title: "Editor".to_string(),
+                window_class: "Frame".to_string(),
+                process_id: 42,
+                process_name: None,
+                focus_hwnd: Some("200".to_string()),
+                focus_class: Some("Edit".to_string()),
+                focus_process_id: Some(42),
+                native_edit_fast_path: true,
+                input_like: true,
+                reason: "captured".to_string(),
+                cache_reason: None,
+            };
+            let other_input = FocusedControl {
+                hwnd: 201usize as HWND,
+                class_name: "Edit".to_string(),
+                process_id: 42,
+            };
+
+            assert!(!focused_control_matches_lease(&target, &other_input));
+            assert!(focused_control_matches_lease(
+                &target,
+                &FocusedControl {
+                    hwnd: 200usize as HWND,
+                    class_name: "Edit".to_string(),
+                    process_id: 42,
+                },
+            ));
         }
 
         #[test]
@@ -1906,6 +2186,14 @@ mod platform {
 
     pub fn capture_desktop_delivery_target() -> Result<DesktopDeliveryTarget, String> {
         Err("Desktop target capture is only available on Windows.".to_string())
+    }
+
+    pub fn validate_target_lease(_target: &DesktopDeliveryTarget) -> Result<(), String> {
+        Err("Desktop target validation is only available on Windows.".to_string())
+    }
+
+    pub fn validate_target_focus(_target: &DesktopDeliveryTarget) -> Result<(), String> {
+        Err("Desktop target focus validation is only available on Windows.".to_string())
     }
 
     pub fn deliver_text_to_desktop_target(

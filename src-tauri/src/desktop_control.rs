@@ -30,8 +30,45 @@ pub const HOTKEY_PREFERENCE_FILE: &str = "hotkey-preferences.v1.json";
 pub const ACTION_HOTKEY_PREFERENCE_FILE: &str = "action-hotkey-preferences.v1.json";
 
 static CURRENT_HOTKEY: OnceLock<Mutex<EffectiveDictationHotkey>> = OnceLock::new();
-static HOTKEY_LISTENER_READY: AtomicBool = AtomicBool::new(false);
-static PENDING_HOTKEY_EVENTS: OnceLock<Mutex<Vec<DesktopControlHotkeyPayload>>> = OnceLock::new();
+static HOST_COMMAND_LISTENER_READY: AtomicBool = AtomicBool::new(false);
+static PENDING_HOST_COMMANDS: OnceLock<Mutex<Vec<HostCommandPayload>>> = OnceLock::new();
+
+const MAX_PENDING_HOTKEY_EVENTS: usize = 8;
+
+/// The native hotkey listener uses one mutex for readiness and the pending queue.
+/// This is the exactly-once boundary: an event is either queued while the
+/// listener is not ready, or emitted live after the atomic ready/drain
+/// transition. It is never both.
+#[derive(Default)]
+struct HotkeyListenerQueueState {
+    ready: bool,
+    pending: Vec<DesktopControlHotkeyPayload>,
+}
+
+impl HotkeyListenerQueueState {
+    fn queue_or_emit_live(&mut self, payload: DesktopControlHotkeyPayload) -> bool {
+        if self.ready {
+            return false;
+        }
+
+        if self.pending.len() >= MAX_PENDING_HOTKEY_EVENTS {
+            self.pending.remove(0);
+        }
+        self.pending.push(payload);
+        true
+    }
+
+    fn mark_ready_and_drain(&mut self) -> Vec<DesktopControlHotkeyPayload> {
+        self.ready = true;
+        std::mem::take(&mut self.pending)
+    }
+}
+
+static HOTKEY_LISTENER_QUEUE: OnceLock<Mutex<HotkeyListenerQueueState>> = OnceLock::new();
+
+fn hotkey_listener_queue() -> &'static Mutex<HotkeyListenerQueueState> {
+    HOTKEY_LISTENER_QUEUE.get_or_init(|| Mutex::new(HotkeyListenerQueueState::default()))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EffectiveDictationHotkey {
@@ -159,16 +196,19 @@ pub fn set_desktop_control_hotkey_capture_enabled(enabled: bool) -> bool {
 
 #[tauri::command]
 pub fn set_desktop_control_hotkey_listener_ready(ready: bool) {
-    HOTKEY_LISTENER_READY.store(ready, Ordering::SeqCst);
+    if let Ok(mut state) = hotkey_listener_queue().lock() {
+        state.ready = ready;
+    }
 }
 
 #[tauri::command]
 pub fn drain_desktop_control_hotkey_events() -> Vec<DesktopControlHotkeyPayload> {
-    HOTKEY_LISTENER_READY.store(true, Ordering::SeqCst);
-    let events: Vec<DesktopControlHotkeyPayload> = PENDING_HOTKEY_EVENTS
-        .get_or_init(|| Mutex::new(Vec::new()))
+    // Holding the same mutex while flipping ready and taking the queue closes
+    // the listener-before-drain gap: concurrent native events choose exactly
+    // one side of this transition.
+    let events = hotkey_listener_queue()
         .lock()
-        .map(|mut events| events.drain(..).collect())
+        .map(|mut state| state.mark_ready_and_drain())
         .unwrap_or_default();
     if !events.is_empty() {
         eprintln!(
@@ -177,6 +217,28 @@ pub fn drain_desktop_control_hotkey_events() -> Vec<DesktopControlHotkeyPayload>
         );
     }
     events
+}
+
+#[tauri::command]
+pub fn drain_desktop_control_host_commands() -> Vec<HostCommandPayload> {
+    HOST_COMMAND_LISTENER_READY.store(true, Ordering::SeqCst);
+    let commands: Vec<HostCommandPayload> = PENDING_HOST_COMMANDS
+        .get_or_init(|| Mutex::new(Vec::new()))
+        .lock()
+        .map(|mut commands| commands.drain(..).collect())
+        .unwrap_or_default();
+    if !commands.is_empty() {
+        eprintln!(
+            "[dictation-tauri][host-command] drained pending commands count={}",
+            commands.len()
+        );
+    }
+    commands
+}
+
+#[tauri::command]
+pub fn set_desktop_control_host_command_listener_ready(ready: bool) {
+    HOST_COMMAND_LISTENER_READY.store(ready, Ordering::SeqCst);
 }
 
 #[tauri::command]
@@ -1170,11 +1232,7 @@ fn emit_preset_picker_hotkey_payload<R: tauri::Runtime>(app: &tauri::AppHandle<R
         chord_key: None,
         target_snapshot,
     };
-    let _ = app.emit_to(
-        crate::dock_shell::DOCK_WINDOW_LABEL,
-        HOST_COMMAND_EVENT,
-        payload,
-    );
+    emit_host_command_payload(app, payload);
 }
 
 fn emit_preset_picker_chord_payload<R: tauri::Runtime>(
@@ -1190,27 +1248,55 @@ fn emit_preset_picker_chord_payload<R: tauri::Runtime>(
         chord_key: Some(chord_key),
         target_snapshot,
     };
-    let _ = app.emit_to(
+    emit_host_command_payload(app, payload);
+}
+
+fn emit_host_command_payload<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    payload: HostCommandPayload,
+) {
+    if !HOST_COMMAND_LISTENER_READY.load(Ordering::SeqCst) {
+        let command = payload.command;
+        let mut queued = false;
+        if let Ok(mut pending) = PENDING_HOST_COMMANDS
+            .get_or_init(|| Mutex::new(Vec::new()))
+            .lock()
+        {
+            if !HOST_COMMAND_LISTENER_READY.load(Ordering::SeqCst) {
+                if pending.len() >= 8 {
+                    pending.remove(0);
+                }
+                pending.push(payload.clone());
+                queued = true;
+            }
+        }
+        if queued {
+            eprintln!(
+                "[dictation-tauri][host-command] queued pre-listener command={}",
+                command
+            );
+            return;
+        }
+    }
+
+    if let Err(error) = app.emit_to(
         crate::dock_shell::DOCK_WINDOW_LABEL,
         HOST_COMMAND_EVENT,
         payload,
-    );
+    ) {
+        eprintln!("[dictation-tauri][host-command] emit failed: {error}");
+    }
 }
 
 fn emit_desktop_control_hotkey_payload<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     payload: DesktopControlHotkeyPayload,
 ) {
-    if !HOTKEY_LISTENER_READY.load(Ordering::SeqCst) {
-        if let Ok(mut pending) = PENDING_HOTKEY_EVENTS
-            .get_or_init(|| Mutex::new(Vec::new()))
-            .lock()
-        {
-            if pending.len() >= 8 {
-                pending.remove(0);
-            }
-            pending.push(payload.clone());
-        }
+    let queued = hotkey_listener_queue()
+        .lock()
+        .map(|mut state| state.queue_or_emit_live(payload.clone()))
+        .unwrap_or(false);
+    if queued {
         eprintln!(
             "[dictation-tauri][hotkey] queued pre-listener event action={} shortcut={}",
             payload.action, payload.shortcut
@@ -1218,6 +1304,10 @@ fn emit_desktop_control_hotkey_payload<R: tauri::Runtime>(
         if payload.action == "pressed" {
             schedule_wake_dock_window_for_hotkey(app);
         }
+        // Queue-only until the atomic ready/drain transition. Emitting here
+        // as well would deliver the same physical key once live and once from
+        // the drained queue.
+        return;
     }
 
     if let Err(error) = app.emit(DESKTOP_CONTROL_HOTKEY_EVENT, payload) {
@@ -2123,6 +2213,41 @@ mod tests {
                 target_snapshot: None,
             }
         );
+    }
+
+    #[test]
+    fn hotkey_queue_only_delivers_events_once_across_ready_drain_transition() {
+        let payload = desktop_control_hotkey_pressed_payload(fallback_hotkey(None));
+        let mut state = HotkeyListenerQueueState::default();
+
+        // This represents the deterministic listen-before-drain gap. The
+        // event is queued and has no live delivery decision at this point.
+        assert!(state.queue_or_emit_live(payload.clone()));
+        assert_eq!(state.pending, vec![payload.clone()]);
+
+        // Ready=true and queue drain are one critical-section transition.
+        assert_eq!(state.mark_ready_and_drain(), vec![payload.clone()]);
+        assert!(state.pending.is_empty());
+        assert!(state.ready);
+
+        // Once ready, a later event is live-only and cannot be reintroduced by
+        // a second drain.
+        assert!(!state.queue_or_emit_live(payload));
+        assert!(state.mark_ready_and_drain().is_empty());
+    }
+
+    #[test]
+    fn hotkey_queue_is_bounded_while_listener_is_not_ready() {
+        let mut state = HotkeyListenerQueueState::default();
+        for _ in 0..(MAX_PENDING_HOTKEY_EVENTS + 2) {
+            assert!(
+                state.queue_or_emit_live(desktop_control_hotkey_pressed_payload(fallback_hotkey(
+                    None
+                ),))
+            );
+        }
+
+        assert_eq!(state.pending.len(), MAX_PENDING_HOTKEY_EVENTS);
     }
 
     #[test]

@@ -1,5 +1,6 @@
 import type { DeliveryEvidence, DesktopTargetSnapshot } from "../delivery/types";
 import { redactHostRuntimeText } from "../host-runtime/redaction";
+import type { VocabularyChoiceSessionView } from "../personal-vocabulary";
 
 export const desktopControlSources = [
   "app_button",
@@ -28,6 +29,7 @@ export const desktopDictationStates = [
   "stopping",
   "transcribing",
   "postprocessing",
+  "waiting_for_choice",
   "reviewing",
   "delivering",
   "done",
@@ -52,6 +54,7 @@ export const activeDesktopDictationStates = [
   "stopping",
   "transcribing",
   "postprocessing",
+  "waiting_for_choice",
   "reviewing",
   "delivering",
 ] as const;
@@ -91,6 +94,8 @@ export type DesktopDictationSession = {
   capture?: unknown;
   runtime?: unknown;
   delivery?: DeliveryEvidence;
+  /** Immutable pre-delivery choice projection, present only while waiting. */
+  vocabulary?: VocabularyChoiceSessionView;
   recoveryAction?: DesktopRecoveryAction;
   startedAt?: string;
   endedAt?: string;
@@ -99,9 +104,22 @@ export type DesktopDictationSession = {
 
 export type IdleDesktopDictationState = { state: "idle" };
 
+export type DesktopVocabularySettlementListener = (
+  session: DesktopDictationSession,
+) => void;
+
 export interface DesktopDictationController {
   getState(): DesktopDictationSession | IdleDesktopDictationState;
   handleControl(event: DesktopControlEvent): Promise<DesktopDictationSession>;
+  subscribeVocabularySettlement?: (
+    listener: DesktopVocabularySettlementListener,
+  ) => () => void;
+  resolveVocabularyChoice?: (
+    input: { groupId?: string; choice: string; sessionId?: string },
+  ) => Promise<DesktopDictationSession>;
+  cancelVocabularyResolution?: (input?: {
+    sessionId?: string;
+  }) => Promise<DesktopDictationSession>;
 }
 
 export type DesktopControlReadiness = {

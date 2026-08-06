@@ -5,6 +5,7 @@ mod dock_shell;
 mod fixvox_cloud;
 mod native_capture;
 mod output_mute;
+mod personal_vocabulary_cache;
 mod result_history;
 mod runtime_transcription;
 pub mod selection_capture;
@@ -68,11 +69,17 @@ pub fn run() {
             fixvox_cloud::poll_fixvox_cloud_login,
             fixvox_cloud::register_fixvox_device,
             fixvox_cloud::refresh_fixvox_policy,
+            fixvox_cloud::refresh_fixvox_personal_vocabulary,
+            fixvox_cloud::get_fixvox_personal_vocabulary_snapshot,
+            fixvox_cloud::create_fixvox_personal_vocabulary_rule,
+            fixvox_cloud::update_fixvox_personal_vocabulary_rule,
+            fixvox_cloud::delete_fixvox_personal_vocabulary_rule,
             fixvox_cloud::activate_fixvox_device,
             fixvox_cloud::start_fixvox_cloud_login,
             desktop_delivery::capture_desktop_delivery_target,
             desktop_delivery::get_cached_desktop_delivery_target,
             desktop_delivery::deliver_text_to_desktop_target,
+            desktop_delivery::replace_captured_selection_if_unchanged,
             desktop_delivery::observe_desktop_paste,
             desktop_delivery::copy_text_to_clipboard,
             companion_window::show_companion,
@@ -81,6 +88,7 @@ pub fn run() {
             companion_window::show_preset_picker,
             companion_window::hide_preset_picker,
             companion_window::focus_preset_picker,
+            companion_window::get_preset_picker_window_state,
             dock_shell::update_dock_shell_state,
             dock_shell::get_dock_shell_position,
             dock_shell::move_dock_shell_position,
@@ -97,6 +105,8 @@ pub fn run() {
             desktop_control::set_desktop_control_hotkey_capture_enabled,
             desktop_control::set_desktop_control_hotkey_listener_ready,
             desktop_control::drain_desktop_control_hotkey_events,
+            desktop_control::set_desktop_control_host_command_listener_ready,
+            desktop_control::drain_desktop_control_host_commands,
             selection_capture::capture_selection_context,
             selection_capture::capture_selection_context_for_target,
             selection_capture::capture_selection_context_for_target_with_clipboard,
@@ -114,6 +124,7 @@ pub fn run() {
             user_preferences::get_user_preferences,
             user_preferences::set_user_preferences,
             tray::show_dock_context_menu,
+            tray::sync_host_preset_menu_snapshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri app");

@@ -8,7 +8,6 @@ export function accountHandleForSubjectHash(subjectHash: string): string {
   if (!/^[a-f0-9]{64}$/.test(subjectHash)) throw new Error("oauth_subject_hash_invalid");
   return `acc_${subjectHash.slice(0, 16)}`;
 }
-
 type OAuthRow = {
   provider: string;
   protected_metadata: string | null;
@@ -166,6 +165,23 @@ export class PostgresAuthSessionRepository {
       const claimed = await tx.unsafe(`UPDATE desktop_login_sessions SET status = 'claimed', claimed_at = now(), account_id = $2::uuid, updated_at = now() WHERE session_hash = $1 AND claimed_at IS NULL RETURNING session_hash`, [input.sessionHash, accounts[0].id]);
       return claimed[0] ? { deviceId: input.deviceId, accountId: accounts[0].id } : null;
     });
+  }
+
+  /** Product bearer tokens are claimed desktop-login handles, never raw OAuth tokens. */
+  async authorizeProductBearer(input: { tokenHash: string; deviceId: string; accountId: string; now: Date }): Promise<boolean> {
+    const rows = await this.sql.unsafe(`
+      SELECT 1
+      FROM desktop_login_sessions s
+      JOIN devices d ON d.account_id = s.account_id
+      WHERE s.session_hash = $1
+        AND s.status = 'claimed'
+        AND s.claimed_at IS NOT NULL
+        AND s.expires_at > $4::timestamptz
+        AND s.account_id = $2::uuid
+        AND d.device_id = $3
+      LIMIT 1
+    `, [input.tokenHash, input.accountId, input.deviceId, input.now.toISOString()]);
+    return Boolean(rows[0]);
   }
 
   async authorizeBearer(tokenHash: string, now = new Date()): Promise<{ capability: "view" | "edit" | "publish"; recentGoogle: boolean } | null> {

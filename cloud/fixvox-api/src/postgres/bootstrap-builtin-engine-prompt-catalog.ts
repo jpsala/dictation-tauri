@@ -5,7 +5,7 @@ import { BUILTIN_CATALOG_VERSION, BUILTIN_ENGINES, BUILTIN_PROMPTS, builtinEngin
 type BootstrapManifest = Readonly<{ catalogVersion: string; counts: Readonly<{ engines: number; prompts: number }>; ids: Readonly<{ engines: readonly string[]; prompts: readonly string[] }>; hashes: Readonly<{ engines: string; prompts: string }> }>;
 
 function engineOptions(engine: typeof BUILTIN_ENGINES[number]) {
-  return { schemaVersion: 1, catalogVersion: BUILTIN_CATALOG_VERSION, label: engine.label, tier: engine.tier, notes: engine.notes, promptKey: engine.promptKey, promptSummary: engine.promptSummary, source: engine.source };
+  return { schemaVersion: 1, catalogVersion: BUILTIN_CATALOG_VERSION, label: engine.label, tier: engine.tier, notes: engine.notes, promptKey: engine.promptKey, promptSummary: engine.promptSummary, supportedEfforts: engine.supportedEfforts, defaultEffortId: engine.defaultEffortId, source: engine.source };
 }
 function promptVersion(value: string): number { const match = /^v([1-9][0-9]*)$/.exec(value); if (!match) throw new Error("builtin_catalog_invalid_prompt_version"); return Number(match[1]); }
 function stableJson(value: unknown): string {
@@ -34,7 +34,6 @@ async function getDatabaseName(sql: Bun.SQL): Promise<string | undefined> {
   const database = await sql.unsafe<{ database_name: string }>("SELECT current_database() AS database_name");
   return database[0]?.database_name;
 }
-
 /** Explicit local-only bootstrap; never called by API startup. */
 export async function bootstrapBuiltinEnginePromptCatalog(
   sql: Bun.SQL,
@@ -45,13 +44,13 @@ export async function bootstrapBuiltinEnginePromptCatalog(
     await tx.unsafe("SELECT pg_advisory_xact_lock(91827401)");
     const engineIds = new Set(BUILTIN_ENGINES.map((engine) => engine.id));
     const promptIds = new Set(BUILTIN_PROMPTS.map((prompt) => prompt.id));
-    const engines = (await tx.unsafe<{ engine_id: string; kind: string; provider: string; model: string; enabled: boolean; runtime_options: Record<string, unknown> }>("SELECT engine_id, kind, provider, model, enabled, runtime_options FROM engines")).filter((row) => engineIds.has(row.engine_id));
+    const engines = (await tx.unsafe<{ engine_id: string; kind: string; provider: string; model: string; enabled: boolean; runtime_options: Record<string, unknown>; tier: string; supported_efforts: unknown; default_effort_id: string | null; lifecycle_status: string; availability: string; source: string }>("SELECT engine_id, kind, provider, model, enabled, runtime_options, tier, supported_efforts, default_effort_id, lifecycle_status, availability, source FROM engines")).filter((row) => engineIds.has(row.engine_id));
     const prompts = (await tx.unsafe<{ prompt_id: string; kind: string; body: string; enabled: boolean; version: number }>("SELECT prompt_id, kind, body, enabled, version FROM prompts")).filter((row) => promptIds.has(row.prompt_id));
     const byEngine = new Map(engines.map((row) => [row.engine_id, row]));
     const byPrompt = new Map(prompts.map((row) => [row.prompt_id, row]));
-    for (const engine of BUILTIN_ENGINES) { const row = byEngine.get(engine.id); if (row && (row.kind !== engine.kind || row.provider !== engine.provider || row.model !== engine.model || row.enabled !== engine.enabled || !sameJson(row.runtime_options, engineOptions(engine)))) throw new Error(`builtin_catalog_conflict:engine:${engine.id}`); }
+    for (const engine of BUILTIN_ENGINES) { const row = byEngine.get(engine.id); if (row && (row.kind !== engine.kind || row.provider !== engine.provider || row.model !== engine.model || row.enabled !== engine.enabled || row.tier !== engine.tier || !sameJson(row.supported_efforts, engine.supportedEfforts) || row.default_effort_id !== engine.defaultEffortId || row.lifecycle_status !== "published" || row.availability !== "available" || row.source !== engine.source || !sameJson(row.runtime_options, engineOptions(engine)))) throw new Error(`builtin_catalog_conflict:engine:${engine.id}`); }
     for (const prompt of BUILTIN_PROMPTS) { const row = byPrompt.get(prompt.id); if (row && (row.kind !== prompt.kind || row.body !== prompt.body || row.enabled !== prompt.enabled || row.version !== promptVersion(prompt.version))) throw new Error(`builtin_catalog_conflict:prompt:${prompt.id}`); }
-    for (const engine of BUILTIN_ENGINES) if (!byEngine.has(engine.id)) await tx.unsafe("INSERT INTO engines (engine_id, kind, provider, model, enabled, runtime_options) VALUES ($1,$2,$3,$4,$5,$6::jsonb)", [engine.id, engine.kind, engine.provider, engine.model, engine.enabled, JSON.stringify(engineOptions(engine))]);
+    for (const engine of BUILTIN_ENGINES) if (!byEngine.has(engine.id)) await tx.unsafe("INSERT INTO engines (engine_id, kind, provider, model, enabled, runtime_options, provider_label, model_label, tier, supported_efforts, default_effort_id, lifecycle_status, availability, published_revision, source) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10::jsonb,$11,'published','available',$12,$13)", [engine.id, engine.kind, engine.provider, engine.model, engine.enabled, JSON.stringify(engineOptions(engine)), engine.provider, engine.label, engine.tier, JSON.stringify(engine.supportedEfforts), engine.defaultEffortId, `builtin-${BUILTIN_CATALOG_VERSION}`, engine.source]);
     for (const prompt of BUILTIN_PROMPTS) if (!byPrompt.has(prompt.id)) await tx.unsafe("INSERT INTO prompts (prompt_id, kind, body, enabled, version) VALUES ($1,$2,$3,$4,$5)", [prompt.id, prompt.kind, prompt.body, prompt.enabled, promptVersion(prompt.version)]);
   });
   const [engines, prompts] = await Promise.all([createBuiltinCatalogManifest(builtinEngineCatalog()), createBuiltinCatalogManifest(builtinPromptCatalog())]);

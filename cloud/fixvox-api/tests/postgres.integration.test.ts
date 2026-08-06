@@ -4,7 +4,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 
 import { BunSqlMigrationDatabase } from "../src/postgres/bun-sql-migration-database";
-import { applyMigrations, loadMigrations } from "../src/postgres/migrations";
+import { applyMigrations, loadMigrations, LOCAL_SCHEMA_VERSION } from "../src/postgres/migrations";
 
 const databaseUrl = Bun.env.FIXVOX_DATABASE_URL;
 if (!databaseUrl) throw new Error("missing_FIXVOX_DATABASE_URL");
@@ -15,7 +15,7 @@ afterAll(async () => database.close());
 describe("PostgreSQL migration integration", () => {
   test("is idempotent against the isolated local database", async () => {
     const result = await applyMigrations(database, await loadMigrations());
-    expect(result).toEqual({ applied: [], currentVersion: 6 });
+    expect(result).toEqual({ applied: [], currentVersion: LOCAL_SCHEMA_VERSION });
   });
 
   test("creates the required authority and control-plane tables", async () => {
@@ -44,6 +44,10 @@ describe("PostgreSQL migration integration", () => {
       "oauth_states",
       "desktop_login_sessions",
       "prewarm_daily_counters",
+      "engine_catalog_runs",
+      "engine_catalog_audits",
+      "personal_vocabulary_revisions",
+      "personal_vocabulary_rules",
     ]) {
       expect(names).toContain(required);
     }

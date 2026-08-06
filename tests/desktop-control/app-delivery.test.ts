@@ -12,6 +12,7 @@ import {
   formatDesktopRecoveryAction,
   getReviewCopyLabel,
   getTranscriptReview,
+  markPersistentPresetRuntimeResult,
   mapPipelineEvidenceToDesktopEvidence,
   resolveDictationPostProcessPolicy,
   selectionTransformFailureReason,
@@ -444,6 +445,18 @@ describe("App delivery fallback", () => {
       output: "hello",
       reason: "Managed selection transform replaced the captured selection like Fixvox.",
     });
+  });
+
+  it("labels only the persistent preset route for pre-delivery vocabulary", () => {
+    const summary = createReviewSummary();
+    const marked = markPersistentPresetRuntimeResult({
+      transcript: "foo",
+      output: "Foo",
+      summary,
+    });
+
+    expect(marked.vocabularySource).toBe("persistent_preset");
+    expect(marked.summary).toBe(summary);
   });
 
   it("explains policy-denied selection editing without exposing internal routing", () => {

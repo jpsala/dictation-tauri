@@ -27,13 +27,14 @@ export function createVoiceDockState(
   const settledDeliveryFailure = phase === "idle" && deliveryIsUncertain(delivery);
   const assistantResult = options.resultSource === "assistant";
   const selectionTransformFailed = options.selectionTransformFailed === true;
+  const choicePending = phase === "waiting";
   const canPasteLastSafe = Boolean(
-    options.canPasteLastSafe && hasOutput && !inserted && !settledDeliveryFailure && !assistantResult && !selectionTransformFailed,
+    !choicePending && options.canPasteLastSafe && hasOutput && !inserted && !settledDeliveryFailure && !assistantResult && !selectionTransformFailed,
   );
-  const canCopy = hasOutput && !inserted && !settledDeliveryFailure && !assistantResult;
+  const canCopy = !choicePending && hasOutput && !inserted && !settledDeliveryFailure && !assistantResult;
   const canRetry = phase === "failed" || phase === "cancelled";
   const canStop = phase === "recording";
-  const canCancel = phase === "arming" || phase === "recording";
+  const canCancel = phase === "arming" || phase === "recording" || phase === "waiting";
   const canStart = phase === "idle" || phase === "review" || phase === "uncertain" || phase === "failed" || phase === "cancelled";
   const canStopSubmit = canStop && options.showEnterSubmitButton !== false;
   const recovery = createRecoveryState(input, phase, {
@@ -52,8 +53,8 @@ export function createVoiceDockState(
     deliveryStatus: input.state === "idle" ? undefined : input.delivery?.status,
     deliveryStatusLabel: input.state === "idle" ? undefined : getDeliveryStatusLabel(input.delivery),
     ariaLabel: createAriaLabel(status.text, status.detail),
-    active: phase === "arming" || phase === "recording" || phase === "processing",
-    busy: phase === "arming" || phase === "processing",
+    active: phase === "arming" || phase === "recording" || phase === "processing" || phase === "waiting",
+    busy: phase === "arming" || phase === "processing" || phase === "waiting",
     canStart,
     canStop,
     canCancel,
@@ -91,6 +92,8 @@ function mapDockPhase(input: DockInputState): VoiceDockPhase {
     case "postprocessing":
     case "delivering":
       return "processing";
+    case "waiting_for_choice":
+      return "waiting";
     case "reviewing":
       return deliveryWasInserted(input.delivery) || deliveryIsUncertain(input.delivery)
         ? "idle"
@@ -242,6 +245,11 @@ function getStatus(
       return { text: "Recording", detail: "Release to stop · tap again if latched." };
     case "processing":
       return { text: "Processing", detail: "Transcribing and preparing review." };
+    case "waiting":
+      return {
+        text: "Esperando elección",
+        detail: "Elegí una alternativa o mantené el original antes de entregar.",
+      };
     case "review":
       if (options.selectionTransformFailed) {
         return { text: "Selection unavailable", detail: "Selected text was not changed. Copy the dictated instruction or update account access." };

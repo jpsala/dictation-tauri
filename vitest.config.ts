@@ -20,6 +20,8 @@ export default defineConfig({
       "tests/onboarding/**/*.test.tsx",
       "tests/site/**/*.test.ts",
       "tests/cloud-contract/**/*.test.ts",
+      "tests/personal-vocabulary/**/*.test.ts",
+      "tests/personal-vocabulary/**/*.test.tsx",
     ],
     passWithNoTests: false,
   },

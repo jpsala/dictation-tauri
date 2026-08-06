@@ -3,6 +3,8 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
+use crate::tray;
+
 pub const SELECTION_PRESETS_FILE: &str = "selection-presets.v2.json";
 const LEGACY_SELECTION_PRESETS_FILE: &str = "selection-presets.v1.json";
 
@@ -11,18 +13,23 @@ pub fn get_selection_presets_store(app: AppHandle) -> Result<Value, String> {
     let current_path =
         selection_presets_path(&app, SELECTION_PRESETS_FILE).map_err(|error| error.to_string())?;
     if current_path.exists() {
-        return read_store(current_path);
+        let store = read_store(current_path)?;
+        let _ = tray::refresh_host_preset_menu_from_store(&app, &store);
+        return Ok(store);
     }
 
     let legacy_path = selection_presets_path(&app, LEGACY_SELECTION_PRESETS_FILE)
         .map_err(|error| error.to_string())?;
     if legacy_path.exists() {
-        return read_store(legacy_path);
+        let store = read_store(legacy_path)?;
+        let _ = tray::refresh_host_preset_menu_from_store(&app, &store);
+        return Ok(store);
     }
 
-    Ok(seed_request())
+    let store = seed_request();
+    let _ = tray::refresh_host_preset_menu_from_store(&app, &store);
+    Ok(store)
 }
-
 #[tauri::command]
 pub fn save_selection_presets_store(app: AppHandle, store: Value) -> Result<Value, String> {
     let normalized = normalize_v2_store(store);
@@ -37,6 +44,7 @@ pub fn save_selection_presets_store(app: AppHandle, store: Value) -> Result<Valu
         serde_json::to_string_pretty(&normalized).map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())?;
+    let _ = tray::refresh_host_preset_menu_from_store(&app, &normalized);
     Ok(normalized)
 }
 

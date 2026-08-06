@@ -122,6 +122,27 @@ describe("voice dock visual semantics", () => {
     }
   });
 
+  it("renders Esperando elección as an active gate without copy or paste bypasses", () => {
+    expect(
+      createVoiceDockState(
+        session({
+          state: "waiting_for_choice",
+          runtime: { output: "pending transcript" },
+        }),
+        { canPasteLastSafe: true },
+      ),
+    ).toMatchObject({
+      phase: "waiting",
+      statusText: "Esperando elección",
+      active: true,
+      busy: true,
+      canStart: false,
+      canCancel: true,
+      canCopy: false,
+      canPasteLastSafe: false,
+    });
+  });
+
   it("renders review with copy and safe paste-last recovery actions when output exists", () => {
     expect(
       createVoiceDockState(

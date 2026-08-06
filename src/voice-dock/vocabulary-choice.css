@@ -1,0 +1,120 @@
+
+.vocabulary-choice-surface {
+  box-sizing: border-box;
+  width: min(100%, 420px);
+  padding: 22px;
+  color: var(--product-ink, oklch(0.21 0.018 235));
+  background: var(--product-surface-raised, oklch(0.995 0 0));
+  border: 1px solid var(--product-border, oklch(0.86 0.012 235));
+  border-radius: 8px;
+  box-shadow: 0 8px 18px rgb(35 45 55 / 8%);
+}
+
+.vocabulary-choice-surface__header,
+.vocabulary-choice-surface__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.vocabulary-choice-surface__kicker {
+  margin: 0 0 4px;
+  color: var(--product-muted, oklch(0.45 0.02 235));
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.vocabulary-choice-surface h2 {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 680;
+  line-height: 1.2;
+}
+
+.vocabulary-choice-surface__progress {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  color: var(--product-ink, oklch(0.21 0.018 235));
+  background: var(--product-surface, oklch(0.97 0.004 230));
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.vocabulary-choice-surface__prompt {
+  margin: 18px 0;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.vocabulary-choice-surface__options {
+  display: grid;
+  gap: 8px;
+}
+
+.vocabulary-choice-surface__option,
+.vocabulary-choice-surface__keep,
+.vocabulary-choice-surface__cancel {
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 1px solid var(--product-border, oklch(0.86 0.012 235));
+  border-radius: 6px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vocabulary-choice-surface__option {
+  display: grid;
+  gap: 2px;
+  color: var(--product-bg, oklch(1 0 0));
+  background: var(--product-accent-deep, oklch(0.41 0.12 35));
+}
+
+.vocabulary-choice-surface__option:hover,
+.vocabulary-choice-surface__option:focus-visible {
+  background: var(--product-accent, oklch(0.56 0.15 35));
+}
+
+.vocabulary-choice-surface__option-hint {
+  font-size: 0.8125rem;
+  opacity: 0.86;
+}
+
+.vocabulary-choice-surface__keep,
+.vocabulary-choice-surface__cancel {
+  color: var(--product-ink, oklch(0.21 0.018 235));
+  background: var(--product-surface-raised, oklch(0.995 0 0));
+}
+
+.vocabulary-choice-surface__keep:hover,
+.vocabulary-choice-surface__keep:focus-visible,
+.vocabulary-choice-surface__cancel:hover,
+.vocabulary-choice-surface__cancel:focus-visible {
+  background: var(--product-surface, oklch(0.97 0.004 230));
+}
+
+.vocabulary-choice-surface__footer {
+  margin-top: 16px;
+  color: var(--product-muted, oklch(0.45 0.02 235));
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+.vocabulary-choice-surface button:focus-visible {
+  outline: 3px solid oklch(0.56 0.15 35 / 28%);
+  outline-offset: 2px;
+}
+
+.vocabulary-choice-surface button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vocabulary-choice-surface * {
+    transition: none !important;
+  }
+}

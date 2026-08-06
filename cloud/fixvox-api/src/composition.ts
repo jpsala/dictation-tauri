@@ -11,6 +11,9 @@ import { PostgresBudgetPricingRepository } from "./postgres/budget-pricing-repos
 import { PostgresControlPlaneRepository } from "./postgres/control-plane-repository.ts";
 import { PostgresProfileCommandRepository } from "./postgres/profile-command-repository.ts";
 import { PostgresUsageQuotaRepository } from "./postgres/usage-quota-repository.ts";
+import { PostgresEngineCatalogRepository } from "./postgres/engine-catalog-repository.ts";
+import { PostgresPersonalVocabularyRepository } from "./postgres/personal-vocabulary-repository.ts";
+import { LOCAL_SCHEMA_VERSION } from "./postgres/migrations.ts";
 
 export type ApiComposition = { config: FixvoxApiConfig; sql: Bun.SQL; handler: (request: Request) => Promise<Response>; close(): Promise<void> };
 
@@ -32,6 +35,8 @@ export function composeApi(env: Record<string, string | undefined> = Bun.env, op
   const admin = new PostgresAdminRepository(sql);
   const auth = new PostgresAuthSessionRepository(sql);
   const profileCommands = new PostgresProfileCommandRepository(config.databaseUrl);
+  const engineCatalog = new PostgresEngineCatalogRepository(sql);
+  const vocabulary = new PostgresPersonalVocabularyRepository(sql);
   const repository = { resolveDevice: control.resolveDevice.bind(control), resolveEffectiveProfile: control.resolveEffectiveProfile.bind(control), reserve: quota.reserve.bind(quota) };
   const dependencies: ApiDependencies = {
     config,
@@ -45,11 +50,12 @@ export function composeApi(env: Record<string, string | undefined> = Bun.env, op
     feedback: { submit: (input) => admin.appendFeedback(input) },
     auth,
     oauth,
-    admin: { repository: admin, profileCommands, keys: config.adminKeys, sessions: auth },
+    admin: { repository: admin, profileCommands, engineCatalog, keys: config.adminKeys, sessions: auth },
+    vocabulary,
     ...(options.logger ? { logger: options.logger } : {}),
     readiness: {
       async database() { await sql.unsafe("SELECT 1"); return true; },
-      async schema() { const rows = await sql.unsafe<{ version: number }>("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"); return rows[0]?.version === 6; },
+      async schema() { const rows = await sql.unsafe<{ version: number }>("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1"); return rows[0]?.version === LOCAL_SCHEMA_VERSION; },
       async jobs() { return true; },
       async authorityMode() { const rows = await sql.unsafe<{ mode: "cloudflare-authority" | "import-validation" | "canary" | "vps-authority" | "rollback" }>("SELECT mode FROM control_plane_authority WHERE singleton = true"); if (!rows[0]) throw new Error("authority_unavailable"); return rows[0].mode; },
     },

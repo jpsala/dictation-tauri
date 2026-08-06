@@ -264,7 +264,7 @@ export async function listenForTauriHostCommands(
     return undefined;
   }
 
-  return listen<TauriHostCommandPayload>(
+  const unlisten = await listen<TauriHostCommandPayload>(
     tauriHostCommandEventName,
     (event) => {
       const command = event.payload?.command;
@@ -275,4 +275,24 @@ export async function listenForTauriHostCommands(
       void handler({ ...event.payload, command });
     },
   );
+
+  try {
+    const pending = await invoke<TauriHostCommandPayload[]>(
+      "drain_desktop_control_host_commands",
+    );
+    for (const payload of pending) {
+      const command = payload.command;
+      if (command) {
+        await handler({ ...payload, command });
+      }
+    }
+  } catch {
+    // Keep compatibility with an older dev binary that does not expose the
+    // queue command; its live listener still receives future host commands.
+    await invoke("set_desktop_control_host_command_listener_ready", {
+      ready: true,
+    }).catch(() => undefined);
+  }
+
+  return unlisten;
 }

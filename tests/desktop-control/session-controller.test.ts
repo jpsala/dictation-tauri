@@ -424,6 +424,9 @@ describe("DesktopDictationController US1 session lifecycle", () => {
     nowMs += 600;
     scheduler.tick();
     await flushPromises();
+    await vi.waitFor(() => {
+      expect(controller.getState().state).toBe("reviewing");
+    });
 
     expect(capture.stop).toHaveBeenCalledWith({
       sessionId: "desktop-session-001",

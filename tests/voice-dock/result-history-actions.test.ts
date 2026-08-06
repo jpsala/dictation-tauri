@@ -13,7 +13,9 @@ describe("result history actions", () => {
     expect(source).toContain('restoreTargetFocus: payload.source === "tray_or_context_menu"');
     expect(source).toContain("restoreSavedTargetFocus: forced?.restoreSavedTargetFocus");
     expect(source).toMatch(/case "paste_last_safe":\s+void pasteLastToForegroundTarget\(\);/);
-    expect(source).toContain("[pipelineUi.summary, recoveryKey, resultHistoryEntries, settingsPanelOpen]");
+    expect(source).toContain("const seenCompanionCommandIds = createCompanionCommandDedupe();");
+    expect(source).toContain("seenCompanionCommandIds.claim");
+    expect(source).toContain("companionCommandHandlerRef.current");
   });
 
   it("does not reuse stale History after a failed attempt and settles successful copy recovery", () => {

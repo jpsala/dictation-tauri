@@ -1,3 +1,6 @@
+#[path = "../src/personal_vocabulary_cache.rs"]
+mod personal_vocabulary_cache;
+
 #[path = "../src/fixvox_cloud.rs"]
 mod fixvox_cloud;
 

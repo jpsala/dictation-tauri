@@ -8,9 +8,11 @@ declare module "bun:test" {
     toEqual(expected: unknown): void;
     toHaveLength(expected: number): void;
     toMatch(expected: RegExp): void;
+    toMatchObject(expected: Record<string, unknown>): void;
     toThrow(expected?: unknown): void;
     not: Matchers;
     rejects: Matchers;
+    resolves: Matchers;
   };
 
   export const describe: Suite;

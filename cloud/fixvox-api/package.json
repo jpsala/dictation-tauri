@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "bun run test:unit",
-    "test:unit": "bun test tests/app.test.ts tests/config.test.ts tests/jobs.test.ts tests/migrations.test.ts tests/oauth.test.ts tests/preflight.test.ts tests/providers.test.ts",
+    "test:unit": "bun test tests/app.test.ts tests/config.test.ts tests/engine-catalog-admin.test.ts tests/engine-catalog-repository.test.ts tests/jobs.test.ts tests/migrations.test.ts tests/oauth.test.ts tests/preflight.test.ts tests/providers.test.ts tests/run-maintenance.test.ts tests/personal-vocabulary.test.ts tests/personal-vocabulary-migration.test.ts",
     "migrations:verify": "bun run src/postgres/verify-migrations.ts",
     "migrate:local": "bun --env-file=../../.env.postgres.local run src/postgres/migrate.ts",
     "test:postgres": "bun --env-file=../../.env.postgres.local test tests/postgres.integration.test.ts tests/repositories.integration.test.ts",

@@ -4,6 +4,7 @@
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 
 import { createBackupManifest } from "../src/postgres/backup-manifest";
+import { LOCAL_SCHEMA_VERSION } from "../src/postgres/migrations";
 import {
   DeviceBindingConflictError,
   PostgresControlPlaneRepository,
@@ -436,7 +437,7 @@ describe("PostgreSQL control-plane repositories", () => {
     });
     expect(decision.reservationId).toBe(null);
     const manifest = await createBackupManifest(sql, new Date("2026-07-15T00:00:00.000Z"));
-    expect(manifest.schemaVersion).toBe(6);
+    expect(manifest.schemaVersion).toBe(LOCAL_SCHEMA_VERSION);
     expect(manifest.authority).toEqual({ mode: "cloudflare-authority", revision: 0 });
     expect(manifest.counts.usage_reservations).toBe(0);
     expect(JSON.stringify(manifest)).not.toMatch(/subject-hash|audio|transcript/i);

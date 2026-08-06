@@ -23,14 +23,22 @@ export interface MigrationDatabase extends MigrationTransaction {
 }
 
 const MIGRATION_FILE = /^(\d{4})_([a-z0-9][a-z0-9_]*)\.sql$/;
-const MIGRATION_FILES = [
+/**
+ * Integration manifest: C1's engine lifecycle (0007) must precede V1's
+ * account vocabulary (0008), yielding schema 8 without duplicate entries.
+ */
+export const MIGRATION_FILES = [
   "0001_initial_control_plane.sql",
   "0002_immutable_history_guards.sql",
   "0003_auth_desktop_handoff.sql",
   "0004_admin_read_projections.sql",
   "0005_budget_ledger.sql",
   "0006_budget_ledger_async_projection.sql",
+  "0007_engine_catalog_lifecycle.sql",
+  "0008_personal_vocabulary.sql",
 ] as const;
+
+export const LOCAL_SCHEMA_VERSION = Number.parseInt(MIGRATION_FILES.at(-1)?.slice(0, 4) ?? "0", 10);
 
 export function migrationChecksum(sql: string): string {
   return new Bun.CryptoHasher("sha256").update(sql).digest("hex");

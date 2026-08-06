@@ -3,6 +3,7 @@ export type VoiceDockPhase =
   | "arming"
   | "recording"
   | "processing"
+  | "waiting"
   | "review"
   | "failed"
   | "cancelled"
@@ -78,7 +79,7 @@ export type DockVisualOptions = {
   showEnterSubmitButton?: boolean;
   activePreset?: DockActivePreset;
   assistantModeEnabled?: boolean;
-  resultSource?: "dictation" | "selection_transform" | "assistant";
+  resultSource?: "dictation" | "persistent_preset" | "selection_transform" | "assistant";
   selectionTransformFailed?: boolean;
   selectionTransformFailureMessage?: string;
 };

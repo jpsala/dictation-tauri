@@ -2,7 +2,7 @@
 
 import { StaleProfileRevisionError } from "./profile-publication-repository.ts";
 
-const CAPABILITIES = new Set(["translate", "dictation", "postprocess", "selection_transform", "assistant_actions", "custom_prompts", "advanced_settings", "debug_tools", "managed_stt", "managed_llm", "admin_settings"]);
+const CAPABILITIES = new Set(["translate", "dictation", "postprocess", "selection_transform", "assistant_actions", "custom_prompts", "advanced_settings", "debug_tools", "managed_stt", "managed_llm", "admin_settings", "vocabulary", "personal_vocabulary"]);
 const PROFILE_KEYS = new Set(["schemaVersion", "label", "access", "runtime", "limits", "userControls", "defaults"]);
 const RUNTIME_KEYS = ["transcription", "postprocess", "selectionTransform"] as const;
 
@@ -27,7 +27,6 @@ function commandResult(profileId: string, row: ReceiptRow, idempotentReplay: boo
   const value = definition(row.definition);
   return { profileId, label: String(value.label ?? profileId), previousVersion: row.source_version, resultingVersion: row.resulting_version, revision: Number(row.revision), auditId: row.audit_id, idempotentReplay };
 }
-
 async function validateDefinition(sql: SqlExecutor, value: Record<string, unknown>): Promise<void> {
   if (Object.keys(value).some((key) => !PROFILE_KEYS.has(key)) || value.schemaVersion !== 1) throw new Error("profile_definition_invalid");
   if (typeof value.label !== "string" || value.label.trim().length < 1 || value.label.trim().length > 80) throw new Error("profile_definition_invalid");

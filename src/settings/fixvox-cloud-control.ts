@@ -6,6 +6,7 @@ import {
   type FixvoxProductCapability,
   type FixvoxUserAccessMode,
 } from "../fixvox-auth/policy-groups";
+import type { PersonalVocabularySnapshot } from "../personal-vocabulary";
 
 export type FixvoxPolicyCapabilities = {
   canUseManagedTranscription: boolean;
@@ -57,6 +58,14 @@ export type FixvoxCloudStatus = {
   redacted: boolean;
 };
 
+export type FixvoxPersonalVocabularyStatus = {
+  status: "updated" | "not_modified" | "offline_last_known_good" | "invalid_last_known_good" | "stale_last_known_good" | string;
+  revision?: string;
+  ruleCount: number;
+  cachePath: string;
+  redacted: true;
+};
+
 export type SettingsAccess = {
   canViewPresets: boolean;
   canEditPresets: boolean;
@@ -69,7 +78,6 @@ export function isFixvoxAccountReady(status: FixvoxCloudStatus | undefined): boo
     status.authPolicy?.accessMode === "signed_in" &&
     status.capabilities?.canUseManagedTranscription === true;
 }
-
 export function resolveSettingsAccess(status: FixvoxCloudStatus | undefined): SettingsAccess {
   const auth = status?.authPolicy;
   const capabilities = new Set<FixvoxProductCapability>(
@@ -178,6 +186,23 @@ export async function refreshFixvoxPolicy(): Promise<FixvoxCloudStatus | undefin
   }
 
   return invoke<FixvoxCloudStatus>("refresh_fixvox_policy");
+}
+
+export async function refreshFixvoxPersonalVocabulary(): Promise<FixvoxPersonalVocabularyStatus | undefined> {
+  if (!isTauri()) {
+    return undefined;
+  }
+
+  return invoke<FixvoxPersonalVocabularyStatus>("refresh_fixvox_personal_vocabulary");
+}
+
+/** Read the host-owned last-known-good snapshot without refreshing the cloud. */
+export async function getFixvoxPersonalVocabularySnapshot(): Promise<PersonalVocabularySnapshot> {
+  if (!isTauri()) {
+    return { revision: "browser-empty", rules: [] };
+  }
+
+  return invoke<PersonalVocabularySnapshot>("get_fixvox_personal_vocabulary_snapshot");
 }
 
 export async function activateFixvoxDevice(

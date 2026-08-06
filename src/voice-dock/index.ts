@@ -27,15 +27,22 @@ export {
   createDockCompanionSnapshot,
   createDockCompanionSyncKey,
   createEmptyDockCompanionSnapshot,
+  dockCompanionCommandAckEvent,
   dockCompanionCommandEvent,
   dockCompanionStateEvent,
+  dockTeachCorrectionEvent,
   NO_SPEECH_NOTICE_TIMEOUT_MS,
 } from "./companion-state";
 export type {
   DockCompanionCommandPayload,
+  DockCompanionCommandEnvelope,
+  DockCompanionCommandAck,
   DockCompanionHistoryEntry,
   DockCompanionHistoryItem,
   DockCompanionPresetId,
   DockCompanionSnapshot,
 } from "./companion-state";
+export type { TeachCorrectionCommandPayload } from "./companion-state";
 export { VoiceDock } from "./VoiceDock";
+export { VocabularyChoiceSurface } from "./VocabularyChoiceSurface";
+export type { VocabularyChoiceSurfaceProps } from "./VocabularyChoiceSurface";

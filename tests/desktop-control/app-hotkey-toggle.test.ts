@@ -62,6 +62,14 @@ describe("App global hotkey dictation-key seam", () => {
     expect(listenerBlock).not.toContain("canStop");
   });
 
+  it("drains native host commands after the listener registration gap", () => {
+    const source = readFileSync("src/desktop-control/tauri-host-control.ts", "utf8");
+
+    expect(source).toContain('"drain_desktop_control_host_commands"');
+    expect(source).toContain('"set_desktop_control_host_command_listener_ready"');
+    expect(source).toContain("await handler({ ...payload, command });");
+  });
+
   it("does not let saved-selection capture reactivate the starting window in no-focus mode", () => {
     const source = readFileSync("src/App.tsx", "utf8");
     const helperStart = source.indexOf("async function rememberSelectionTransformContext");

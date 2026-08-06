@@ -16,6 +16,7 @@ import type {
   DesktopControlSource,
   DesktopDictationController,
   DesktopDictationSession,
+  DesktopVocabularySettlementListener,
 } from "./types";
 import { createDesktopControlEvent } from "./types";
 
@@ -24,6 +25,17 @@ export type AppSessionControllerFacade = {
   stop(): Promise<DesktopDictationSession>;
   cancel(): Promise<DesktopDictationSession>;
   retry(): Promise<DesktopDictationSession>;
+  resolveVocabularyChoice(input: {
+    groupId?: string;
+    choice: string;
+    sessionId?: string;
+  }): Promise<DesktopDictationSession>;
+  cancelVocabularyResolution(input?: {
+    sessionId?: string;
+  }): Promise<DesktopDictationSession>;
+  subscribeVocabularySettlement(
+    listener: DesktopVocabularySettlementListener,
+  ): () => void;
   toggle(options?: { source?: DesktopControlSource }): Promise<DesktopDictationSession>;
   handle(
     action: DesktopControlAction,
@@ -58,6 +70,20 @@ export function createAppSessionControllerFacade(
     stop: () => controller.handleControl(createAppControlEvent("stop", options)),
     cancel: () => controller.handleControl(createAppControlEvent("cancel", options)),
     retry: () => controller.handleControl(createAppControlEvent("retry", options)),
+    resolveVocabularyChoice: (input) => {
+      if (!controller.resolveVocabularyChoice) {
+        return Promise.reject(new Error("Vocabulary choice resolution is unavailable."));
+      }
+      return controller.resolveVocabularyChoice(input);
+    },
+    cancelVocabularyResolution: (input) => {
+      if (!controller.cancelVocabularyResolution) {
+        return Promise.reject(new Error("Vocabulary choice cancellation is unavailable."));
+      }
+      return controller.cancelVocabularyResolution(input);
+    },
+    subscribeVocabularySettlement: (listener) =>
+      controller.subscribeVocabularySettlement?.(listener) ?? (() => undefined),
     toggle: (toggleOptions = {}) =>
       controller.handleControl(
         createAppControlEvent("toggle", {

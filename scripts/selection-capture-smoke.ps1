@@ -3,6 +3,7 @@ param(
   [string]$RunId = (Get-Date -Format 'yyyyMMdd-HHmmss'),
   [string]$SelectedText = 'Synthetic selected text for UIA smoke.',
   [switch]$VerifyReplaceSelection,
+  [switch]$VerifyTeachCorrectionTargetChanged,
   [switch]$VerifyManagedTransform,
   [switch]$VerifySttManagedTransform,
   [switch]$VerifyHotkeySttSelectionTransform,
@@ -30,6 +31,9 @@ if (-not $AllowSelectedTextCapture) {
 if (($VerifyManagedTransform -or $VerifySttManagedTransform -or $VerifyHotkeySttSelectionTransform -or $VerifyHotkeyFailClosed) -and -not $AllowProviderCall) {
   throw 'Managed transform/STT smoke calls Fixvox Cloud providers. Re-run with -AllowProviderCall only after explicit approval.'
 }
+if ($RunId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+  throw 'RunId may contain only letters, digits, dot, underscore, and hyphen so temporary cleanup remains path-bound.'
+}
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $runRoot = Join-Path $repo "artifacts/desktop-control/selection-capture-smoke/$RunId"
@@ -47,19 +51,39 @@ $spokenInstructionAudioRelativePath = "artifacts/microphone-capture/audio/select
 # Keep live target files outside the repo: Vite dev watches the workspace and can crash
 # on frequently-written artifact files on Windows (EBUSY from fs.watch).
 $liveRoot = Join-Path $env:TEMP "dictation-tauri-selection-capture-smoke\$RunId"
-New-Item -ItemType Directory -Force -Path $liveRoot | Out-Null
 $selectedTextPath = Join-Path $liveRoot 'selected-text.txt'
 $targetLiveStatePath = Join-Path $liveRoot 'target-state.json'
-[System.IO.File]::WriteAllText($selectedTextPath, $SelectedText, [System.Text.UTF8Encoding]::new($false))
+$webViewUserDataRoot = Join-Path $liveRoot 'webview2-user-data'
+$liveRootCreated = $false
+$webViewProfileCreated = $false
 $startedAt = Get-Date
 $targetProc = $null
+$targetWindow = $null
 $tauriProc = $null
+$launchedAppProcessId = $null
+$tauriProcessTreeIds = @()
+$targetProcessTreeIds = @()
+$teachCorrectionPassed = $true
+$existingAppProcessIds = @(Get-Process -Name 'dictation-tauri' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+$environmentNames = @(
+  'DICTATION_TAURI_DICTATION_KEY',
+  'DICTATION_TAURI_ALLOW_ALT_SPACE',
+  'DICTATION_TAURI_STARTUP_SMOKE',
+  'FIXVOX_BACKEND_URL',
+  'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS',
+  'WEBVIEW2_USER_DATA_FOLDER'
+)
+$previousEnvironment = @{}
+foreach ($name in $environmentNames) {
+  $present = Test-Path "Env:$name"
+  $previousEnvironment[$name] = [ordered]@{
+    present = $present
+    value = if ($present) { [Environment]::GetEnvironmentVariable($name, 'Process') } else { $null }
+  }
+}
 
-# Avoid stale dev windows from previous failed runs being mistaken for this run.
-Get-Process -Name 'dictation-tauri' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Get-Process -Name 'powershell' -ErrorAction SilentlyContinue |
-  Where-Object { $_.MainWindowTitle -like 'Selection Capture Target *' } |
-  Stop-Process -Force -ErrorAction SilentlyContinue
+# Preexisting app and fixture processes are never stopped or reused. The run-specific
+# title and process-ID filter below bind the smoke to only the processes it launches.
 
 Add-Type @"
 using System;
@@ -136,8 +160,15 @@ function Wait-ForTauriWindow([int]$TimeoutSeconds = 80) {
     if ($tauriProc -and $tauriProc.HasExited) {
       throw "tauri dev exited early with code $($tauriProc.ExitCode). See $tauriOutLog and $tauriErrLog"
     }
+    if (-not $tauriProc) {
+      throw 'tauri npm launcher process was not started before waiting for the app window.'
+    }
     $appProcess = Get-Process -Name 'dictation-tauri' -ErrorAction SilentlyContinue |
-      Where-Object { $_.MainWindowHandle -ne 0 } |
+      Where-Object {
+        $_.MainWindowHandle -ne 0 -and
+        $existingAppProcessIds -notcontains $_.Id -and
+        (Test-ProcessDescendsFrom -ProcessId ([int]$_.Id) -AncestorId ([int]$tauriProc.Id))
+      } |
       Select-Object -First 1
     if ($appProcess) { return $appProcess }
     Start-Sleep -Milliseconds 500
@@ -215,6 +246,92 @@ function Send-CtrlShiftF9() {
   [SelectionCaptureSmokeWin32]::keybd_event($VK_CONTROL, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
 }
 
+function Test-ProcessDescendsFrom([int]$ProcessId, [int]$AncestorId) {
+  $visited = [System.Collections.Generic.HashSet[int]]::new()
+  $current = $ProcessId
+  while ($current -gt 0 -and $visited.Add($current)) {
+    if ($current -eq $AncestorId) { return $true }
+    $row = Get-CimInstance Win32_Process -Filter "ProcessId=$current" -ErrorAction SilentlyContinue
+    if (-not $row) { return $false }
+    $current = [int]$row.ParentProcessId
+  }
+  return $false
+}
+
+function Get-ProcessTreeIds([int]$RootProcessId) {
+  if ($RootProcessId -le 0) {
+    return @()
+  }
+
+  $rows = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+  $pending = [System.Collections.Generic.Queue[int]]::new()
+  $visited = [System.Collections.Generic.HashSet[int]]::new()
+  $result = [System.Collections.Generic.List[int]]::new()
+  $pending.Enqueue($RootProcessId)
+
+  while ($pending.Count -gt 0) {
+    $current = $pending.Dequeue()
+    if (-not $visited.Add($current)) {
+      continue
+    }
+    $result.Add($current) | Out-Null
+    foreach ($child in ($rows | Where-Object { [int]$_.ParentProcessId -eq $current })) {
+      $pending.Enqueue([int]$child.ProcessId)
+    }
+  }
+
+  return $result.ToArray()
+}
+
+function Get-ExistingProcessIds([int[]]$ProcessIds) {
+  $existing = [System.Collections.Generic.List[int]]::new()
+  foreach ($processId in @($ProcessIds | Select-Object -Unique)) {
+    if (Get-Process -Id ([int]$processId) -ErrorAction SilentlyContinue) {
+      $existing.Add([int]$processId) | Out-Null
+    }
+  }
+  return $existing.ToArray()
+}
+
+function Assert-CdpPortAvailable([int]$Port) {
+  if ($Port -lt 1024 -or $Port -gt 65535) {
+    throw "RemoteDebugPort must be between 1024 and 65535, got $Port."
+  }
+
+  $listener = $null
+  try {
+    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
+    $listener.Start()
+    return $true
+  } catch {
+    throw "RemoteDebugPort $Port is already occupied or unavailable; choose an unused port."
+  } finally {
+    if ($listener) {
+      $listener.Stop()
+    }
+  }
+}
+
+function Send-AltQ() {
+  $KEYEVENTF_KEYUP = 0x0002
+  $VK_MENU = 0x12
+  $VK_Q = 0x51
+  [SelectionCaptureSmokeWin32]::keybd_event($VK_MENU, 0, 0, [UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 80
+  [SelectionCaptureSmokeWin32]::keybd_event($VK_Q, 0, 0, [UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 120
+  [SelectionCaptureSmokeWin32]::keybd_event($VK_Q, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
+  [SelectionCaptureSmokeWin32]::keybd_event($VK_MENU, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
+}
+
+function Send-Tab() {
+  $KEYEVENTF_KEYUP = 0x0002
+  $VK_TAB = 0x09
+  [SelectionCaptureSmokeWin32]::keybd_event($VK_TAB, 0, 0, [UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 100
+  [SelectionCaptureSmokeWin32]::keybd_event($VK_TAB, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
+}
+
 function Send-AltSpace() {
   $KEYEVENTF_KEYUP = 0x0002
   $VK_MENU = 0x12
@@ -237,7 +354,7 @@ Set-Content -Path $targetScript -Encoding UTF8 -Value @'
 param([string]$SelectedTextPath, [string]$RunId, [string]$StatePath)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
-$SelectedText = Get-Content -Raw -Path $SelectedTextPath
+$SelectedText = Get-Content -Raw -Encoding UTF8 -Path $SelectedTextPath
 function Get-Sha256Hex([string]$Text) {
   $sha = [System.Security.Cryptography.SHA256]::Create()
   try {
@@ -263,12 +380,24 @@ $window.Topmost = $true
 $textBox = New-Object System.Windows.Controls.TextBox
 $textBox.Name = 'selectionCaptureTargetBox'
 $textBox.AcceptsReturn = $true
-$textBox.AcceptsTab = $true
+$textBox.AcceptsTab = $false
 $textBox.TextWrapping = 'Wrap'
 $textBox.FontSize = 18
 $textBox.Margin = '16'
 $textBox.Text = $SelectedText
-$window.Content = $textBox
+$secondaryText = 'Synthetic secondary target.'
+$secondaryBox = New-Object System.Windows.Controls.TextBox
+$secondaryBox.Name = 'selectionCaptureSecondaryBox'
+$secondaryBox.AcceptsReturn = $true
+$secondaryBox.AcceptsTab = $false
+$secondaryBox.TextWrapping = 'Wrap'
+$secondaryBox.FontSize = 18
+$secondaryBox.Margin = '16,0,16,16'
+$secondaryBox.Text = $secondaryText
+$panel = New-Object System.Windows.Controls.StackPanel
+[void]$panel.Children.Add($textBox)
+[void]$panel.Children.Add($secondaryBox)
+$window.Content = $panel
 function Write-State {
   $payload = [ordered]@{
     runId = $RunId
@@ -281,6 +410,11 @@ function Write-State {
     selectionStart = $textBox.SelectionStart
     selectionLength = $textBox.SelectionLength
     focused = $textBox.IsKeyboardFocused
+    focusedControl = if ($textBox.IsKeyboardFocused) { 'primary' } elseif ($secondaryBox.IsKeyboardFocused) { 'secondary' } else { 'none' }
+    secondaryOriginalLength = $secondaryText.Length
+    secondaryOriginalSha256 = Get-Sha256Hex $secondaryText
+    secondaryCurrentLength = $secondaryBox.Text.Length
+    secondaryCurrentSha256 = Get-Sha256Hex $secondaryBox.Text
     rawTextRecorded = $false
     updatedAt = (Get-Date).ToString('o')
   }
@@ -351,6 +485,17 @@ $report = [ordered]@{
     tauriStdout = $tauriOutLog
     tauriStderr = $tauriErrLog
   }
+  webView2 = [ordered]@{
+    userDataFolder = $webViewUserDataRoot
+    profileIsolated = $true
+    profileCreated = $false
+  }
+  cdp = [ordered]@{
+    port = $RemoteDebugPort
+    preflightPortAvailable = $false
+    webViewUserDataFolder = $webViewUserDataRoot
+    profileIsolated = $true
+  }
 }
 
 function Add-Check([string]$Name, [bool]$Pass, [object]$Data = $null, [bool]$NonGating = $false) {
@@ -384,7 +529,28 @@ function Invoke-CdpJson([string]$Expression, [int]$TimeoutMs = 15000) {
   return $rawJson | ConvertFrom-Json
 }
 
+function Invoke-CdpJsonOnPage([object]$Page, [string]$Expression, [int]$TimeoutMs = 15000) {
+  $encoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($Expression))
+  $previousTimeout = $env:CDP_EVALUATE_TIMEOUT_MS
+  $env:CDP_EVALUATE_TIMEOUT_MS = [string]$TimeoutMs
+  try {
+    $rawJson = node (Join-Path $repo 'scripts/cdp-evaluate.mjs') $Page.webSocketDebuggerUrl "base64:$encoded"
+  } finally {
+    if ($null -eq $previousTimeout) { Remove-Item Env:CDP_EVALUATE_TIMEOUT_MS -ErrorAction SilentlyContinue } else { $env:CDP_EVALUATE_TIMEOUT_MS = $previousTimeout }
+  }
+  if ($LASTEXITCODE -ne 0) { throw 'CDP invocation failed.' }
+  return $rawJson | ConvertFrom-Json
+}
+
 try {
+  if (Test-Path -LiteralPath $liveRoot) {
+    throw "Live selection smoke root already exists; refusing to reuse or remove it: $liveRoot"
+  }
+  [void](Assert-CdpPortAvailable $RemoteDebugPort)
+  $report.cdp.preflightPortAvailable = $true
+  New-Item -ItemType Directory -Force -Path $liveRoot | Out-Null
+  $liveRootCreated = $true
+  [System.IO.File]::WriteAllText($selectedTextPath, $SelectedText, [System.Text.UTF8Encoding]::new($false))
   if ($DictationKey -eq 'CtrlShiftF9') {
     $env:DICTATION_TAURI_DICTATION_KEY = 'Ctrl+Shift+F9'
     Remove-Item Env:DICTATION_TAURI_ALLOW_ALT_SPACE -ErrorAction SilentlyContinue
@@ -397,6 +563,10 @@ try {
     $report.failClosedFault = [ordered]@{ backendBaseUrl = 'http://127.0.0.1:9'; reason = 'force managed runtime connection failure before delivery' }
   }
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$RemoteDebugPort"
+  New-Item -ItemType Directory -Force -Path $webViewUserDataRoot | Out-Null
+  $webViewProfileCreated = $true
+  $report.webView2.profileCreated = $true
+  $env:WEBVIEW2_USER_DATA_FOLDER = $webViewUserDataRoot
   $tauriProc = Start-Process -FilePath 'npm.cmd' `
     -ArgumentList @('run','tauri:dev') `
     -WorkingDirectory $repo `
@@ -405,11 +575,23 @@ try {
     -PassThru
 
   $tauriWindow = Wait-ForTauriWindow $StartupTimeoutSeconds
-  $report.tauri = [ordered]@{ pid = $tauriWindow.Id; hwnd = $tauriWindow.MainWindowHandle.ToInt64(); title = $tauriWindow.MainWindowTitle }
+  $launchedAppProcessId = $tauriWindow.Id
+  $tauriProcessTreeIds = @(Get-ProcessTreeIds ([int]$tauriProc.Id))
+  if ($tauriProcessTreeIds -notcontains [int]$launchedAppProcessId) {
+    $tauriProcessTreeIds += [int]$launchedAppProcessId
+  }
+  $report.tauri = [ordered]@{
+    pid = $tauriWindow.Id
+    npmPid = $tauriProc.Id
+    ownedProcessIds = @($tauriProcessTreeIds | Select-Object -Unique)
+    hwnd = $tauriWindow.MainWindowHandle.ToInt64()
+    title = $tauriWindow.MainWindowTitle
+  }
   Add-Check 'tauri dictation dock launched' ($tauriWindow.MainWindowHandle -ne 0) $report.tauri
 
   $cdpPage = Wait-ForCdpPage $RemoteDebugPort $StartupTimeoutSeconds
-  $report.cdp = [ordered]@{ port = $RemoteDebugPort; pageUrl = $cdpPage.url; title = $cdpPage.title }
+  $report.cdp.pageUrl = $cdpPage.url
+  $report.cdp.title = $cdpPage.title
   Add-Check 'tauri product IPC page available through WebView2 CDP' ($null -ne $cdpPage.webSocketDebuggerUrl) $report.cdp
 
   Start-Sleep -Seconds $InitialDelaySeconds
@@ -418,7 +600,15 @@ try {
     -ArgumentList @('-NoProfile','-STA','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',$targetScript,'-SelectedTextPath',$selectedTextPath,'-RunId',$RunId,'-StatePath',$targetLiveStatePath) `
     -PassThru
   $targetWindow = Wait-ForWindowByTitle "Selection Capture Target $RunId" 30
+  $targetProcessTreeIds = @(Get-ProcessTreeIds ([int]$targetProc.Id))
+  if ($targetProcessTreeIds -notcontains [int]$targetProc.Id) {
+    $targetProcessTreeIds += [int]$targetProc.Id
+  }
+  if ($targetProcessTreeIds -notcontains [int]$targetWindow.Id) {
+    $targetProcessTreeIds += [int]$targetWindow.Id
+  }
   $report.target = [ordered]@{ pid = $targetWindow.Id; hwnd = $targetWindow.MainWindowHandle.ToInt64(); title = 'Selection Capture Target [redacted]' }
+  $report.target.ownedProcessIds = @($targetProcessTreeIds | Select-Object -Unique)
   Add-Check 'target fixture launched' ($targetWindow.MainWindowHandle -ne 0) $report.target
 
   Focus-WindowWithAttach ([IntPtr]$targetWindow.MainWindowHandle)
@@ -427,7 +617,7 @@ try {
   Add-Check 'target foreground before selection capture' ($report.foregroundBeforeCapture.hwnd -eq $targetWindow.MainWindowHandle.ToInt64()) @{ hwnd = $report.foregroundBeforeCapture.hwnd; title = 'Selection Capture Target [redacted]' }
 
   $deliveryTarget = $null
-  if ($VerifyReplaceSelection) {
+  if ($VerifyReplaceSelection -or $VerifyTeachCorrectionTargetChanged) {
     $deliveryTarget = Invoke-CdpJson "window.__TAURI_INTERNALS__.invoke('capture_desktop_delivery_target').then(o=>JSON.stringify(o))"
     $report.deliveryTarget = [ordered]@{
       inputLike = [bool]$deliveryTarget.inputLike
@@ -474,6 +664,129 @@ try {
   Add-Check 'captured selection is host_capture and redacted' ($selected -and $selected.source -eq 'host_capture' -and [bool]$selected.redacted -and [bool]$outcome.redacted) @{ source = $report.selectionOutcome.source; redacted = $report.selectionOutcome.redacted }
   Add-Check 'captured text matches synthetic fixture without recording raw text' ($report.selectionOutcome.selectedTextMatchesFixture -and $report.selectionOutcome.textLength -eq $SelectedText.Length) @{ textLength = $report.selectionOutcome.textLength; expectedLength = $SelectedText.Length; rawTextRecorded = $false }
   Add-Check 'target metadata labels are redacted' (($report.selectionOutcome.targetSnapshotRedacted.appLabel -eq '[redacted]') -and ($report.selectionOutcome.targetSnapshotRedacted.windowLabel -eq '[redacted]')) $report.selectionOutcome.targetSnapshotRedacted
+
+  if ($VerifyTeachCorrectionTargetChanged) {
+    Focus-WindowWithAttach ([IntPtr]$targetWindow.MainWindowHandle)
+    Start-Sleep -Milliseconds 300
+    $targetJsonForPicker = $deliveryTarget | ConvertTo-Json -Depth 8 -Compress
+    [void](Invoke-CdpJson "(() => { window.dispatchEvent(new CustomEvent('dictation-tauri:host-command', { detail: { source: 'physical_smoke', command: 'show_preset_picker', targetSnapshot: $targetJsonForPicker } })); return JSON.stringify({ dispatched: true }); })()")
+    $pickerPage = $null
+    $pickerDeadline = (Get-Date).AddSeconds(25)
+    while ((Get-Date) -lt $pickerDeadline -and -not $pickerPage) {
+      try {
+        $pickerPages = Invoke-RestMethod -Uri "http://127.0.0.1:$RemoteDebugPort/json/list" -TimeoutSec 2
+        $pickerPage = $pickerPages | Where-Object { $_.url -like '*surface=preset-picker*' } | Select-Object -First 1
+      } catch {}
+      if (-not $pickerPage) { Start-Sleep -Milliseconds 300 }
+    }
+    Add-Check 'V5 picker opened from captured target smoke command' ($null -ne $pickerPage) @{ pickerUrlMatched = ($null -ne $pickerPage) }
+
+    $pickerOpenRoute = 'captured_target_smoke_command'
+    Start-Sleep -Seconds 2
+    $initialPickerExpression = @'
+(() => JSON.stringify({ ready: Boolean(document.querySelector('[data-testid="preset-picker"]')) }))()
+'@
+    $initialPickerProbe = Invoke-CdpJsonOnPage $pickerPage $initialPickerExpression
+    Add-Check 'V5 picker received captured target snapshot' ([bool]$initialPickerProbe.ready) @{ ready = [bool]$initialPickerProbe.ready }
+    $pickerMainDebug = Invoke-CdpJson "(() => JSON.stringify({ debug: window.__dictationPresetPickerMainDebug || null }))()"
+    $report.pickerMainDebug = $pickerMainDebug.debug
+
+    $clickTeachExpression = @'
+(() => { const picker = document.querySelector('[data-testid="preset-picker"]'); const button = document.querySelector('.dock-teach-correction-launcher'); button?.click(); return JSON.stringify({ picker: Boolean(picker), teachButton: Boolean(button), clicked: Boolean(button) }); })()
+'@
+    $clickTeachProbe = Invoke-CdpJsonOnPage $pickerPage $clickTeachExpression
+    Add-Check 'V5 picker exposes Teach correction action' ($clickTeachProbe.picker -and $clickTeachProbe.teachButton -and $clickTeachProbe.clicked) $clickTeachProbe
+
+    $pickerProbe = $null
+    $transportProbe = $null
+    $formDeadline = (Get-Date).AddSeconds(15)
+    $formProbeExpression = @'
+(() => { const form = document.querySelector('.dock-teach-correction-form'); const spoken = form?.querySelector('input[readonly]')?.value ?? ''; const text = document.body.innerText || ''; return JSON.stringify({ form: Boolean(form), spoken, invalidNotice: text.includes('No hay una selección segura disponible'), received: window.__dictationTeachCorrectionEventReceived || null }); })()
+'@
+    while ((Get-Date) -lt $formDeadline) {
+      $transportProbe = Invoke-CdpJson "(() => JSON.stringify({ transport: window.__dictationCompanionCommandTransport || null, main: window.__dictationPresetPickerMainDebug || null }))()"
+      $pickerProbe = Invoke-CdpJsonOnPage $pickerPage $formProbeExpression
+      if (
+        $transportProbe.transport.route -eq 'tauri_event' -and
+        $transportProbe.transport.command -eq 'teach_correction' -and
+        $transportProbe.main.lastAction -eq 'teach_correction_open_requested' -and
+        $transportProbe.main.teachCorrectionEventStatus -eq 'emitted' -and
+        $pickerProbe.received.kind -eq 'open' -and
+        $pickerProbe.form -and
+        ([string]$pickerProbe.spoken).Length -gt 0
+      ) { break }
+      Start-Sleep -Milliseconds 200
+    }
+    $pickerSpoken = [string]$pickerProbe.spoken
+    $teachCorrectionPassed = (
+      $transportProbe.transport.route -eq 'tauri_event' -and
+      $transportProbe.transport.command -eq 'teach_correction' -and
+      $transportProbe.main.lastAction -eq 'teach_correction_open_requested' -and
+      $transportProbe.main.teachCorrectionEventStatus -eq 'emitted' -and
+      $pickerProbe.received.kind -eq 'open' -and
+      $pickerProbe.form -and
+      $pickerSpoken -eq $SelectedText
+    )
+    $report.teachCorrectionPicker = [ordered]@{
+      picker = [bool]$clickTeachProbe.picker
+      openRoute = $pickerOpenRoute
+      commandRoute = 'picker_click_to_product_form'
+      transportRoute = if ($transportProbe.transport) { [string]$transportProbe.transport.route } else { $null }
+      transportCommand = if ($transportProbe.transport) { [string]$transportProbe.transport.command } else { $null }
+      mainAction = if ($transportProbe.main) { [string]$transportProbe.main.lastAction } else { $null }
+      mainEventStatus = if ($transportProbe.main) { [string]$transportProbe.main.teachCorrectionEventStatus } else { $null }
+      pickerEventKind = if ($pickerProbe.received) { [string]$pickerProbe.received.kind } else { $null }
+      assertionScope = 'picker_click_to_teach_form'
+      physicalAltQObserved = ($pickerOpenRoute -eq 'physical_alt_q')
+      teachButton = [bool]$clickTeachProbe.teachButton
+      form = [bool]$pickerProbe.form
+      spokenLength = $pickerSpoken.Length
+      spokenMatchesFixture = ($pickerSpoken -eq $SelectedText)
+      spokenSha256 = if ($pickerSpoken.Length -gt 0) { Get-Sha256Hex $pickerSpoken } else { $null }
+      invalidNotice = [bool]$pickerProbe.invalidNotice
+      assertionStatus = if ($teachCorrectionPassed) { 'passed' } else { 'failed' }
+      rawTextRecorded = $false
+    }
+    Focus-WindowWithAttach ([IntPtr]$targetWindow.MainWindowHandle)
+    Start-Sleep -Milliseconds 300
+    Send-Tab
+    Start-Sleep -Milliseconds 500
+    $changedTargetState = Get-Content -Raw -Path $targetLiveStatePath | ConvertFrom-Json
+    Add-Check 'secondary control focused before guarded replace' ($changedTargetState.focusedControl -eq 'secondary') @{ focusedControl = $changedTargetState.focusedControl }
+
+    $replacementJson = $ReplacementText | ConvertTo-Json -Compress
+    $targetJson = $deliveryTarget | ConvertTo-Json -Depth 8 -Compress
+    $selectionIdJson = ([string]$selected.selectionId) | ConvertTo-Json -Compress
+    $expectedSelectionJson = $selectedText | ConvertTo-Json -Compress
+    $replaceExpression = "window.__TAURI_INTERNALS__.invoke('replace_captured_selection_if_unchanged', { target: $targetJson, selectionId: $selectionIdJson, expectedSelection: $expectedSelectionJson, selectionTruncated: false, replacement: $replacementJson }).then(o=>JSON.stringify(o))"
+    $guardedOutcome = Invoke-CdpJson $replaceExpression
+    Start-Sleep -Milliseconds 500
+    $guardedState = Get-Content -Raw -Path $targetLiveStatePath | ConvertFrom-Json
+    $primaryUnchanged = [string]$guardedState.currentTextSha256 -eq (Get-Sha256Hex $SelectedText)
+    $secondaryUnchanged = [string]$guardedState.secondaryCurrentSha256 -eq [string]$guardedState.secondaryOriginalSha256
+    $report.targetChangedOutcome = [ordered]@{
+      assertionScope = 'direct_replace_guard_after_product_picker_flow'
+      status = $guardedOutcome.status
+      capturedLength = $guardedOutcome.capturedLength
+      primaryUnchanged = $primaryUnchanged
+      secondaryUnchanged = $secondaryUnchanged
+      targetA = [ordered]@{
+        originalLength = [int]$guardedState.originalTextLength
+        currentLength = [int]$guardedState.currentTextLength
+        originalSha256 = [string]$guardedState.originalTextSha256
+        currentSha256 = [string]$guardedState.currentTextSha256
+      }
+      targetB = [ordered]@{
+        originalLength = [int]$guardedState.secondaryOriginalLength
+        currentLength = [int]$guardedState.secondaryCurrentLength
+        originalSha256 = [string]$guardedState.secondaryOriginalSha256
+        currentSha256 = [string]$guardedState.secondaryCurrentSha256
+      }
+      rawTextRecorded = $false
+    }
+    Add-Check 'changed focused control fails closed without replacing either input' ((@('target_unavailable','selection_changed') -contains [string]$guardedOutcome.status) -and $primaryUnchanged -and $secondaryUnchanged) $report.targetChangedOutcome
+    Add-Check 'Teach correction picker click opened the Unicode form (blocking assertion after independent guard)' $teachCorrectionPassed $report.teachCorrectionPicker
+  }
 
   if ($VerifyHotkeySttSelectionTransform) {
     $expectedFinalNormalizedHash = Get-Sha256Hex (Normalize-Text $ExpectedFinalText)
@@ -661,6 +974,10 @@ try {
     Add-Check 'target text replaced synthetic selection without recording raw text' $matchedReplacement $report.replacementOutcome
   }
 
+  $failedChecks = @($report.checks | Where-Object { -not [bool]$_.pass })
+  if ($failedChecks.Count -gt 0) {
+    throw "Selection capture smoke has failed checks: $($failedChecks.name -join ', ')"
+  }
   $report.status = 'passed'
 }
 catch {
@@ -670,10 +987,133 @@ catch {
 }
 finally {
   $report.finishedAt = (Get-Date).ToString('o')
-  $report | ConvertTo-Json -Depth 12 | Set-Content -Encoding UTF8 -Path $reportPath
-  if ($targetProc -and -not $targetProc.HasExited) { Stop-Tree $targetProc.Id }
-  Get-Process -Name 'dictation-tauri' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-  if ($tauriProc -and -not $tauriProc.HasExited) { Stop-Tree $tauriProc.Id }
   try { if (Test-Path $targetLiveStatePath) { Copy-Item -Path $targetLiveStatePath -Destination $targetStatePath -Force } } catch {}
+  $cleanupErrors = [System.Collections.Generic.List[string]]::new()
+
+  $ownedTauriProcessIdsBeforeCleanup = @(
+    @($tauriProcessTreeIds)
+    if ($launchedAppProcessId) { [int]$launchedAppProcessId }
+    if ($tauriProc) { @(Get-ProcessTreeIds ([int]$tauriProc.Id)) }
+  ) | Where-Object { $_ -and [int]$_ -gt 0 } | Select-Object -Unique
+  $ownedTargetProcessIdsBeforeCleanup = @(
+    @($targetProcessTreeIds)
+    if ($targetProc) { @(Get-ProcessTreeIds ([int]$targetProc.Id)) }
+    if ($targetWindow) { [int]$targetWindow.Id }
+  ) | Where-Object { $_ -and [int]$_ -gt 0 } | Select-Object -Unique
+  $ownedProcessIdsBeforeCleanup = @(
+    @($ownedTauriProcessIdsBeforeCleanup)
+    @($ownedTargetProcessIdsBeforeCleanup)
+  ) | Where-Object { $_ -and [int]$_ -gt 0 } | Select-Object -Unique
+  $remainingTauriProcessIds = @()
+  $remainingTargetProcessIds = @()
+  $remainingOwnedProcessIds = @()
+  $tauriProcessTreeTerminated = $false
+  $targetProcessTreeTerminated = $false
+  try {
+    if ($targetProc -and -not $targetProc.HasExited) { Stop-Tree $targetProc.Id }
+    if ($tauriProc -and -not $tauriProc.HasExited) { Stop-Tree $tauriProc.Id }
+    if ($launchedAppProcessId -and (Get-Process -Id ([int]$launchedAppProcessId) -ErrorAction SilentlyContinue)) {
+      Stop-Tree ([int]$launchedAppProcessId)
+    }
+    foreach ($ownedProcessId in @($ownedProcessIdsBeforeCleanup)) {
+      if (Get-Process -Id ([int]$ownedProcessId) -ErrorAction SilentlyContinue) {
+        Stop-Tree ([int]$ownedProcessId)
+      }
+    }
+    $treeDeadline = (Get-Date).AddSeconds(10)
+    $remainingTauriProcessIds = @(Get-ExistingProcessIds $ownedTauriProcessIdsBeforeCleanup)
+    $remainingTargetProcessIds = @(Get-ExistingProcessIds $ownedTargetProcessIdsBeforeCleanup)
+    $remainingOwnedProcessIds = @(
+      @($remainingTauriProcessIds)
+      @($remainingTargetProcessIds)
+    ) | Where-Object { $_ -and [int]$_ -gt 0 } | Select-Object -Unique
+    while ($remainingOwnedProcessIds.Count -gt 0 -and (Get-Date) -lt $treeDeadline) {
+      Start-Sleep -Milliseconds 250
+      $remainingTauriProcessIds = @(Get-ExistingProcessIds $ownedTauriProcessIdsBeforeCleanup)
+      $remainingTargetProcessIds = @(Get-ExistingProcessIds $ownedTargetProcessIdsBeforeCleanup)
+      $remainingOwnedProcessIds = @(
+        @($remainingTauriProcessIds)
+        @($remainingTargetProcessIds)
+      ) | Where-Object { $_ -and [int]$_ -gt 0 } | Select-Object -Unique
+    }
+    $tauriProcessTreeTerminated = $remainingTauriProcessIds.Count -eq 0
+    $targetProcessTreeTerminated = $remainingTargetProcessIds.Count -eq 0
+  } catch {
+    $cleanupErrors.Add("process_tree: $($_.Exception.Message)") | Out-Null
+  }
+  if (-not $tauriProcessTreeTerminated) {
+    $cleanupErrors.Add("process_tree: owned Tauri process tree did not terminate ($($remainingTauriProcessIds -join ', '))") | Out-Null
+  }
+  if (-not $targetProcessTreeTerminated) {
+    $cleanupErrors.Add("target_process_tree: owned target fixture process tree did not terminate ($($remainingTargetProcessIds -join ', '))") | Out-Null
+  }
+
+  try {
+    if ($liveRootCreated -and (Test-Path $liveRoot)) {
+      Remove-Item -LiteralPath $liveRoot -Recurse -Force -ErrorAction Stop
+    }
+  } catch {
+    $cleanupErrors.Add("live_root_remove: $($_.Exception.Message)") | Out-Null
+  }
+  $liveRootRemoved = -not (Test-Path -LiteralPath $liveRoot)
+  $webViewUserDataRemoved = -not (Test-Path -LiteralPath $webViewUserDataRoot)
+  if (-not $liveRootRemoved) { $cleanupErrors.Add("live_root_remove: liveRoot remains") | Out-Null }
+  if (-not $webViewUserDataRemoved) { $cleanupErrors.Add("profile_remove: WebView2 profile remains") | Out-Null }
+
+  $environmentRestoreErrors = [System.Collections.Generic.List[string]]::new()
+  foreach ($name in $environmentNames) {
+    $snapshot = $previousEnvironment[$name]
+    try {
+      if ($snapshot.present) {
+        Set-Item -LiteralPath "Env:$name" -Value ([string]$snapshot.value) -ErrorAction Stop
+      } elseif (Test-Path "Env:$name") {
+        Remove-Item -LiteralPath "Env:$name" -ErrorAction Stop
+      }
+    } catch {
+      $environmentRestoreErrors.Add("${name}: $($_.Exception.Message)") | Out-Null
+    }
+  }
+  $environmentRestored = $true
+  $environmentChecks = [ordered]@{}
+  foreach ($name in $environmentNames) {
+    $snapshot = $previousEnvironment[$name]
+    $currentPresent = Test-Path "Env:$name"
+    $currentValue = if ($currentPresent) { [Environment]::GetEnvironmentVariable($name, 'Process') } else { $null }
+    $matches = $currentPresent -eq [bool]$snapshot.present -and (-not $snapshot.present -or $currentValue -eq [string]$snapshot.value)
+    $environmentChecks[$name] = [ordered]@{ presentRestored = ($currentPresent -eq [bool]$snapshot.present); valueRestored = $matches }
+    if (-not $matches) {
+      $environmentRestored = $false
+    }
+  }
+  foreach ($restoreError in $environmentRestoreErrors) {
+    $cleanupErrors.Add("environment_restore: $restoreError") | Out-Null
+  }
+  if (-not $environmentRestored -and $environmentRestoreErrors.Count -eq 0) {
+    $cleanupErrors.Add('environment_restore: snapshot mismatch') | Out-Null
+  }
+  $report.cleanup = [ordered]@{
+    liveRootOwned = $liveRootCreated
+    liveRootRemoved = $liveRootRemoved
+    webViewUserDataRemoved = $webViewUserDataRemoved
+    preservedPreexistingProcessIds = @($existingAppProcessIds)
+    ownedProcessIdsBeforeCleanup = @($ownedProcessIdsBeforeCleanup)
+    ownedTauriProcessIdsBeforeCleanup = @($ownedTauriProcessIdsBeforeCleanup)
+    ownedTargetProcessIdsBeforeCleanup = @($ownedTargetProcessIdsBeforeCleanup)
+    remainingOwnedProcessIds = @($remainingOwnedProcessIds)
+    remainingLaunchedProcessIds = @($remainingOwnedProcessIds)
+    remainingTauriProcessIds = @($remainingTauriProcessIds)
+    remainingTargetProcessIds = @($remainingTargetProcessIds)
+    tauriProcessTreeTerminated = $tauriProcessTreeTerminated
+    targetProcessTreeTerminated = $targetProcessTreeTerminated
+    environmentRestored = $environmentRestored
+    environmentChecks = $environmentChecks
+    cleanupFailed = $cleanupErrors.Count -gt 0
+    cleanupErrors = $cleanupErrors.ToArray()
+  }
+  if ($cleanupErrors.Count -gt 0) {
+    $report.status = 'failed'
+    $report.errors += $cleanupErrors.ToArray()
+  }
+  $report | ConvertTo-Json -Depth 12 | Set-Content -Encoding UTF8 -Path $reportPath
   Write-Output "Selection capture smoke report: $reportPath"
 }

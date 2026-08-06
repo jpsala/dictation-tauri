@@ -225,4 +225,14 @@ describe("Tauri host-owned global hotkey boundary", () => {
     expect(source).toContain("VK_ESCAPE");
     expect(source).not.toContain("paste_observed");
   });
+
+  it("keeps native global hotkey queue delivery exactly-once across ready/drain", () => {
+    const source = readFileSync("src-tauri/src/desktop_control.rs", "utf8");
+
+    expect(source).toContain("HotkeyListenerQueueState");
+    expect(source).toContain("mark_ready_and_drain");
+    expect(source).toContain("queue_or_emit_live(payload.clone())");
+    expect(source).toContain("Queue-only until the atomic ready/drain transition");
+    expect(source).toContain("hotkey_queue_only_delivers_events_once_across_ready_drain_transition");
+  });
 });

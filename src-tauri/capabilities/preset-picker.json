@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "preset-picker-events",
+  "description": "Minimal event bridge permissions for the preset picker WebView.",
+  "windows": ["preset-picker"],
+  "permissions": ["core:event:default"]
+}

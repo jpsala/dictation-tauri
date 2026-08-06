@@ -54,6 +54,8 @@ import {
   summarizeStartupLaunchConfig,
   type StartupLaunchConfig,
 } from "./startup-launch-control";
+import { PersonalVocabularySettings } from "../personal-vocabulary/PersonalVocabularySettings";
+import type { VocabularyClient } from "../personal-vocabulary/teach-correction";
 import "./settings-heroui.css";
 
 const sections = [
@@ -62,6 +64,7 @@ const sections = [
   { id: "dictation", label: "Dictado", state: "Audio y entrega", icon: "◌" },
   { id: "hotkeys", label: "Atajos", state: "Teclado", icon: "⌘" },
   { id: "presets", label: "Presets", state: "Acciones", icon: "▣" },
+  { id: "vocabulary", label: "Correcciones", state: "Vocabulario", icon: "✎" },
   { id: "privacy", label: "Privacidad", state: "Datos locales", icon: "◐" },
   { id: "help", label: "Ayuda", state: "Soporte", icon: "?" },
   { id: "advanced", label: "Avanzado", state: "Diagnóstico", icon: "◇" },
@@ -96,6 +99,7 @@ type SettingsSurfaceProps = {
   initialSection?: SettingsSectionId;
   initialCloudStatus?: FixvoxCloudStatus;
   initialAuthSessionStatus?: FixvoxAuthSessionStatus;
+  vocabularyClient?: VocabularyClient;
 };
 
 const HOST_HOTKEY_CAPTURE_EVENT = "desktop-control://hotkey-capture";
@@ -113,7 +117,7 @@ function SettingsIcon({ name }: { name: SettingsIconName }) {
   );
 }
 
-export function SettingsSurface({ initialSection = "general", initialCloudStatus, initialAuthSessionStatus }: SettingsSurfaceProps = {}) {
+export function SettingsSurface({ initialSection = "general", initialCloudStatus, initialAuthSessionStatus, vocabularyClient }: SettingsSurfaceProps = {}) {
   const tauriRuntime = isTauri();
   const [dictationShortcut, setDictationShortcut] = useState("Alt+Space");
   const [editingShortcut, setEditingShortcut] = useState("Alt+Space");
@@ -1247,6 +1251,8 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
             ))}
           </div>
         </section>
+        ) : effectiveSection === "vocabulary" ? (
+        <PersonalVocabularySettings client={vocabularyClient} />
         ) : effectiveSection === "presets" ? (
         <section className="settings-panel settings-presets-panel" aria-label="Administrar presets">
           <div className="settings-preset-toolbar">
@@ -1574,6 +1580,7 @@ function sectionHeading(sectionId: SettingsSectionId): string {
     case "dictation": return "Dictado";
     case "hotkeys": return "Atajos";
     case "presets": return "Presets";
+    case "vocabulary": return "Correcciones personales";
     case "privacy": return "Privacidad";
     case "help": return "Ayuda";
     case "advanced": return "Avanzado";
@@ -1587,6 +1594,7 @@ function sectionSummary(sectionId: SettingsSectionId): string {
     case "dictation": return "Audio, autocierre y entrega del dictado.";
     case "hotkeys": return "Atajos administrados por la aplicación.";
     case "presets": return "Acciones disponibles para tu cuenta.";
+    case "vocabulary": return "Grafías exactas para tus dictados futuros.";
     case "privacy": return "Historial y datos guardados en esta computadora.";
     case "help": return "Estado del servicio y ayuda para continuar.";
     case "advanced": return "Diagnóstico reducido y acceso de operador autorizado.";

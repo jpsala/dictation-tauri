@@ -11,6 +11,7 @@ export type {
   DesktopDictationSession,
   DesktopDictationState,
   DesktopRecoveryAction,
+  DesktopVocabularySettlementListener,
   IdleDesktopDictationState,
   TerminalDesktopDictationState,
 } from "./types";
@@ -29,6 +30,8 @@ export type {
   DesktopDictationControllerOptions,
   DesktopRuntimeGateway,
   DesktopRuntimeResult,
+  DesktopVocabularyChoiceStateHandler,
+  DesktopVocabularyResolverOptions,
 } from "./controller";
 export type {
   DesktopFailureKind,
@@ -59,7 +62,10 @@ export {
   isAppDesktopRuntimeResult,
 } from "./app-session";
 
-export { DesktopDictationController } from "./controller";
+export {
+  DEFAULT_VOCABULARY_CHOICE_TIMEOUT_MS,
+  DesktopDictationController,
+} from "./controller";
 
 export {
   copyManuallyRecovery,

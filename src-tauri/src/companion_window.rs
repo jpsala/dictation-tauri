@@ -1,3 +1,4 @@
+use serde::Serialize;
 use std::{
     sync::atomic::{AtomicU64, Ordering},
     thread,
@@ -17,6 +18,14 @@ const PRESET_PICKER_WINDOW_HEIGHT: i32 = 320;
 const POSITIONED_WINDOW_GAP: i32 = 10;
 const DOCK_COMPANION_COMMAND_EVENT: &str = "dock-companion://command";
 static PRESET_PICKER_WATCH_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetPickerWindowState {
+    visible: bool,
+    focused: bool,
+    foreground: bool,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct PhysicalRect {
@@ -124,6 +133,18 @@ pub fn hide_preset_picker(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn focus_preset_picker(app: AppHandle) -> Result<(), String> {
     focus_window(&app, PRESET_PICKER_WINDOW_LABEL, "Preset Picker")
+}
+
+#[tauri::command]
+pub fn get_preset_picker_window_state(app: AppHandle) -> Result<PresetPickerWindowState, String> {
+    let window = app
+        .get_webview_window(PRESET_PICKER_WINDOW_LABEL)
+        .ok_or_else(|| "preset-picker window not found".to_string())?;
+    Ok(PresetPickerWindowState {
+        visible: window.is_visible().map_err(|error| error.to_string())?,
+        focused: window.is_focused().map_err(|error| error.to_string())?,
+        foreground: is_picker_foreground(&window),
+    })
 }
 
 pub fn show_companion_window<R: Runtime>(app: &AppHandle<R>, transient: bool) -> tauri::Result<()> {

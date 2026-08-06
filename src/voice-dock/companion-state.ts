@@ -8,6 +8,10 @@ import type {
 
 export const dockCompanionStateEvent = "dock-companion://state";
 export const dockCompanionCommandEvent = "dock-companion://command";
+/** Authoritative acknowledgement that the main DockSurface received a command envelope. */
+export const dockCompanionCommandAckEvent = "dock-companion://command-ack";
+/** Ephemeral, target-bound teaching context. Never persist this in the dock snapshot. */
+export const dockTeachCorrectionEvent = "dock-companion://teach-correction";
 export const NO_SPEECH_NOTICE_TIMEOUT_MS = 15_000;
 
 export type DockCompanionPresetId = SelectionTransformPresetId;
@@ -39,6 +43,37 @@ export type DockCompanionCommandPayload =
       source: "dock_companion";
       command: "send_assistant_message";
       message: string;
+    }
+  | TeachCorrectionCommandPayload;
+
+export type DockCompanionCommandEnvelope = DockCompanionCommandPayload & {
+  commandId: string;
+};
+
+export type DockCompanionCommandAck = {
+  commandId: string;
+  command: DockCompanionCommandPayload["command"];
+  handled: true;
+};
+
+export type TeachCorrectionCommandPayload =
+  | {
+      source: "dock_companion";
+      command: "teach_correction" | "close_teach_correction";
+    }
+  | {
+      source: "dock_companion";
+      command: "save_teach_correction";
+      sessionId: string;
+      action: "replace_and_remember" | "remember_only";
+      conflictChoice?: "replace" | "add_alternative";
+      draft: {
+        spoken: string;
+        written: string;
+        alternatives: string[];
+        mode: "automatic" | "ask";
+        automaticConfirmed: boolean;
+      };
     };
 
 export type DockCompanionHistoryEntry = {

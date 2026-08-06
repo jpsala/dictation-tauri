@@ -421,6 +421,8 @@ function createCompanionChip(state: VoiceDockState): CompanionChip | undefined {
   switch (state.phase) {
     case "processing":
       return { label: "Processing", detail: state.statusDetail, tone: "processing" };
+    case "waiting":
+      return { label: "Esperando elección", detail: state.statusDetail, tone: "warning" };
     case "review":
       return undefined;
     case "uncertain":

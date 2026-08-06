@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import {
   applyMigrations,
   loadMigrations,
+  LOCAL_SCHEMA_VERSION,
   migrationChecksum,
   type AppliedMigration,
   type MigrationDatabase,
@@ -48,7 +49,7 @@ class MemoryMigrationDatabase implements MigrationDatabase {
 describe("PostgreSQL migration manifest", () => {
   test("loads a contiguous initial migration with a deterministic checksum", async () => {
     const migrations = await loadMigrations();
-    expect(migrations).toHaveLength(6);
+    expect(migrations).toHaveLength(LOCAL_SCHEMA_VERSION);
     expect(migrations[0].version).toBe(1);
     expect(migrations[0].name).toBe("initial_control_plane");
     expect(migrations[0].checksum).toBe(migrationChecksum(migrations[0].sql));
@@ -70,13 +71,20 @@ describe("PostgreSQL migration manifest", () => {
     expect(migrations[5].sql).toContain("CREATE TABLE budget_ledger_checkpoints");
     expect(migrations[5].sql).toContain("CREATE TABLE budget_ledger_outbox");
     expect(migrations[5].sql).toContain("CREATE TABLE budget_ledger_read_model");
+    expect(migrations[6].version).toBe(7);
+    expect(migrations[6].name).toBe("engine_catalog_lifecycle");
+    expect(migrations[6].sql).toContain("CREATE TABLE engine_catalog_runs");
+    expect(migrations[6].sql).toContain("CREATE TABLE engine_catalog_audits");
+    expect(migrations[7].version).toBe(8);
+    expect(migrations[7].name).toBe("personal_vocabulary");
+    expect(migrations[7].sql).toContain("CREATE TABLE personal_vocabulary_rules");
   });
 
-  test("applies pending migrations once and records their checksums", async () => {
+  test("applies empty→8 once and records every checksum in manifest order", async () => {
     const database = new MemoryMigrationDatabase();
     const migrations = await loadMigrations();
 
-    expect(await applyMigrations(database, migrations)).toEqual({ applied: [1, 2, 3, 4, 5, 6], currentVersion: 6 });
+    expect(await applyMigrations(database, migrations)).toEqual({ applied: [1, 2, 3, 4, 5, 6, 7, 8], currentVersion: LOCAL_SCHEMA_VERSION });
     expect(database.applied).toEqual([
       { version: 1, name: migrations[0].name, checksum: migrations[0].checksum },
       { version: 2, name: migrations[1].name, checksum: migrations[1].checksum },
@@ -84,11 +92,41 @@ describe("PostgreSQL migration manifest", () => {
       { version: 4, name: migrations[3].name, checksum: migrations[3].checksum },
       { version: 5, name: migrations[4].name, checksum: migrations[4].checksum },
       { version: 6, name: migrations[5].name, checksum: migrations[5].checksum },
+      { version: 7, name: migrations[6].name, checksum: migrations[6].checksum },
+      { version: 8, name: migrations[7].name, checksum: migrations[7].checksum },
     ]);
-    expect(database.transactions).toBe(6);
+    expect(database.transactions).toBe(8);
 
-    expect(await applyMigrations(database, migrations)).toEqual({ applied: [], currentVersion: 6 });
-    expect(database.transactions).toBe(6);
+    expect(await applyMigrations(database, migrations)).toEqual({ applied: [], currentVersion: LOCAL_SCHEMA_VERSION });
+    expect(database.transactions).toBe(8);
+  });
+
+  test("upgrades 6→8 by applying 0007 before 0008", async () => {
+    const database = new MemoryMigrationDatabase();
+    const migrations = await loadMigrations();
+    database.applied.push(...migrations.slice(0, 6).map((migration) => ({
+      version: migration.version,
+      name: migration.name,
+      checksum: migration.checksum,
+    })));
+
+    expect(migrations.slice(6).map(({ version, name }) => ({ version, name }))).toEqual([
+      { version: 7, name: "engine_catalog_lifecycle" },
+      { version: 8, name: "personal_vocabulary" },
+    ]);
+    expect(await applyMigrations(database, migrations)).toEqual({
+      applied: [7, 8],
+      currentVersion: LOCAL_SCHEMA_VERSION,
+    });
+    expect(database.applied.slice(6)).toEqual([
+      { version: 7, name: migrations[6].name, checksum: migrations[6].checksum },
+      { version: 8, name: migrations[7].name, checksum: migrations[7].checksum },
+    ]);
+    expect(database.transactions).toBe(2);
+    expect(await applyMigrations(database, migrations)).toEqual({
+      applied: [],
+      currentVersion: LOCAL_SCHEMA_VERSION,
+    });
   });
 
   test("fails closed when an applied checksum differs", async () => {
@@ -103,9 +141,9 @@ describe("PostgreSQL migration manifest", () => {
   test("fails closed when the database contains an unknown migration", async () => {
     const database = new MemoryMigrationDatabase();
     const migrations = await loadMigrations();
-    database.applied.push({ version: 7, name: "future", checksum: "future" });
+    database.applied.push({ version: 9, name: "future", checksum: "future" });
 
-    await expect(applyMigrations(database, migrations)).rejects.toThrow("database_schema_ahead_or_unknown:7");
+    await expect(applyMigrations(database, migrations)).rejects.toThrow("database_schema_ahead_or_unknown:9");
     expect(database.transactions).toBe(0);
   });
 });

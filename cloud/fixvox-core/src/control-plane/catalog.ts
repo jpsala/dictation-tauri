@@ -22,6 +22,7 @@ export type BuiltinCatalogManifest = Readonly<{
 }>;
 
 export type BuiltinEngineKind = "transcription" | "postprocess" | "selectionTransform";
+export type BuiltinEngineEffort = Readonly<{ id: string; label: string }>;
 export type BuiltinEngine = Readonly<{
   id: string;
   label: string;
@@ -33,20 +34,29 @@ export type BuiltinEngine = Readonly<{
   notes: string;
   promptKey: string;
   promptSummary: string;
+  supportedEfforts: readonly BuiltinEngineEffort[];
+  defaultEffortId: string | null;
   source: "built-in";
 }>;
 
+const NO_REASONING_EFFORTS: readonly BuiltinEngineEffort[] = Object.freeze([]);
+const STANDARD_REASONING_EFFORTS: readonly BuiltinEngineEffort[] = Object.freeze([
+  Object.freeze({ id: "low", label: "Low" }),
+  Object.freeze({ id: "medium", label: "Medium" }),
+  Object.freeze({ id: "high", label: "High" }),
+]);
+
 export const BUILTIN_ENGINES: readonly BuiltinEngine[] = Object.freeze(([
-  { id: "stt-off", label: "STT off", kind: "transcription", tier: "off", provider: "none", model: "off", enabled: false, notes: "No usa transcripción managed.", promptKey: "none", promptSummary: "Sin prompt.", source: "built-in" },
-  { id: "stt-groq-whisper-turbo", label: "Groq Whisper Turbo", kind: "transcription", tier: "balanced", provider: "groq", model: "whisper-large-v3-turbo", enabled: true, notes: "Default histórico de Fixvox: mejor balance calidad/precio/velocidad para dictado managed.", promptKey: "transcriptBase", promptSummary: "Español rioplatense técnico; conserva comandos, URLs, modelos, archivos y puntuación hablada literal.", source: "built-in" },
-  { id: "postprocess-off", label: "Postprocess off", kind: "postprocess", tier: "off", provider: "none", model: "off", enabled: false, notes: "Sin post-proceso managed.", promptKey: "none", promptSummary: "Sin prompt.", source: "built-in" },
-  { id: "postprocess-groq-gpt-oss-120b", label: "Groq GPT-OSS 120B post", kind: "postprocess", tier: "balanced", provider: "groq", model: "openai/gpt-oss-120b", enabled: true, notes: "Default histórico de post-proceso: buena calidad/precio/velocidad para cleanup bilingüe.", promptKey: "postProcessBase", promptSummary: "Limpia dictado español/bilingüe con cambios mínimos; reconstruye tokens técnicos y listas cuando está claro.", source: "built-in" },
-  { id: "transform-off", label: "Transform off", kind: "selectionTransform", tier: "off", provider: "none", model: "off", enabled: false, notes: "Sin transformación de selección managed.", promptKey: "none", promptSummary: "Sin prompt.", source: "built-in" },
-  { id: "transform-groq-llama-70b", label: "Groq Llama 70B transform", kind: "selectionTransform", tier: "balanced", provider: "groq", model: "llama-3.3-70b-versatile", enabled: true, notes: "Default histórico para traducción/transformación de selección.", promptKey: "selectionTransformBase", promptSummary: "Reescribe el texto seleccionado según la instrucción del usuario preservando intención y formato.", source: "built-in" },
-  { id: "translate-groq-llama-70b", label: "Groq Llama 70B translate", kind: "selectionTransform", tier: "balanced", provider: "groq", model: "llama-3.3-70b-versatile", enabled: true, notes: "Ruta histórica de traducción natural/fiel.", promptKey: "translateBase", promptSummary: "Traduce de forma fiel y natural, preservando significado, tono e intención.", source: "built-in" },
-  { id: "assistant-groq-8b-instant", label: "Groq 8B assistant", kind: "postprocess", tier: "cheap", provider: "groq", model: "llama-3.1-8b-instant", enabled: true, notes: "Ruta histórica barata/rápida para assistant/default targets; disponible para profiles económicos.", promptKey: "assistant.quickChat", promptSummary: "Prompt base vacío en política actual; útil para respuestas rápidas de bajo costo.", source: "built-in" },
-  { id: "postprocess-openrouter-premium", label: "OpenRouter post premium", kind: "postprocess", tier: "premium", provider: "openrouter", model: "anthropic/claude-sonnet-4", enabled: true, notes: "Opción premium editable para cuentas habilitadas; no era el default histórico.", promptKey: "postProcessBase", promptSummary: "Mismo prompt de cleanup; modelo premium para mayor calidad cuando justifique costo.", source: "built-in" },
-  { id: "transform-openrouter-premium", label: "OpenRouter transform premium", kind: "selectionTransform", tier: "premium", provider: "openrouter", model: "anthropic/claude-sonnet-4", enabled: true, notes: "Opción premium editable para transformación/traducción avanzada; no era el default histórico.", promptKey: "selectionTransformBase", promptSummary: "Mismo prompt de transformación; modelo premium para casos habilitados.", source: "built-in" },
+  { id: "stt-off", label: "STT off", kind: "transcription", tier: "off", provider: "none", model: "off", enabled: false, notes: "No usa transcripción managed.", promptKey: "none", promptSummary: "Sin prompt.", supportedEfforts: NO_REASONING_EFFORTS, defaultEffortId: null, source: "built-in" },
+  { id: "stt-groq-whisper-turbo", label: "Groq Whisper Turbo", kind: "transcription", tier: "balanced", provider: "groq", model: "whisper-large-v3-turbo", enabled: true, notes: "Default histórico de Fixvox: mejor balance calidad/precio/velocidad para dictado managed.", promptKey: "transcriptBase", promptSummary: "Español rioplatense técnico; conserva comandos, URLs, modelos, archivos y puntuación hablada literal.", supportedEfforts: NO_REASONING_EFFORTS, defaultEffortId: null, source: "built-in" },
+  { id: "postprocess-off", label: "Postprocess off", kind: "postprocess", tier: "off", provider: "none", model: "off", enabled: false, notes: "Sin post-proceso managed.", promptKey: "none", promptSummary: "Sin prompt.", supportedEfforts: NO_REASONING_EFFORTS, defaultEffortId: null, source: "built-in" },
+  { id: "postprocess-groq-gpt-oss-120b", label: "Groq GPT-OSS 120B post", kind: "postprocess", tier: "balanced", provider: "groq", model: "openai/gpt-oss-120b", enabled: true, notes: "Default histórico de post-proceso: buena calidad/precio/velocidad para cleanup bilingüe.", promptKey: "postProcessBase", promptSummary: "Limpia dictado español/bilingüe con cambios mínimos; reconstruye tokens técnicos y listas cuando está claro.", supportedEfforts: STANDARD_REASONING_EFFORTS, defaultEffortId: "medium", source: "built-in" },
+  { id: "transform-off", label: "Transform off", kind: "selectionTransform", tier: "off", provider: "none", model: "off", enabled: false, notes: "Sin transformación de selección managed.", promptKey: "none", promptSummary: "Sin prompt.", supportedEfforts: NO_REASONING_EFFORTS, defaultEffortId: null, source: "built-in" },
+  { id: "transform-groq-llama-70b", label: "Groq Llama 70B transform", kind: "selectionTransform", tier: "balanced", provider: "groq", model: "llama-3.3-70b-versatile", enabled: true, notes: "Default histórico para traducción/transformación de selección.", promptKey: "selectionTransformBase", promptSummary: "Reescribe el texto seleccionado según la instrucción del usuario preservando intención y formato.", supportedEfforts: NO_REASONING_EFFORTS, defaultEffortId: null, source: "built-in" },
+  { id: "translate-groq-llama-70b", label: "Groq Llama 70B translate", kind: "selectionTransform", tier: "balanced", provider: "groq", model: "llama-3.3-70b-versatile", enabled: true, notes: "Ruta histórica de traducción natural/fiel.", promptKey: "translateBase", promptSummary: "Traduce de forma fiel y natural, preservando significado, tono e intención.", supportedEfforts: NO_REASONING_EFFORTS, defaultEffortId: null, source: "built-in" },
+  { id: "assistant-groq-8b-instant", label: "Groq 8B assistant", kind: "postprocess", tier: "cheap", provider: "groq", model: "llama-3.1-8b-instant", enabled: true, notes: "Ruta histórica barata/rápida para assistant/default targets; disponible para profiles económicos.", promptKey: "assistant.quickChat", promptSummary: "Prompt base vacío en política actual; útil para respuestas rápidas de bajo costo.", supportedEfforts: NO_REASONING_EFFORTS, defaultEffortId: null, source: "built-in" },
+  { id: "postprocess-openrouter-premium", label: "OpenRouter post premium", kind: "postprocess", tier: "premium", provider: "openrouter", model: "anthropic/claude-sonnet-4", enabled: true, notes: "Opción premium editable para cuentas habilitadas; no era el default histórico.", promptKey: "postProcessBase", promptSummary: "Mismo prompt de cleanup; modelo premium para mayor calidad cuando justifique costo.", supportedEfforts: NO_REASONING_EFFORTS, defaultEffortId: null, source: "built-in" },
+  { id: "transform-openrouter-premium", label: "OpenRouter transform premium", kind: "selectionTransform", tier: "premium", provider: "openrouter", model: "anthropic/claude-sonnet-4", enabled: true, notes: "Opción premium editable para transformación/traducción avanzada; no era el default histórico.", promptKey: "selectionTransformBase", promptSummary: "Mismo prompt de transformación; modelo premium para casos habilitados.", supportedEfforts: STANDARD_REASONING_EFFORTS, defaultEffortId: "medium", source: "built-in" },
 ] satisfies readonly BuiltinEngine[]).map((engine) => Object.freeze(engine)));
 
 export function validateBuiltinEngines(engines: readonly BuiltinEngine[] = BUILTIN_ENGINES): void {
@@ -55,6 +65,13 @@ export function validateBuiltinEngines(engines: readonly BuiltinEngine[] = BUILT
     ensurePublicId(engine.id);
     if (ids.has(engine.id)) throw new Error(`builtin_engine_duplicate_id:${engine.id}`);
     if (!engine.label || !engine.provider || !engine.model || !engine.promptKey) throw new Error(`builtin_engine_invalid:${engine.id}`);
+    const effortIds = new Set<string>();
+    for (const effort of engine.supportedEfforts) {
+      ensurePublicId(effort.id);
+      if (!effort.label || effortIds.has(effort.id)) throw new Error(`builtin_engine_effort_invalid:${engine.id}`);
+      effortIds.add(effort.id);
+    }
+    if (engine.defaultEffortId !== null && !effortIds.has(engine.defaultEffortId)) throw new Error(`builtin_engine_default_effort_unknown:${engine.id}`);
     ids.add(engine.id);
   }
 }
@@ -172,3 +189,35 @@ export async function createBuiltinCatalogManifest(catalog: BuiltinCatalog): Pro
   const counts = Object.fromEntries(KINDS.map((kind) => [kind, ids[kind].length])) as Record<BuiltinCatalogKind, number>;
   return Object.freeze({ version: catalog.version, counts: Object.freeze(counts), ids: Object.freeze(ids), hashes: Object.freeze(hashes) });
 }
+
+// Keep the existing catalog import as a stable entrypoint while exposing the
+// lifecycle/discovery contract next to the built-in definitions.
+export {
+  ENGINE_CATALOG_DISCOVERY_INTERVAL_MS,
+  InMemoryEngineCatalogStore,
+  createProviderDiscoveryAdapter,
+  normalizeDiscoveredEngine,
+  publishEngine,
+  reviewEngine,
+  retireEngine,
+  runEngineCatalogDiscoveryJob,
+} from "./engine-catalog.ts";
+export type {
+  DiscoveredEngine,
+  DiscoveryJobResult,
+  EngineAvailability,
+  EngineCatalogAudit,
+  EngineCatalogAuditAction,
+  EngineCatalogEntry,
+  EngineCandidate,
+  EngineCatalogKind,
+  EngineCatalogRun,
+  EngineCatalogRunStatus,
+  EngineCatalogSource,
+  EngineCatalogStore,
+  EngineCatalogTier,
+  EngineDiscoveryAdapter,
+  EngineEffort,
+  EngineLifecycleStatus,
+  PublishedEngineChoice,
+} from "./engine-catalog.ts";
