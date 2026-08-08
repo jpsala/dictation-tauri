@@ -28,16 +28,15 @@ Asegurar que este repo quede en condiciones optimas para trabajo con agentes: co
 
 No se agrega documentacion por agregar. Una sesion nueva debe leer poco, entender lo importante, continuar sin romper reglas locales y encontrar cualquier doc util bajo demanda.
 
-## Superficie Operativa
+## Superficie AOS Local
 
-- Intención conversacional: entrada cotidiana para entender, planear o implementar en la sesión actual.
 - `aos-help` / `os help`: mostrar la superficie AOS sin ejecutar cambios.
-- `aos-perfect-os` / `perfect os` / `dejar en condiciones`: auditar y mejorar la capa agentica hasta dejarla óptima.
-- `aos-realinear-os` / `realinear os`: reparar drift de la capa agentica del repo actual.
-- `/doctor`: diagnóstico read-only específico de Dictation Tauri, descubierto por OMP.
+- `aos-perfect-os` / `perfect os` / `dejar en condiciones`: auditar y mejorar la capa agentic.
+- `aos-realinear-os` / `realinear os`: reparar drift de la capa agentic del repo.
+- `/doctor`: diagnóstico read-only específico de Dictation Tauri.
 
-Las operaciones especializadas no sustituyen la intención del usuario ni crean
-selectores de fases, nuevas sesiones o handoffs automáticos.
+Estas operaciones son opt-in y se limitan a conocimiento, continuidad, docs,
+índices, skills, specs y gates locales. No definen defaults del runtime OMP.
 
 ## Checklist Perfect OS
 

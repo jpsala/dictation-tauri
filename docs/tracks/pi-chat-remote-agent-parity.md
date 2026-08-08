@@ -335,3 +335,22 @@ Follow-up cerrado:
 - OAuth reciente, env mode/warning/guardrails, health y proceso PASS. Prompt UI real `RAW_OWNER_PROMPT_OK` volvió exactamente, ready, 0 tools y sin texto histórico agregado.
 
 Trusted Owner Pi queda operativo sin restricciones internas. Las únicas fronteras restantes son el perímetro owner/OAuth/single-task/stop/idle y la ausencia de relay hacia Windows/Chrome local.
+
+## Supersession — OMP Native (2026-08-05)
+
+El contrato Trusted Owner Pi de este track queda como evidencia histórica. La
+superficie Admin conserva su nombre de producto, pero el harness efectivo fue
+reemplazado por OMP nativo:
+
+- `/opt/fixvox-agent/bin/omp --mode rpc --auto-approve`;
+- perfil, sesiones y estado bajo `/var/lib/fixvox-agent`, sin reutilizar
+  `~/.pi/agent`;
+- operaciones de host mediante brokers root-pinned y contratos acotados;
+- credencial OpenAI Codex centralizada en `fixvox-omp-auth-broker.service`,
+  loopback-only; el perfil aislado conserva sólo el bearer del broker;
+- rollout y deploy verificados en source `2219e89`, con health local/público y
+  prompt real `OMP_RUNTIME_OK`.
+
+No reactivar `PI_CHAT_BIN`, extensiones `pi-remote-*` ni el modo Trusted Owner
+descrito arriba. La implementación vigente vive en los módulos `omp-*` de
+`admin/fixvox-web/` y en `scripts/omp-remote-agent-*`.

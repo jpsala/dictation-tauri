@@ -10,12 +10,8 @@ triggers:
   - memoria viva
   - audit docs
   - tracks
-  - OMP
   - continuidad documental
   - context index
-  - Small Batches
-  - small batches
-  - commits atomicos
 primary_refs:
   - docs/GLOSSARY.md
   - docs/WORKING_MEMORY.md
@@ -93,33 +89,6 @@ Para listar trabajos activos:
 rg -l "status:\s*active" docs/tracks -g "*.md" -g "!archive/**"
 ```
 
-## Small Batches
-
-Los agentes deben trabajar en tandas chicas orientadas a terminar antes. Una tanda valida es:
-
-- una task SpecKit;
-- varias tasks SpecKit acopladas si forman un unico comportamiento/checkpoint verificable;
-- un comportamiento observable;
-- un checkpoint declarado en `tasks.md`;
-- una sincronizacion documental acotada.
-
-Cada tanda debe tener:
-
-1. fuente de verdad previa: spec, plan, task, decision o topic;
-2. alcance revisable, idealmente de 2-5 tasks cuando esas tasks comparten comportamiento y checks;
-3. check de cierre explicito;
-4. `tasks.md` marcado si aplica;
-5. diff reversible y atribuible; commit sólo con autorización explícita.
-
-Separar siempre lo que cruce gates o side effects reales: decisiones nuevas, provider calls, smokes manuales, paste automation, selection real, historial durable y cambios amplios de seguridad/capabilities. Si una tanda empieza a mezclar responsabilidades no relacionadas o vuelve dificil revertir, se divide antes de seguir.
-
-## Continuidad En OMP
-
-La intención se resuelve en la sesión actual. Un plan puede orientar el trabajo,
-pero no ejecuta ni autoriza side effects. La implementación usa tools OMP
-nativas directamente, conserva el WIP y actualiza la fuente durable una sola vez
-cuando aporta valor. No hay selector de fases, nueva sesión enlazada, handoff
-automático ni auto-send.
 
 ## Auditoria
 

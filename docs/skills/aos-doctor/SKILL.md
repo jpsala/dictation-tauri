@@ -1,6 +1,6 @@
 ---
 name: aos-doctor
-description: Run a read-only health check of the local Agentic OS. Use when JP says `doctor AOS`, `estado del AOS`, `/doctor`, or asks whether focus, references, generated context, skills, or Pi adapters have drifted.
+description: Run a read-only health check of the local Agentic OS. Use when JP says `doctor AOS`, `estado del AOS`, `/doctor`, or asks whether focus, references, generated context, skills, or OMP resources have drifted.
 ---
 
 # AOS Doctor

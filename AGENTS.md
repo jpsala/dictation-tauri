@@ -18,22 +18,13 @@ No abrir por defecto docs largos (`PROJECT`, `ASSISTANT_RULES`, `DEVELOPMENT`), 
 
 - Respetar stack, comandos y convenciones; no revertir cambios ajenos.
 - No imprimir secretos ni commitear `.env`, tokens, raw transcripts, audio sensible, build artifacts o caches.
-- Web/internet permitido cuando evita adivinar; no enviar secretos/datos privados/código sensible. Pedir permiso antes de installs o scripts remotos.
-- Browser visible/desatendido usa la capacidad nativa del harness activo; AXI, adapters y Lavish quedan como fallback manual de OMP únicamente. Vivaldi personal sólo si JP lo pide.
-- No usar OMP Browser Relay/`app.relay`; login nuevo y efectos externos sensibles conservan los gates locales. Referencia local: `docs/topics/agent-tool-routing.md`.
+- Consultas externas no deben enviar secretos, datos privados ni código sensible; installs y scripts remotos requieren autorización explícita.
 - Modo dev personal permite leer `.env`, logs, audio, transcripciones, bases locales y artifacts cuando ayude; no volcarlos en docs/respuestas.
 - Side effects locales controlados permitidos: CUA/computer-use, apps sandbox, Vite/Tauri/Fixvox local, mic/audio fixtures, provider real con `.env`, clipboard temporal restaurado, hotkeys/clicks y artifacts ignorados.
 - Gated: login/cuentas, pagos/envíos/publicaciones/deploy/push, installs/autostart/tunnels, borrar datos reales, apps/documentos personales, `Alt+Space`, selección real, replace-selection y observer `paste_observed` fuera de task/spec explícita.
 - Para tray/hotkeys/ventanas nativas, usar app Tauri real cuando sea razonable; preferir `npm run tauri:dev:hidden -- -StopExisting`.
 - Para features Fixvox-like, volver a `C:/dev/fixvox` como fuente canónica antes de cerrar el lote.
-- Trabajar en small batches/checkpoints verificables y reversibles.
 
-## Control plane portable
-
-La interacción diaria usa Traycer con el harness nativo activo. OMP permanece
-standalone/manual y no es invocado por Traycer; `.omp/extensions/aos-doctor.ts`
-conserva sólo la extensión local del producto y `.agents/skills` la discovery
-canónica. El repo no depende de `.traycer` ni de artifacts del manager.
 
 ## Persistencia
 
@@ -56,17 +47,26 @@ bun scripts/context-index.ts && bun scripts/agent-context-audit.ts
 
 No correr smokes físicos/audio/prod/deploy/autostart sin confirmación.
 
-## Trabajo Agentic
+## Frontera AOS/OMP
 
-- La intención conversacional es la entrada diaria: entender, planear o implementar ocurre en la sesión actual.
-- Un plan es orientación revisable; no ejecuta, no autoriza side effects y no abre otra sesión.
-- La implementación usa tools y todos del harness nativo activo, conserva WIP y resuelve el comportamiento observable directamente.
-- No hay selector de fases, handoff automático, auto-send, paquete global ni fallback local.
-- Los subagentes se usan sólo por pedido explícito.
-- `aos-realinear-os` abre `docs/topics/agentic-os-operations.md`; las operaciones manager-only no son motores diarios.
-- No crear prompts, runtimes o aliases locales que dupliquen este flujo.
-- Cuando otro harness continúe bajo demanda, usar un handoff breve con objetivo,
-  rama/worktree, decisiones, archivos/cambios, checks y siguiente gate.
+<!-- aos-bootstrap: stable-bootstrap-v1 -->
+<!-- aos-runtime-authority: omp -->
+<!-- aos-local-authority: product, domain, data, security, external-effects -->
+
+- Bootstrap estable: la ruta de `## Lectura Inicial` es el bootstrap local;
+  Dictation Tauri conserva autoridad sobre producto, dominio, datos, seguridad
+  y efectos externos, mientras OMP conserva ejecución y runtime.
+
+- AOS conserva conocimiento durable, continuidad documental, topics, tracks,
+  specs, gates locales, skills y el índice contextual.
+- Modelos, effort, tools, browser, todos, agentes, planificación,
+  paralelización, idioma, estilo y modos runtime pertenecen a OMP; este repo no
+  fija defaults para ellos.
+- `.omp/extensions/aos-doctor.ts` conserva sólo `/doctor`, diagnóstico local
+  read-only y opt-in. `.agents/skills` conserva la discovery de skills locales.
+- `aos-realinear-os` abre `docs/topics/agentic-os-operations.md`; las
+  operaciones manager-only no son motores diarios.
+
 
 ## Design Context
 

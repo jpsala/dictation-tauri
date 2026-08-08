@@ -2,13 +2,12 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-08-06T18:54:49.662Z
+Generated: 2026-08-08T20:06:43.061Z
 
 ## Topics
 
-- active: [agent-tool-routing](../topics/agent-tool-routing.md) - tool routing, routing decision, OMP, elegir herramienta, subagente
 - active: [agentic-os-operations](../topics/agentic-os-operations.md) - crear sistema agentico, migrar sistema agentico, actualizar norte, aos, init os, adopt os, update os, adaptar proyecto
-- active: [agentic-os](../topics/agentic-os.md) - norte, working memory, aos, agentic os, memoria viva, audit docs, tracks, OMP
+- active: [agentic-os](../topics/agentic-os.md) - norte, working memory, aos, agentic os, memoria viva, audit docs, tracks, continuidad documental
 - active: [app-design-loop](../topics/app-design-loop.md) - design loop, app design, UI polish, screenshot Playwright, Impeccable, accounts, admin web, settings
 - active: [automation-and-reference-fixtures](../topics/automation-and-reference-fixtures.md) - fixtures, audio sintetico, TTS, STT, benchmarks, Fixvox, fixvox, sin interaccion humana
 - draft: [backend-and-model-routing](../topics/backend-and-model-routing.md) - backend, proxy, model routing, proveedores, API keys, Groq, OpenAI, OpenRouter
@@ -22,9 +21,7 @@ Generated: 2026-08-06T18:54:49.662Z
 - active: [fixvox-local-to-production-workflow](../topics/fixvox-local-to-production-workflow.md) - local first, modo local, pasar a producción, promote to production, fixvox admin env, cloud dev local
 - active: [grammarly-like-input-intelligence](../topics/grammarly-like-input-intelligence.md) - Grammarly, input box, focused input, UI Automation, text field detection, floating widget, overlay, TextPattern
 - reference: [local-codex-skills](../topics/local-codex-skills.md) - skills locales, local skills, slash commands, docs/skills, .agents/skills, toggle skills, skills on, skills off
-- active: [minimal-implementation](../topics/minimal-implementation.md) - ponytail, minimal implementation, implementacion minima, solucion minima, yagni, over-engineering, bloat, boilerplate
 - active: [os-quality](../topics/os-quality.md) - perfect os, proyecto perfecto, dejar en condiciones, calidad agentica, optimizar contexto, docs livianos, docs indexados, comandos os
-- reference: [portable-multiharness-contract](../topics/portable-multiharness-contract.md)
 - active: [privacy-and-dictation-data](../topics/privacy-and-dictation-data.md) - privacidad, audio, transcripciones, dictado, logs, storage, modelos
 - active: [product-direction](../topics/product-direction.md) - producto, MVP, alcance, direccion, no human interaction, automatizacion
 - active: [selection-and-assistant-actions](../topics/selection-and-assistant-actions.md) - texto seleccionado, seleccion, assistant mode, asistente, quick chat, alt-q, presets, hotkeys
@@ -68,7 +65,6 @@ Generated: 2026-08-06T18:54:49.662Z
 ## OMP Resources
 
 - Extensions: aos-doctor.ts
-- Guidance: [agent-tool-routing](../topics/agent-tool-routing.md)
 
 ## Aliases
 

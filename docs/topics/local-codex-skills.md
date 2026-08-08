@@ -33,9 +33,7 @@ primary_refs:
 ## Uso
 
 Abrir este topic sólo para crear, revisar o reparar skills locales y su
-discovery. El trabajo diario de pensar, planear e implementar parte de la
-intención conversacional y permanece en la sesión actual; no crear aliases
-locales que compitan con esa ruta.
+discovery. El catálogo local no define el workflow cotidiano de OMP.
 
 ## Regla Canónica
 
@@ -51,8 +49,8 @@ capacidades realmente locales:
 - `impeccable`: trabajo UI/frontend;
 - `speckit-*`: workflow SpecKit del producto.
 
-No mantener skills locales alternativas de planificación, implementación,
-continuidad o cierre.
+No mantener skills locales que impongan defaults cotidianos de planificación,
+implementación, continuidad o cierre al runtime OMP.
 
 ## Skill, Topic O Regla
 
@@ -63,8 +61,8 @@ continuidad o cierre.
 | Skill | Es una acción repetible con triggers claros. | `aos-doctor`. |
 | Skill híbrida | La acción es descubrible y la lógica vive en un topic/script. | `realinear-os`. |
 
-Antes de crear una skill, confirmar que sea una acción repetible, tenga triggers
-claros, no duplique el workflow nativo y justifique su costo de metadata.
+Antes de crear una skill, confirmar que sea una capacidad local repetible con
+triggers claros y que no duplique una responsabilidad del runtime OMP.
 Mantener `SKILL.md` corto cuando una fuente canónica ya contiene el procedimiento.
 
 ## Validación

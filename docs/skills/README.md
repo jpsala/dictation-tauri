@@ -8,13 +8,13 @@
   canónicos y la skill funciona como entrada fina.
 - `.agents/skills` es compatibilidad técnica y debe apuntar por junction/symlink
   estable a `docs/skills/`.
-- Pensar, planear, implementar, continuar y cerrar pertenecen al `/flow` global;
-  no crear aliases locales competidores.
+- El catálogo local no fija defaults de planificación, implementación,
+  continuidad ni cierre para OMP.
 
 ## Contenido Actual
 
-Las skills AOS portables se descubren desde el kit upstream. Dictation Tauri
-conserva sólo skills propias y no colisionantes:
+OMP descubre el canon mediante `.agents/skills`. Dictation Tauri conserva sólo
+skills propias y no colisionantes:
 
 - `aos-doctor/` para diagnóstico read-only;
 - `realinear-os/` y `evaluar-skills/` para operaciones especializadas;

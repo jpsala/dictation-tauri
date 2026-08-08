@@ -1,6 +1,5 @@
 ---
 status: complete
-execution_route: strong
 started: 2026-07-24
 updated: 2026-07-24
 priority: high

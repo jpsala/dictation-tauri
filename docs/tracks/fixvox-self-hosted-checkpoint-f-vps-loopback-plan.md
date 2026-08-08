@@ -18,11 +18,10 @@ topic: fixvox-self-hosted-checkpoint-f-vps-loopback
 ## Routing Decision
 
 - **Intent:** `waiting_gate`; cerrar Checkpoint F sobre el baseline schema 6.
-- **Motor principal:** `/flow → Hacer` directo, con un único outcome band.
+- **Motor principal:** ejecución directa en la sesión OMP actual, con un único outcome band.
 - **Por qué:** restart/rollback, restore aislado y verificación privada forman un
   solo resultado operativo; separarlos agrega handoffs sin reducir el gate.
-- **Apoyos:** Advisor para decisiones operativas, checks deterministas y Pi
-  Lens sobre código tocado.
+- **Apoyos:** reviewer para decisiones operativas y checks deterministas sobre el código tocado.
 - **Nesting prohibido:** sin Taskflow, planner, dgoal, until-done, agentes
   paralelos ni writers simultáneos entre repos.
 - **Gates:** F1-F4 y F5R1 están completos; F5R2 está superseded. El cierre
@@ -50,12 +49,12 @@ topic: fixvox-self-hosted-checkpoint-f-vps-loopback
 - F5R2 no se ejecutó y quedó técnicamente obsoleto: promovía una control release byte-identical a `9afa…` y exigía schema 4. Su autorización previa no aplica al baseline actual.
 - Provider persistente y canary se planifican por separado en `docs/tracks/vps-persistent-provider-canary-plan.md`; esta reconciliación no los autoriza.
 
-## Enmienda De Cadencia `/flow` — 2026-07-22
+## Enmienda De Cadencia — 2026-07-22
 
-F5R3, F5R4 y F6 dejan de requerir tres sesiones Hacer: forman **Gate F
-Closure**, un solo outcome band con etapas internas fail-closed y un único
-cierre durable. El brief ejecutable es
-`docs/tracks/vps-gate-f-closure-brief.md`.
+F5R3, F5R4 y F6 forman **Gate F Closure**, un solo outcome band con etapas
+internas fail-closed y un único cierre durable. El brief ejecutable es
+`docs/tracks/vps-gate-f-closure-brief.md`; OMP lo ejecuta directamente en la
+sesión actual cuando exista la autorización exacta.
 
 Esto no fusiona gates externos posteriores. Checkpoint G será otra ejecución
 larga; Checkpoint H usará el brief de routing canary; el cutover I permanece

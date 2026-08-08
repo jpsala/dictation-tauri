@@ -1,4 +1,4 @@
-/// <reference path="../types/aos-runtime.d.ts" />
+/// <reference path="../types/node-shims.d.ts" />
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -156,24 +156,23 @@ if (exists("docs/skills")) {
   lines.push("- Missing docs/skills/");
 }
 
-lines.push("", "## Pi Resources", "");
+lines.push("", "## OMP Resources", "");
 
-const piPrompts = exists(".pi/prompts")
-  ? readdirSync(join(root, ".pi", "prompts"), { withFileTypes: true })
+const ompPrompts = exists(".omp/prompts")
+  ? readdirSync(join(root, ".omp", "prompts"), { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
     .map((entry) => entry.name.replace(/\.md$/, ""))
     .sort()
   : [];
-const piExtensions = exists(".pi/extensions")
-  ? readdirSync(join(root, ".pi", "extensions"), { withFileTypes: true })
+const ompExtensions = exists(".omp/extensions")
+  ? readdirSync(join(root, ".omp", "extensions"), { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".ts"))
     .map((entry) => entry.name)
     .sort()
   : [];
-if (piPrompts.length) lines.push(`- Prompts: ${piPrompts.join(", ")}`);
-if (piExtensions.length) lines.push(`- Extensions: ${piExtensions.join(", ")}`);
-if (!piPrompts.length && !piExtensions.length) lines.push("- No project Pi resources found.");
-lines.push("- Guidance: [pi-agentic-os](../topics/pi-agentic-os.md)");
+if (ompPrompts.length) lines.push(`- Prompts: ${ompPrompts.join(", ")}`);
+if (ompExtensions.length) lines.push(`- Extensions: ${ompExtensions.join(", ")}`);
+if (!ompPrompts.length && !ompExtensions.length) lines.push("- No project OMP resources found.");
 
 lines.push("", "## Aliases", "");
 

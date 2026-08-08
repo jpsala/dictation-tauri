@@ -3,7 +3,6 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { runAosDoctor } from "./lib/aos-doctor.ts";
-import { validateTraycerRoutingPolicy } from "./traycer-routing-contract.ts";
 
 type Finding = {
   level: "error" | "warn";
@@ -208,14 +207,24 @@ const docsKnowledge = exists("docs/topics/docs-knowledge-system.md")
   ? read("docs/topics/docs-knowledge-system.md")
   : "";
 
+for (const [marker, contract] of [
+  ["<!-- aos-bootstrap: stable-bootstrap-v1 -->", "stable bootstrap"],
+  ["<!-- aos-runtime-authority: omp -->", "OMP runtime authority"],
+  [
+    "<!-- aos-local-authority: product, domain, data, security, external-effects -->",
+    "local product and safety authority",
+  ],
+] as const) {
+  if (!agents.includes(marker)) {
+    add("error", `AGENTS.md is missing the ${contract} marker: ${marker}`);
+  }
+}
+
 if ((exists("docs/topics/agentic-os-operations.md") || exists("docs/skills/aos-realinear-os"))
   && (!agents.includes("aos-realinear-os") || !agents.includes("docs/topics/agentic-os-operations.md"))) {
   add("warn", "AGENTS.md should keep a short `aos-realinear-os` pointer to docs/topics/agentic-os-operations.md");
 }
 
-if (exists("docs/skills/aos-cerrar-sesion") && !agents.includes("aos-cerrar-sesion")) {
-  add("warn", "AGENTS.md should keep short pointer for `aos-cerrar-sesion`");
-}
 
 if (docsReadme) {
   const readingRoute = sectionContent(docsReadme, "Regla De Lectura Liviana");
@@ -320,7 +329,7 @@ if (exists("docs/skills")) {
   for (const skillDir of skillDirs) {
     const skillName = skillDir.split("/").at(-1) ?? skillDir;
     if (retiredWorkflowSkills[skillName]) {
-      add("error", `${skillDir} competes with the native OMP intent-first workflow`);
+      add("error", `${skillDir} would install a local default workflow owned by OMP`);
     }
   }
 
@@ -369,9 +378,7 @@ const ompHotPaths = [
   "AGENTS.md",
   "docs/WORKING_MEMORY.md",
   "docs/TOPICS.md",
-  "docs/reference/tool-routing.yaml",
   "docs/skills/README.md",
-  "docs/topics/agent-tool-routing.md",
   "docs/topics/agentic-os-operations.md",
   "docs/topics/agentic-os.md",
   "docs/topics/local-codex-skills.md",
@@ -502,11 +509,6 @@ for (const finding of runAosDoctor(root, { includeContextSize: false }).findings
   add(finding.level, `AOS doctor [${finding.code}]: ${finding.message}`);
 }
 
-const routingPolicy = exists("docs/reference/tool-routing.yaml") ? read("docs/reference/tool-routing.yaml") : "";
-const portableContract = exists("docs/topics/portable-multiharness-contract.md")
-  ? read("docs/topics/portable-multiharness-contract.md")
-  : "";
-for (const error of validateTraycerRoutingPolicy(routingPolicy, portableContract)) add("error", error);
 
 const errors = findings.filter((finding) => finding.level === "error");
 const warnings = findings.filter((finding) => finding.level === "warn");

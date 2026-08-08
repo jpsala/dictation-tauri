@@ -1,6 +1,5 @@
 ---
 status: blocked
-execution_route: balanced
 started: 2026-07-22
 updated: 2026-07-23
 priority: high
@@ -88,7 +87,7 @@ controlado y reversible, sin cambiar la autoridad productiva.
 
 ## Handoff — Batch D1 Provider-Free Isolado
 
-**Estado:** bloqueado; no repetir sin un token con Access Apps/Policies y Service Tokens write provisionado mediante `/flow → Planear`.
+**Estado:** bloqueado; no repetir sin un token con Access Apps/Policies y Service Tokens write y un plan nuevo explícito en la sesión OMP actual.
 
 **Objetivo:** demostrar `edge → Tunnel dedicado → loopback` sin Worker deploy,
 KV, identidad, audio, provider ni cambio de authority.

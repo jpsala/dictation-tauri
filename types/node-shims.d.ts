@@ -1,11 +1,11 @@
-interface AosFsStats {
+interface NodeFsStats {
   isDirectory(): boolean;
   isFile(): boolean;
   isSymbolicLink(): boolean;
   mtimeMs: number;
 }
 
-interface AosFsDirent {
+interface NodeFsDirent {
   name: string;
   isDirectory(): boolean;
   isFile(): boolean;
@@ -13,13 +13,13 @@ interface AosFsDirent {
 
 declare module "node:fs" {
   export function existsSync(path: string): boolean;
-  export function lstatSync(path: string): AosFsStats;
+  export function lstatSync(path: string): NodeFsStats;
   export function mkdirSync(path: string, options?: { recursive?: boolean }): string | undefined;
   export function readdirSync(path: string): string[];
-  export function readdirSync(path: string, options: { withFileTypes: true }): AosFsDirent[];
+  export function readdirSync(path: string, options: { withFileTypes: true }): NodeFsDirent[];
   export function readFileSync(path: string, encoding: "utf8"): string;
   export function realpathSync(path: string): string;
-  export function statSync(path: string): AosFsStats;
+  export function statSync(path: string): NodeFsStats;
   export function writeFileSync(path: string, data: string, encoding: "utf8"): void;
 }
 
@@ -31,10 +31,6 @@ declare module "node:path" {
   export function resolve(...paths: string[]): string;
 }
 
-declare module "node:url" {
-  export function pathToFileURL(path: string): { href: string };
-}
-
 declare const process: {
   cwd(): string;
   env: Record<string, string | undefined>;
@@ -43,11 +39,9 @@ declare const process: {
   exitCode?: number;
 };
 
-declare module "@earendil-works/pi-coding-agent" {
+declare module "@oh-my-pi/pi-coding-agent" {
   export interface ExtensionUIContext {
-    select(title: string, options: string[]): Promise<string | undefined>;
     notify(message: string, type?: "info" | "warning" | "error"): void;
-    setEditorText(text: string): void;
   }
 
   export interface ExtensionCommandContext {

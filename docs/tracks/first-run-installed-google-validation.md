@@ -2,7 +2,6 @@
 status: blocked
 updated: 2026-07-25
 priority: high
-execution_route: strong
 topic: docs/topics/ui-design-and-impeccable.md
 related:
   - docs/tracks/first-run-welcome-and-sign-in.md

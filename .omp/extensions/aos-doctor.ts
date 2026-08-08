@@ -1,8 +1,8 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { formatDoctorReport, runAosDoctor } from "../../scripts/lib/aos-doctor.ts";
 
-export default function aosDoctor(pi: ExtensionAPI) {
-  pi.registerCommand("doctor", {
+export default function aosDoctor(omp: ExtensionAPI) {
+  omp.registerCommand("doctor", {
     description: "Auditar foco, referencias, índice y carga del AOS sin modificar archivos",
     handler: async (_args, ctx) => {
       const report = runAosDoctor(ctx.cwd);

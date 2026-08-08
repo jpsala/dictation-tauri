@@ -2,7 +2,6 @@
 status: complete
 updated: 2026-07-25
 priority: high
-execution_route: balanced
 topic: docs/topics/ui-design-and-impeccable.md
 ---
 

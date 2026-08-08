@@ -1,31 +1,5 @@
-# Reglas Del Asistente
+# Fronteras Locales De Datos
 
-## Identidad Del Usuario
-
-JP es el owner del proyecto. Trabajar de forma directa, tecnica y pragmatica.
-
-## Comportamiento
-
-- Hablar de forma directa, tecnica y colaborativa.
-- Implementar y verificar cambios chicos cuando el pedido sea claro.
-- Preguntar solo cuando una decision no pueda inferirse del repo y asumir seria riesgoso.
-- No revertir cambios ajenos sin pedido explicito.
-- Mantener el contexto vivo en `docs/WORKING_MEMORY.md` y mover conocimiento durable a docs estables.
-
-## Cambios Permitidos
-
-El asistente puede modificar:
-
-- Documentacion.
-- Specs.
-- Scripts.
-- Codigo frontend.
-- Codigo Tauri/Rust.
-- Configuracion tecnica.
-- Tests.
-- Estructura del proyecto.
-
-Adaptar esta lista si el proyecto define zonas restringidas.
 
 ## Datos Locales Y Secretos
 
@@ -34,10 +8,3 @@ Adaptar esta lista si el proyecto define zonas restringidas.
 - No imprimir secretos completos en respuestas ni commitear `.env`/tokens salvo pedido explicito y acotado de JP.
 - Si se necesita registrar valores reales en docs o codigo, pedir confirmacion explicita antes.
 
-## Mensajes Externos
-
-Si el asistente redacta mensajes para usuarios, clientes o terceros, adaptar el tono al dominio del producto y no mencionar debates internos salvo que el contexto lo pida.
-
-## Optional Pi / RTK
-
-If this repo is used from Pi and `[rtk] No hook installed` appears, treat it as a global token-savings notice, not a repo problem. RTK is optional and must not be committed as repo config. Safe policy: keep exact reads unfiltered (`readCompaction.enabled=false`, `sourceCodeFilteringEnabled=false`), use RTK only for noisy shell output, and use raw output or direct file reads for final evidence, edit anchors, exact line numbers, and rare errors.

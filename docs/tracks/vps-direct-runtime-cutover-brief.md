@@ -1,6 +1,5 @@
 ---
 status: blocked
-execution_route: strong
 started: 2026-07-23
 updated: 2026-07-24
 priority: high
@@ -66,4 +65,4 @@ Worker público `fixvox-proxy` 200, VPS active con restarts 0 y readiness 200 en
 llamada provider; el conteo allowlisted sólo registró device/preflight y health.
 
 El resultado observable queda bloqueado. Este brief no autoriza corregir y
-repetir la corrida; hace falta `/flow → Planear` para un nuevo intento acotado.
+repetir la corrida; hace falta un plan nuevo y explícito para otro intento acotado.

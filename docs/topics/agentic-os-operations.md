@@ -82,7 +82,7 @@ No abrir docs largos, specs completas, archivos archivados ni referencias profun
 - Specs: specs activas estan indexadas, no tienen prefijos duplicados y tienen `spec.md`.
 - Drift: docs raiz no contradicen la ruta inicial ni el estado real del repo.
 - Archivos sueltos: notas, drafts, handoffs o contexto viejo tienen destino claro.
-- Audit/sync: `scripts/aos-doctor.ts`, `scripts/context-index.ts`, `scripts/context-refresh.ts` y `scripts/agent-context-audit.ts` cubren problemas recurrentes baratos de validar. El audit exige OMP nativo, el adapter `/doctor` en `.omp/extensions` y ausencia de runtimes, manifests o superficies Pi/AOS retiradas.
+- Audit/sync: `scripts/aos-doctor.ts`, `scripts/context-index.ts`, `scripts/context-refresh.ts` y `scripts/agent-context-audit.ts` cubren problemas recurrentes baratos de validar. El audit verifica el adapter local `/doctor` y la ausencia de runtimes, manifests o superficies Pi/AOS retiradas.
 
 ### Corregir Sin Preguntar
 

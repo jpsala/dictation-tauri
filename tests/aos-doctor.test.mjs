@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import aosDoctor from "../.pi/extensions/aos-doctor.ts";
+import aosDoctor from "../.omp/extensions/aos-doctor.ts";
 import { runAosDoctor } from "../scripts/lib/aos-doctor.ts";
 
 const fixtures = [];
@@ -36,9 +36,9 @@ function projectFixture({ focus, primaryRef = "docs/tracks/current.md", extensio
     "# Example",
     "",
   ].join("\n"));
-  for (const extension of extensions) write(root, `.pi/extensions/${extension}`, "export default function () {}\n");
+  for (const extension of extensions) write(root, `.omp/extensions/${extension}`, "export default function () {}\n");
   const extensionLine = extensions.length ? `- Extensions: ${extensions.join(", ")}\n` : "";
-  write(root, "docs/.generated/context-index.md", `# Context Index\n\n## Pi Resources\n\n${extensionLine}`);
+  write(root, "docs/.generated/context-index.md", `# Context Index\n\n## OMP Resources\n\n${extensionLine}`);
   return root;
 }
 
@@ -61,11 +61,11 @@ describe("AOS doctor", () => {
     expect(report.findings.map((finding) => finding.code)).toContain("topic.ref_missing");
   });
 
-  test("finds stale generated Pi inventory", () => {
+  test("finds stale generated OMP inventory", () => {
     const root = projectFixture({
       focus: "- **Estado:** `complete`.\n- **Referencia:** `docs/tracks/current.md`.\n- **Siguiente acción:** elegir próximo frente.",
     });
-    write(root, ".pi/extensions/unindexed.ts", "export default function () {}\n");
+    write(root, ".omp/extensions/unindexed.ts", "export default function () {}\n");
     const report = runAosDoctor(root, { includeContextSize: false });
     expect(report.findings.map((finding) => finding.code)).toContain("index.pi_extensions_stale");
   });
@@ -79,7 +79,7 @@ describe("AOS doctor", () => {
     expect(report.findings.map((finding) => finding.code)).toContain("track.status_invalid");
   });
 
-  test("Pi adapter exposes read-only /doctor", async () => {
+  test("OMP adapter exposes read-only /doctor", async () => {
     const root = projectFixture({
       focus: "- **Estado:** `complete`.\n- **Referencia:** `docs/tracks/current.md`.\n- **Siguiente acción:** elegir próximo frente.",
       extensions: ["aos-doctor.ts"],

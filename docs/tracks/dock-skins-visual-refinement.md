@@ -2,7 +2,6 @@
 status: active
 updated: 2026-07-27
 priority: medium
-execution_route: balanced
 topic: docs/topics/fixvox-dock-and-hotkeys-reference.md
 ---
 

@@ -1,7 +1,7 @@
 ---
-status: paused
+status: superseded
 started: 2026-07-15
-updated: 2026-07-20
+updated: 2026-08-04
 priority: high
 owner: Pi
 related:
@@ -11,8 +11,6 @@ related:
   - docs/WORKING_MEMORY.md
 topic: bounded-taskflow-implementation-spike
 source_refs:
-  - .pi/taskflows/dictation-bounded-implementation-spike.json
-  - .pi/taskflows/dictation-bounded-plan-implement-spike.json
   - cloud/fixvox-api/src/postgres/bootstrap-builtin-engine-prompt-catalog.ts
   - cloud/fixvox-api/tests/builtin-catalog-bootstrap.integration.test.ts
   - specs/019-fixvox-self-hosted-control-plane/contracts/product-route-disposition.md
@@ -20,6 +18,10 @@ source_refs:
 ---
 
 # Bounded Taskflow Implementation Spike
+
+> Superseded el 2026-08-04 por el workflow intent-first nativo de OMP. Los
+> taskflows Pi y sus runs se retiraron del repo; este documento conserva sólo la
+> evaluación histórica.
 
 ## Objetivo
 
@@ -273,7 +275,7 @@ El primer fallo de baseline permite una única corrección y rerun porque fue un
 
 Si pasa, el siguiente paso no es automatizar todo D: primero revisar métricas y diseñar un flow parametrizado separado.
 
-## Runbook Para Sesión Nueva
+## Runbook Histórico (No Ejecutar)
 
 Prompt recomendado:
 
@@ -293,9 +295,9 @@ Presentá el autonomy contract exacto del track y pedime una única aprobación 
 
 Comando humano equivalente después de aprobar: `/tf:dictation-bounded-implementation-spike`.
 
-## Operator Helper `/flow` — Implementado
+## Operator Helper Histórico — Retirado
 
-El helper mínimo quedó implementado en `C:/dev/os/.pi/extensions/aos-flujo.ts` y cargado por `C:/tools/pi-menu.ps1` en los perfiles `aos`, `implementer` y `orchestrate`.
+El helper mínimo vivió en el runtime Pi upstream y se retiró con el corte OMP.
 
 Contrato efectivo:
 
@@ -308,9 +310,9 @@ Contrato efectivo:
 
 Verificación 2026-07-16: import TypeScript y parse PowerShell pasaron; los dry-runs de los tres perfiles cargaron la extensión exactamente una vez; smoke interactivo pasó cancelación y las cuatro opciones, incluyendo prompts no enviados automáticamente. Cambiar perfiles sigue requiriendo un proceso nuevo mediante `pi-menu`; el helper no es un segundo orquestador. Taskflow R2 permaneció sin ejecutar.
 
-## Decisión Posterior
+## Decisión Posterior (Supersedida)
 
 - PASS limpio: evaluar un nuevo flow reusable parametrizado para sublotes seriales de Checkpoint D.
 - PASS con dos reparaciones: ajustar primero prompts/checks y repetir otro piloto pequeño.
 - BLOCK/FAILED: diagnosticar trace; no adoptar Taskflow como reemplazo del relay manual todavía.
-- Helper `/flow`: adoptado como UX explícita y no invasiva; mantenerlo limitado a recomendación + prompt revisable.
+- El helper histórico quedó retirado; la ruta vigente es OMP intent-first en la sesión actual.

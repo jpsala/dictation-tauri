@@ -28,7 +28,6 @@
     "selection-capture:smoke": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/selection-capture-smoke.ps1",
     "context:index": "bun scripts/context-index.ts",
     "context:audit": "bun scripts/agent-context-audit.ts",
-    "routing:check": "bun scripts/traycer-routing-check.ts",
     "context:refresh": "bun scripts/context-refresh.ts",
     "aos:doctor": "bun scripts/aos-doctor.ts",
     "skills:status": "powershell -ExecutionPolicy Bypass -File scripts/toggle-skills-link.ps1 status",
@@ -60,7 +59,7 @@
     "admin:web:prod": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/admin-web-prod.ps1",
     "admin:web:smoke": "node scripts/admin-web-ui-smoke.mjs",
     "admin:web:chat-shell:smoke": "node scripts/admin-web-pi-chat-shell-smoke.mjs",
-    "check": "bun run context:audit && bun run routing:check && bun run skills:status",
+    "check": "bun run context:audit && bun run skills:status",
     "check:ci": "bun scripts/agent-context-audit.ts"
   },
   "dependencies": {

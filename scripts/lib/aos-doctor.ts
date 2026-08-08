@@ -94,13 +94,13 @@ export function runAosDoctor(projectRoot = process.cwd(), options: { includeCont
   const contextIndexPath = join(root, "docs", ".generated", "context-index.md");
   if (existsSync(contextIndexPath)) {
     const index = read(contextIndexPath);
-    const actualPrompts = actualResources(root, ".pi/prompts", ".md", true);
-    const actualExtensions = actualResources(root, ".pi/extensions", ".ts");
+    const actualPrompts = actualResources(root, ".omp/prompts", ".md", true);
+    const actualExtensions = actualResources(root, ".omp/extensions", ".ts");
     if (!sameList(listedResources(index, "Prompts"), actualPrompts)) {
-      add("error", "index.pi_prompts_stale", "Context index no coincide con prompts Pi locales.");
+      add("error", "index.pi_prompts_stale", "Context index no coincide con prompts OMP locales.");
     }
     if (!sameList(listedResources(index, "Extensions"), actualExtensions)) {
-      add("error", "index.pi_extensions_stale", "Context index no coincide con extensiones Pi locales.");
+      add("error", "index.pi_extensions_stale", "Context index no coincide con extensiones OMP locales.");
     }
   } else {
     add("error", "index.missing", "Falta docs/.generated/context-index.md.");

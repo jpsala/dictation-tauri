@@ -1,6 +1,5 @@
 ---
 status: blocked
-execution_route: strong
 started: 2026-07-23
 updated: 2026-07-23
 priority: high
@@ -69,4 +68,4 @@ Access, Tunnel, connector y temporales. JP vuelve a `403` en VPS; Worker health
 200 y VPS active, restarts 0, readiness 200 con `cloudflare-authority`.
 
 El resultado observable queda bloqueado. Cualquier diagnóstico o nuevo intento
-requiere un brief nuevo por `/flow → Planear`; este track no autoriza retry.
+requiere un brief nuevo explícito; este track no autoriza retry.
