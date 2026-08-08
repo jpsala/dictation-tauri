@@ -26,12 +26,12 @@ describe("Windows desktop delivery native paste", () => {
     expect(source.indexOf("matching_native_edit_target(&target")).toBeLessThan(
       source.indexOf("send_unicode_text(text)"),
     );
-    expect(source.indexOf("let direct_result = deliver_text_without_clipboard(")).toBeLessThan(
-      source.indexOf("let warning = deliver_text_with_clipboard("),
+    expect(source.indexOf("delivery_mode == DeliveryMode::ClipboardPaste")).toBeLessThan(
+      source.indexOf("let direct_result = deliver_text_without_clipboard("),
     );
   });
 
-  it("keeps clipboard paste as an explicit opt-in fallback with restoration", () => {
+  it("supports selected clipboard paste and explicit fallback with restoration", () => {
     const source = readFileSync("src-tauri/src/desktop_delivery.rs", "utf8");
 
     expect(source).toContain("DICTATION_TAURI_ALLOW_CLIPBOARD_PASTE_FALLBACK");
@@ -48,7 +48,7 @@ describe("Windows desktop delivery native paste", () => {
     expect(source).toContain("send_ctrl_v()?");
     const focusIndex = source.indexOf("focus_window(hwnd)?");
     const snapshotIndex = source.indexOf("let previous_clipboard = read_clipboard_snapshot()?");
-    const writeIndex = source.indexOf("if let Err(write_error) = write_clipboard_text(text)");
+    const writeIndex = source.indexOf("write_transient_clipboard_text(text, clipboard_owner_hwnd)");
     const pasteIndex = source.indexOf("send_ctrl_v()?");
     const restoreIndex = source.lastIndexOf("restore_clipboard_snapshot(previous_clipboard)");
     expect(focusIndex).toBeLessThan(snapshotIndex);
@@ -73,6 +73,10 @@ describe("Windows desktop delivery native paste", () => {
     expect(source).toContain("GetClipboardFormatNameW");
     expect(source).toContain("combine_paste_and_restore_results");
     expect(source).toContain("Delivery warning:");
+    expect(source).toContain('TRANSIENT_PASTE_FORMAT_NAME: &str = "Fixvox.TransientPaste.v1"');
+    expect(source).toContain('TRANSIENT_PASTE_MARKER: &[u8] = b"dictation-tauri/v1\\0"');
+    expect(source).toContain("OpenClipboard(owner_hwnd)");
+    expect(source).toContain("delivery_mode == DeliveryMode::ClipboardPaste");
   });
 
   it("scopes inline observation to the focused control with bounded messages", () => {

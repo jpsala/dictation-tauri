@@ -14,6 +14,7 @@ describe("user preference contracts", () => {
   it("defaults auto-stop disabled with a safe silence duration", () => {
     expect(defaultUserPreferences).toMatchObject({
       dockSkin: "compact-5",
+      deliveryMode: "direct",
       followFocusUntilDelivery: true,
       pasteWithoutFocusChange: false,
       autoStopOnSilenceEnabled: false,
@@ -41,6 +42,7 @@ describe("user preference contracts", () => {
     ).toMatchObject({
       showDockOnStartup: false,
       dockSkin: "compact-5",
+      deliveryMode: "direct",
       reviewBeforeDelivery: true,
       pressEnterAfterPaste: true,
       pasteWithoutFocusChange: false,
@@ -50,6 +52,12 @@ describe("user preference contracts", () => {
       muteOutputDuringRecording: false,
       dictationSoundCuesEnabled: false,
     });
+  });
+
+  it("accepts only the two supported delivery modes", () => {
+    expect(normalizeUserPreferences({ deliveryMode: "clipboardPaste" }).deliveryMode).toBe("clipboardPaste");
+    expect(normalizeUserPreferences({ deliveryMode: "direct" }).deliveryMode).toBe("direct");
+    expect(normalizeUserPreferences({ deliveryMode: "unsupported" as never }).deliveryMode).toBe("direct");
   });
 
   it("keeps only supported dock skin identifiers", () => {

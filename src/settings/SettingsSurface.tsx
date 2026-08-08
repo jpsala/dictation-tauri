@@ -680,6 +680,19 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     }
   }
 
+  async function updateDeliveryMode(deliveryMode: UserPreferences["deliveryMode"]) {
+    setBusyAction("preferences");
+    try {
+      const saved = await setUserPreferences({
+        ...userPreferences,
+        deliveryMode,
+      });
+      setUserPreferencesState(saved);
+    } finally {
+      setBusyAction(undefined);
+    }
+  }
+
   async function loadCloudStatus(manual = false) {
     if (manual) {
       setBusyAction("status");
@@ -1084,6 +1097,15 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
               checked={userPreferences.dictationSoundCuesEnabled}
               disabled={!tauriRuntime || busyAction === "preferences"}
               onClick={() => void toggleUserPreference("dictationSoundCuesEnabled")}
+            />
+            <PreferenceSelect
+              label="Modo de entrega"
+              detail={userPreferences.deliveryMode === "clipboardPaste"
+                ? "Pega de una vez con Ctrl+V, preserva el portapapeles e identifica el texto como transporte interno."
+                : "Inserta sin usar el portapapeles. Puede tardar más en editores como VS Code."}
+              value={userPreferences.deliveryMode}
+              disabled={!tauriRuntime || busyAction === "preferences"}
+              onChange={(deliveryMode) => void updateDeliveryMode(deliveryMode)}
             />
             <PreferenceToggle
               label="Pegar sin cambiar de ventana"
@@ -1636,6 +1658,39 @@ function PreferenceToggle({
   );
 }
 
+
+function PreferenceSelect({
+  label,
+  detail,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  detail: string;
+  value: UserPreferences["deliveryMode"];
+  disabled: boolean;
+  onChange: (value: UserPreferences["deliveryMode"]) => void;
+}) {
+  return (
+    <label className="settings-hotkey-row settings-select-row">
+      <span className="settings-hotkey-copy">
+        <strong>{label}</strong>
+        <span>{detail}</span>
+      </span>
+      <select
+        className="settings-preference-select"
+        value={value}
+        disabled={disabled}
+        aria-label={label}
+        onChange={(event) => onChange(event.target.value as UserPreferences["deliveryMode"])}
+      >
+        <option value="direct">Entrada directa</option>
+        <option value="clipboardPaste">Pegado rápido</option>
+      </select>
+    </label>
+  );
+}
 function shortcutFromKeyboardEvent(event: KeyboardEvent): string | undefined {
   const key = normalizeShortcutKey(event.key);
   if (!key) {

@@ -8,10 +8,13 @@ import {
 
 export const userPreferencesChangedEvent = "settings://user-preferences-changed";
 
+export type DeliveryMode = "direct" | "clipboardPaste";
+
 export type UserPreferences = {
   schemaVersion: 1;
   showDockOnStartup: boolean;
   dockSkin: DockSkinId;
+  deliveryMode: DeliveryMode;
   reviewBeforeDelivery: boolean;
   pressEnterAfterPaste: boolean;
   pasteWithoutFocusChange: boolean;
@@ -39,6 +42,7 @@ export const defaultUserPreferences: UserPreferences = {
   schemaVersion: 1,
   showDockOnStartup: true,
   dockSkin: defaultDockSkinId,
+  deliveryMode: "direct",
   reviewBeforeDelivery: false,
   pressEnterAfterPaste: false,
   pasteWithoutFocusChange: false,
@@ -62,11 +66,15 @@ export function normalizeAutoStopSilenceMs(value: number): number {
 export function normalizeUserPreferences(
   preferences: Partial<UserPreferences> | undefined,
 ): UserPreferences {
+  const deliveryMode = preferences?.deliveryMode === "clipboardPaste"
+    ? "clipboardPaste"
+    : "direct";
   return {
     ...defaultUserPreferences,
     ...preferences,
     schemaVersion: 1,
     dockSkin: normalizeDockSkinId(preferences?.dockSkin),
+    deliveryMode,
     autoStopSilenceMs: normalizeAutoStopSilenceMs(
       preferences?.autoStopSilenceMs ?? defaultAutoStopSilenceMs,
     ),

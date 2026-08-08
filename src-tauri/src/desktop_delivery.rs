@@ -1,9 +1,11 @@
+use crate::user_preferences::DeliveryMode;
 use serde::{Deserialize, Serialize};
 use std::{
     sync::{Mutex, Once},
     thread,
     time::Duration,
 };
+use tauri::Manager;
 
 static DELIVERY_TARGET_WATCHER: Once = Once::new();
 
@@ -179,12 +181,31 @@ pub fn deliver_text_to_desktop_target(
         preferences.paste_without_focus_change,
         restore_saved_target_focus.unwrap_or(false),
     );
+    let clipboard_owner_hwnd = clipboard_owner_hwnd(&app, preferences.delivery_mode)?;
     platform::deliver_text_to_desktop_target(
         text,
         target,
         press_enter_after_paste.unwrap_or(false),
         focus_target_before_paste,
+        preferences.delivery_mode,
+        clipboard_owner_hwnd,
     )
+}
+
+#[cfg(windows)]
+fn clipboard_owner_hwnd(
+    app: &tauri::AppHandle,
+    delivery_mode: DeliveryMode,
+) -> Result<Option<isize>, String> {
+    let Some(window) = app.get_webview_window("main") else {
+        return if delivery_mode == DeliveryMode::ClipboardPaste {
+            Err("Dictation Dock window is unavailable for clipboard ownership.".to_string())
+        } else {
+            Ok(None)
+        };
+    };
+    let hwnd = window.hwnd().map_err(|error| error.to_string())?;
+    Ok(Some(hwnd.0 as isize))
 }
 
 /// Re-captures the saved host selection immediately before replacing it.
@@ -443,12 +464,14 @@ pub fn copy_text_to_clipboard(text: String) -> Result<(), String> {
 #[cfg(windows)]
 mod platform {
     use super::{
-        DesktopDeliveryResult, DesktopDeliveryTarget, DesktopPasteObservationResult,
+        DeliveryMode, DesktopDeliveryResult, DesktopDeliveryTarget, DesktopPasteObservationResult,
         DesktopTargetSnapshot,
     };
     use std::{
         ffi::c_void,
-        ptr, thread,
+        ptr,
+        sync::LazyLock,
+        thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
     use windows_sys::Win32::{
@@ -460,7 +483,7 @@ mod platform {
             DataExchange::{
                 CloseClipboard, CountClipboardFormats, EmptyClipboard, EnumClipboardFormats,
                 GetClipboardData, GetClipboardFormatNameW, IsClipboardFormatAvailable,
-                OpenClipboard, SetClipboardData,
+                OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
             },
             Memory::{GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE},
             Threading::{
@@ -499,6 +522,8 @@ mod platform {
     const NATIVE_EDIT_MESSAGE_TIMEOUT_MS: u32 = 500;
     const RESTORABLE_BITMAP_METADATA_FORMAT_NAMES: [&str; 3] =
         ["DataObject", "System.Drawing.Bitmap", "Ole Private Data"];
+    const TRANSIENT_PASTE_FORMAT_NAME: &str = "Fixvox.TransientPaste.v1";
+    const TRANSIENT_PASTE_MARKER: &[u8] = b"dictation-tauri/v1\0";
 
     #[derive(Clone, Debug)]
     struct ClipboardFormatDescriptor {
@@ -810,6 +835,8 @@ mod platform {
         target: DesktopDeliveryTarget,
         press_enter_after_paste: bool,
         focus_target_before_paste: bool,
+        delivery_mode: DeliveryMode,
+        clipboard_owner_hwnd: Option<isize>,
     ) -> Result<DesktopDeliveryResult, String> {
         if text.trim().is_empty() {
             return Err("Cannot deliver empty text.".to_string());
@@ -820,7 +847,9 @@ mod platform {
 
         let total_started = Instant::now();
         let hwnd = parse_hwnd(&target.frame_hwnd)?;
-        prepare_direct_delivery_focus(hwnd, focus_target_before_paste)?;
+        if delivery_mode == DeliveryMode::Direct {
+            prepare_direct_delivery_focus(hwnd, focus_target_before_paste)?;
+        }
         let prepare_ms = total_started.elapsed().as_millis();
 
         let focused = focused_control_for_delivery(hwnd, &target);
@@ -829,47 +858,86 @@ mod platform {
         let observable_before = observer_hwnd.and_then(read_window_control_text);
 
         let input_started = Instant::now();
-        let direct_result =
-            deliver_text_without_clipboard(&text, hwnd, native_edit_hwnd, press_enter_after_paste);
-        let input_ms = input_started.elapsed().as_millis();
-        let (method, used_clipboard_fallback, delivery_warning) = match direct_result {
-            Ok(outcome) => (outcome.method, false, outcome.warning),
-            Err(DirectDeliveryError::RetrySafe(error)) if allow_clipboard_paste_fallback() => {
-                eprintln!(
-                    "[dictation-tauri][desktop-delivery] retry-safe direct input failure; using explicit clipboard fallback reason={error}"
-                );
-                let warning = deliver_text_with_clipboard(
-                    &text,
-                    &target,
-                    hwnd,
-                    press_enter_after_paste,
-                    focus_target_before_paste,
-                )
-                .map_err(|fallback_error| {
-                    eprintln!(
-                        "[dictation-tauri][desktop-delivery] clipboard fallback failed reason={fallback_error}"
-                    );
-                    fallback_error
+        let (method, clipboard_kind, delivery_warning) = if delivery_mode
+            == DeliveryMode::ClipboardPaste
+        {
+            let owner_hwnd = clipboard_owner_hwnd
+                .map(|value| value as HWND)
+                .filter(|value| !value.is_null())
+                .ok_or_else(|| {
+                    "Clipboard paste mode requires a live Dictation window owner.".to_string()
                 })?;
-                (DirectDeliveryMethod::UnicodeSendInput, true, warning)
-            }
-            Err(DirectDeliveryError::Uncertain(error)) => {
-                eprintln!(
-                    "[dictation-tauri][desktop-delivery] native edit delivery is uncertain; no fallback attempted reason={error}"
-                );
-                return Err(format!(
-                    "Native edit delivery could not be confirmed: {error}. No fallback was attempted to avoid duplicate text."
-                ));
-            }
-            Err(DirectDeliveryError::RetrySafe(error)) => {
-                eprintln!(
-                    "[dictation-tauri][desktop-delivery] direct delivery failed without clipboard fallback reason={error}"
-                );
-                return Err(format!(
-                    "Direct text input failed without using the clipboard: {error}. Temporary clipboard fallback is disabled by default."
-                ));
+            let warning = deliver_text_with_clipboard(
+                &text,
+                &target,
+                hwnd,
+                press_enter_after_paste,
+                focus_target_before_paste,
+                owner_hwnd,
+            )?;
+            (
+                DirectDeliveryMethod::UnicodeSendInput,
+                Some("selected"),
+                warning,
+            )
+        } else {
+            let direct_result = deliver_text_without_clipboard(
+                &text,
+                hwnd,
+                native_edit_hwnd,
+                press_enter_after_paste,
+            );
+            match direct_result {
+                Ok(outcome) => (outcome.method, None, outcome.warning),
+                Err(DirectDeliveryError::RetrySafe(error)) if allow_clipboard_paste_fallback() => {
+                    eprintln!(
+                            "[dictation-tauri][desktop-delivery] retry-safe direct input failure; using explicit clipboard fallback reason={error}"
+                        );
+                    let owner_hwnd = clipboard_owner_hwnd
+                        .map(|value| value as HWND)
+                        .filter(|value| !value.is_null())
+                        .ok_or_else(|| {
+                            "Clipboard fallback requires a live Dictation window owner.".to_string()
+                        })?;
+                    let warning = deliver_text_with_clipboard(
+                            &text,
+                            &target,
+                            hwnd,
+                            press_enter_after_paste,
+                            focus_target_before_paste,
+                            owner_hwnd,
+                        )
+                        .map_err(|fallback_error| {
+                            eprintln!(
+                                "[dictation-tauri][desktop-delivery] clipboard fallback failed reason={fallback_error}"
+                            );
+                            fallback_error
+                        })?;
+                    (
+                        DirectDeliveryMethod::UnicodeSendInput,
+                        Some("fallback"),
+                        warning,
+                    )
+                }
+                Err(DirectDeliveryError::Uncertain(error)) => {
+                    eprintln!(
+                            "[dictation-tauri][desktop-delivery] native edit delivery is uncertain; no fallback attempted reason={error}"
+                        );
+                    return Err(format!(
+                            "Native edit delivery could not be confirmed: {error}. No fallback was attempted to avoid duplicate text."
+                        ));
+                }
+                Err(DirectDeliveryError::RetrySafe(error)) => {
+                    eprintln!(
+                            "[dictation-tauri][desktop-delivery] direct delivery failed without clipboard fallback reason={error}"
+                        );
+                    return Err(format!(
+                            "Direct text input failed without using the clipboard: {error}. Temporary clipboard fallback is disabled by default."
+                        ));
+                }
             }
         };
+        let input_ms = input_started.elapsed().as_millis();
 
         let observable_after = observer_hwnd.and_then(read_window_control_text);
         let observed = did_observe_inserted_text(
@@ -879,10 +947,10 @@ mod platform {
         );
         let total_ms = total_started.elapsed().as_millis();
         let utf16_units = text.encode_utf16().count();
-        let method_label = if used_clipboard_fallback {
-            "clipboard_fallback"
-        } else {
-            method.label()
+        let method_label = match clipboard_kind {
+            Some("selected") => "clipboard_paste",
+            Some(_) => "clipboard_fallback",
+            None => method.label(),
         };
         eprintln!(
             "[dictation-tauri][desktop-delivery] completed method={method_label} utf16_units={utf16_units} prepare_ms={prepare_ms} input_ms={input_ms} total_ms={total_ms} observed={observed}"
@@ -893,22 +961,33 @@ mod platform {
         } else {
             "current foreground target without changing windows"
         };
-        let reason = if used_clipboard_fallback && observed {
+        let reason = if clipboard_kind == Some("selected") && observed {
+            format!(
+                "Selected clipboard paste was verified by a bounded Win32 text observer on the {target_description}."
+            )
+        } else if clipboard_kind == Some("selected") && press_enter_after_paste {
+            format!(
+                "Selected clipboard paste and Enter commands were sent to the {target_description} without observation."
+            )
+        } else if clipboard_kind == Some("selected") {
+            format!(
+                "Selected clipboard paste was sent to the {target_description} without observation."
+            )
+        } else if clipboard_kind == Some("fallback") && observed {
             format!(
                 "Explicit clipboard fallback was verified by a bounded Win32 text observer on the {target_description}."
             )
-        } else if used_clipboard_fallback && press_enter_after_paste {
+        } else if clipboard_kind == Some("fallback") && press_enter_after_paste {
             format!(
                 "Explicit clipboard fallback and Enter commands were sent to the {target_description} without observation."
             )
-        } else if used_clipboard_fallback {
+        } else if clipboard_kind == Some("fallback") {
             format!(
                 "Explicit clipboard fallback was sent to the {target_description} without observation."
             )
         } else if method == DirectDeliveryMethod::NativeEditMessage && observed {
-            format!(
-                "Native Edit insertion was verified on the focused control without using the clipboard."
-            )
+            "Native Edit insertion was verified on the focused control without using the clipboard."
+                .to_string()
         } else if method == DirectDeliveryMethod::NativeEditMessage && press_enter_after_paste {
             "Native Edit insertion and Enter were sent to the focused control without using the clipboard or observation."
                 .to_string()
@@ -1077,6 +1156,7 @@ mod platform {
         hwnd: HWND,
         press_enter_after_paste: bool,
         focus_target_before_paste: bool,
+        clipboard_owner_hwnd: HWND,
     ) -> Result<Option<String>, String> {
         if focus_target_before_paste {
             focus_window(hwnd)?;
@@ -1087,7 +1167,7 @@ mod platform {
             );
         }
         let previous_clipboard = read_clipboard_snapshot()?;
-        if let Err(write_error) = write_clipboard_text(text) {
+        if let Err(write_error) = write_transient_clipboard_text(text, clipboard_owner_hwnd) {
             return match restore_clipboard_snapshot(previous_clipboard) {
                 Ok(()) => Err(write_error),
                 Err(restore_error) => Err(format!(
@@ -1840,6 +1920,47 @@ mod platform {
         }
     }
 
+    fn transient_paste_format() -> Result<u32, String> {
+        static FORMAT: LazyLock<u32> = LazyLock::new(|| {
+            let encoded: Vec<u16> = TRANSIENT_PASTE_FORMAT_NAME
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
+            unsafe { RegisterClipboardFormatW(encoded.as_ptr()) }
+        });
+        if *FORMAT == 0 {
+            Err("Transient paste clipboard format could not be registered.".to_string())
+        } else {
+            Ok(*FORMAT)
+        }
+    }
+
+    fn write_transient_clipboard_text(text: &str, owner_hwnd: HWND) -> Result<(), String> {
+        let marker_format = transient_paste_format()?;
+        unsafe {
+            if OpenClipboard(owner_hwnd) == 0 {
+                return Err("Clipboard could not be opened for transient paste.".to_string());
+            }
+            if EmptyClipboard() == 0 {
+                CloseClipboard();
+                return Err("Clipboard could not be cleared for transient paste.".to_string());
+            }
+            let wrote_text = write_clipboard_text_open(text);
+            let wrote_marker =
+                write_clipboard_format_bytes_open(marker_format, TRANSIENT_PASTE_MARKER);
+            if !wrote_text || !wrote_marker {
+                CloseClipboard();
+                return Err(
+                    "Clipboard text and its trusted transient marker could not be set together."
+                        .to_string(),
+                );
+            }
+            if CloseClipboard() == 0 {
+                return Err("Clipboard could not be closed after transient paste.".to_string());
+            }
+        }
+        Ok(())
+    }
     fn write_clipboard_text(text: &str) -> Result<(), String> {
         unsafe {
             if OpenClipboard(ptr::null_mut()) == 0 {
@@ -2180,7 +2301,7 @@ mod platform {
 #[cfg(not(windows))]
 mod platform {
     use super::{
-        DesktopDeliveryResult, DesktopDeliveryTarget, DesktopPasteObservationResult,
+        DeliveryMode, DesktopDeliveryResult, DesktopDeliveryTarget, DesktopPasteObservationResult,
         DesktopTargetSnapshot,
     };
 
@@ -2201,6 +2322,8 @@ mod platform {
         target: DesktopDeliveryTarget,
         _press_enter_after_paste: bool,
         _focus_target_before_paste: bool,
+        _delivery_mode: DeliveryMode,
+        _clipboard_owner_hwnd: Option<isize>,
     ) -> Result<DesktopDeliveryResult, String> {
         Err(format!(
             "Desktop delivery is only available on Windows for target {}.",

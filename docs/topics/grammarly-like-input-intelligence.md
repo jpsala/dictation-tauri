@@ -177,6 +177,24 @@ allowlist verificada:
   redacted informa metodo, unidades UTF-16 y tiempos prepare/input/total;
 - no se cambio aun la semantica de CRLF en el fallback.
 
+### Modos De Entrega Seleccionables — 2026-08-07
+
+Settings permite elegir `Entrada directa` o `Pegado rápido`. La primera sigue
+siendo el default y conserva `EM_REPLACESEL`/`SendInput` sin clipboard. La
+segunda reutiliza el roundtrip snapshot, `Ctrl+V` y restauración para insertar
+el texto de una sola vez.
+
+El write transitorio publica `CF_UNICODETEXT` junto con el formato registrado
+`Fixvox.TransientPaste.v1` y payload `dictation-tauri/v1`, usando el HWND del
+dock como clipboard owner. Copicu sólo omite la captura cuando coinciden nombre,
+payload y proceso owner `dictation-tauri.exe`; `Copy transcript` continúa sin
+marca porque es una copia explícita. La preferencia host-owned persiste como
+`deliveryMode: direct | clipboardPaste`.
+
+Validación provider-free: contratos Settings/delivery 22/22, renderer build,
+`cargo check`, arranque Tauri real oculto y harness Rust completo de Copicu
+181/181. El smoke no dictó, no pegó y no modificó el clipboard.
+
 Checks locales: 22 archivos/140 tests TypeScript, 21 tests Rust focales,
 `cargo fmt --check`, `cargo check` y LSP verdes. Persisten solo warnings
 `dead_code` preexistentes. Prueba manual real aprobada en Notepad moderno:

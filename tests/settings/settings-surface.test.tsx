@@ -226,6 +226,9 @@ describe("SettingsSurface", () => {
     expect(dictation).toContain("Dictado");
     expect(dictation).toContain("Detener después de un silencio");
     expect(dictation).toContain("Silenciar salida al grabar");
+    expect(dictation).toContain("Modo de entrega");
+    expect(dictation).toContain("Entrada directa");
+    expect(dictation).toContain("Pegado rápido");
     expect(dictation).not.toContain("Cloud");
     expect(dictation).not.toContain("policy");
     expect(privacy).toContain("Privacidad");

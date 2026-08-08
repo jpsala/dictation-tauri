@@ -32,7 +32,9 @@ decisiones.
   reutiliza History; copy/paste-last conservan causa y operación; Copy y cierre
   nativo de Companion vuelven a `Ready`; tray/botón derecho preservan el target,
   incluido Windows Terminal. Dictado, Paste last e History usan Unicode directo
-  y no tocan el clipboard por defecto. No hubo deploy.
+  por defecto y no tocan el clipboard. Settings permite elegir el pegado rápido
+  con snapshot/restore; su write transitorio lleva marca y owner verificados
+  para que Copicu lo omita sin ocultar `Copy transcript` explícito.
 - History quedó corregido, publicado e instalado: cada dictado usa el
   `captureId` nativo y ya no sobrescribe resultados bajo `sim-run-0001`. La UI es
   una tabla estable con preview flotante a 800 ms, Paste explícito y navegación
