@@ -6,6 +6,7 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import test from 'node:test'
+import { accountHandleForGoogleSubject } from './account-identity.mjs'
 
 const port = 18987
 const baseUrl = `http://127.0.0.1:${port}`
@@ -29,6 +30,9 @@ async function withServer(env, run) {
     await once(child, 'exit')
   }
 }
+test('admin account identity matches the product OAuth account handle', () => {
+  assert.equal(accountHandleForGoogleSubject('mock-jpsala-google-sub'), 'acc_91c02199b182e890')
+})
 
 test('server RBAC derives the recent verified Google role server-side', async () => {
   await withServer({}, async () => {
@@ -39,9 +43,14 @@ test('server RBAC derives the recent verified Google role server-side', async ()
     assert.doesNotMatch(JSON.stringify(payload), /attacker@example\.com|jpsala@gmail\.com/)
     const envResponse = await fetch(`${baseUrl}/api/admin/env`)
     const envPayload = await envResponse.json()
-    assert.equal(envPayload.user.email, undefined)
-    assert.equal(envPayload.user.emailRedacted, 'j…@gmail.com')
-    assert.doesNotMatch(JSON.stringify(envPayload), /jpsala@gmail\.com/)
+    assert.equal(envPayload.user.email, 'jpsala@gmail.com')
+    assert.equal(envPayload.user.emailRedacted, undefined)
+    const accountsPayload = await (await fetch(`${baseUrl}/api/admin/accounts`)).json()
+    assert.equal(accountsPayload.currentAccount.linked, true)
+    assert.equal(accountsPayload.currentAccount.userEmail, 'jpsala@gmail.com')
+    assert.equal(accountsPayload.accounts.find((account) => account.isCurrentAccount)?.userEmail, 'jpsala@gmail.com')
+    assert.doesNotMatch(JSON.stringify(accountsPayload), /mock-jpsala-google-sub/)
+    assert.equal(accountsPayload.accounts.find((account) => account.isCurrentAccount)?.accountHandle, 'acc_91c02199b182e890')
   })
 })
 

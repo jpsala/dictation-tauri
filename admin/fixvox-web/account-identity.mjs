@@ -3,7 +3,7 @@ import crypto from 'node:crypto'
 export function accountHandleForGoogleSubject(subject) {
   const value = String(subject || '').trim()
   if (!value) return null
-  const digest = crypto.createHash('sha256').update(`google:${value}`).digest('hex')
+  const digest = crypto.createHash('sha256').update(value).digest('hex')
   return `acc_${digest.slice(0, 16)}`
 }
 
@@ -15,7 +15,7 @@ export function annotateCurrentAdminAccount(payload, session) {
   if (!accountHandle) return { ...payload, accounts, currentAccount: null }
 
   const displayName = String(session.name || 'Cuenta Google').trim() || 'Cuenta Google'
-  const userEmailRedacted = redactGoogleEmail(session.email)
+  const userEmail = String(session.email || '').trim().toLowerCase() || null
   let linked = false
   const annotatedAccounts = accounts.map((account) => {
     if (account?.accountHandle !== accountHandle) return account
@@ -24,14 +24,14 @@ export function annotateCurrentAdminAccount(payload, session) {
       ...account,
       isCurrentAccount: true,
       displayName,
-      userEmailRedacted,
+      userEmail,
     }
   })
 
   return {
     ...payload,
     accounts: annotatedAccounts,
-    currentAccount: { linked, displayName, userEmailRedacted },
+    currentAccount: { linked, displayName, userEmail },
   }
 }
 

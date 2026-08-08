@@ -1398,7 +1398,7 @@ const server = http.createServer(async (req, res) => {
         adminBaseUrl: MOCK_MODE ? 'mock://fixvox-admin' : ADMIN_BASE_URL,
         ompCwd: OMP_CWD,
         ompMode: UNRESTRICTED_OWNER_MODE ? 'unrestricted-owner' : REMOTE_AGENT_ENABLED ? 'isolated' : 'standard',
-        user: session ? { provider: session.provider, emailRedacted: session.email ? redactGoogleEmail(session.email) : null, name: session.name || null } : null,
+        user: session ? { provider: session.provider, email: session.email || null, name: session.name || null } : null,
       guardrails: UNRESTRICTED_OWNER_MODE ? [] : [
         'No push/deploy/systemd/tunnel sin aprobacion explicita.',
         'No mutar policies/users en production sin confirmacion explicita.',

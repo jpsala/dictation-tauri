@@ -58,8 +58,8 @@ try {
   check('people title rendered', (await page.locator('.pi-header h1').innerText()) === 'Personas')
   await page.getByRole('heading', { name: 'Cuentas' }).waitFor({ timeout: 10_000 })
   check('current admin identity rendered', await page.locator('#messages').getByText('Tu cuenta').first().isVisible())
-  check('current email is masked', await page.locator('#messages').getByText('j…@gmail.com').first().isVisible())
-  check('full email is absent', await page.locator('#messages').getByText('jpsala@gmail.com').count() === 0)
+  check('current email is complete', await page.locator('#messages').getByText('jpsala@gmail.com').first().isVisible())
+  check('complete account data renders', await page.locator('#messages .account-facts dt').allTextContents().then((labels) => ['Email', 'Proveedor', 'Account handle', 'Profile efectivo', 'Fuente del profile', 'Devices', 'Última actividad', 'Budget', 'Groups', 'Overrides'].every((label) => labels.includes(label))))
   check('linked devices render', await page.locator('#messages').getByText('dev_redacted_owner').first().isVisible())
   check('group runtime source renders', await page.locator('#messages .source-chip.group', { hasText: 'Group targeting' }).first().isVisible())
   check('account budget control renders', await page.locator('#messages .account-budget').isVisible())
@@ -109,7 +109,7 @@ try {
   await page.getByRole('heading', { name: 'Role bindings' }).waitFor({ timeout: 10_000 })
   await page.locator('.role-binding-row').first().waitFor({ timeout: 10_000 })
   check('RBAC bindings render', await page.locator('.settings-role-panel').first().isVisible())
-  check('RBAC email is display-only and redacted', await page.locator('.role-binding-row').getByText('j…@gmail.com').isVisible() && await page.getByText('jpsala@gmail.com').count() === 0)
+  check('RBAC email is display-only and redacted', await page.locator('.role-binding-row').getByText('j…@gmail.com').isVisible() && await page.locator('.role-binding-row').getByText('jpsala@gmail.com').count() === 0)
   check('RBAC mutation uses linked principal selector', await page.locator('[data-save-role] select[name="principalKey"]').isVisible())
   check('RBAC mutation accepts no email authority', await page.locator('[data-save-role] input[type="email"], [data-remove-role] input[type="email"]').count() === 0)
   const principalValues = await page.locator('[data-save-role] select[name="principalKey"] option').evaluateAll((options) => options.map((option) => option.value))
@@ -155,6 +155,15 @@ try {
   const drawerWidth = await page.locator('.admin-drawer').evaluate((element) => Math.round(element.getBoundingClientRect().width))
   check('tablet sidebar collapses to rail', drawerWidth <= 90, { drawerWidth })
   await snap(page, 'tablet-rail')
+  await page.getByTitle('Personas').click()
+  await page.getByRole('heading', { name: 'Cuentas' }).waitFor({ timeout: 10_000 })
+  await page.setViewportSize({ width: 748, height: 465 })
+  const narrowAccountLayout = await page.locator('.account-detail').evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+    return { viewport: innerWidth, scrollWidth: document.documentElement.scrollWidth, left: Math.round(bounds.left), right: Math.round(bounds.right) }
+  })
+  check('narrow account detail fits the viewport', narrowAccountLayout.scrollWidth <= narrowAccountLayout.viewport && narrowAccountLayout.left >= 0 && narrowAccountLayout.right <= narrowAccountLayout.viewport, narrowAccountLayout)
+  await snap(page, 'people-narrow')
   report.ok = true
 } catch (error) {
   report.error = error instanceof Error ? error.message : String(error)

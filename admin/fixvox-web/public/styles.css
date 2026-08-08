@@ -226,3 +226,36 @@ body[data-admin-view="chat"] .composer {
     align-items: center;
   }
 }
+
+/* Account data stays readable at narrow Control Room widths. */
+.account-overview {
+  padding: 14px 0;
+  border-top: 1px solid var(--product-border);
+  border-bottom: 1px solid var(--product-border);
+}
+.account-overview h4 { margin: 0 0 10px; }
+.account-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin: 0;
+}
+.account-facts div { min-width: 0; }
+.account-facts dt {
+  color: var(--product-muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.account-facts dd {
+  margin: 2px 0 0;
+  color: var(--product-ink);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1180px) {
+  .accounts-workbench-grid { grid-template-columns: minmax(0, 1fr); }
+  .accounts-table-card { overflow-x: auto; }
+}
+@media (max-width: 760px) {
+  .account-facts { grid-template-columns: minmax(0, 1fr); }
+}

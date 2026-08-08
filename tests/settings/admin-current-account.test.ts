@@ -6,7 +6,7 @@ import {
 } from "../../admin/fixvox-web/account-identity.mjs";
 
 describe("Admin current account identity", () => {
-  it("marks the existing Google account without exposing its subject or email", () => {
+  it("marks the existing Google account without exposing its subject", () => {
     const subject = "google-sub-123456";
     const currentHandle = accountHandleForGoogleSubject(subject);
     const other = {
@@ -34,17 +34,16 @@ describe("Admin current account identity", () => {
     expect(result.currentAccount).toEqual({
       linked: true,
       displayName: "Juan Pablo Sala",
-      userEmailRedacted: "j…@gmail.com",
+      userEmail: "jpsala@gmail.com",
     });
     expect(result.accounts[0]).toMatchObject({
       accountHandle: currentHandle,
       isCurrentAccount: true,
       displayName: "Juan Pablo Sala",
-      userEmailRedacted: "j…@gmail.com",
+      userEmail: "jpsala@gmail.com",
     });
     expect(result.accounts[1]).toEqual(other);
     expect(JSON.stringify(result)).not.toContain(subject);
-    expect(JSON.stringify(result)).not.toContain("jpsala@gmail.com");
   });
 
   it("strips raw account identity fields from proxied account payloads", () => {
@@ -70,7 +69,7 @@ describe("Admin current account identity", () => {
     expect(result.currentAccount).toEqual({
       linked: false,
       displayName: "Juan Pablo Sala",
-      userEmailRedacted: "j…@gmail.com",
+      userEmail: "jpsala@gmail.com",
     });
   });
 
