@@ -43,6 +43,7 @@ const state = {
   showAllTools: false,
   selectedEntity: null,
   pendingAccountPolicy: null,
+  accountFilters: { search: '', policy: '', activity: '' },
   pendingProfileMutation: null,
   profileNotice: null,
   lastAdminViewRendered: null,
@@ -844,16 +845,54 @@ function formatDateTime(value) {
   if (Number.isNaN(date.getTime())) return String(value)
   return new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(date)
 }
+function normalizeAccountFilter(value) {
+  return String(value || '').trim().toLocaleLowerCase('es')
+}
+function accountMatchesActivity(account, activity) {
+  if (!activity) return true
+  const timestamp = new Date(account.lastSeenAt || '').getTime()
+  if (activity === 'none') return !Number.isFinite(timestamp)
+  const maxAgeDays = Number(activity)
+  return Number.isFinite(timestamp) && Date.now() - timestamp <= maxAgeDays * 24 * 60 * 60 * 1000
+}
+function filterAccounts(accounts) {
+  const search = normalizeAccountFilter(state.accountFilters.search)
+  const policy = state.accountFilters.policy
+  const activity = state.accountFilters.activity
+  return accounts.filter((account) => {
+    const searchable = normalizeAccountFilter([
+      accountDisplayName(account),
+      accountSecondaryLabel(account),
+      account.accountHandle,
+      effectivePolicyLabel(account),
+      ...(Array.isArray(account.groups) ? account.groups : []),
+    ].filter(Boolean).join(' '))
+    return (!search || searchable.includes(search))
+      && (!policy || effectivePolicyId(account) === policy)
+      && accountMatchesActivity(account, activity)
+  })
+}
 function renderAccountsWorkbench(data) {
   const accounts = Array.isArray(data.accounts) ? data.accounts : []
-  const selected = getSelectedAccount(accounts)
+  const visibleAccounts = filterAccounts(accounts)
+  const selected = getSelectedAccount(visibleAccounts)
   const policyOptions = Array.isArray(data.policyOptions) ? data.policyOptions : []
   const proCount = accounts.filter((account) => (effectivePolicyId(account) || '').includes('pro')).length
   const totalDevices = accounts.reduce((sum, account) => sum + Number(account.deviceCount || 0), 0)
+  const filteredCount = visibleAccounts.length === accounts.length ? '' : ` · ${visibleAccounts.length} visibles`
   const unlinkedCurrentAccount = data.currentAccount && !data.currentAccount.linked
-    ? `<div class="alert warning"><strong>Tu sesión Admin todavía no está vinculada a una cuenta de producto.</strong><br>${esc(data.currentAccount.displayName || 'Cuenta Google')} · ${esc(data.currentAccount.userEmail || 'email no disponible')}</div>`
+    ? `<div class="alert warning"><strong>Esta sesión Admin no corresponde a ninguna cuenta de producto.</strong><br>${esc(data.currentAccount.displayName || 'Cuenta Google')} · ${esc(data.currentAccount.userEmail || 'email no disponible')}<br><small>La sesión Admin no determina tu plan. Si Fixvox Tauri ya muestra Plan pro, la aplicación está conectada con otra identidad Google.</small></div>`
     : ''
-  return `<div class="admin-workbench accounts-workbench"><div class="workbench-head compact"><div><span class="eyebrow">Accounts</span><h2>Cuentas</h2><p>${accounts.length} cuentas · ${proCount} Pro · ${totalDevices} devices vinculados · ${policyOptions.length} profiles disponibles</p></div><button class="button" data-chat-context="Analizá las cuentas visibles y recomendá próximas acciones seguras." data-chat-label="Analizar cuentas">Analizar con Pi</button></div>${unlinkedCurrentAccount}<div class="accounts-toolbar"><input type="search" placeholder="Buscar usuario" disabled><select disabled><option>Todos los profiles</option></select><select disabled><option>Toda actividad</option></select></div><div class="accounts-workbench-grid"><section class="accounts-table-card"><table class="accounts-table"><thead><tr><th>Usuario</th><th>Profile</th><th>Devices</th><th>Última actividad</th><th></th></tr></thead><tbody>${accounts.map((account) => { const selectedRow = selected?.accountHandle === account.accountHandle; return `<tr class="${selectedRow ? 'selected' : ''}" data-select-entity data-entity-kind="account" data-entity-id="${esc(account.accountHandle)}" data-entity-label="${esc(accountDisplayName(account))}"><td><strong>${esc(accountDisplayName(account))} ${currentAccountBadge(account)}</strong><small>${esc(accountSecondaryLabel(account))}</small></td><td>${renderEffectivePolicyBadge(account)}</td><td>${esc(account.deviceCount ?? 0)}</td><td>${esc(formatDateTime(account.lastSeenAt))}</td><td><button class="button tiny" data-chat-context="Explicame la cuenta ${esc(accountDisplayName(account))} (${esc(account.accountHandle)}) y qué profile conviene asignarle." data-chat-label="Analizar ${esc(accountDisplayName(account))}">Pi</button></td></tr>` }).join('') || '<tr><td colspan="5">Sin cuentas para mostrar.</td></tr>'}</tbody></table></section>${selected ? renderAccountDetail(selected, policyOptions) : '<section class="account-detail"><p class="muted">Seleccioná una cuenta para ver detalle.</p></section>'}</div></div>`
+  const policyFilterOptions = policyOptions.map((policy) => {
+    const id = typeof policy === 'string' ? policy : policy.policyId || policy.id
+    const label = typeof policy === 'string' ? policy : policy.policyLabel || policy.label || id
+    return `<option value="${esc(id)}" ${state.accountFilters.policy === id ? 'selected' : ''}>${esc(label)}</option>`
+  }).join('')
+  const rows = visibleAccounts.map((account) => {
+    const selectedRow = selected?.accountHandle === account.accountHandle
+    return `<tr class="${selectedRow ? 'selected' : ''}" data-select-entity data-entity-kind="account" data-entity-id="${esc(account.accountHandle)}" data-entity-label="${esc(accountDisplayName(account))}"><td><strong>${esc(accountDisplayName(account))} ${currentAccountBadge(account)}</strong><small>${esc(accountSecondaryLabel(account))}</small></td><td>${renderEffectivePolicyBadge(account)}</td><td>${esc(account.deviceCount ?? 0)}</td><td>${esc(formatDateTime(account.lastSeenAt))}</td><td><button class="button tiny" data-chat-context="Explicame la cuenta ${esc(accountDisplayName(account))} (${esc(account.accountHandle)}) y qué profile conviene asignarle." data-chat-label="Analizar ${esc(accountDisplayName(account))}">Pi</button></td></tr>`
+  }).join('')
+  return `<div class="admin-workbench accounts-workbench"><div class="workbench-head compact"><div><span class="eyebrow">Accounts</span><h2>Cuentas</h2><p>${accounts.length} cuentas · ${proCount} Pro · ${totalDevices} devices vinculados · ${policyOptions.length} profiles disponibles${filteredCount}</p></div><button class="button" data-chat-context="Analizá las cuentas visibles y recomendá próximas acciones seguras." data-chat-label="Analizar cuentas">Analizar con Pi</button></div>${unlinkedCurrentAccount}<div class="accounts-toolbar"><input type="search" data-account-search aria-label="Buscar usuario" placeholder="Buscar por usuario, cuenta o profile" value="${esc(state.accountFilters.search)}"><select data-account-policy aria-label="Filtrar por profile"><option value="">Todos los profiles</option>${policyFilterOptions}</select><select data-account-activity aria-label="Filtrar por actividad"><option value="">Toda actividad</option><option value="1" ${state.accountFilters.activity === '1' ? 'selected' : ''}>Últimas 24 horas</option><option value="7" ${state.accountFilters.activity === '7' ? 'selected' : ''}>Últimos 7 días</option><option value="30" ${state.accountFilters.activity === '30' ? 'selected' : ''}>Últimos 30 días</option><option value="none" ${state.accountFilters.activity === 'none' ? 'selected' : ''}>Sin actividad</option></select></div><div class="accounts-workbench-grid"><section class="accounts-table-card"><table class="accounts-table"><thead><tr><th>Usuario</th><th>Profile</th><th>Devices</th><th>Última actividad</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="5">No hay cuentas que coincidan con los filtros.</td></tr>'}</tbody></table></section>${selected ? renderAccountDetail(selected, policyOptions) : '<section class="account-detail"><p class="muted">Ajustá los filtros para seleccionar una cuenta.</p></section>'}</div></div>`
 }
 function renderAccountPolicyPreview(account, policyOptions) {
   const pending = state.pendingAccountPolicy
@@ -1218,6 +1257,27 @@ function wireDynamicEvents() {
   document.querySelectorAll('[data-rollback-profile]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); rollbackProfile(form.dataset.rollbackProfile, form).catch(alertError) })
   document.querySelectorAll('[data-save-role]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); saveRoleBinding(form).catch(alertError) })
   document.querySelectorAll('[data-remove-role]').forEach((form) => form.onsubmit = (event) => { event.preventDefault(); removeRoleBinding(form).catch(alertError) })
+  const accountSearch = document.querySelector('[data-account-search]')
+  if (accountSearch) accountSearch.oninput = (event) => {
+    state.accountFilters.search = event.currentTarget.value
+    const caret = event.currentTarget.selectionStart
+    renderMessages(); wireDynamicEvents()
+    const nextSearch = document.querySelector('[data-account-search]')
+    if (nextSearch) {
+      nextSearch.focus()
+      nextSearch.setSelectionRange(caret, caret)
+    }
+  }
+  const accountPolicy = document.querySelector('[data-account-policy]')
+  if (accountPolicy) accountPolicy.onchange = (event) => {
+    state.accountFilters.policy = event.currentTarget.value
+    renderMessages(); wireDynamicEvents()
+  }
+  const accountActivity = document.querySelector('[data-account-activity]')
+  if (accountActivity) accountActivity.onchange = (event) => {
+    state.accountFilters.activity = event.currentTarget.value
+    renderMessages(); wireDynamicEvents()
+  }
   document.querySelectorAll('[data-select-entity]').forEach((card) => card.onclick = (event) => {
     if (event.target.closest('button')) return
     state.selectedEntity = { kind: card.dataset.entityKind, id: card.dataset.entityId, label: card.dataset.entityLabel || card.dataset.entityId }

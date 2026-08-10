@@ -428,7 +428,7 @@ function summarizeFixvoxAuthLimits(limits: FixvoxPolicyTemplate["limits"] | unde
     typeof limits.dailyTranslations === "number" ? `${limits.dailyTranslations} translations/day` : undefined,
   ].filter(Boolean);
 
-  return parts.length > 0 ? parts.join(" · ") : "No elevated limits";
+  return parts.length > 0 ? parts.join(" · ") : "Límites estándar del plan";
 }
 
 function safeRedactedLabel(value: string | undefined, fallback: string): string {

@@ -65,6 +65,13 @@ try {
   check('account budget control renders', await page.locator('#messages .account-budget').isVisible())
   check('account groups render', await page.locator('#messages .groups-panel').isVisible())
   check('legacy overrides are read only', await page.locator('#messages [data-update-account-segments], #messages [data-create-account-variant]').count() === 0)
+  const accountSearch = page.getByRole('searchbox', { name: 'Buscar usuario' })
+  check('account search is enabled', await accountSearch.isEnabled())
+  await accountSearch.fill('does-not-exist')
+  check('account search filters rows', await page.getByText('No hay cuentas que coincidan con los filtros.').isVisible())
+  await accountSearch.fill('')
+  check('account search restores rows', await page.locator('#messages [data-select-entity]', { hasText: 'Tu cuenta' }).isVisible())
+  check('account profile filter is enabled', await page.getByRole('combobox', { name: 'Filtrar por profile' }).isEnabled())
   await snap(page, 'people')
 
   await page.locator('#messages [data-select-entity]', { hasText: 'Tu cuenta' }).click()

@@ -153,6 +153,7 @@ describe("SettingsSurface", () => {
     expect(html).toContain("Pro");
     expect(html).toContain("Tu cuenta y esta computadora están listas para dictar.");
     expect(html).toContain("Plan Pro");
+    expect(html).not.toContain("No elevated limits");
     expect(html).not.toContain("Founders");
     expect(html).not.toContain("managed dictation");
     expect(html).not.toContain("postprocess");

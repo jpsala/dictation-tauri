@@ -235,6 +235,11 @@ describe("Fixvox cloud settings contract", () => {
     });
     expect(view.capabilityLabel).toContain("managed dictation");
     expect(JSON.stringify(view)).not.toContain("user_1234567890abcdef");
+    const standardLimitView = deriveFixvoxAuthPolicyView({
+      ...signedIn,
+      authPolicy: { ...signedIn.authPolicy!, limits: {} },
+    });
+    expect(standardLimitView.limitsLabel).toBe("Límites estándar del plan");
   });
 
   it("fails closed when a linked local account lacks current backend confirmation", () => {
