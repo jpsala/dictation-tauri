@@ -155,6 +155,27 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
       return cors(request, error("not_found", 404));
     }
 
+    if (request.method === "POST" && url.pathname === "/admin/control-plane/accounts/identity-link") {
+      if (!permitted(actual, "publish")) return cors(request, error("forbidden", 403));
+      try {
+        const command = await body(request);
+        if (Object.keys(command).some((key) => !["sourceAccountHandle", "targetAccountId", "actorKey", "confirmation"].includes(key))) throw new Error("invalid_identity_link");
+        const sourceAccountHandle = typeof command.sourceAccountHandle === "string" ? command.sourceAccountHandle.trim() : "";
+        const targetAccountId = typeof command.targetAccountId === "string" ? command.targetAccountId.trim() : "";
+        const actorKey = typeof command.actorKey === "string" ? command.actorKey.trim() : "";
+        const confirmation = typeof command.confirmation === "string" ? command.confirmation.trim() : "";
+        if (!/^google:[^:@\s]{6,256}$/.test(targetAccountId) || !/^arp_[a-f0-9]{64}$/.test(actorKey)) throw new Error("invalid_identity_link");
+        const targetSubjectHash = await hash(targetAccountId.slice("google:".length));
+        if (actorKey !== `arp_${targetSubjectHash}`) throw new Error("identity_actor_mismatch");
+        return cors(request, json(await deps.repository.linkAccountIdentity({ sourceAccountHandle, targetSubjectHash, actorRefHash: actorKey, confirmation })));
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : "";
+        if (message === "account_not_found" || message === "account_has_no_devices") return cors(request, error("not_found", 404));
+        if (message === "account_ambiguous" || message === "target_account_conflict" || message === "identity_already_linked") return cors(request, error(message, 409));
+        if (["invalid_identity_link", "invalid_confirmation", "identity_actor_mismatch", "invalid_body"].includes(message)) return cors(request, error("invalid_request", 400));
+        return cors(request, error("service_unavailable", 503));
+      }
+    }
     if (request.method === "POST" && url.pathname === "/admin/control-plane/accounts/policy") {
       if (!permitted(actual, "edit")) return cors(request, error("forbidden", 403));
       try {

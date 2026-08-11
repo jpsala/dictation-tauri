@@ -356,6 +356,23 @@ export type ControlPlaneAdminAccountPolicyResponse = {
   devicesUpdated: number;
 };
 
+export type ControlPlaneAdminAccountIdentityLinkPayload = {
+  sourceAccountHandle?: string | null;
+  targetAccountId?: string | null;
+  actorKey?: string | null;
+  confirmation?: string | null;
+};
+
+export type ControlPlaneAdminAccountIdentityLinkResponse = {
+  ok: true;
+  sourceAccountHandle: string;
+  targetAccountHandle: string;
+  devicesUpdated: number;
+  policyId: string | null;
+  completedAt: string;
+  idempotentReplay: boolean;
+};
+
 export type ControlPlaneAdminAccountSegmentsPayload = {
   accountHandle?: string | null;
   accountId?: string | null;
@@ -832,6 +849,35 @@ type AccountGroupsAssignment = {
   groups: string[];
   updatedAt: string;
 };
+
+type AccountIdentityLinkPending = {
+  schemaVersion: 1;
+  status: "pending";
+  sourceAccountHandle: string;
+  targetAccountHandle: string;
+  sourceAccountId: string;
+  targetAccountId: string;
+  actorKey: string;
+  deviceIds: string[];
+  policy: AccountPolicyAssignment | null;
+  segments: AccountSegmentsAssignment | null;
+  budget: AccountBudgetAssignment | null;
+  groups: AccountGroupsAssignment | null;
+  startedAt: string;
+};
+
+type AccountIdentityLinkCompleted = {
+  schemaVersion: 1;
+  status: "completed";
+  sourceAccountHandle: string;
+  targetAccountHandle: string;
+  actorKey: string;
+  devicesUpdated: number;
+  policyId: string | null;
+  completedAt: string;
+};
+
+type AccountIdentityLinkReceipt = AccountIdentityLinkPending | AccountIdentityLinkCompleted;
 
 type ProfileVersionStore = {
   schemaVersion: 1;
@@ -1413,6 +1459,10 @@ function buildAccountBudgetKey(accountHandle: string): string {
 
 function buildAccountGroupsKey(accountHandle: string): string {
   return `control:account:${accountHandle}:groups`;
+}
+
+function buildAccountIdentityLinkKey(sourceAccountHandle: string, targetAccountHandle: string): string {
+  return `control:account-identity-link:${sourceAccountHandle}:${targetAccountHandle}`;
 }
 
 function buildAccountVariantsKey(): string {
@@ -3346,6 +3396,127 @@ async function resolveAdminAccountId(
   const accountHandle = await buildAccountHandle(accountId);
   if (requestedHandle && requestedHandle !== accountHandle) throw new Error("account not found");
   return { accountId, accountHandle, records };
+}
+
+function accountIdentityAssignmentValue(value: AccountPolicyAssignment | AccountSegmentsAssignment | AccountBudgetAssignment | AccountGroupsAssignment | null): string | null {
+  if (!value) return null;
+  const { accountHandle: _accountHandle, accountId: _accountId, updatedAt: _updatedAt, ...businessValue } = value;
+  return JSON.stringify(businessValue);
+}
+
+export async function linkControlPlaneAdminAccountIdentity(
+  store: KvNamespaceLike,
+  payload: ControlPlaneAdminAccountIdentityLinkPayload,
+): Promise<ControlPlaneAdminAccountIdentityLinkResponse> {
+  const sourceAccountHandle = sanitizeString(payload.sourceAccountHandle);
+  const targetAccountId = sanitizeString(payload.targetAccountId);
+  const actorKey = sanitizeString(payload.actorKey);
+  const confirmation = sanitizeString(payload.confirmation);
+  if (!sourceAccountHandle || !/^acc_[a-f0-9]{16}$/.test(sourceAccountHandle)) throw new Error("invalid source account");
+  if (!targetAccountId || !/^google:[^:@\s]{6,256}$/.test(targetAccountId)) throw new Error("invalid target identity");
+  if (!actorKey || !/^arp_[a-f0-9]{64}$/.test(actorKey)) throw new Error("invalid actor");
+  if (confirmation !== `LINK ${sourceAccountHandle} TO CURRENT ADMIN`) throw new Error("identity link confirmation mismatch");
+  if (!store.delete) throw new Error("identity link requires deletable storage");
+
+  const targetAccountHandle = await buildAccountHandle(targetAccountId);
+  if (sourceAccountHandle === targetAccountHandle) throw new Error("account identity is already linked");
+  const receiptKey = buildAccountIdentityLinkKey(sourceAccountHandle, targetAccountHandle);
+  const existingReceipt = parseJson<AccountIdentityLinkReceipt | null>(await store.get(receiptKey), null);
+  if (existingReceipt?.status === "completed") {
+    return {
+      ok: true,
+      sourceAccountHandle,
+      targetAccountHandle,
+      devicesUpdated: existingReceipt.devicesUpdated,
+      policyId: existingReceipt.policyId,
+      completedAt: existingReceipt.completedAt,
+      idempotentReplay: true,
+    };
+  }
+
+  let pending = existingReceipt?.status === "pending" ? existingReceipt : null;
+  if (pending && (pending.targetAccountId !== targetAccountId || pending.actorKey !== actorKey)) {
+    throw new Error("identity link is already pending with different parameters");
+  }
+  if (!pending) {
+    const source = await resolveAdminAccountId(store, { accountHandle: sourceAccountHandle });
+    const sourceDeviceIds = source.records.filter((record) => record.accountId === source.accountId).map((record) => record.deviceId);
+    if (sourceDeviceIds.length === 0) throw new Error("source account has no devices");
+    pending = {
+      schemaVersion: 1,
+      status: "pending",
+      sourceAccountHandle,
+      targetAccountHandle,
+      sourceAccountId: source.accountId,
+      targetAccountId,
+      actorKey,
+      deviceIds: sourceDeviceIds,
+      policy: await readAccountPolicyAssignment(store, source.accountId),
+      segments: await readAccountSegmentsAssignment(store, source.accountId),
+      budget: await readAccountBudgetAssignment(store, source.accountId),
+      groups: await readAccountGroupsAssignment(store, source.accountId),
+      startedAt: new Date().toISOString(),
+    };
+    await store.put(receiptKey, JSON.stringify(pending));
+  }
+
+  const [targetPolicy, targetSegments, targetBudget, targetGroups] = await Promise.all([
+    readAccountPolicyAssignment(store, targetAccountId),
+    readAccountSegmentsAssignment(store, targetAccountId),
+    readAccountBudgetAssignment(store, targetAccountId),
+    readAccountGroupsAssignment(store, targetAccountId),
+  ]);
+  const assignmentPairs = [
+    ["policy", pending.policy, targetPolicy],
+    ["segments", pending.segments, targetSegments],
+    ["budget", pending.budget, targetBudget],
+    ["groups", pending.groups, targetGroups],
+  ] as const;
+  for (const [name, sourceValue, targetValue] of assignmentPairs) {
+    if (sourceValue && targetValue && accountIdentityAssignmentValue(sourceValue) !== accountIdentityAssignmentValue(targetValue)) {
+      throw new Error(`target account has conflicting ${name}`);
+    }
+  }
+
+  const completedAt = new Date().toISOString();
+  const nextPolicy = pending.policy ?? targetPolicy;
+  const nextSegments = pending.segments ?? targetSegments;
+  const nextBudget = pending.budget ?? targetBudget;
+  const nextGroups = pending.groups ?? targetGroups;
+  if (nextPolicy) await store.put(buildAccountPolicyKey(targetAccountHandle), JSON.stringify({ ...nextPolicy, accountHandle: targetAccountHandle, accountId: targetAccountId, updatedAt: completedAt }), { expirationTtl: ACCOUNT_POLICY_TTL_SECONDS });
+  if (nextSegments) await store.put(buildAccountSegmentsKey(targetAccountHandle), JSON.stringify({ ...nextSegments, accountHandle: targetAccountHandle, accountId: targetAccountId, updatedAt: completedAt }), { expirationTtl: ACCOUNT_SEGMENTS_TTL_SECONDS });
+  if (nextBudget) await store.put(buildAccountBudgetKey(targetAccountHandle), JSON.stringify({ ...nextBudget, accountHandle: targetAccountHandle, accountId: targetAccountId, updatedAt: completedAt }), { expirationTtl: ACCOUNT_BUDGET_TTL_SECONDS });
+  if (nextGroups) await store.put(buildAccountGroupsKey(targetAccountHandle), JSON.stringify({ ...nextGroups, accountHandle: targetAccountHandle, accountId: targetAccountId, updatedAt: completedAt }), { expirationTtl: ACCOUNT_GROUPS_TTL_SECONDS });
+
+  for (const deviceId of pending.deviceIds) {
+    const record = normalizeDeviceRecord(parseJson<DeviceRecord | null>(await store.get(buildDeviceKey(deviceId)), null));
+    if (!record || (record.accountId !== pending.sourceAccountId && record.accountId !== targetAccountId)) {
+      throw new Error("identity link device set changed");
+    }
+    if (record.accountId === targetAccountId) continue;
+    const nextRecord = { ...record, accountId: targetAccountId };
+    await store.put(buildDeviceKey(deviceId), JSON.stringify(nextRecord), { expirationTtl: DEVICE_TTL_SECONDS });
+    await indexDeviceRecord(store, nextRecord);
+  }
+
+  await Promise.all([
+    store.delete(buildAccountPolicyKey(sourceAccountHandle)),
+    store.delete(buildAccountSegmentsKey(sourceAccountHandle)),
+    store.delete(buildAccountBudgetKey(sourceAccountHandle)),
+    store.delete(buildAccountGroupsKey(sourceAccountHandle)),
+  ]);
+  const completed: AccountIdentityLinkCompleted = {
+    schemaVersion: 1,
+    status: "completed",
+    sourceAccountHandle,
+    targetAccountHandle,
+    actorKey,
+    devicesUpdated: pending.deviceIds.length,
+    policyId: nextPolicy?.policyId ?? null,
+    completedAt,
+  };
+  await store.put(receiptKey, JSON.stringify(completed));
+  return { ok: true, ...completed, idempotentReplay: false };
 }
 
 export async function assignControlPlaneAdminAccountPolicy(

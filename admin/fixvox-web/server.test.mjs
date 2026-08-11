@@ -51,6 +51,20 @@ test('server RBAC derives the recent verified Google role server-side', async ()
     assert.equal(accountsPayload.accounts.find((account) => account.isCurrentAccount)?.userEmail, 'jpsala@gmail.com')
     assert.doesNotMatch(JSON.stringify(accountsPayload), /mock-jpsala-google-sub/)
     assert.equal(accountsPayload.accounts.find((account) => account.isCurrentAccount)?.accountHandle, 'acc_91c02199b182e890')
+    const sourceAccountHandle = accountsPayload.accounts[0].accountHandle
+    const confirmation = `LINK ${sourceAccountHandle} TO CURRENT ADMIN`
+    const mockLink = await fetch(`${baseUrl}/api/admin/accounts/identity-link`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sourceAccountHandle, confirmation }),
+    })
+    assert.equal(mockLink.status, 409)
+    const injectedIdentity = await fetch(`${baseUrl}/api/admin/accounts/identity-link`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sourceAccountHandle, confirmation, targetAccountId: 'google:attacker' }),
+    })
+    assert.equal(injectedIdentity.status, 400)
   })
 })
 

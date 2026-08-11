@@ -31,6 +31,7 @@ import {
   getControlPlaneAdminVariantConfig,
   getControlPlaneAdminRoleForPrincipalKey,
   resolveExecutionEngineForDevice,
+  linkControlPlaneAdminAccountIdentity,
   listControlPlaneAdminAccounts,
   listControlPlaneAdminAudit,
   listControlPlaneAdminDevices,
@@ -627,7 +628,8 @@ export default {
 
       const profilePublishMutation = url.pathname === "/admin/control-plane/profiles/apply"
         || url.pathname === "/admin/control-plane/profiles/publish"
-        || url.pathname === "/admin/control-plane/profiles/rollback";
+        || url.pathname === "/admin/control-plane/profiles/rollback"
+        || url.pathname === "/admin/control-plane/accounts/identity-link";
       const requiredCapability: AdminCapability = profilePublishMutation ? "publish" : request.method === "GET" ? "view" : "edit";
       const authError = authorizeAdminRequest(request, env, requiredCapability);
       if (authError) {
@@ -852,6 +854,22 @@ export default {
         } catch (error) {
           const message = error instanceof Error ? error.message : "Unable to update account policy.";
           const status = message === "account not found" ? 404 : 400;
+          return withAdminCors(request, json({ error: { message } }, status));
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/admin/control-plane/accounts/identity-link") {
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return withAdminCors(request, json({ error: { message: "Invalid account identity link payload." } }, 400));
+        }
+        try {
+          return withAdminCors(request, json(await linkControlPlaneAdminAccountIdentity(env.USAGE, payload as never)));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to link account identity.";
+          const status = message === "account not found" || message === "source account has no devices" ? 404 : message.includes("conflicting") ? 409 : 400;
           return withAdminCors(request, json({ error: { message } }, status));
         }
       }

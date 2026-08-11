@@ -94,6 +94,48 @@ describe("PostgreSQL control-plane repositories", () => {
     expect(JSON.stringify(audit)).not.toContain(ownerHash);
   });
 
+  test("links a Pro account to the current Admin identity without changing its account row or devices", async () => {
+    const admin = new PostgresAdminRepository(sql);
+    const sourceHash = "c".repeat(64);
+    const targetSubject = "identity-admin-subject";
+    const targetHash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(targetSubject)))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    const sourceHandle = `acc_${sourceHash.slice(0, 16)}`;
+    const targetHandle = `acc_${targetHash.slice(0, 16)}`;
+    const accounts = await sql.unsafe<{ id: string }>(`
+      INSERT INTO accounts (provider, provider_subject_hash, handle, budget_daily_microusd, budget_monthly_microusd, budget_mode)
+      VALUES ('google', $1, $2, 1000000, 10000000, 'warn') RETURNING id::text
+    `, [sourceHash, sourceHandle]);
+    const profileId = await createPublishedProfile("pro", "Pro");
+    await sql.unsafe("INSERT INTO policy_assignments (target_type, target_id, profile_id, priority, source) VALUES ('account', $1::uuid, $2::uuid, 30, 'test')", [accounts[0].id, profileId]);
+    await sql.unsafe("INSERT INTO devices (device_id, account_id, policy_id, policy_label) VALUES ('identity-device-1', $1::uuid, 'pro', 'Pro'), ('identity-device-2', $1::uuid, 'pro', 'Pro')", [accounts[0].id]);
+    const confirmation = `LINK ${sourceHandle} TO CURRENT ADMIN`;
+
+    const api = composeApi({ FIXVOX_API_DATABASE_URL: databaseUrl, FIXVOX_API_PUBLIC_BASE_URL: "http://127.0.0.1:8790", FIXVOX_API_MOCK_PROVIDERS: "true", ADMIN_VIEW_API_KEY: "http-view", ADMIN_EDIT_API_KEY: "http-edit", ADMIN_PUBLISH_API_KEY: "http-publish" }, { logger: { info() {} } });
+    const command = JSON.stringify({ sourceAccountHandle: sourceHandle, targetAccountId: `google:${targetSubject}`, actorKey: `arp_${targetHash}`, confirmation });
+    let linked: Record<string, unknown> = {};
+    try {
+      const denied = await api.handler(new Request("http://127.0.0.1:8790/admin/control-plane/accounts/identity-link", { method: "POST", headers: { authorization: "Bearer http-edit", "content-type": "application/json" }, body: command }));
+      expect(denied.status).toBe(403);
+      const response = await api.handler(new Request("http://127.0.0.1:8790/admin/control-plane/accounts/identity-link", { method: "POST", headers: { authorization: "Bearer http-publish", "content-type": "application/json" }, body: command }));
+      expect(response.status).toBe(200);
+      linked = await response.json() as Record<string, unknown>;
+    } finally {
+      await api.close();
+    }
+    expect(linked).toMatchObject({ targetAccountHandle: targetHandle, devicesUpdated: 2, policyId: "pro", idempotentReplay: false });
+    const preserved = await sql.unsafe<{ id: string; provider_subject_hash: string; handle: string; devices: string; assignments: string }>(`
+      SELECT a.id::text, a.provider_subject_hash, a.handle,
+        (SELECT count(*)::text FROM devices d WHERE d.account_id = a.id) AS devices,
+        (SELECT count(*)::text FROM policy_assignments pa WHERE pa.target_id = a.id AND pa.active) AS assignments
+      FROM accounts a
+    `);
+    expect(preserved).toEqual([{ id: accounts[0].id, provider_subject_hash: targetHash, handle: targetHandle, devices: "2", assignments: "1" }]);
+    expect((await admin.linkAccountIdentity({ sourceAccountHandle: sourceHandle, targetSubjectHash: targetHash, actorRefHash: `arp_${targetHash}`, confirmation })).idempotentReplay).toBe(true);
+    const audit = await admin.audit(10);
+    expect(audit.some((record) => record.action === "account.identity.link")).toBe(true);
+    expect(JSON.stringify(audit)).not.toContain(targetHash);
+  });
+
   test("binds installs once and rejects device rebinding", async () => {
     const repository = new PostgresControlPlaneRepository(sql);
     const first = await repository.bindDevice({

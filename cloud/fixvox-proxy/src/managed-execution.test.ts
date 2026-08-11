@@ -1128,6 +1128,54 @@ describe("control-plane admin devices", () => {
     expect(third.policyId).toBe("pro");
     expect(third.policyLabel).toBe("Pro");
   });
+
+  test("requires publish capability and links account identity through the admin endpoint", async () => {
+    const store = new MemoryKv();
+    const sourceAccountId = "google:endpoint-source-subject";
+    await registerDevice(store, {
+      installId: "install-identity-endpoint",
+      deviceId: "device-identity-endpoint",
+    }, { accountId: sourceAccountId, authProviders: ["google"] });
+    const accountsResponse = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/accounts", {
+        headers: { Authorization: "Bearer test-admin-key" },
+      }),
+      createEnv(store) as never,
+      {} as ExecutionContext,
+    );
+    const accounts = await accountsResponse.json() as { accounts: Array<{ accountHandle: string }> };
+    const sourceAccountHandle = accounts.accounts[0]?.accountHandle;
+    const body = JSON.stringify({
+      sourceAccountHandle,
+      targetAccountId: "google:endpoint-admin-subject",
+      actorKey: `arp_${"b".repeat(64)}`,
+      confirmation: `LINK ${sourceAccountHandle} TO CURRENT ADMIN`,
+    });
+    const denied = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/accounts/identity-link", {
+        method: "POST",
+        headers: { Authorization: "Bearer test-admin-key", "Content-Type": "application/json" },
+        body,
+      }),
+      createEnv(store) as never,
+      {} as ExecutionContext,
+    );
+    expect(denied.status).toBe(403);
+
+    const linked = await worker.fetch(
+      new Request("https://example.com/admin/control-plane/accounts/identity-link", {
+        method: "POST",
+        headers: { Authorization: "Bearer test-publish-key", "Content-Type": "application/json" },
+        body,
+      }),
+      createEnv(store) as never,
+      {} as ExecutionContext,
+    );
+    expect(linked.status).toBe(200);
+    const payload = await linked.json() as { targetAccountHandle: string; devicesUpdated: number };
+    expect(payload.devicesUpdated).toBe(1);
+    expect(JSON.stringify(payload)).not.toContain("endpoint-admin-subject");
+  });
 });
 
 describe("managed execution preflight", () => {

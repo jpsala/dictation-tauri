@@ -445,6 +445,19 @@ async function saveAccountBudget(form) {
   await loadAdmin('accounts')
   state.status = `Budget account actualizado: ${body.accountHandle}`
 }
+async function linkCurrentAdminAccount(accountHandle) {
+  const expected = `LINK ${accountHandle} TO CURRENT ADMIN`
+  const confirmation = prompt(`Esta operación conservará el perfil y los dispositivos, y reemplazará la identidad Google de la cuenta.\n\nEscribí exactamente:\n${expected}`)
+  if (confirmation == null) return
+  if (confirmation.trim() !== expected) throw new Error('La confirmación no coincide; no se modificó la cuenta.')
+  const result = await jsonFetch('/api/admin/accounts/identity-link', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ sourceAccountHandle: accountHandle, confirmation: confirmation.trim() }),
+  })
+  state.status = result.idempotentReplay ? 'La identidad ya estaba unificada' : `Cuenta unificada · ${result.devicesUpdated} devices · ${result.policyId || 'profile conservado'}`
+  await loadAdmin('accounts')
+}
 async function updateAccountGroups(accountHandle, groups) {
   await jsonFetch('/api/admin/accounts/groups', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ accountHandle, groups }) })
   await loadAdmin('accounts')
@@ -880,8 +893,9 @@ function renderAccountsWorkbench(data) {
   const proCount = accounts.filter((account) => (effectivePolicyId(account) || '').includes('pro')).length
   const totalDevices = accounts.reduce((sum, account) => sum + Number(account.deviceCount || 0), 0)
   const filteredCount = visibleAccounts.length === accounts.length ? '' : ` · ${visibleAccounts.length} visibles`
+  const linkableAccount = data.currentAccount && !data.currentAccount.linked && accounts.length === 1 ? accounts[0] : null
   const unlinkedCurrentAccount = data.currentAccount && !data.currentAccount.linked
-    ? `<div class="alert warning"><strong>Esta sesión Admin no corresponde a ninguna cuenta de producto.</strong><br>${esc(data.currentAccount.displayName || 'Cuenta Google')} · ${esc(data.currentAccount.userEmail || 'email no disponible')}<br><small>La sesión Admin no determina tu plan. Si Fixvox Tauri ya muestra Plan pro, la aplicación está conectada con otra identidad Google.</small></div>`
+    ? `<div class="alert warning"><strong>Esta sesión Admin no corresponde a ninguna cuenta de producto.</strong><br>${esc(data.currentAccount.displayName || 'Cuenta Google')} · ${esc(data.currentAccount.userEmail || 'email no disponible')}<br><small>La sesión Admin no determina tu plan. Si Fixvox Tauri ya muestra Plan pro, la aplicación está conectada con otra identidad Google.</small>${linkableAccount ? `<div class="button-row"><button class="button small primary" data-link-current-account="${esc(linkableAccount.accountHandle)}">Unificar con esta cuenta Pro</button></div>` : ''}</div>`
     : ''
   const policyFilterOptions = policyOptions.map((policy) => {
     const id = typeof policy === 'string' ? policy : policy.policyId || policy.id
@@ -1278,6 +1292,7 @@ function wireDynamicEvents() {
     state.accountFilters.activity = event.currentTarget.value
     renderMessages(); wireDynamicEvents()
   }
+  document.querySelectorAll('[data-link-current-account]').forEach((button) => button.onclick = () => linkCurrentAdminAccount(button.dataset.linkCurrentAccount).catch(alertError))
   document.querySelectorAll('[data-select-entity]').forEach((card) => card.onclick = (event) => {
     if (event.target.closest('button')) return
     state.selectedEntity = { kind: card.dataset.entityKind, id: card.dataset.entityId, label: card.dataset.entityLabel || card.dataset.entityId }

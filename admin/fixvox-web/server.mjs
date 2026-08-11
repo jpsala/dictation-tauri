@@ -1594,6 +1594,34 @@ const server = http.createServer(async (req, res) => {
       }
     }
     if (url.pathname === '/api/admin/audit' && req.method === 'GET') return sendJson(res, 200, await proxyAdmin('/admin/control-plane/audit'))
+    if (url.pathname === '/api/admin/accounts/identity-link' && req.method === 'POST') {
+      const session = readSession(req)
+      if (!session || session.provider !== 'google' || !session.email || Date.now() - Number(session.authenticatedAt || 0) > PRIVILEGED_OAUTH_MAX_AGE_MS) {
+        return sendJson(res, 403, { ok: false, error: { message: 'Recent verified Google authentication required.' } })
+      }
+      if (normalizeGoogleEmail(session.email) !== RBAC_BOOTSTRAP_OWNER_EMAIL) await requireRecentGoogleRole(req, ['owner'])
+      const body = JSON.parse(await readBody(req) || '{}')
+      if (Object.keys(body).some((key) => !['sourceAccountHandle', 'confirmation'].includes(key))) return sendJson(res, 400, { ok: false, error: { message: 'Invalid account identity link command.' } })
+      const sourceAccountHandle = String(body.sourceAccountHandle || '').trim()
+      const confirmation = String(body.confirmation || '').trim()
+      if (!/^acc_[a-f0-9]{16}$/.test(sourceAccountHandle) || confirmation !== `LINK ${sourceAccountHandle} TO CURRENT ADMIN`) return sendJson(res, 400, { ok: false, error: { message: 'Account identity link confirmation mismatch.' } })
+      if (!session?.sub) return sendJson(res, 400, { ok: false, error: { message: 'Current Google identity is unavailable.' } })
+      if (MOCK_MODE) return sendJson(res, 409, { ok: false, error: { message: 'Mock account is already linked.' } })
+      try {
+        return sendJson(res, 200, await proxyAdmin('/admin/control-plane/accounts/identity-link', 'POST', {
+          sourceAccountHandle,
+          targetAccountId: `google:${session.sub}`,
+          actorKey: rbacPrincipalKeyForSession(session),
+          confirmation,
+        }, adminPublishCredential()))
+      } catch (error) {
+        const code = error?.payload?.error?.code
+        if (code === 'identity_already_linked') return sendJson(res, 409, { ok: false, error: { code, message: 'Esta identidad Google ya está vinculada a la cuenta seleccionada.' } })
+        if (code === 'target_account_conflict') return sendJson(res, 409, { ok: false, error: { code, message: 'La identidad Google Admin ya pertenece a otra cuenta de producto.' } })
+        if (code === 'account_ambiguous') return sendJson(res, 409, { ok: false, error: { code, message: 'La cuenta seleccionada no es única; no se modificó ningún dato.' } })
+        throw error
+      }
+    }
     if (url.pathname === '/api/admin/accounts') {
       const accounts = await proxyAdmin(`/admin/control-plane/accounts?limit=${encodeURIComponent(url.searchParams.get('limit') || '20')}`)
       return sendJson(res, 200, annotateCurrentAdminAccount(accounts, readSession(req)))

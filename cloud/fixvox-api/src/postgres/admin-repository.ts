@@ -403,6 +403,65 @@ export class PostgresAdminRepository {
     });
   }
 
+  async linkAccountIdentity(input: { sourceAccountHandle: string; targetSubjectHash: string; actorRefHash: string; confirmation: string }) {
+    const sourceAccountHandle = input.sourceAccountHandle.trim();
+    const targetSubjectHash = input.targetSubjectHash.trim();
+    const actorRefHash = input.actorRefHash.trim();
+    if (!/^acc_[a-f0-9]{16}$/.test(sourceAccountHandle) || !/^[a-f0-9]{64}$/.test(targetSubjectHash) || !/^arp_[a-f0-9]{64}$/.test(actorRefHash)) throw new Error("invalid_identity_link");
+    if (input.confirmation !== `LINK ${sourceAccountHandle} TO CURRENT ADMIN`) throw new Error("invalid_confirmation");
+    const targetAccountHandle = `acc_${targetSubjectHash.slice(0, 16)}`;
+    if (sourceAccountHandle === targetAccountHandle) throw new Error("identity_already_linked");
+    return this.sql.begin(async (tx) => {
+      const sourceRows = await tx.unsafe<{ id: string }>("SELECT id::text FROM accounts WHERE handle = $1 FOR UPDATE", [sourceAccountHandle]);
+      if (sourceRows.length > 1) throw new Error("account_ambiguous");
+      const targetRows = await tx.unsafe<{ id: string; admin_metadata: Record<string, unknown> | string }>("SELECT id::text, admin_metadata FROM accounts WHERE provider = 'google' AND provider_subject_hash = $1 FOR UPDATE", [targetSubjectHash]);
+      if (!sourceRows[0]) {
+        if (!targetRows[0]) throw new Error("account_not_found");
+        const metadata = record(jsonValue(targetRows[0].admin_metadata));
+        const receipt = record(metadata.identityLink);
+        if (receipt.sourceAccountHandle !== sourceAccountHandle) throw new Error("account_not_found");
+        return {
+          ok: true as const,
+          sourceAccountHandle,
+          targetAccountHandle,
+          devicesUpdated: Number(receipt.devicesUpdated) || 0,
+          policyId: typeof receipt.policyId === "string" ? receipt.policyId : null,
+          completedAt: typeof receipt.completedAt === "string" ? receipt.completedAt : new Date().toISOString(),
+          idempotentReplay: true,
+        };
+      }
+      if (targetRows[0] && targetRows[0].id !== sourceRows[0].id) throw new Error("target_account_conflict");
+      const deviceCountRows = await tx.unsafe<{ count: string }>("SELECT count(*)::text AS count FROM devices WHERE account_id = $1::uuid", [sourceRows[0].id]);
+      const policyRows = await tx.unsafe<{ policy_id: string }>(`
+        SELECT p.profile_id AS policy_id FROM policy_assignments pa
+        JOIN profiles p ON p.id = pa.profile_id
+        WHERE pa.target_type = 'account' AND pa.target_id = $1::uuid AND pa.active
+        ORDER BY pa.priority DESC LIMIT 1
+      `, [sourceRows[0].id]);
+      const devicesUpdated = Number(deviceCountRows[0]?.count) || 0;
+      if (devicesUpdated === 0) throw new Error("account_has_no_devices");
+      const policyId = policyRows[0]?.policy_id ?? null;
+      const completedAt = new Date().toISOString();
+      const receipt = { schemaVersion: 1, sourceAccountHandle, targetAccountHandle, devicesUpdated, policyId, completedAt };
+      await tx.unsafe(`
+        UPDATE accounts SET provider = 'google', provider_subject_hash = $2::text, handle = $3::text,
+          admin_metadata = COALESCE(admin_metadata, '{}'::jsonb) || jsonb_build_object(
+            'identityLink', jsonb_build_object(
+              'schemaVersion', 1, 'sourceAccountHandle', $4::text, 'targetAccountHandle', $3::text,
+              'devicesUpdated', $5::integer, 'policyId', $6::text, 'completedAt', $7::text
+            )
+          ),
+          updated_at = now()
+        WHERE id = $1::uuid
+      `, [sourceRows[0].id, targetSubjectHash, targetAccountHandle, sourceAccountHandle, devicesUpdated, policyId, completedAt]);
+      await tx.unsafe(`
+        INSERT INTO audit_records (actor_ref_hash, action, target_type, target_ref_hash, result, safe_metadata)
+        VALUES ($1, 'account.identity.link', 'account', encode(digest($2, 'sha256'), 'hex'), 'success', $3::jsonb)
+      `, [actorRefHash, targetAccountHandle, JSON.stringify(receipt)]);
+      return { ok: true as const, sourceAccountHandle, targetAccountHandle, devicesUpdated, policyId, completedAt, idempotentReplay: false };
+    });
+  }
+
   validateSafeMetrics(value: Record<string, unknown> | undefined): Record<string, string> {
     const candidate = value ?? { schemaVersion: 1 };
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate) || candidate.schemaVersion !== 1) throw new Error("safe_metrics_invalid");

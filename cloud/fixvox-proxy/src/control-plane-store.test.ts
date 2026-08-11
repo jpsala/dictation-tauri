@@ -15,6 +15,7 @@ import {
   evaluateExecutionPreflight,
   getControlPlaneAdminVariantConfig,
   listControlPlaneAdminAccounts,
+  linkControlPlaneAdminAccountIdentity,
   listControlPlaneAdminDevices,
   listControlPlaneAdminProfiles,
   publishControlPlaneAdminProfile,
@@ -42,6 +43,9 @@ function createKvStore() {
       put: async (key: string, value: string) => {
         puts.push(key);
         storage.set(key, value);
+      },
+      delete: async (key: string) => {
+        storage.delete(key);
       },
     },
     puts,
@@ -127,6 +131,62 @@ describe("control-plane device activation", () => {
     expect(kv.puts).toEqual([]);
     expect(kv.read("control:install:install-bound")).toBe(JSON.stringify("device-bound"));
     expect(kv.read("control:device:device-other")).toBeNull();
+  });
+
+  test("links an existing Pro account to a new Google identity without losing devices", async () => {
+    const kv = createKvStore();
+    const sourceAccountId = "google:source-subject-123";
+    const first = await registerDevice(kv.store, {
+      installId: "install-identity-first",
+      deviceId: "device-identity-first",
+    }, { accountId: sourceAccountId, authProviders: ["google"] });
+    await registerDevice(kv.store, {
+      installId: "install-identity-second",
+      deviceId: "device-identity-second",
+    }, { accountId: sourceAccountId, authProviders: ["google"] });
+    await assignControlPlaneAdminAccountPolicy(kv.store, { accountId: sourceAccountId, policyId: "pro" });
+    const source = (await listControlPlaneAdminAccounts(kv.store)).accounts[0];
+    if (!source) throw new Error("expected source account");
+    const confirmation = `LINK ${source.accountHandle} TO CURRENT ADMIN`;
+
+    const linked = await linkControlPlaneAdminAccountIdentity(kv.store, {
+      sourceAccountHandle: source.accountHandle,
+      targetAccountId: "google:admin-subject-456",
+      actorKey: `arp_${"a".repeat(64)}`,
+      confirmation,
+    });
+
+    expect(linked).toMatchObject({
+      ok: true,
+      sourceAccountHandle: source.accountHandle,
+      devicesUpdated: 2,
+      policyId: "pro",
+      idempotentReplay: false,
+    });
+    expect(linked.targetAccountHandle).not.toBe(source.accountHandle);
+    expect(JSON.stringify(linked)).not.toContain("admin-subject-456");
+    const accounts = await listControlPlaneAdminAccounts(kv.store);
+    expect(accounts.accounts).toHaveLength(1);
+    expect(accounts.accounts[0]).toMatchObject({
+      accountHandle: linked.targetAccountHandle,
+      deviceCount: 2,
+      effectivePolicyId: "pro",
+      effectivePolicySource: "account",
+    });
+    expect(kv.read(`control:account:${source.accountHandle}:policy`)).toBeNull();
+
+    const replay = await linkControlPlaneAdminAccountIdentity(kv.store, {
+      sourceAccountHandle: source.accountHandle,
+      targetAccountId: "google:admin-subject-456",
+      actorKey: `arp_${"a".repeat(64)}`,
+      confirmation,
+    });
+    expect(replay.idempotentReplay).toBe(true);
+
+    await registerDevice(kv.store, { installId: "install-identity-first", deviceId: first.deviceId });
+    const refreshed = await listControlPlaneAdminAccounts(kv.store);
+    expect(refreshed.accounts).toHaveLength(1);
+    expect(refreshed.accounts[0]?.accountHandle).toBe(linked.targetAccountHandle);
   });
 
   test("same-binding refresh preserves account, policy, and status", async () => {
