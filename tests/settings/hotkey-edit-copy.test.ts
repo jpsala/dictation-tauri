@@ -7,16 +7,16 @@ import {
 describe("hotkey edit copy", () => {
   it("keeps user-facing conflict and rollback copy explicit", () => {
     expect(formatHotkeyEditReason("unsupported_shortcut")).toBe(
-      "This shortcut is not available here yet. Use Ctrl, Alt, or Shift plus a normal key.",
+      "Este atajo todavía no está disponible.",
     );
     expect(formatHotkeyEditReason("shortcut_not_applicable")).toBe(
-      "The host rejected this binding without changing the current shortcut.",
+      "El atajo no se pudo aplicar; el actual no cambió.",
     );
     expect(formatHotkeyEditReason("shortcut_not_registered_after_swap")).toBe(
-      "The host could not verify the new binding. The previous shortcut was restored.",
+      "No se pudo verificar el nuevo atajo. Se restauró el anterior.",
     );
     expect(formatHotkeyEditReason("alt_space_hook_not_enabled")).toContain(
-      "previous shortcut was restored",
+      "Se restauró el anterior",
     );
   });
 
@@ -28,10 +28,15 @@ describe("hotkey edit copy", () => {
     }
   });
 
-  it("keeps unknown host errors readable without hiding the diagnostic", () => {
-    expect(formatHotkeyEditReason("custom_host_error")).toBe("custom host error");
-    expect(formatHotkeyEditReason(new Error("native bridge timed out"))).toBe(
-      "native bridge timed out",
+  it("uses a stable Spanish fallback for unknown host errors", () => {
+    expect(formatHotkeyEditReason("custom_host_error")).toBe(
+      "No se pudo completar la operación.",
     );
+    expect(formatHotkeyEditReason(new Error("native bridge timed out"))).toBe(
+      "No se pudo completar la operación.",
+    );
+    expect(formatHotkeyEditReason("custom_host_error")).not.toContain("custom_host_error");
+    expect(formatHotkeyEditReason(new Error("native bridge timed out"))).not.toContain("native bridge");
   });
+
 });

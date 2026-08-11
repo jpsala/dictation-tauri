@@ -7,6 +7,10 @@ describe("Settings host window", () => {
     const settingsSource = readFileSync("src-tauri/src/settings_window.rs", "utf8");
     const libSource = readFileSync("src-tauri/src/lib.rs", "utf8");
     const tauriConfig = readFileSync("src-tauri/tauri.conf.json", "utf8");
+    const settingsFunction = settingsSource.slice(
+      settingsSource.indexOf("pub fn show_settings_window_for_app"),
+      settingsSource.indexOf("pub fn show_account_setup_window_for_app"),
+    );
 
     expect(libSource).toContain("settings_window::configure_settings_window");
     expect(libSource).not.toContain("settings_window::close_settings_window");
@@ -15,15 +19,17 @@ describe("Settings host window", () => {
     expect(tauriConfig).toContain('"label": "settings"');
     expect(tauriConfig).toContain('"url": "index.html#settings"');
     expect(settingsSource).toContain("WindowEvent::CloseRequested");
-    expect(settingsSource).toContain("reusing configured window");
+    expect(settingsFunction).toContain("reusing configured window");
     expect(settingsSource).toContain("allowing window close");
-    expect(settingsSource).toContain("create_fresh_settings_window");
+    expect(settingsFunction).toContain("create_fresh_settings_window");
     expect(settingsSource).not.toContain("close_settings_window_for_app");
     expect(settingsSource).not.toContain("api.prevent_close()");
     expect(settingsSource).not.toContain("settings_window.hide()");
     expect(settingsSource).toContain("index.html#settings");
-    expect(settingsSource).toContain("window.location.replace('index.html#settings')");
-    expect(settingsSource).toContain("settings navigation failed");
+    expect(settingsFunction).toContain("show_existing_settings_window(window)");
+    expect(settingsFunction).not.toContain(".eval(");
+    expect(settingsFunction).not.toContain("window.location.replace");
+    expect(settingsFunction).not.toContain("settings navigation failed");
     expect(settingsSource).toContain('ACCOUNT_SETUP_WINDOW_LABEL: &str = "account-setup"');
     expect(settingsSource).toContain("create_fresh_account_setup_window");
     expect(settingsSource).not.toContain("destroying stale window before open");

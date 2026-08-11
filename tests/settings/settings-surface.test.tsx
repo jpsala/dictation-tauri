@@ -3,25 +3,65 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { SettingsSurface } from "../../src/settings/SettingsSurface";
+import { PersonalVocabularySettings } from "../../src/personal-vocabulary/PersonalVocabularySettings";
+import type { PersonalVocabularySnapshot } from "../../src/personal-vocabulary/types";
 import type { FixvoxCloudStatus } from "../../src/settings/fixvox-cloud-control";
 
 describe("SettingsSurface", () => {
-  it("renders the eight-section Settings rail and keeps General limited to startup and dock", () => {
+  const editableCloudStatus: FixvoxCloudStatus = {
+    backendBaseUrl: "redacted",
+    statePath: "redacted",
+    installIdPresent: true,
+    deviceRegistered: true,
+    lastRegisterOk: true,
+    authPolicy: {
+      accessMode: "signed_in",
+      policyTemplateId: "pro",
+      capabilities: ["selection_transform", "custom_prompts", "managed_llm"],
+      redacted: true,
+    },
+    policySnapshot: {
+      capabilities: {
+        canUseManagedTranscription: true,
+        canSeeAdvancedSettings: true,
+        canUseDebugTools: false,
+      },
+      runtimePolicy: {
+        defaults: {
+          userSettingsDefaults: {
+            selectionPresets: {
+              items: [{ id: "corregir-texto", label: "Corregir texto", promptContent: "Corregí el texto." }],
+            },
+          },
+        },
+      },
+      fetchedAt: "2026-07-21T00:00:00Z",
+      trust: "fresh",
+      stale: false,
+    },
+    redacted: true,
+  };
+
+  it("renders the nine-section Settings rail and keeps General limited to startup and dock", () => {
     const hotkeys = renderToStaticMarkup(<SettingsSurface initialSection="hotkeys" />);
     const general = renderToStaticMarkup(<SettingsSurface initialSection="general" />);
 
     expect(hotkeys).toContain("Ajustes de escritorio");
     expect(hotkeys).not.toContain('role="tablist"');
     expect(hotkeys).not.toContain("Current policy");
-    for (const section of ["General", "Cuenta", "Dictado", "Atajos", "Presets", "Privacidad", "Ayuda", "Avanzado"]) {
+    for (const section of ["General", "Cuenta", "Dictado", "Atajos", "Presets", "Correcciones", "Privacidad", "Ayuda", "Avanzado"]) {
       expect(hotkeys).toContain(section);
     }
-    expect(hotkeys).toContain("Tecla de dictado");
-    expect(hotkeys).toContain("Pegar el último resultado");
-    expect(hotkeys).toContain("9 atajos");
-    expect(hotkeys).toContain("Comprobar atajo");
-    expect(hotkeys).not.toContain("Device activation");
-    expect(hotkeys).not.toContain("Enter invite code");
+    expect(hotkeys).toContain("Estados: Editable, Fijo o Próximamente.");
+    expect(hotkeys).toContain("Editá tus atajos");
+    expect(hotkeys).toContain("Elegí un campo y presioná el nuevo atajo.");
+    expect(hotkeys).not.toContain("Current policy");
+    expect(hotkeys).not.toContain("Host preview");
+    expect(hotkeys).not.toContain("registration");
+    expect(hotkeys).not.toContain("internal contract");
+    expect(hotkeys).not.toContain("contract heading");
+    expect(hotkeys).not.toContain("contract summary");
+    expect(hotkeys).not.toContain("contract steps");
     expect(hotkeys).not.toContain("navigator.clipboard");
     expect(hotkeys.toLowerCase()).not.toContain("raw transcript");
     expect(hotkeys.toLowerCase()).not.toContain("selected text");
@@ -164,28 +204,67 @@ describe("SettingsSurface", () => {
     expect(html).not.toContain("gsk_");
   });
 
-  it("keeps Presets visible and explains unavailable capability", () => {
-    const html = renderToStaticMarkup(<SettingsSurface
-      initialSection="presets"
-      initialCloudStatus={{
-        backendBaseUrl: "redacted",
-        statePath: "redacted",
-        installIdPresent: true,
-        deviceRegistered: true,
-        lastRegisterOk: true,
-        authPolicy: {
-          accessMode: "signed_in",
-          policyTemplateId: "dictation-basic",
-          redacted: true,
-        },
-        redacted: true,
-      }}
-    />);
+  it("keeps denied Presets mutually exclusive from data and mutation controls", () => {
+    const html = renderToStaticMarkup(<SettingsSurface initialSection="presets" initialCloudStatus={{
+      backendBaseUrl: "redacted", statePath: "redacted", installIdPresent: true,
+      deviceRegistered: false, lastRegisterOk: false, redacted: true,
+    }} />);
+    const presetsContent = html.slice(html.indexOf('aria-label="Administrar presets"'));
+    expect(presetsContent).toContain("Los presets no están disponibles para esta cuenta.");
+    expect(presetsContent).toContain("Cuenta");
+    for (const forbidden of ["Nombre", "Tecla", "Atajo", "Agregar preset", "Importar valores disponibles", "Guardar cambios", "Editar el preset seleccionado", "No hay presets."]) {
+      expect(presetsContent).not.toContain(forbidden);
+    }
+  });
+  it("renders read-only and editable Presets with the correct control authority", () => {
+    const readOnly = renderToStaticMarkup(<SettingsSurface initialSection="presets" initialCloudStatus={{
+      backendBaseUrl: "redacted", statePath: "redacted", installIdPresent: true,
+      deviceRegistered: true, lastRegisterOk: true,
+      authPolicy: { accessMode: "signed_in", capabilities: ["selection_transform", "managed_llm"], redacted: true },
+      redacted: true,
+    }} />);
+    expect(readOnly).not.toContain("Importar valores disponibles");
+    expect(readOnly).not.toContain('aria-label="Agregar preset"');
+    expect(readOnly).toMatch(/<input[^>]*disabled/);
+    expect(readOnly).toMatch(/<textarea[^>]*disabled/);
+    expect(readOnly).toMatch(/<button(?=[^>]*aria-label="Duplicar preset")(?=[^>]*disabled)[^>]*>/);
+    expect(readOnly).toMatch(/<button(?=[^>]*aria-label="Eliminar preset")(?=[^>]*disabled)[^>]*>/);
+    expect(readOnly).toMatch(/<button[^>]*disabled[^>]*>Guardar cambios<\/button>/);
+    const editable = renderToStaticMarkup(<SettingsSurface initialSection="presets" initialCloudStatus={editableCloudStatus} />);
+    expect(editable).toContain("Nombre");
+    expect(editable).toContain("Guardar cambios");
+    expect(editable).toContain('aria-label="Agregar preset"');
+  });
+  it("keeps Presets checking until cloud status resolves", () => {
+    const source = readFileSync("src/settings/SettingsSurface.tsx", "utf8");
+    expect(source).toContain("tauriRuntime && !cloudStatusResolved");
+    expect(source).toContain("No hay presets.");
+  });
+  it("renders Correcciones empty and first-create states exclusively", () => {
+    const emptySnapshot: PersonalVocabularySnapshot = { revision: "r1", rules: [] };
+    const empty = renderToStaticMarkup(<PersonalVocabularySettings initialSnapshot={emptySnapshot} />);
+    expect(empty).toContain("No hay correcciones guardadas.");
+    expect(empty).toContain("Nueva corrección");
+    expect(empty).not.toContain("settings-vocabulary-editor");
 
-    expect(html).toContain("Presets");
-    expect(html).toContain("Los presets no están disponibles para esta cuenta.");
-    expect(html).toContain("Presets");
-    expect(html).toContain("Agregar preset");
+    const populatedSnapshot: PersonalVocabularySnapshot = {
+      revision: "r1",
+      rules: [{
+        id: "rule-1",
+        revision: "1",
+        spoken: "dictado",
+        candidates: [{ id: "candidate-1", written: "Dictation" }],
+        defaultCandidateId: "candidate-1",
+        mode: "ask",
+        enabled: true,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-01-01T00:00:00Z",
+      }],
+    };
+    const populated = renderToStaticMarkup(<PersonalVocabularySettings initialSnapshot={populatedSnapshot} />);
+    expect(populated).toContain("Correcciones personales");
+    expect(populated).toContain("dictado");
+    expect(populated).not.toContain("Nueva corrección. Completá los textos para guardarla.");
   });
 
   it("shows the Control Room entry only in Avanzado for admin capability", () => {
@@ -243,39 +322,14 @@ describe("SettingsSurface", () => {
   });
 
   it("renders compact preset controls with accessible icon actions", () => {
-    const html = renderToStaticMarkup(<SettingsSurface initialSection="presets" />);
+    const html = renderToStaticMarkup(<SettingsSurface initialSection="presets" initialCloudStatus={editableCloudStatus} />);
     const withCloudDefaults = renderToStaticMarkup(<SettingsSurface
       initialSection="presets"
-      initialCloudStatus={{
-        backendBaseUrl: "redacted",
-        statePath: "redacted",
-        installIdPresent: true,
-        deviceRegistered: true,
-        lastRegisterOk: true,
-        policySnapshot: {
-          capabilities: {
-            canUseManagedTranscription: true,
-            canSeeAdvancedSettings: true,
-            canUseDebugTools: false,
-          },
-          runtimePolicy: {
-            defaults: {
-              userSettingsDefaults: {
-                selectionPresets: {
-                  items: [{ id: "corregir-texto", label: "Corregir texto", promptContent: "Corregí el texto." }],
-                },
-              },
-            },
-          },
-          fetchedAt: "2026-07-21T00:00:00Z",
-          trust: "fresh",
-          stale: false,
-        },
-        redacted: true,
-      }}
+      initialCloudStatus={editableCloudStatus}
     />);
 
     expect(html).toContain("Presets");
+    expect(html).toContain('aria-label="Administrar presets"');
     expect(html).toContain("Acciones disponibles para tu cuenta.");
     expect(html).toContain("Como yo (español)");
     expect(html).toContain("Corregir texto");
@@ -284,16 +338,16 @@ describe("SettingsSurface", () => {
     expect(html).toContain('aria-label="Agregar preset"');
     expect(html).toContain('aria-label="Duplicar preset"');
     expect(html).toContain('aria-label="Eliminar preset"');
-    expect(html).not.toContain('aria-label="Importar valores disponibles"');
+    expect(html).toContain('aria-label="Importar valores disponibles"');
     expect(withCloudDefaults).toContain('aria-label="Importar valores disponibles"');
     expect(html).toContain("Nombre");
     expect(html).toContain("Tecla");
     expect(html).toContain("Atajo");
-    expect(html).toContain("Disponible en Alt+Q");
-    expect(html).toContain("Pedir confirmación");
-    expect(html).toContain("Activado");
+    expect(html).toContain('aria-label="Nombre del preset"');
+    expect(html).toContain('aria-label="Tecla del selector del preset"');
+    expect(html).toContain('aria-label="Atajo del preset"');
     expect(html).toContain("Guardar cambios");
-    expect(html).toContain("Cambios guardados");
+    expect(html).not.toContain("Cambios guardados");
     expect(html).not.toContain("Editar el preset seleccionado");
     expect(html).not.toContain("como-yo-es");
     expect(html).not.toContain("Restablecer incluido");

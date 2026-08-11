@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-08-08T20:08:47.006Z
+Generated: 2026-08-11T17:16:06.811Z
 
 ## Topics
 
@@ -31,8 +31,7 @@ Generated: 2026-08-08T20:08:47.006Z
 
 ## Tracks
 
-- active: [Dictation Error And Recovery Hardening](../tracks/dictation-error-recovery-hardening.md)
-- Other tracks are omitted from the hot index; search `docs/tracks/` on demand.
+- No focused track. Search `docs/tracks/` on demand.
 
 ## Specs
 

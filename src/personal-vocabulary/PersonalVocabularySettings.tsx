@@ -31,7 +31,9 @@ const EMPTY_DRAFT: TeachCorrectionDraft = {
 
 export function PersonalVocabularySettings({ client = createTauriVocabularyClient(), initialSnapshot }: PersonalVocabularySettingsProps) {
   const [snapshot, setSnapshot] = useState<PersonalVocabularySnapshot | undefined>(initialSnapshot);
+  const [loadError, setLoadError] = useState(false);
   const [selectedRuleId, setSelectedRuleId] = useState<string>();
+  const [editorOpen, setEditorOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<TeachCorrectionDraft>(EMPTY_DRAFT);
   const [alternativeDraft, setAlternativeDraft] = useState("");
@@ -66,9 +68,9 @@ export function PersonalVocabularySettings({ client = createTauriVocabularyClien
     setDraft(createTeachCorrectionDraftFromRule(selectedRule));
     setAlternativeDraft("");
   }, [selectedRuleId]);
-
-  async function loadSnapshot() {
+  async function loadSnapshot(failureNotice = "No pudimos actualizar las correcciones. Se conservaron las correcciones actuales. Reintentá actualizar."): Promise<boolean> {
     setBusy("load");
+    setLoadError(false);
     try {
       const next = await client.readSnapshot();
       setSnapshot(next);
@@ -76,29 +78,45 @@ export function PersonalVocabularySettings({ client = createTauriVocabularyClien
         setSelectedRuleId(undefined);
         setDraft(EMPTY_DRAFT);
       }
-      setNotice({ tone: "idle", message: "" });
-    } catch (error) {
-      setNotice({ tone: "warning", message: "No pudimos cargar las correcciones. El borrador queda disponible para reintentar." });
-      if (error instanceof Error && error.message === "tauri_runtime_unavailable") {
-        setNotice({ tone: "idle", message: "Abrí estos ajustes dentro de la aplicación para administrar correcciones." });
+      return true;
+    } catch {
+      if (snapshot) {
+        setNotice({ tone: "warning", message: failureNotice });
+      } else {
+        setLoadError(true);
       }
+      return false;
     } finally {
       setBusy(undefined);
     }
   }
-
+  function applyMutationResult(result: { rule?: PersonalVocabularyRule; vocabularyRevision?: string }) {
+    if (!result.rule) return;
+    const returnedRule = result.rule;
+    setSnapshot((current) => current ? {
+      ...current,
+      rules: current.rules.some((rule) => rule.id === returnedRule.id)
+        ? current.rules.map((rule) => rule.id === returnedRule.id ? returnedRule : rule)
+        : [...current.rules, returnedRule],
+      ...(result.vocabularyRevision !== undefined ? { revision: result.vocabularyRevision } : {}),
+    } : current);
+    setSelectedRuleId(returnedRule.id);
+    setDraft(createTeachCorrectionDraftFromRule(returnedRule));
+    setAlternativeDraft("");
+  }
   function startCreate() {
+    setEditorOpen(true);
     setSelectedRuleId(undefined);
     setDraft(EMPTY_DRAFT);
     setAlternativeDraft("");
-    setNotice({ tone: "idle", message: "Nueva corrección. Guardá cuando el texto y el modo estén listos." });
+    setNotice({ tone: "idle", message: "Nueva corrección. Completá los textos para guardarla." });
   }
-
   function selectRule(rule: PersonalVocabularyRule) {
+    setEditorOpen(true);
     setSelectedRuleId(rule.id);
     setDraft(createTeachCorrectionDraftFromRule(rule));
     setAlternativeDraft("");
-    setNotice({ tone: "idle", message: "Regla seleccionada. Las mutaciones usan su ID y revisión exactos." });
+    setNotice({ tone: "idle", message: "Corrección seleccionada." });
   }
 
   function addAlternative() {
@@ -110,7 +128,7 @@ export function PersonalVocabularySettings({ client = createTauriVocabularyClien
 
   async function saveDraft() {
     if (!snapshot) {
-      setNotice({ tone: "warning", message: "Todavía no hay una revisión de vocabulario disponible." });
+      setNotice({ tone: "warning", message: "Todavía no hay una corrección disponible." });
       return;
     }
     setBusy("save");
@@ -122,13 +140,16 @@ export function PersonalVocabularySettings({ client = createTauriVocabularyClien
         existingRule: selectedRule,
       }, client);
       if (result.status === "saved_only") {
-        setNotice({ tone: result.cacheRefreshError ? "warning" : "success", message: result.cacheRefreshError ? "Regla guardada. La caché se actualizará al volver a intentar." : "Regla guardada y caché actualizada." });
-        await loadSnapshot();
+        applyMutationResult(result);
+        setNotice({ tone: result.cacheRefreshError ? "warning" : "success", message: result.cacheRefreshError ? "Corrección guardada. La actualización se completará al volver a intentar." : "Corrección guardada y actualizada." });
+        if (!result.cacheRefreshError) {
+          await loadSnapshot("Corrección guardada, pero no pudimos actualizar la lista. Reintentá actualizar.");
+        }
         return;
       }
       setNotice({
         tone: result.status === "conflict" ? "warning" : "danger",
-        message: result.status === "conflict" ? "La revisión cambió en otro dispositivo. Actualizá y revisá el borrador." : "No pudimos guardar la regla. El borrador se conserva.",
+        message: result.status === "conflict" ? "Los datos cambiaron en otro dispositivo. Actualizá y revisá el borrador." : "No pudimos guardar la corrección. El borrador se conserva.",
       });
     } finally {
       setBusy(undefined);
@@ -145,10 +166,14 @@ export function PersonalVocabularySettings({ client = createTauriVocabularyClien
         expectedRevision: selectedRule.revision,
         mutation: { ...mutation, enabled: !selectedRule.enabled },
       });
-      await client.refresh();
-      setNotice({ tone: "success", message: selectedRule.enabled ? "Regla desactivada." : "Regla activada." });
-      await loadSnapshot();
-      if (result.rule) setSelectedRuleId(result.rule.id);
+      applyMutationResult(result);
+      setNotice({ tone: "success", message: selectedRule.enabled ? "Corrección desactivada." : "Corrección activada." });
+      try {
+        await client.refresh();
+        await loadSnapshot("Corrección actualizada, pero no pudimos actualizar la lista. Reintentá actualizar.");
+      } catch {
+        setNotice({ tone: "warning", message: "Corrección actualizada, pero no pudimos actualizar la lista. Reintentá actualizar." });
+      }
     } catch (error) {
       setNotice({ tone: /stale|conflict|409|revision/i.test(vocabularyErrorText(error)) ? "warning" : "danger", message: "No pudimos actualizar el estado. El borrador se conserva." });
     } finally {
@@ -157,17 +182,32 @@ export function PersonalVocabularySettings({ client = createTauriVocabularyClien
   }
 
   async function deleteRule() {
-    if (!snapshot || !selectedRule || !window.confirm(`¿Eliminar la regla “${selectedRule.spoken}”?`)) return;
+    if (!snapshot || !selectedRule || !window.confirm(`¿Eliminar la corrección “${selectedRule.spoken}”?`)) return;
+    const deletedRuleId = selectedRule.id;
     setBusy("delete");
+    let result: { vocabularyRevision?: string };
     try {
-      await client.deleteRule({ ruleId: selectedRule.id, expectedRevision: selectedRule.revision });
-      await client.refresh();
-      setSelectedRuleId(undefined);
-      setDraft(EMPTY_DRAFT);
-      setNotice({ tone: "success", message: "Regla eliminada." });
-      await loadSnapshot();
+      result = await client.deleteRule({ ruleId: deletedRuleId, expectedRevision: selectedRule.revision });
     } catch (error) {
-      setNotice({ tone: /stale|conflict|409|revision/i.test(vocabularyErrorText(error)) ? "warning" : "danger", message: "No pudimos eliminar la regla. Actualizá y reintentá." });
+      setNotice({ tone: /stale|conflict|409|revision/i.test(vocabularyErrorText(error)) ? "warning" : "danger", message: "No pudimos eliminar la corrección. Actualizá y reintentá." });
+      setBusy(undefined);
+      return;
+    }
+    setSnapshot((current) => current ? {
+      ...current,
+      rules: current.rules.filter((rule) => rule.id !== deletedRuleId),
+      ...(result.vocabularyRevision !== undefined ? { revision: result.vocabularyRevision } : {}),
+    } : current);
+    setSelectedRuleId(undefined);
+    setEditorOpen(false);
+    setDraft(EMPTY_DRAFT);
+    setAlternativeDraft("");
+    setNotice({ tone: "success", message: "Corrección eliminada." });
+    try {
+      await client.refresh();
+      await loadSnapshot("Corrección eliminada, pero no pudimos actualizar la lista. La eliminación se conservó. Reintentá actualizar.");
+    } catch {
+      setNotice({ tone: "warning", message: "Corrección eliminada, pero no pudimos actualizar la lista. La eliminación se conservó. Reintentá actualizar." });
     } finally {
       setBusy(undefined);
     }
@@ -175,12 +215,14 @@ export function PersonalVocabularySettings({ client = createTauriVocabularyClien
 
   async function manualRefresh() {
     setBusy("refresh");
+    setLoadError(false);
     try {
       await client.refresh();
-      await loadSnapshot();
-      setNotice({ tone: "success", message: "Correcciones actualizadas." });
+      const loaded = await loadSnapshot();
+      if (loaded) setNotice({ tone: "success", message: "Correcciones actualizadas." });
     } catch {
-      setNotice({ tone: "warning", message: "No pudimos actualizar las correcciones. El borrador no cambió." });
+      if (snapshot) setNotice({ tone: "warning", message: "No pudimos actualizar las correcciones. Se conservaron las correcciones actuales. Reintentá actualizar." });
+      else setLoadError(true);
     } finally {
       setBusy(undefined);
     }
@@ -197,42 +239,54 @@ export function PersonalVocabularySettings({ client = createTauriVocabularyClien
           <button type="button" className="settings-editor-button settings-editor-button-secondary" onClick={() => void manualRefresh()} disabled={Boolean(busy)}>
             {busy === "refresh" ? "Actualizando…" : "Actualizar"}
           </button>
-          <button type="button" className="settings-editor-button settings-editor-button-primary" onClick={startCreate} disabled={Boolean(busy)}>Nueva regla</button>
-        </div>
+          {snapshot ? <button type="button" className="settings-editor-button settings-editor-button-primary" onClick={startCreate} disabled={Boolean(busy)}>Nueva corrección</button> : null}
       </div>
+      </div>
+      {!snapshot ? (
+        <div className="settings-vocabulary-empty" role={loadError ? "alert" : "status"}>
+          <span>{loadError ? "Reintentá actualizar para volver a cargar tus correcciones." : "Estamos leyendo tus correcciones guardadas."}</span>
+        </div>
+      ) : (
+        <>
+        {notice.message ? <div className="settings-hotkey-editor-feedback" data-tone={notice.tone} role="status" aria-live="polite"><strong>{notice.message}</strong></div> : null}
+        {(snapshot.rules.length > 0 || editorOpen) ? (
+          <>
 
       <label className="settings-vocabulary-search">
-        <span>Buscar por ID, disparador o salida</span>
+        <span>Buscar por identificador, disparador o salida</span>
         <input value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder="Buscar correcciones" />
       </label>
 
       <div className="settings-vocabulary-grid">
-        <div className="settings-vocabulary-list" aria-label="Reglas de corrección">
+        <div className="settings-vocabulary-list" aria-label="Correcciones personales">
           {filteredRules.length ? filteredRules.map((rule) => (
             <button key={rule.id} type="button" className="settings-vocabulary-row" data-selected={rule.id === selectedRuleId} onClick={() => selectRule(rule)}>
               <span><strong>{rule.spoken}</strong><small>{rule.candidates.map((candidate) => candidate.written).join(" · ")}</small></span>
               <em data-enabled={rule.enabled}>{rule.enabled ? "Activa" : "Desactivada"}</em>
             </button>
           )) : (
-            <div className="settings-vocabulary-empty"><strong>{snapshot ? "No hay reglas que coincidan." : "Sin reglas cargadas."}</strong><span>Creá una regla desde el picker o con Nueva regla.</span></div>
+            <div className="settings-vocabulary-empty"><strong>{snapshot.rules.length === 0 ? "No hay correcciones guardadas." : "No hay coincidencias."}</strong><span>Creá una corrección desde Nueva corrección.</span></div>
           )}
         </div>
 
-        <section className="settings-vocabulary-editor" aria-labelledby="settings-vocabulary-editor-title">
-          <div className="settings-preset-editor-header">
-            <div><h3 id="settings-vocabulary-editor-title">{selectedRule ? "Editar regla" : "Nueva regla"}</h3><span>{selectedRule ? `ID ${selectedRule.id}` : "Sin guardar"}</span></div>
-            {selectedRule ? <button type="button" className="settings-editor-button settings-editor-button-danger" onClick={() => void deleteRule()} disabled={Boolean(busy)}>Eliminar</button> : null}
-          </div>
+        {editorOpen ? <section className="settings-vocabulary-editor" aria-labelledby="settings-vocabulary-editor-title">
+            <header className="settings-preset-editor-header"><div><h3 id="settings-vocabulary-editor-title">{selectedRule ? "Editar corrección" : "Nueva corrección"}</h3><span>{selectedRule ? `Identificador ${selectedRule.id}` : "Sin guardar"}</span></div>{selectedRule ? <button type="button" className="settings-editor-button settings-editor-button-danger" onClick={() => void deleteRule()} disabled={Boolean(busy)}>Eliminar</button> : null}</header>
           <label className="settings-preset-field"><span>Texto hablado</span><input value={draft.spoken} onChange={(event) => setDraft((current) => ({ ...current, spoken: event.currentTarget.value, automaticConfirmed: current.spoken === event.currentTarget.value ? current.automaticConfirmed : false }))} maxLength={256} /></label>
           <label className="settings-preset-field"><span>Texto correcto</span><textarea value={draft.written} onChange={(event) => setDraft((current) => ({ ...current, written: event.currentTarget.value }))} maxLength={256} rows={2} /></label>
           <fieldset className="settings-vocabulary-mode"><legend>Modo</legend><label><input type="radio" name="settings-vocabulary-mode" checked={draft.mode === "automatic"} onChange={() => setDraft((current) => ({ ...current, mode: "automatic", automaticConfirmed: current.mode === "automatic" && current.automaticConfirmed }))} />Automática</label><label><input type="radio" name="settings-vocabulary-mode" checked={draft.mode === "ask"} onChange={() => setDraft((current) => ({ ...current, mode: "ask", automaticConfirmed: false }))} />Preguntar</label></fieldset>
           {automaticWarning ? <div className="settings-vocabulary-warning" role="note"><strong>Este disparador es corto o común.</strong><span>Usá Preguntar o confirmá explícitamente Automática.</span>{draft.mode === "automatic" ? <label><input type="checkbox" data-testid="settings-automatic-confirmation" checked={draft.automaticConfirmed} onChange={(event) => setDraft((current) => ({ ...current, automaticConfirmed: event.currentTarget.checked }))} />Confirmo usar Automática para este disparador.</label> : null}</div> : null}
           <div className="settings-preset-field"><span>Alternativas</span><div className="settings-vocabulary-alternative-entry"><input value={alternativeDraft} onChange={(event) => setAlternativeDraft(event.currentTarget.value)} placeholder="Otra salida" aria-label="Nueva salida" /><button type="button" className="settings-editor-button settings-editor-button-secondary" onClick={addAlternative} disabled={!alternativeDraft.trim()}>Agregar</button></div>{draft.alternatives.length ? <ul>{draft.alternatives.map((value) => <li key={value}><span>{value}</span><button type="button" onClick={() => setDraft((current) => ({ ...current, alternatives: current.alternatives.filter((candidate) => candidate !== value) }))} aria-label={`Quitar alternativa ${value}`}>×</button></li>)}</ul> : null}</div>
-          <div className="settings-vocabulary-enabled">{selectedRule ? <><span>{selectedRule.enabled ? "Regla activa" : "Regla desactivada"}</span><button type="button" className="settings-editor-button settings-editor-button-secondary" onClick={() => void toggleEnabled()} disabled={Boolean(busy)}>{selectedRule.enabled ? "Desactivar" : "Activar"}</button></> : <span>Las reglas nuevas quedan activas al guardar.</span>}</div>
-          {notice.message ? <div className="settings-hotkey-editor-feedback" data-tone={notice.tone} role="status" aria-live="polite"><strong>{notice.message}</strong></div> : null}
-          <footer className="settings-preset-editor-footer"><span className="settings-readonly-note">La revisión se valida en el servidor. Los conflictos conservan este borrador.</span><button type="button" className="settings-editor-button settings-editor-button-primary" onClick={() => void saveDraft()} disabled={Boolean(busy) || !draft.spoken.trim() || !draft.written.trim()}>{busy === "save" ? "Guardando…" : "Guardar regla"}</button></footer>
-        </section>
-      </div>
+          <div className="settings-vocabulary-enabled">{selectedRule ? <><span>{selectedRule.enabled ? "Corrección activa" : "Corrección desactivada"}</span><button type="button" className="settings-editor-button settings-editor-button-secondary" onClick={() => void toggleEnabled()} disabled={Boolean(busy)}>{selectedRule.enabled ? "Desactivar" : "Activar"}</button></> : <span>Las correcciones nuevas quedan activas al guardar.</span>}</div>
+
+          <footer className="settings-preset-editor-footer"><span className="settings-readonly-note">Los datos se verifican antes de guardar. Si cambian, se conserva este borrador.</span><button type="button" className="settings-editor-button settings-editor-button-primary" onClick={() => void saveDraft()} disabled={Boolean(busy) || !draft.spoken.trim() || !draft.written.trim()}>{busy === "save" ? "Guardando…" : "Guardar corrección"}</button></footer>
+        </section> : null}
+        </div>
+          </>
+        ) : (
+          <div className="settings-vocabulary-empty" role="status"><strong>No hay correcciones guardadas.</strong><span>Creá una corrección desde Nueva corrección.</span></div>
+        )}
+        </>
+      )}
     </section>
   );
 }

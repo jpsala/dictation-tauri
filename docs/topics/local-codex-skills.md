@@ -47,6 +47,7 @@ capacidades realmente locales:
 - `aos-doctor`: diagnóstico read-only del contexto de Dictation Tauri;
 - `realinear-os` y `evaluar-skills`: operaciones especializadas;
 - `impeccable`: trabajo UI/frontend;
+- `release`: commit/push, prerelease Windows, instalación local y URL directa;
 - `speckit-*`: workflow SpecKit del producto.
 
 No mantener skills locales que impongan defaults cotidianos de planificación,

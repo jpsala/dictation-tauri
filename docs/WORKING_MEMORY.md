@@ -3,16 +3,21 @@
 Router operativo corto; el detalle durable vive en topics, tracks, specs y
 decisiones.
 
-Última actualización: 2026-08-05.
+Última actualización: 2026-08-11.
 
 ## Foco Único De Ejecución
 
-- **Estado:** `ready`.
-- **Plan:** `docs/tracks/dictation-error-recovery-hardening.md`.
-- **Próximo batch:** **Batch 3 — continuar sólo la matriz de errores todavía colapsados**.
+- **Estado:** `complete`.
+- **Referencia:** `docs/tracks/fixvox-minimal-reliability-and-truthfulness.md`.
+- **Siguiente acción:** priorizar un frente nuevo; Phase 4 requiere autorización explícita.
 
 ## Estado Vivo
 
+- Reliability/truthfulness quedó cerrado localmente: Settings reabre sin
+  recargar, las nueve secciones reinician su scroll, Presets/Atajos/Correcciones
+  muestran estados honestos y el cierre pasó 18 tests focales, 2 smokes
+  Playwright, build, cargo check y Tauri real. Phase 4, deploy, VPS, provider,
+  commit y push no se ejecutaron.
 - Dictation Tauri y Control Room son el producto canónico; `C:/dev/fixvox`
   queda como referencia de comportamiento Fixvox-like.
 - El runtime cloud/self-hosted y Checkpoint F están cerrados. Estado, receipts,
@@ -61,12 +66,13 @@ decisiones.
 
 | Frente | Estado | Abrir primero |
 | --- | --- | --- |
-| Error recovery | activo | `docs/tracks/dictation-error-recovery-hardening.md` |
+| Reliability/truthfulness | local completo; Phase 4 gated | `docs/tracks/fixvox-minimal-reliability-and-truthfulness.md` |
 | Dock/Wispr | listo para retomar | `docs/tracks/dock-skins-visual-refinement.md` |
 | Cloud/runtime | referencia cerrada | Spec 019 y `docs/topics/fixvox-cloud-runtime-port.md` |
 | Operaciones externas | sin batch activa | `docs/tracks/standard-product-ux-external-operation-gate-plan.md` |
 | Pi Chat | pausado | `docs/tracks/pi-chat-conversation-first-ux.md` |
-| App audit | pausado | `docs/tracks/app-audit-autonomous-implementation-plan.md` |
+| Error recovery | listo para retomar | `docs/tracks/dictation-error-recovery-hardening.md` |
+| App audit | absorbido por el cierre local | `docs/tracks/app-audit-autonomous-implementation-plan.md` |
 | Usuarios registrados | pausado | `docs/tracks/fixvox-registered-users-opportunities.md` |
 | Producto | referencia | `docs/topics/product-direction.md` |
 | AOS | operativo | `docs/topics/agentic-os.md` |

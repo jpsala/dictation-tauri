@@ -199,7 +199,7 @@ Components should look familiar and task-oriented. Build states before decoratio
 
 ### Navigation
 
-- **Style:** Compact tabs or segmented controls for modes. Settings uses predictable navigation for General, Cuenta, Dictado, Atajos, Presets, Privacidad, Ayuda, and Avanzado.
+- **Style:** Compact tabs or segmented controls for modes. Settings uses predictable navigation for General, Cuenta, Dictado, Atajos, Presets, Correcciones, Privacidad, Ayuda, and Avanzado.
 - **States:** Active navigation uses text weight and a small state marker. Avoid full-width saturated active backgrounds.
 - **Account-first:** First-run states show one primary action, human recovery copy, and no raw identity, device, policy, route, provider, or error detail. Diagnostics are opt-in and redacted.
 - **Operator separation:** Control Room is an authenticated browser surface for Personas, Planes y acceso, Comportamiento, Uso, Sistema avanzado, and Auditoría. It is not embedded in ordinary Settings; Settings only exposes a capability-gated entry.

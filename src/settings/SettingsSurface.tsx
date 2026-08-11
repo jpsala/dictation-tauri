@@ -27,7 +27,6 @@ import {
   type FixvoxCloudStatus,
 } from "./fixvox-cloud-control";
 import { formatHotkeyEditReason } from "./hotkey-edit-copy";
-import { nativeHotkeyEditContract } from "./hotkey-edit-contract";
 import {
   extractCloudSelectionPresetDefaults,
   importCloudSelectionPresetDefaults,
@@ -132,12 +131,13 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
   const [actionApplyResult, setActionApplyResult] = useState<TauriActionHotkeyRegistrationApplyResult | undefined>();
   const [notice, setNotice] = useState<EditorNotice>({
     tone: "idle",
-    message: "Click the shortcut field, then press the new key combination.",
+    message: "Seleccioná el campo y presioná la nueva combinación.",
   });
   const [busyAction, setBusyAction] = useState<BusyAction | undefined>();
   const [captureState, setCaptureState] = useState<CaptureState>("idle");
   const [captureTarget, setCaptureTarget] = useState<ShortcutCaptureTarget>("dictation");
   const [cloudStatus, setCloudStatus] = useState<FixvoxCloudStatus | undefined>(initialCloudStatus);
+  const [cloudStatusResolved, setCloudStatusResolved] = useState(initialCloudStatus !== undefined);
   const [authSessionStatus, setAuthSessionStatus] = useState<FixvoxAuthSessionStatus | undefined>(initialAuthSessionStatus);
   const [cloudNotice, setCloudNotice] = useState<EditorNotice>({
     tone: "idle",
@@ -178,13 +178,10 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
   const [cloudPresetDefaults, setCloudPresetDefaults] = useState<CloudSelectionPresetDefault[]>(() =>
     extractCloudSelectionPresetDefaults(initialCloudStatus),
   );
+  const settingsContentRef = useRef<HTMLElement | null>(null);
   const captureArmedRef = useRef(false);
   const accountAutoSelectDoneRef = useRef(false);
-  const settingsAccess = cloudStatus
-    ? resolveSettingsAccess(cloudStatus)
-    : tauriRuntime
-      ? resolveSettingsAccess(undefined)
-      : { canViewPresets: true, canEditPresets: true, canOpenAdmin: false };
+  const settingsAccess = cloudStatus ? resolveSettingsAccess(cloudStatus) : resolveSettingsAccess(undefined);
   const visibleSections = sections;
   const requestedSectionAllowed = visibleSections.some((section) => section.id === selectedSection);
   const effectiveSection = requestedSectionAllowed ? selectedSection : "general";
@@ -235,7 +232,11 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       return;
     }
 
-    void getFixvoxCloudStatus().then(setCloudStatus).catch(() => undefined);
+    setCloudStatusResolved(false);
+    void getFixvoxCloudStatus()
+      .then((status) => setCloudStatus(status))
+      .catch(() => setCloudStatus(undefined))
+      .finally(() => setCloudStatusResolved(true));
   }, [cloudStatus, tauriRuntime]);
 
   useEffect(() => {
@@ -245,6 +246,11 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
 
     void loadCloudStatus();
   }, [effectiveSection, tauriRuntime]);
+  useEffect(() => {
+    if (settingsContentRef.current) {
+      settingsContentRef.current.scrollTop = 0;
+    }
+  }, [effectiveSection]);
 
   useEffect(() => {
     if (!tauriRuntime || !cloudStatus || accountAutoSelectDoneRef.current) {
@@ -273,10 +279,10 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
 
     void loadSelectionPresetStore()
       .then(() => refreshPresetItems())
-      .catch((error) => {
+      .catch(() => {
         setPresetNotice({
           tone: "warning",
-          message: `Preset store unavailable; using renderer fallback: ${formatHotkeyEditReason(error)}`,
+          message: "No pudimos cargar los presets guardados.",
         });
       });
     void getFixvoxCloudStatus()
@@ -412,37 +418,27 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
   );
 
   const previewCopy = preview
-    ? preview.canApply
-      ? `Ready: host can swap to ${preview.normalizedShortcut}.`
-      : `Blocked: ${formatHotkeyEditReason(preview.reason)}`
+    ? preview.canApply ? `Atajo disponible: ${preview.normalizedShortcut}.` : "Ese atajo no está disponible."
     : undefined;
   const applyCopy = applyResult
-    ? applyResult.error
-      ? applyResult.rolledBack
-        ? `Rolled back: ${formatHotkeyEditReason(applyResult.error)}`
-        : `Apply failed: ${formatHotkeyEditReason(applyResult.error)}`
-      : applyResult.persistenceError
-        ? `Applied, not saved: ${formatHotkeyEditReason(applyResult.persistenceError)}`
-        : applyResult.preferencePersisted
-          ? `Saved: ${applyResult.effectiveConfig.shortcut}.`
-          : `Already verified: ${applyResult.effectiveConfig.shortcut}.`
+    ? applyResult.error ? (applyResult.rolledBack ? "No se pudo aplicar; mantuvimos el atajo anterior." : "No se pudo aplicar el atajo.")
+      : applyResult.persistenceError ? "Atajo aplicado, pero no pudimos guardar la preferencia."
+      : `Atajo guardado: ${applyResult.effectiveConfig.shortcut}.`
     : undefined;
   const actionPreviewCopy = actionPreview
-    ? actionPreview.canApply
-      ? `Action ready: ${actionPreview.normalizedShortcut}.`
-      : `Action blocked: ${formatHotkeyEditReason(actionPreview.reason)}`
+    ? actionPreview.canApply ? `Atajo disponible: ${actionPreview.normalizedShortcut}.` : "Ese atajo no está disponible."
     : undefined;
   const actionApplyCopy = actionApplyResult
-    ? actionApplyResult.error
-      ? `Action apply failed: ${formatHotkeyEditReason(actionApplyResult.error)}`
-      : actionApplyResult.persistenceError
-        ? `Action applied, not saved: ${formatHotkeyEditReason(actionApplyResult.persistenceError)}`
-        : "Action shortcut saved and applied."
+    ? actionApplyResult.error ? "No se pudo aplicar el atajo."
+      : actionApplyResult.persistenceError ? "Atajo aplicado, pero no pudimos guardar la preferencia." : "Atajo guardado y aplicado."
     : undefined;
-  const candidateChanged = editingShortcut !== dictationShortcut;
-  const cloudHealth = deriveFixvoxCloudHealth(cloudStatus);
-  const authPolicyView = deriveFixvoxAuthPolicyView(cloudStatus);
   const loginSessionStatus = authSessionStatus?.status ?? "signed_out";
+  const cloudHealthBase = deriveFixvoxCloudHealth(cloudStatus);
+  const cloudHealth = cloudStatusResolved
+    ? cloudHealthBase
+    : { ...cloudHealthBase, tone: "idle" as const, badge: "Comprobando", detail: "Estamos comprobando el estado de la cuenta." };
+  const candidateChanged = editingShortcut !== dictationShortcut;
+  const authPolicyView = deriveFixvoxAuthPolicyView(cloudStatus);
   const loginPending = loginSessionStatus === "pending";
   const loginSignedIn = loginSessionStatus === "signed_in";
   const signedInPolicyActive = cloudStatus?.authPolicy?.accessMode === "signed_in";
@@ -454,43 +450,22 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     try {
       const hostPreview = await previewTauriHotkeyRegistration(nextShortcut);
       if (!hostPreview) {
-        setPreview({
-          requestedShortcut: nextShortcut,
-          normalizedShortcut: nextShortcut,
-          canApply: false,
-          reason: "tauri_runtime_unavailable",
-        });
-        setNotice({
-          tone: "warning",
-          message: "Open this surface inside Tauri to run the host preview.",
-        });
+        setPreview({ requestedShortcut: nextShortcut, normalizedShortcut: nextShortcut, canApply: false, reason: "tauri_runtime_unavailable" });
+        setNotice({ tone: "warning", message: "No pudimos comprobar este atajo." });
         return;
       }
-
       setPreview(hostPreview);
-      setNotice({
-        tone: hostPreview.canApply ? "success" : "warning",
-        message: hostPreview.canApply
-          ? "Host preview passed. Save will swap, verify, persist, and roll back on registration failure."
-          : `Host preview blocked this binding: ${formatHotkeyEditReason(hostPreview.reason)}`,
-      });
-    } catch (error) {
+      setNotice({ tone: hostPreview.canApply ? "success" : "warning", message: hostPreview.canApply ? "El atajo está disponible." : "Ese atajo no está disponible." });
+    } catch {
       setPreview(undefined);
-      setNotice({
-        tone: "danger",
-        message: `Host preview failed: ${formatHotkeyEditReason(error)}`,
-      });
+      setNotice({ tone: "danger", message: "No pudimos comprobar este atajo." });
     } finally {
       setBusyAction(undefined);
     }
   }
-
   async function startShortcutCapture(target: ShortcutCaptureTarget = "dictation") {
     if (!tauriRuntime || busyAction) {
-      setNotice({
-        tone: "warning",
-        message: "Open this surface inside Tauri to record a shortcut.",
-      });
+      setNotice({ tone: "warning", message: "Abrí estos ajustes desde la aplicación para grabar un atajo." });
       return;
     }
 
@@ -509,13 +484,13 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       setCaptureState("recording");
       setNotice({
         tone: "idle",
-        message: "Press the new shortcut now. Esc cancels.",
+        message: "Presioná la nueva combinación. Escape cancela.",
       });
-    } catch (error) {
+    } catch {
       captureArmedRef.current = false;
       setNotice({
         tone: "danger",
-        message: `Host capture failed: ${formatHotkeyEditReason(error)}`,
+        message: "No pudimos iniciar la captura del atajo.",
       });
     }
   }
@@ -535,7 +510,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       setEditingShortcut(dictationShortcut);
       setNotice({
         tone: "idle",
-        message: "Shortcut capture cancelled.",
+        message: "Captura cancelada.",
       });
       return;
     }
@@ -544,7 +519,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     if (!shortcut) {
       setNotice({
         tone: "warning",
-        message: "Press a shortcut with Ctrl, Alt, or Shift plus another key.",
+        message: "Usá Ctrl, Alt o Shift junto con otra tecla.",
       });
       return;
     }
@@ -573,7 +548,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       if (!result) {
         setNotice({
           tone: "warning",
-          message: "Open this surface inside Tauri to apply an action shortcut.",
+          message: "No se pudo aplicar el atajo de esta acción.",
         });
         return;
       }
@@ -584,15 +559,15 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       setNotice({
         tone: result.error ? "danger" : result.persistenceError ? "warning" : "success",
         message: result.error
-          ? `Host could not apply the action shortcut: ${formatHotkeyEditReason(result.error)}`
+          ? "No se pudo aplicar el atajo de esta acción."
           : result.persistenceError
-            ? `Action shortcut applied, but local preference was not saved: ${formatHotkeyEditReason(result.persistenceError)}`
-            : "Action shortcut saved locally and applied by the host.",
+            ? "Aplicamos el atajo, pero no pudimos guardar la preferencia."
+            : "Atajo de acción aplicado y guardado.",
       });
-    } catch (error) {
+    } catch {
       setNotice({
         tone: "danger",
-        message: `Host action shortcut apply failed: ${formatHotkeyEditReason(error)}`,
+        message: "No se pudo aplicar el atajo de esta acción.",
       });
     } finally {
       setBusyAction(undefined);
@@ -606,7 +581,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       if (!result) {
         setNotice({
           tone: "warning",
-          message: "Open this surface inside Tauri to apply a runtime binding.",
+          message: "Abrí estos ajustes desde la aplicación para aplicar el atajo.",
         });
         return;
       }
@@ -619,18 +594,16 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
         tone: result.error ? (result.rolledBack ? "warning" : "danger") : result.persistenceError ? "warning" : "success",
         message: result.error
           ? result.rolledBack
-            ? `Host restored the previous binding: ${formatHotkeyEditReason(result.error)}`
-            : `Host could not apply the binding: ${formatHotkeyEditReason(result.error)}`
+            ? "No se pudo aplicar el atajo; mantuvimos el anterior."
+            : "No se pudo aplicar el atajo."
           : result.persistenceError
-            ? `Binding applied, but local preference was not saved: ${formatHotkeyEditReason(result.persistenceError)}`
-            : result.preferencePersisted
-              ? "Binding saved locally and verified by the host."
-              : "Binding was already active, saved locally, and verified by the host.",
+            ? "Aplicamos el atajo, pero no pudimos guardar la preferencia."
+            : "Atajo guardado y verificado.",
       });
-    } catch (error) {
+    } catch {
       setNotice({
         tone: "danger",
-        message: `Host apply failed: ${formatHotkeyEditReason(error)}`,
+        message: "No se pudo aplicar el atajo.",
       });
     } finally {
       setBusyAction(undefined);
@@ -864,14 +837,14 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     } catch (error) {
       setPresetNotice({
         tone: "warning",
-        message: `Preset changes saved in memory, but host persistence failed: ${formatHotkeyEditReason(error)}`,
+        message: "Guardamos los cambios en esta sesión, pero no pudimos conservarlos.",
       });
     }
   }
 
   async function importCloudPresetDefaults() {
     if (!cloudPresetDefaults.length) {
-      setPresetNotice({ tone: "warning", message: "No Cloud preset defaults found in the current policy snapshot." });
+      setPresetNotice({ tone: "warning", message: "No encontramos valores predeterminados disponibles." });
       return;
     }
 
@@ -882,7 +855,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       setPresetNotice({
         tone: result.applied > 0 ? "success" : "warning",
         message: result.applied > 0
-          ? `Imported ${result.applied} Cloud preset defaults into local app data.`
+          ? `Importamos ${result.applied} valores para tus presets.`
           : "Los valores disponibles no coincidieron con ningún preset existente.",
       });
     } catch (error) {
@@ -914,7 +887,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       return;
     }
     if (!presetDraft.trim()) {
-      setPresetNotice({ tone: "warning", message: "Preset prompt cannot be empty." });
+      setPresetNotice({ tone: "warning", message: "El texto del preset no puede estar vacío." });
       return;
     }
 
@@ -934,7 +907,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       refreshPresetItems(selectedPreset.id);
       setPresetNotice({
         tone: "success",
-        message: `${selectedPreset.name} saved locally. Alt+Q uses the updated prompt on the next run.`,
+        message: "Preset guardado. El cambio se usará la próxima vez.",
       });
     } finally {
       setBusyAction(undefined);
@@ -1017,7 +990,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
 
   return (
     <main className="settings-window-shell" aria-label="Ajustes de Dictation">
-      <aside className="settings-sidebar" aria-label="Settings sections">
+      <aside className="settings-sidebar" aria-label="Secciones de ajustes">
         <div className="settings-brand-row">
           <div className="settings-brand-mark" aria-hidden="true">⚡</div>
           <div className="settings-brand-copy">
@@ -1048,7 +1021,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
         </nav>
       </aside>
 
-      <section className="settings-content" aria-labelledby={`settings-${effectiveSection}-title`}>
+      <section ref={settingsContentRef} className="settings-content" aria-labelledby={`settings-${effectiveSection}-title`}>
         <header className="settings-header">
           <div className="settings-title-block">
             <p className="settings-path">Ajustes / {selectedSectionMeta.label}</p>
@@ -1184,11 +1157,8 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
           <section className="settings-hotkey-editor" aria-labelledby="settings-hotkey-editor-title">
             <div className="settings-hotkey-editor-topline">
               <div className="settings-hotkey-editor-copy">
-                <div className="settings-native-plan-heading">
-                  <h3 id="settings-hotkey-editor-title">{nativeHotkeyEditContract.heading}</h3>
-                  <span>{nativeHotkeyEditContract.statusLabel}</span>
-                </div>
-                <p>{nativeHotkeyEditContract.summary} Seleccioná el campo y presioná el nuevo atajo.</p>
+                <h3 id="settings-hotkey-editor-title">Editá tus atajos</h3>
+                <p>Elegí un campo y presioná el nuevo atajo. Comprobamos el cambio antes de aplicarlo.</p>
               </div>
               <div className="settings-hotkey-editor-state" aria-label="Estado de edición del atajo">
                 <span>Actual <kbd>{dictationShortcut}</kbd></span>
@@ -1256,11 +1226,9 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
               <strong>{notice.message}</strong>
             </div>
 
-            <ol className="settings-native-plan-steps settings-hotkey-editor-steps" aria-label="Native re-registration steps">
-              {nativeHotkeyEditContract.steps.map((step) => (
-                <li key={step.id} title={step.guardrail}>{step.label}</li>
-              ))}
-            </ol>
+            <div className="settings-hotkey-editor-feedback" data-tone="idle">
+              <span>Estados: Editable, Fijo o Próximamente.</span>
+            </div>
           </section>
 
           <div className="settings-subsection-heading">
@@ -1277,183 +1245,46 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
         <PersonalVocabularySettings client={vocabularyClient} />
         ) : effectiveSection === "presets" ? (
         <section className="settings-panel settings-presets-panel" aria-label="Administrar presets">
+          {tauriRuntime && !cloudStatusResolved ? (
+            <div className="settings-hotkey-editor-feedback" data-tone="idle" aria-live="polite"><strong>Comprobando disponibilidad…</strong></div>
+          ) : !settingsAccess.canViewPresets ? (
+            <div className="settings-hotkey-editor-feedback" data-tone="warning">
+              <strong>Los presets no están disponibles para esta cuenta.</strong>
+              <button type="button" className="settings-editor-button settings-editor-button-secondary" onClick={() => setSelectedSection("account")}>Cuenta</button>
+            </div>
+          ) : (
+          <>
           <div className="settings-preset-toolbar">
             <span className="settings-panel-count">{presetItems.length} presets</span>
             <div className="settings-panel-header-actions">
-              {cloudPresetDefaults.length ? (
-                <button
-                  type="button"
-                  className="settings-icon-button"
-                  disabled={Boolean(busyAction)}
-                  onClick={() => void importCloudPresetDefaults()}
-                  aria-label="Importar valores disponibles"
-                  title="Importar valores disponibles"
-                >
-                  <SettingsIcon name="download" />
-                </button>
+              {cloudPresetDefaults.length && settingsAccess.canEditPresets ? (
+                <button type="button" className="settings-icon-button" disabled={Boolean(busyAction)} onClick={() => void importCloudPresetDefaults()} aria-label="Importar valores disponibles" title="Importar valores disponibles"><SettingsIcon name="download" /></button>
               ) : null}
-              <button
-                type="button"
-                className="settings-icon-button"
-                disabled={Boolean(busyAction) || !settingsAccess.canEditPresets}
-                onClick={addPreset}
-                aria-label="Agregar preset"
-                title="Agregar preset"
-              >
-                <SettingsIcon name="plus" />
-              </button>
+              {settingsAccess.canEditPresets ? <button type="button" className="settings-icon-button" disabled={Boolean(busyAction)} onClick={addPreset} aria-label="Agregar preset" title="Agregar preset"><SettingsIcon name="plus" /></button> : null}
             </div>
           </div>
-
-          {!settingsAccess.canViewPresets ? (
-            <div className="settings-hotkey-editor-feedback" data-tone="warning" aria-live="polite">
-              <strong>Los presets no están disponibles para esta cuenta.</strong>
-            </div>
-          ) : null}
-
           <div className="settings-preset-admin-grid">
-            {presetItems.length ? (
-              <div className="settings-preset-admin-list" aria-label="Lista de presets">
-                {presetItems.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    className="settings-preset-row"
-                    data-selected={preset.id === selectedPreset?.id}
-                    onClick={() => selectPresetForEditing(preset.id)}
-                  >
-                    <strong>{preset.name}</strong>
-                    <span className="settings-preset-row-meta">
-                      <kbd>{preset.pickerKey}</kbd>
-                      <span data-enabled={preset.enabled !== false}>{preset.enabled === false ? "Desactivado" : "Activado"}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="settings-preset-empty">
-                <strong>No hay presets.</strong>
-                <span>Agregá uno para usarlo con Alt+Q.</span>
-              </div>
-            )}
-
+            {presetItems.length ? <div className="settings-preset-admin-list" aria-label="Lista de presets">{presetItems.map((preset) => (
+              <button key={preset.id} type="button" className="settings-preset-row" data-selected={preset.id === selectedPreset?.id} onClick={() => selectPresetForEditing(preset.id)}><strong>{preset.name}</strong><span className="settings-preset-row-meta"><kbd>{preset.pickerKey}</kbd><span data-enabled={preset.enabled !== false}>{preset.enabled === false ? "Desactivado" : "Activado"}</span></span></button>
+            ))}</div> : <div className="settings-preset-empty"><strong>No hay presets.</strong><span>Agregá uno para usarlo con Alt+Q.</span></div>}
             {selectedPreset ? (
               <section className="settings-preset-editor" aria-labelledby="settings-preset-editor-title">
-                <header className="settings-preset-editor-header">
-                  <div>
-                    <h3 id="settings-preset-editor-title">{selectedPreset.name}</h3>
-                  </div>
-                  <div className="settings-preset-editor-icon-actions">
-                    <button
-                      type="button"
-                      className="settings-icon-button"
-                      disabled={Boolean(busyAction) || !settingsAccess.canEditPresets}
-                      onClick={duplicateSelectedPreset}
-                      aria-label="Duplicar preset"
-                      title="Duplicar preset"
-                    >
-                      <SettingsIcon name="copy" />
-                    </button>
-                    <button
-                      type="button"
-                      className="settings-icon-button settings-icon-button-danger"
-                      disabled={Boolean(busyAction) || !settingsAccess.canEditPresets}
-                      onClick={deleteSelectedPreset}
-                      aria-label="Eliminar preset"
-                      title="Eliminar preset"
-                    >
-                      <SettingsIcon name="trash" />
-                    </button>
-                  </div>
-                </header>
-
+                <header className="settings-preset-editor-header"><div><h3 id="settings-preset-editor-title">{selectedPreset.name}</h3></div><div className="settings-preset-editor-icon-actions">
+                  <button type="button" className="settings-icon-button" disabled={Boolean(busyAction) || !settingsAccess.canEditPresets} onClick={duplicateSelectedPreset} aria-label="Duplicar preset"><SettingsIcon name="copy" /></button>
+                  <button type="button" className="settings-icon-button settings-icon-button-danger" disabled={Boolean(busyAction) || !settingsAccess.canEditPresets} onClick={deleteSelectedPreset} aria-label="Eliminar preset"><SettingsIcon name="trash" /></button>
+                </div></header>
                 <div className="settings-preset-metadata-grid">
-                  <label className="settings-preset-field">
-                    <span>Nombre</span>
-                    <input
-                      value={presetNameDraft}
-                      disabled={!settingsAccess.canEditPresets}
-                      onChange={(event) => setPresetNameDraft(event.target.value)}
-                      aria-label="Nombre del preset"
-                    />
-                  </label>
-                  <label className="settings-preset-field settings-preset-field-short">
-                    <span>Tecla</span>
-                    <input
-                      value={presetPickerKeyDraft}
-                      maxLength={1}
-                      disabled={!settingsAccess.canEditPresets}
-                      onChange={(event) => setPresetPickerKeyDraft(event.target.value.toUpperCase().slice(0, 1))}
-                      aria-label="Tecla del selector del preset"
-                    />
-                  </label>
-                  <label className="settings-preset-field">
-                    <span>Atajo</span>
-                    <input
-                      value={presetHotkeyDraft}
-                      disabled={!settingsAccess.canEditPresets}
-                      onChange={(event) => setPresetHotkeyDraft(event.target.value)}
-                      aria-label="Atajo del preset"
-                      placeholder="Alt+T, N"
-                    />
-                  </label>
+                  <label className="settings-preset-field"><span>Nombre</span><input value={presetNameDraft} disabled={!settingsAccess.canEditPresets} onChange={(event) => setPresetNameDraft(event.target.value)} aria-label="Nombre del preset" /></label>
+                  <label className="settings-preset-field settings-preset-field-short"><span>Tecla</span><input value={presetPickerKeyDraft} maxLength={1} disabled={!settingsAccess.canEditPresets} onChange={(event) => setPresetPickerKeyDraft(event.target.value.toUpperCase().slice(0, 1))} aria-label="Tecla del selector del preset" /></label>
+                  <label className="settings-preset-field"><span>Atajo</span><input value={presetHotkeyDraft} disabled={!settingsAccess.canEditPresets} onChange={(event) => setPresetHotkeyDraft(event.target.value)} aria-label="Atajo del preset" placeholder="Alt+T, N" /></label>
                 </div>
-
-                <div className="settings-preset-options">
-                  <div className="settings-preset-option" title="Si lo desactivás, deja de aparecer en Alt+Q.">
-                    <strong>Disponible en Alt+Q</strong>
-                    <button
-                      type="button"
-                      className="settings-toggle"
-                      role="switch"
-                      aria-label="Disponible en Alt+Q"
-                      aria-checked={presetEnabledDraft}
-                      disabled={!settingsAccess.canEditPresets}
-                      onClick={() => setPresetEnabledDraft(!presetEnabledDraft)}
-                    />
-                  </div>
-                  <div className="settings-preset-option" title="Solicita confirmación antes de ejecutar este preset.">
-                    <strong>Pedir confirmación</strong>
-                    <button
-                      type="button"
-                      className="settings-toggle"
-                      role="switch"
-                      aria-label="Pedir confirmación"
-                      aria-checked={presetConfirmDraft}
-                      disabled={!settingsAccess.canEditPresets}
-                      onClick={() => setPresetConfirmDraft(!presetConfirmDraft)}
-                    />
-                  </div>
-                </div>
-
-                <label className="settings-preset-field">
-                  <span>Instrucción</span>
-                  <textarea
-                    className="settings-preset-textarea"
-                    value={presetDraft}
-                    disabled={!settingsAccess.canEditPresets}
-                    onChange={(event) => setPresetDraft(event.target.value)}
-                    spellCheck={false}
-                    aria-label="Instrucción del preset"
-                  />
-                </label>
-
-                <footer className="settings-preset-editor-footer">
-                  <div className="settings-hotkey-editor-feedback" data-tone={presetNotice.tone} aria-live="polite">
-                    <strong>{presetDraftChanged ? "Cambios sin guardar" : presetNotice.tone === "idle" ? "Cambios guardados" : presetNotice.message}</strong>
-                  </div>
-                  <button
-                    type="button"
-                    className="settings-editor-button settings-editor-button-primary"
-                    disabled={Boolean(busyAction) || !presetDraftChanged || !settingsAccess.canEditPresets}
-                    onClick={savePresetDraft}
-                  >
-                    {busyAction === "preset" ? "Guardando" : "Guardar cambios"}
-                  </button>
-                </footer>
+                <label className="settings-preset-field"><span>Instrucción</span><textarea className="settings-preset-textarea" value={presetDraft} disabled={!settingsAccess.canEditPresets} onChange={(event) => setPresetDraft(event.target.value)} spellCheck={false} aria-label="Instrucción del preset" /></label>
+                <footer className="settings-preset-editor-footer"><div className="settings-hotkey-editor-feedback" data-tone={presetNotice.tone} aria-live="polite"><strong>{presetDraftChanged ? "Cambios sin guardar" : presetNotice.tone === "idle" ? "" : presetNotice.message}</strong></div><button type="button" className="settings-editor-button settings-editor-button-primary" disabled={Boolean(busyAction) || !presetDraftChanged || !settingsAccess.canEditPresets} onClick={savePresetDraft}>{busyAction === "preset" ? "Guardando" : "Guardar cambios"}</button></footer>
               </section>
             ) : null}
           </div>
+          </>
+          )}
         </section>
         ) : effectiveSection === "account" ? (
         <section className="settings-panel settings-cloud-panel" aria-labelledby="settings-account-title">
@@ -1468,19 +1299,13 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
                   <div className="settings-hotkey-value"><kbd>Lista</kbd><small>cuenta protegida</small></div>
                 </div>
                 <div className="settings-hotkey-row">
-                  <div className="settings-hotkey-copy">
-                    <strong>Plan {authPolicyView.templateLabel}</strong>
-                    <span>Los límites y funciones disponibles se aplican automáticamente.</span>
-                  </div>
+                  <div className="settings-hotkey-copy"><strong>Plan {authPolicyView.templateLabel}</strong><span>Los límites y funciones disponibles se aplican automáticamente.</span></div>
                   <div className="settings-hotkey-value"><kbd>{authPolicyView.limitsLabel}</kbd><small>actual</small></div>
                 </div>
               </>
             ) : (
               <div className="settings-hotkey-row" data-health="warning">
-                <div className="settings-hotkey-copy">
-                  <strong>Iniciá sesión para usar Dictation</strong>
-                  <span>Tu cuenta se vincula automáticamente a esta computadora.</span>
-                </div>
+                <div className="settings-hotkey-copy"><strong>Iniciá sesión para usar Dictation</strong><span>Tu cuenta se vincula automáticamente a esta computadora.</span></div>
                 <div className="settings-hotkey-value"><kbd>Pendiente</kbd><small>cuenta</small></div>
               </div>
             )}
@@ -1742,6 +1567,7 @@ function normalizeShortcutKey(key: string): string | undefined {
 }
 
 function HotkeyRow({ hotkey }: { hotkey: HotkeyRow }) {
+  const modeLabel = hotkey.mode === "host" ? "Editable" : hotkey.mode === "fixed" ? "Fijo" : "Próximamente";
   return (
     <div className="settings-hotkey-row">
       <div className="settings-hotkey-copy">
@@ -1750,7 +1576,7 @@ function HotkeyRow({ hotkey }: { hotkey: HotkeyRow }) {
       </div>
       <div className="settings-hotkey-value" aria-label={`${hotkey.label}: ${hotkey.value}`}>
         <kbd>{hotkey.value}</kbd>
-        <small>{hotkey.mode}</small>
+        <small>{modeLabel}</small>
       </div>
     </div>
   );

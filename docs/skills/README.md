@@ -19,6 +19,7 @@ skills propias y no colisionantes:
 - `aos-doctor/` para diagnóstico read-only;
 - `realinear-os/` y `evaluar-skills/` para operaciones especializadas;
 - `impeccable/` para UI/frontend;
+- `release/` para commit, push, prerelease Windows, instalación local y URL;
 - las skills SpecKit `speckit-*`.
 
 ## Validación

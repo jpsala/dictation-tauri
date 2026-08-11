@@ -42,3 +42,28 @@ test("runs a fake cancellation flow from the dock", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
   await expect(page.getByText("Dictation cancelled", { exact: false })).toHaveCount(0);
 });
+
+test("resets settings content scroll when switching rail sections", async ({ page }) => {
+  await page.goto("/?surface=settings");
+
+  const content = page.locator(".settings-content");
+  await expect(content).toBeVisible();
+  await page.getByRole("button", { name: /Dictado/ }).click();
+  await content.evaluate((element) => {
+    const owner = element as HTMLElement;
+    owner.style.overflowY = "auto";
+    owner.style.height = "120px";
+    owner.style.maxHeight = "120px";
+
+    const spacer =
+      owner.querySelector<HTMLElement>("[data-test-scroll-spacer]") ?? document.createElement("div");
+    spacer.dataset.testScrollSpacer = "true";
+    spacer.setAttribute("aria-hidden", "true");
+    spacer.style.cssText = "height: 1200px; flex: none; pointer-events: none;";
+    owner.appendChild(spacer);
+    owner.scrollTop = 240;
+  });
+  await expect.poll(() => content.evaluate((element) => (element as HTMLElement).scrollTop)).toBeGreaterThan(0);
+  await page.getByRole("button", { name: /Atajos/ }).click();
+  await expect(content).toHaveJSProperty("scrollTop", 0);
+});

@@ -43,9 +43,6 @@ pub fn show_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<()
             .map_err(|error| format!("settings window unavailable: {error}"))?
     };
 
-    window
-        .eval("window.location.replace('index.html#settings')")
-        .map_err(|error| format!("settings navigation failed: {error}"))?;
     show_existing_settings_window(window)
 }
 
