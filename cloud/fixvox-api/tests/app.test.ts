@@ -165,7 +165,63 @@ describe("Bun API adapter", () => {
     }));
     expect(response.status).toBe(200);
     expect({ calls, reserves, consumes }).toEqual({ calls: 1, reserves: 1, consumes: 1 });
-    expect(JSON.stringify(await response.json())).toContain("safe transcript");
+    const body = await response.json() as { data: Record<string, unknown> };
+    expect(JSON.stringify(body)).toContain("safe transcript");
+    expect("sttMetadata" in body.data).toBe(false);
+    expect("sttMetadataPrivate" in body.data).toBe(false);
+  });
+
+  test("returns bounded private STT metadata only for an allowlisted evaluation recipe", async () => {
+    const deps = createDependencies();
+    deps.providers = {
+      async proxy() {
+        return Response.json({
+          text: "PRIVATE TRANSCRIPT",
+          words: [{ word: "PRIVATE WORD", start: 0, end: 0.4 }],
+          segments: [
+            { text: "PRIVATE SEGMENT", start: 0, end: 0.5, no_speech_prob: 0.2, avg_logprob: -0.3 },
+            { text: "SECOND PRIVATE SEGMENT", start: 0.5, end: 1, no_speech_prob: 0.7, avg_logprob: -1.1 },
+          ],
+          duration: 1,
+        });
+      },
+    };
+    const form = new FormData();
+    form.set("metadata", JSON.stringify({
+      operationId: "evaluation-operation",
+      durationMs: 1000,
+      evaluationRecipeId: "transcription-quality-v1-rich-es",
+    }));
+    form.set("audio", new Blob([new Uint8Array([1, 2, 3])], { type: "audio/wav" }), "capture.wav");
+    const response = await createApiHandler(deps)(new Request("https://fixture.test/product/v1/runtime/transcriptions", {
+      method: "POST",
+      headers: { "x-device-id": "fixture-device-001" },
+      body: form,
+    }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      data: {
+        sttMetadata: Record<string, unknown>;
+        sttMetadataPrivate: { words: unknown[]; segments: unknown[] };
+      };
+    };
+    expect(body.data.sttMetadataPrivate).toEqual({
+      words: [{ word: "PRIVATE WORD", start: 0, end: 0.4 }],
+      segments: [
+        { text: "PRIVATE SEGMENT", start: 0, end: 0.5, no_speech_prob: 0.2, avg_logprob: -0.3 },
+        { text: "SECOND PRIVATE SEGMENT", start: 0.5, end: 1, no_speech_prob: 0.7, avg_logprob: -1.1 },
+      ],
+    });
+    expect(body.data.sttMetadata).toMatchObject({
+      status: "observed",
+      redacted: true,
+      counts: { words: 1, segments: 2, droppedWords: 0, droppedSegments: 0 },
+      noSpeechProbability: 0.7,
+      averageLogProbability: -1.1,
+    });
+    expect("text" in body.data.sttMetadata).toBe(false);
+    expect("words" in body.data.sttMetadata).toBe(false);
+    expect("segments" in body.data.sttMetadata).toBe(false);
   });
 
   test("shadows canonical STT with account-first limits and settles provider cost", async () => {
@@ -291,6 +347,7 @@ describe("Bun API adapter", () => {
       method: "POST", headers: { "x-device-id": "fixture-device-001" }, body: form,
     }));
     expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: "invalid_request", category: "parts", retryable: false } });
     expect({ calls, reserves }).toEqual({ calls: 0, reserves: 0 });
   });
 
@@ -309,6 +366,89 @@ describe("Bun API adapter", () => {
       expect(response.status).toBe(200);
       expect({ calls, reserves, consumes }).toEqual({ calls: 1, reserves: 1, consumes: 1 });
     }
+  });
+
+  test("binds Gate B postprocess recipes server-side and enforces the prosody contrast", async () => {
+    for (const fixture of [
+      { id: "transcription-quality-v1-postprocess-120b-plain", variant: "without-prosody", input: { transcript: "private raw" } },
+      { id: "transcription-quality-v1-postprocess-120b-prosody", variant: "with-prosody", input: { transcript: "private raw", prosodyHints: "advisory pause" } },
+    ] as const) {
+      let policy: unknown;
+      let forwarded: Record<string, unknown> = {};
+      const deps = createDependencies();
+      deps.providers = {
+        async proxy(providerInput) {
+          policy = providerInput.policy;
+          forwarded = await providerInput.request.json() as Record<string, unknown>;
+          return Response.json({ choices: [{ message: { content: "Private raw." } }] });
+        },
+      };
+      const response = await createApiHandler(deps)(new Request("https://fixture.test/product/v1/runtime/actions", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-device-id": "fixture-device-001" },
+        body: JSON.stringify({ operationId: `gate-b-${fixture.variant}`, kind: "postprocess", evaluationRecipeId: fixture.id, input: fixture.input }),
+      }));
+      expect(response.status).toBe(200);
+      expect(policy).toEqual({ profileId: "basic", capability: "postprocess", engine: { provider: "groq", model: "openai/gpt-oss-120b", prompt: "" } });
+      expect(forwarded).toMatchObject({ temperature: 0, max_completion_tokens: 512 });
+      const userMessage = JSON.parse(String((forwarded.messages as Array<{ content: string }>)[1].content)) as Record<string, unknown>;
+      expect(userMessage).toMatchObject(fixture.input);
+      expect(await response.json()).toMatchObject({
+        data: {
+          output: { text: "Private raw." },
+          semanticSafety: { decision: "accepted", reasons: [], alignment: { omissions: 0, additions: 0 }, redacted: true },
+          evaluationRecipe: { id: fixture.id, variant: fixture.variant, provider: "groq", model: "openai/gpt-oss-120b", promptId: "managed-postprocess-v1" },
+        },
+      });
+    }
+
+    for (const fixture of [
+      { id: "transcription-quality-v1-postprocess-120b-plain", input: { transcript: "private raw", prosodyHints: "forbidden" } },
+      { id: "transcription-quality-v1-postprocess-120b-prosody", input: { transcript: "private raw" } },
+    ]) {
+      let calls = 0;
+      let reserves = 0;
+      const deps = createDependencies();
+      deps.providers = { async proxy() { calls += 1; return Response.json({}); } };
+      deps.quota = { async reserve() { reserves += 1; return { allowed: true, reservationId: "unexpected", idempotent: false }; }, async consume() {}, async release() { return true; } };
+      const response = await createApiHandler(deps)(new Request("https://fixture.test/product/v1/runtime/actions", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-device-id": "fixture-device-001" },
+        body: JSON.stringify({ operationId: `invalid-${fixture.id}`, kind: "postprocess", evaluationRecipeId: fixture.id, input: fixture.input }),
+      }));
+      expect(response.status).toBe(400);
+      expect({ calls, reserves }).toEqual({ calls: 0, reserves: 0 });
+    }
+  });
+
+  test("falls back to raw postprocess text and exposes only a redacted semantic receipt", async () => {
+    const deps = createDependencies();
+    deps.providers = {
+      async proxy() {
+        return Response.json({ choices: [{ message: { content: "The model answers the dictated request instead." } }] });
+      },
+    };
+    const response = await createApiHandler(deps)(new Request("https://fixture.test/product/v1/runtime/actions", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-device-id": "fixture-device-001" },
+      body: JSON.stringify({
+        operationId: "semantic-fallback",
+        kind: "postprocess",
+        input: { transcript: "Explain which model is better. End of the sample." },
+      }),
+    }));
+    expect(response.status).toBe(200);
+    const envelope = await response.json() as { data: Record<string, unknown> };
+    expect(envelope.data).toMatchObject({
+      output: { text: "Explain which model is better. End of the sample." },
+      semanticSafety: {
+        decision: "fallback",
+        reasons: ["material_omission", "unsupported_addition", "semantic_transformation"],
+        redacted: true,
+      },
+    });
+    expect(JSON.stringify(envelope.data.semanticSafety)).not.toContain("Explain");
+    expect(JSON.stringify(envelope.data.semanticSafety)).not.toContain("answers");
   });
 
   test("forwards typed selection inputs while keeping provider authority server-owned", async () => {

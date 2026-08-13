@@ -272,8 +272,19 @@ describe("PostgreSQL control-plane repositories", () => {
     try {
       const profiles = await api.handler(new Request("http://127.0.0.1:8790/product/v1/control-room/profiles", { headers }));
       expect(profiles.status).toBe(200);
-      expect(JSON.stringify(await profiles.json())).toContain('"engineId":"http-stt"');
+      const detail = await api.handler(new Request("http://127.0.0.1:8790/product/v1/control-room/profiles/http-profile", { headers }));
+      expect(detail.status).toBe(200);
+      expect((await detail.json()).data).toMatchObject({ profileId: "http-profile", revision: 0, activePublishedVersion: 1, versions: [{ version: 1, status: "published", authorityRevision: 0 }] });
       const candidate = { ...definition, label: "HTTP profile v2", runtime: { transcription: { engineKey: "http-stt" }, postprocess: { engineKey: "http-chat" }, selectionTransform: { engineKey: "http-selection" } } };
+      const beforePreview = await sql.unsafe<{ versions: string; audits: string }>("SELECT (SELECT count(*)::text FROM profile_versions) AS versions, (SELECT count(*)::text FROM audit_records) AS audits");
+      const validated = await api.handler(new Request("http://127.0.0.1:8790/product/v1/control-room/profiles/http-profile/validate", { method: "POST", headers, body: JSON.stringify({ expectedRevision: 0, definition: candidate }) }));
+      expect(validated.status).toBe(200);
+      expect(await validated.json()).toMatchObject({ ok: true, data: { profileId: "http-profile", revision: 0, valid: true } });
+      const preview = await api.handler(new Request("http://127.0.0.1:8790/product/v1/control-room/profiles/http-profile/preview", { method: "POST", headers, body: JSON.stringify({ expectedRevision: 0, definition: candidate }) }));
+      expect(preview.status).toBe(200);
+      expect(await preview.json()).toMatchObject({ ok: true, data: { profileId: "http-profile", baseVersion: 1, changed: true } });
+      const afterPreview = await sql.unsafe<{ versions: string; audits: string }>("SELECT (SELECT count(*)::text FROM profile_versions) AS versions, (SELECT count(*)::text FROM audit_records) AS audits");
+      expect(afterPreview).toEqual(beforePreview);
       const applyBody = { expectedRevision: 0, definition: candidate, confirmation: { action: "apply", profileKey: "http-profile", expectedRevision: 0, phrase: "APPLY http-profile REV 0" } };
       const applied = await api.handler(new Request("http://127.0.0.1:8790/product/v1/control-room/profiles/http-profile/apply", { method: "POST", headers, body: JSON.stringify(applyBody) }));
       expect(applied.status).toBe(200);
@@ -442,6 +453,14 @@ describe("PostgreSQL control-plane repositories", () => {
     const accounts = await sql.unsafe<{ id: string; handle: string }>("SELECT id::text, handle FROM accounts");
     expect(accounts).toHaveLength(1);
     expect(accounts[0].handle).toBe("acc_aaaaaaaaaaaaaaaa");
+    await sql.unsafe(`INSERT INTO role_bindings (account_id, role, granted_by) VALUES ($1::uuid, 'owner', 'bootstrap')`, [accounts[0].id]);
+    expect(await auth.authorizeBearer("desktop-state-hash", new Date(), device.deviceId)).toMatchObject({
+      capability: "publish",
+      principalKey: `arp_${subjectHash}`,
+      role: "owner",
+      recentGoogle: true,
+    });
+    expect(await auth.authorizeBearer("desktop-state-hash", new Date(), "another-device")).toBeNull();
 
     const proId = await createPublishedProfile("pro", "Pro");
     await sql.unsafe("INSERT INTO policy_assignments (target_type, target_id, profile_id, priority, source) VALUES ('account', $1::uuid, $2::uuid, 30, 'test')", [accounts[0].id, proId]);

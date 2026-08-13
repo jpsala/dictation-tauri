@@ -9,7 +9,47 @@ const RUNTIME_KEYS = ["transcription", "postprocess", "selectionTransform"] as c
 type SqlExecutor = Bun.SQL;
 type LockedProfile = { id: string; profile_id: string; label: string; revision: string; active_published_version: number | null };
 type ReceiptRow = { audit_id: string; source_version: number | null; resulting_version: number; revision: string; definition: Record<string, unknown> | string };
-export type ProfileCommandResult = { profileId: string; label: string; previousVersion: number | null; resultingVersion: number; revision: number; auditId: string; idempotentReplay: boolean };
+export type ProfileCommandResult = {
+  profileId: string;
+  label: string;
+  previousVersion: number | null;
+  resultingVersion: number;
+  revision: number;
+  auditId: string;
+  idempotentReplay: boolean;
+};
+export type ProfileVersionMetadata = {
+  version: number;
+  status: "draft" | "published" | "historical";
+  authorityRevision: number;
+  createdAt: string;
+  publishedAt: string | null;
+  definition: Record<string, unknown>;
+};
+export type ProfileDetail = {
+  profileId: string;
+  label: string;
+  lifecycleStatus: string;
+  revision: number;
+  activePublishedVersion: number | null;
+  currentDraftVersion: number | null;
+  published: ProfileVersionMetadata | null;
+  draft: ProfileVersionMetadata | null;
+  versions: ProfileVersionMetadata[];
+};
+export type ProfileValidationResult = { profileId: string; revision: number; valid: true };
+export type ProfilePreviewChange = { path: string; before: unknown; after: unknown };
+export type ProfilePreviewResult = {
+  profileId: string;
+  revision: number;
+  baseVersion: number | null;
+  candidateLabel: string;
+  changed: boolean;
+  changes: ProfilePreviewChange[];
+  truncated: boolean;
+};
+type ProfileRow = { id: string; profile_id: string; label: string; lifecycle_status: string; revision: string; active_published_version: number | null; current_draft_version: number | null };
+type ProfileVersionRow = { profile_id?: string; version: number; status: "draft" | "published" | "historical"; definition: Record<string, unknown> | string; authority_revision: string; created_at: string; published_at: string | null };
 
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function stableJson(value: unknown): string {
@@ -59,9 +99,128 @@ async function validateDefinition(sql: SqlExecutor, value: Record<string, unknow
   const defaults = record(value.defaults);
   if (Object.values(defaults).some((entry) => !["string", "number", "boolean"].includes(typeof entry))) throw new Error("profile_definition_invalid");
 }
+function boundedValue(value: unknown, depth = 0): unknown {
+  if (depth > 4) return "[bounded]";
+  if (typeof value === "string") return value.length > 256 ? `${value.slice(0, 256)}…` : value;
+  if (Array.isArray(value)) return value.slice(0, 20).map((entry) => boundedValue(entry, depth + 1));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)).slice(0, 32).map(([key, entry]) => [key, boundedValue(entry, depth + 1)]));
+  }
+  return value;
+}
+function diffDefinitions(before: Record<string, unknown>, after: Record<string, unknown>): { changes: ProfilePreviewChange[]; truncated: boolean } {
+  const changes: ProfilePreviewChange[] = [];
+  const visit = (left: unknown, right: unknown, path: string, depth: number): void => {
+    if (changes.length >= 100) return;
+    if (stableJson(left) === stableJson(right)) return;
+    if (depth < 8 && left && right && typeof left === "object" && typeof right === "object" && !Array.isArray(left) && !Array.isArray(right)) {
+      const keys = [...new Set([...Object.keys(left as Record<string, unknown>), ...Object.keys(right as Record<string, unknown>)])].sort((a, b) => a.localeCompare(b));
+      for (const key of keys) visit((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key], path ? `${path}.${key}` : key, depth + 1);
+      return;
+    }
+    changes.push({ path: path || "$", before: boundedValue(left), after: boundedValue(right) });
+  };
+  visit(before, after, "", 0);
+  return { changes, truncated: changes.length >= 100 && stableJson(before) !== stableJson(after) };
+}
 
 export class PostgresProfileCommandRepository {
   constructor(private readonly databaseUrl: string) {}
+  private profileDetail(profile: ProfileRow, rows: ProfileVersionRow[]): ProfileDetail {
+    const versions = rows.map((row) => ({
+      version: Number(row.version),
+      status: row.status,
+      authorityRevision: Number(row.authority_revision),
+      createdAt: row.created_at,
+      publishedAt: row.published_at,
+      definition: structuredClone(definition(row.definition)),
+    }));
+    return {
+      profileId: profile.profile_id,
+      label: profile.label,
+      lifecycleStatus: profile.lifecycle_status,
+      revision: Number(profile.revision),
+      activePublishedVersion: profile.active_published_version,
+      currentDraftVersion: profile.current_draft_version,
+      published: versions.find((version) => version.version === profile.active_published_version && version.status !== "draft") ?? null,
+      draft: versions.find((version) => version.version === profile.current_draft_version && version.status === "draft") ?? null,
+      versions,
+    };
+  }
+
+  private async readProfile(sql: SqlExecutor, profileId: string): Promise<ProfileDetail> {
+    const profiles = await sql.unsafe<ProfileRow>(`
+      SELECT id::text, profile_id, label, lifecycle_status, revision::text,
+             active_published_version, current_draft_version
+      FROM profiles WHERE profile_id = $1
+    `, [profileId]);
+    const profile = profiles[0];
+    if (!profile) throw new Error("profile_not_found");
+    const rows = await sql.unsafe<ProfileVersionRow>(`
+      SELECT version, status, definition, authority_revision::text,
+             created_at::text, published_at::text
+      FROM profile_versions WHERE profile_id = $1::uuid ORDER BY version
+    `, [profile.id]);
+    return this.profileDetail(profile, rows);
+  }
+
+  async detail(profileId: string): Promise<ProfileDetail> {
+    const sql = new Bun.SQL(this.databaseUrl);
+    try { return await this.readProfile(sql, profileId); }
+    finally { await sql.close(); }
+  }
+
+  async list(): Promise<ProfileDetail[]> {
+    const sql = new Bun.SQL(this.databaseUrl);
+    try {
+      const profiles = await sql.unsafe<ProfileRow>(`
+        SELECT id::text, profile_id, label, lifecycle_status, revision::text,
+               active_published_version, current_draft_version
+        FROM profiles ORDER BY profile_id
+      `);
+      const rows = await sql.unsafe<ProfileVersionRow>(`
+        SELECT profile_id::text AS profile_id, version, status, definition,
+               authority_revision::text, created_at::text, published_at::text
+        FROM profile_versions ORDER BY profile_id, version
+      `);
+      return profiles.map((profile) => this.profileDetail(profile, rows.filter((row) => row.profile_id === profile.id)));
+    } finally { await sql.close(); }
+  }
+
+  async validate(input: { profileId: string; definition: Record<string, unknown>; expectedRevision?: number }): Promise<ProfileValidationResult> {
+    const sql = new Bun.SQL(this.databaseUrl);
+    try {
+      const detail = await this.readProfile(sql, input.profileId);
+      if (input.expectedRevision !== undefined && detail.revision !== input.expectedRevision) throw new StaleProfileRevisionError();
+      await validateDefinition(sql, input.definition);
+      return { profileId: input.profileId, revision: detail.revision, valid: true };
+    } finally { await sql.close(); }
+  }
+
+  async preview(input: { profileId: string; definition: Record<string, unknown>; expectedRevision?: number; baseVersion?: number }): Promise<ProfilePreviewResult> {
+    const sql = new Bun.SQL(this.databaseUrl);
+    try {
+      const detail = await this.readProfile(sql, input.profileId);
+      if (input.expectedRevision !== undefined && detail.revision !== input.expectedRevision) throw new StaleProfileRevisionError();
+      await validateDefinition(sql, input.definition);
+      const baseVersion = input.baseVersion ?? detail.activePublishedVersion;
+      const baseDefinition: Record<string, unknown> = baseVersion === null
+        ? {}
+        : detail.versions.find((version) => version.version === baseVersion && version.status !== "draft")?.definition
+          ?? {};
+      if (baseVersion !== null && !detail.versions.some((version) => version.version === baseVersion && version.status !== "draft")) throw new Error("profile_version_not_found");
+      const { changes, truncated } = diffDefinitions(baseDefinition, input.definition);
+      return {
+        profileId: input.profileId,
+        revision: detail.revision,
+        baseVersion,
+        candidateLabel: String(input.definition.label ?? detail.label),
+        changed: changes.length > 0,
+        changes,
+        truncated,
+      };
+    } finally { await sql.close(); }
+  }
 
   async apply(input: { profileId: string; expectedRevision: number; definition: Record<string, unknown>; actorRefHash: string; confirmation: string }): Promise<ProfileCommandResult> {
     const commandFingerprint = fingerprint({ action: "apply", ...input });

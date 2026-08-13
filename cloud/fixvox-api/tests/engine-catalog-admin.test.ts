@@ -52,3 +52,34 @@ describe("engine catalog admin lifecycle", () => {
     expect(await response?.json()).toMatchObject({ error: { code: "invalid_confirmation" } });
   });
 });
+
+describe("desktop laboratory authorization", () => {
+  test("accepts a role-bound desktop session and derives operator identity server-side", async () => {
+    const sessions = {
+      async authorizeBearer(_tokenHash: string, _now: Date, deviceId?: string) {
+        expect(deviceId).toBe("device-lab");
+        return { capability: "publish" as const, recentGoogle: true, principalKey, role: "owner" as const };
+      },
+    };
+    const request = new Request("https://control-room.test/product/v1/control-room/session", {
+      headers: { authorization: "Bearer desktop-session", "x-device-id": "device-lab" },
+    });
+    const response = await handleAdminRoute(request, new URL(request.url), { ...deps(), sessions } as never);
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toEqual({ ok: true, role: "owner", principalKey, recentGoogle: true });
+  });
+
+  test("does not trust desktop-supplied operator headers without an authorized session", async () => {
+    const sessions = { async authorizeBearer() { return null; } };
+    const request = new Request("https://control-room.test/product/v1/control-room/session", {
+      headers: {
+        authorization: "Bearer desktop-session",
+        "x-device-id": "device-lab",
+        "x-fixvox-principal-key": principalKey,
+        "x-fixvox-recent-google-at": new Date().toISOString(),
+      },
+    });
+    const response = await handleAdminRoute(request, new URL(request.url), { ...deps(), sessions } as never);
+    expect(response?.status).toBe(401);
+  });
+});

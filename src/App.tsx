@@ -125,6 +125,7 @@ import { runAssistantChatWithHost, type HostAssistantChatMessage } from "./assis
 import { createAssistantQuickResponse, type AssistantQuickResponse } from "./assistant/quick-response";
 import { parseAssistantVoicePrefix } from "./assistant/voice-prefix";
 import { SettingsSurface } from "./settings/SettingsSurface";
+import { DictationLabSurface } from "./dictation-lab/DictationLabSurface";
 import {
   createTauriVocabularyClient,
   findVocabularyRuleForSpoken,
@@ -1143,6 +1144,26 @@ export function createDockInputFromUi(input: {
   }
 }
 
+export const AUDIO_ENHANCEMENT_NOTICE_TIMEOUT_MS = 3_500;
+
+export function getAudioEnhancementNotice(
+  summary: SimulatedRunSummary | undefined,
+): string | undefined {
+  const normalization = summary?.runtimeTelemetryStages
+    ?.find((stage) => stage.stage === "audio-prep")
+    ?.audio?.levelNormalization;
+  if (normalization?.status !== "applied") {
+    return undefined;
+  }
+
+  const gainDb = Number.parseFloat(normalization.gainDb ?? "");
+  if (!Number.isFinite(gainDb)) {
+    return "Audio mejorado";
+  }
+  const roundedGainDb = Math.round(gainDb * 10) / 10;
+  return `Mejorado +${roundedGainDb} dB`;
+}
+
 export function mapPipelineEvidenceToDesktopEvidence(
   evidence: PipelineDeliveryEvidence | undefined,
   fallbackOutput: string | undefined,
@@ -1228,13 +1249,13 @@ function createSyntheticDockVu(tick: number) {
   return { level, bands };
 }
 
-function getAppSurface(): "dock" | "companion" | "preset-picker" | "settings" | "onboarding" {
+function getAppSurface(): "dock" | "companion" | "preset-picker" | "settings" | "onboarding" | "dictation-lab" {
   if (typeof window === "undefined") {
     return "dock";
   }
 
   const surface = new URLSearchParams(window.location.search).get("surface");
-  if (surface === "companion" || surface === "preset-picker" || surface === "settings" || surface === "onboarding") {
+  if (surface === "companion" || surface === "preset-picker" || surface === "settings" || surface === "onboarding" || surface === "dictation-lab") {
     return surface;
   }
 
@@ -2582,6 +2603,7 @@ export function DockSurface() {
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [dismissedAssistantRunId, setDismissedAssistantRunId] = useState<string | undefined>(undefined);
   const [noSpeechNoticeOpen, setNoSpeechNoticeOpen] = useState(false);
+  const [audioEnhancementNotice, setAudioEnhancementNotice] = useState<string>();
   const persistedHistoryEntryIdRef = useRef<string | undefined>(undefined);
   const appliedDesktopSessionRef = useRef<DesktopDictationSession | undefined>(undefined);
   const companionSyncKeyRef = useRef<string | undefined>(undefined);
@@ -2594,6 +2616,32 @@ export function DockSurface() {
   const companionCommandHandlerRef = useRef<
     ((payload: DockCompanionCommandPayload) => void) | undefined
   >(undefined);
+  const audioEnhancementNoticeTimerRef = useRef<number | undefined>(undefined);
+  const audioEnhancementNoticeRunRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    const summary = pipelineUi.summary;
+    const notice = getAudioEnhancementNotice(summary);
+    if (!summary || !notice || audioEnhancementNoticeRunRef.current === summary.runId) {
+      return;
+    }
+
+    audioEnhancementNoticeRunRef.current = summary.runId;
+    setAudioEnhancementNotice(notice);
+    if (audioEnhancementNoticeTimerRef.current !== undefined) {
+      window.clearTimeout(audioEnhancementNoticeTimerRef.current);
+    }
+    audioEnhancementNoticeTimerRef.current = window.setTimeout(() => {
+      setAudioEnhancementNotice(undefined);
+      audioEnhancementNoticeTimerRef.current = undefined;
+    }, AUDIO_ENHANCEMENT_NOTICE_TIMEOUT_MS);
+  }, [pipelineUi.summary]);
+
+  useEffect(() => () => {
+    if (audioEnhancementNoticeTimerRef.current !== undefined) {
+      window.clearTimeout(audioEnhancementNoticeTimerRef.current);
+    }
+  }, []);
 
   function applyHostPresetMenuSyncResult(result: HostPresetMenuSyncResult): void {
     const snapshot = result.snapshot;
@@ -4896,6 +4944,7 @@ async function openPresetPicker(targetSnapshot?: TauriDesktopDeliveryTarget) {
           skinId={dockSkin}
           hotkeyLabel={voiceDockHotkey}
           transcriptPreview={assistantHandledBySurface ? undefined : transcriptReview?.text}
+          audioEnhancementNotice={audioEnhancementNotice}
           onCommand={handleVoiceDockCommand}
           onDockDragStart={handleDockDragStart}
           onDockDragMove={handleDockDragMove}
@@ -5152,6 +5201,9 @@ export function App() {
   }
   if (appSurface === "settings") {
     return <SettingsSurface />;
+  }
+  if (appSurface === "dictation-lab") {
+    return <DictationLabSurface />;
   }
   if (appSurface === "onboarding") {
     if (isTauri()) {

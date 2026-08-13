@@ -6,7 +6,7 @@ import type { PostgresEngineCatalogRepository } from "../postgres/engine-catalog
 export type AdminCapability = "view" | "edit" | "publish";
 export type AdminRouteDependencies = { repository: PostgresAdminRepository; profileCommands: PostgresProfileCommandRepository; keys: Partial<Record<AdminCapability, string>>; sessions?: PostgresAuthSessionRepository; engineCatalog?: PostgresEngineCatalogRepository };
 type AdminRole = "viewer" | "editor" | "publisher" | "owner";
-type BearerPrincipal = { capability: AdminCapability; recentGoogle: boolean; staticCredential: boolean };
+type BearerPrincipal = { capability: AdminCapability; recentGoogle: boolean; staticCredential: boolean; principalKey?: string; role?: AdminRole };
 type ControlRoomPrincipal = BearerPrincipal & { principalKey: string; role: AdminRole };
 
 function json(value: unknown, status = 200, headers?: HeadersInit): Response { return Response.json(value, { status, headers }); }
@@ -17,12 +17,16 @@ async function principal(request: Request, deps: AdminRouteDependencies): Promis
   if (!token) return null;
   const staticCapability = (["publish", "edit", "view"] as const).find((candidate) => deps.keys[candidate] === token);
   if (staticCapability) return { capability: staticCapability, recentGoogle: false, staticCredential: true };
-  const session = await deps.sessions?.authorizeBearer(await hash(token));
+  const session = await deps.sessions?.authorizeBearer(await hash(token), new Date(), request.headers.get("x-device-id")?.trim() || undefined);
   return session ? { ...session, staticCredential: false } : null;
 }
 function permitted(actual: BearerPrincipal | null, required: AdminCapability): boolean { return actual !== null && (["view", "edit", "publish"] as const).indexOf(actual.capability) >= (["view", "edit", "publish"] as const).indexOf(required); }
 async function controlRoomPrincipal(request: Request, deps: AdminRouteDependencies, actual: BearerPrincipal): Promise<ControlRoomPrincipal | null> {
-  if (!actual.staticCredential) return null;
+  if (!actual.staticCredential) {
+    return actual.principalKey && actual.role
+      ? { ...actual, principalKey: actual.principalKey, role: actual.role }
+      : null;
+  }
   const principalKey = request.headers.get("x-fixvox-principal-key")?.trim() ?? "";
   if (!/^arp_[a-f0-9]{64}$/.test(principalKey)) return null;
   const role = await deps.repository.roleForPrincipal(principalKey);
@@ -100,6 +104,42 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
         const result = await deps.repository.setRoleBinding({ actorPrincipalKey: operator.principalKey, subjectPrincipalKey: roleMatch[1], role: request.method === "PUT" ? command.role as AdminRole : null });
         return cors(request, json(result));
       }
+      const profileDetailMatch = url.pathname.match(/^\/product\/v1\/control-room\/profiles\/([a-z0-9][a-z0-9-]{0,63})$/);
+      if (profileDetailMatch && request.method === "GET") {
+        try { return cors(request, json({ ok: true, data: await deps.profileCommands.detail(profileDetailMatch[1]) })); }
+        catch (cause) { return cors(request, profileCommandFailure(cause)); }
+      }
+      const profileVersionMatch = url.pathname.match(/^\/product\/v1\/control-room\/profiles\/([a-z0-9][a-z0-9-]{0,63})\/versions\/([1-9]\d*)$/);
+      if (profileVersionMatch && request.method === "GET") {
+        try {
+          const detail = await deps.profileCommands.detail(profileVersionMatch[1]);
+          const version = detail.versions.find((candidate) => candidate.version === Number(profileVersionMatch[2]));
+          if (!version) throw new Error("profile_version_not_found");
+          return cors(request, json({ ok: true, data: { profileId: detail.profileId, revision: detail.revision, version } }));
+        } catch (cause) { return cors(request, profileCommandFailure(cause)); }
+      }
+      const profilePreviewMatch = url.pathname.match(/^\/product\/v1\/control-room\/profiles\/([a-z0-9][a-z0-9-]{0,63})\/(validate|preview)$/);
+      if (profilePreviewMatch && request.method === "POST") {
+        if (!permitted(operator, "edit") || !["editor", "publisher", "owner"].includes(operator.role)) return cors(request, error("forbidden", 403));
+        try {
+          const command = await body(request);
+          const profileId = profilePreviewMatch[1];
+          const action = profilePreviewMatch[2] as "validate" | "preview";
+          const allowed = action === "validate" ? ["definition", "expectedRevision"] : ["definition", "expectedRevision", "baseVersion"];
+          if (Object.keys(command).some((key) => !allowed.includes(key))) throw new Error("invalid_body");
+          const expectedRevision = command.expectedRevision === undefined ? undefined : Number(command.expectedRevision);
+          if (expectedRevision !== undefined && (!Number.isInteger(expectedRevision) || expectedRevision < 0)) throw new Error("invalid_body");
+          const definition = normalizedDefinition(command.definition);
+          if (action === "validate") {
+            const result = await deps.profileCommands.validate({ profileId, definition, ...(expectedRevision === undefined ? {} : { expectedRevision }) });
+            return cors(request, json({ ok: true, data: result }));
+          }
+          const baseVersion = command.baseVersion === undefined ? undefined : Number(command.baseVersion);
+          if (baseVersion !== undefined && (!Number.isInteger(baseVersion) || baseVersion < 1)) throw new Error("invalid_body");
+          const result = await deps.profileCommands.preview({ profileId, definition, ...(expectedRevision === undefined ? {} : { expectedRevision }), ...(baseVersion === undefined ? {} : { baseVersion }) });
+          return cors(request, json({ ok: true, data: result }));
+        } catch (cause) { return cors(request, profileCommandFailure(cause)); }
+      }
       const profileMatch = url.pathname.match(/^\/product\/v1\/control-room\/profiles\/([a-z0-9][a-z0-9-]{0,63})\/(apply|rollback)$/);
       if (profileMatch && request.method === "POST") {
         if (!permitted(operator, "publish") || !["publisher", "owner"].includes(operator.role) || !operator.recentGoogle) return cors(request, error("forbidden", 403));
@@ -140,7 +180,7 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
         } catch (cause) { return cors(request, engineCatalogFailure(cause)); }
       }
       if (request.method !== "GET") return cors(request, error("not_implemented", 501));
-      if (url.pathname === `${prefix}/profiles`) return cors(request, json({ ok: true, profiles: await deps.repository.profiles() }));
+      if (url.pathname === `${prefix}/profiles`) return cors(request, json({ ok: true, profiles: await deps.profileCommands.list() }));
       if (url.pathname === `${prefix}/engine-catalog`) {
         if (!deps.engineCatalog) return cors(request, error("not_implemented", 501));
         return cors(request, json({ ok: true, engines: await deps.engineCatalog.list(), audits: await deps.engineCatalog.catalogAudits(page.limit) }));

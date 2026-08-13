@@ -78,6 +78,23 @@
         "focus": true,
         "skipTaskbar": false,
         "visible": false
+      },
+      {
+        "label": "dictation-lab",
+        "title": "Dictation Laboratory",
+        "url": "index.html?surface=dictation-lab",
+        "width": 1120,
+        "height": 760,
+        "minWidth": 840,
+        "minHeight": 620,
+        "resizable": true,
+        "decorations": true,
+        "transparent": false,
+        "shadow": true,
+        "alwaysOnTop": false,
+        "focus": true,
+        "skipTaskbar": false,
+        "visible": false
       }
     ],
     "security": {

@@ -26,6 +26,13 @@ import {
   type FixvoxAuthSessionStatus,
   type FixvoxCloudStatus,
 } from "./fixvox-cloud-control";
+import {
+  defaultDictationExperimentState,
+  getDictationExperimentState,
+  resolveDictationExperimentRecipe,
+  summarizeDictationExperimentState,
+  type DictationExperimentState,
+} from "./dictation-experiment-control";
 import { formatHotkeyEditReason } from "./hotkey-edit-copy";
 import {
   extractCloudSelectionPresetDefaults,
@@ -84,7 +91,7 @@ type EditorNotice = {
   message: string;
 };
 
-type BusyAction = "preview" | "apply" | "status" | "login" | "loginStatus" | "startup" | "preset" | "preferences" | "history" | "admin";
+type BusyAction = "preview" | "apply" | "status" | "login" | "loginStatus" | "startup" | "preset" | "preferences" | "history" | "admin" | "dictationLab";
 
 type CaptureState = "idle" | "recording";
 type ShortcutCaptureTarget = "dictation" | TauriActionHotkeyId;
@@ -157,6 +164,12 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     message: "",
   });
   const [startupConfig, setStartupConfig] = useState<StartupLaunchConfig | undefined>();
+  const [dictationExperimentState, setDictationExperimentState] = useState<DictationExperimentState>(defaultDictationExperimentState);
+  const [dictationExperimentLoaded, setDictationExperimentLoaded] = useState(!tauriRuntime);
+  const [dictationExperimentNotice, setDictationExperimentNotice] = useState<EditorNotice>({
+    tone: "idle",
+    message: "",
+  });
   const [userPreferences, setUserPreferencesState] = useState<UserPreferences>(defaultUserPreferences);
   const [selectedSection, setSelectedSection] = useState<SettingsSectionId>(initialSection);
   const [presetItems, setPresetItems] = useState<SelectionTransformPresetAdminItem[]>(() =>
@@ -264,12 +277,36 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
   }, [cloudStatus, initialSection, tauriRuntime]);
 
   useEffect(() => {
-    if (!tauriRuntime || effectiveSection !== "general") {
+    if (!tauriRuntime || (effectiveSection !== "general" && effectiveSection !== "dictation")) {
       return;
     }
 
-    void loadStartupLaunch();
+    if (effectiveSection === "general") {
+      void loadStartupLaunch();
+    }
     void loadUserPreferences();
+    if (effectiveSection === "dictation") {
+      let disposed = false;
+      setDictationExperimentLoaded(false);
+      void getDictationExperimentState()
+        .then((state) => {
+          if (disposed) return;
+          setDictationExperimentState(state);
+        })
+        .catch(() => {
+          if (disposed) return;
+          setDictationExperimentNotice({
+            tone: "warning",
+            message: "No pudimos leer la receta activa. Tu perfil sigue siendo la autoridad.",
+          });
+        })
+        .finally(() => {
+          if (!disposed) setDictationExperimentLoaded(true);
+        });
+      return () => {
+        disposed = true;
+      };
+    }
   }, [effectiveSection, tauriRuntime]);
 
   useEffect(() => {
@@ -639,7 +676,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     }
   }
 
-  async function toggleUserPreference(key: keyof Pick<UserPreferences, "showDockOnStartup" | "reviewBeforeDelivery" | "pressEnterAfterPaste" | "pasteWithoutFocusChange" | "followFocusUntilDelivery" | "autoStopOnSilenceEnabled" | "muteOutputDuringRecording" | "dictationSoundCuesEnabled">) {
+  async function toggleUserPreference(key: keyof Pick<UserPreferences, "showDockOnStartup" | "reviewBeforeDelivery" | "pressEnterAfterPaste" | "pasteWithoutFocusChange" | "followFocusUntilDelivery" | "autoStopOnSilenceEnabled" | "muteOutputDuringRecording" | "dictationSoundCuesEnabled" | "enhanceLowVolumeEnabled">) {
     setBusyAction("preferences");
     try {
       const nextPreferences = {
@@ -661,6 +698,22 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
         deliveryMode,
       });
       setUserPreferencesState(saved);
+    } finally {
+      setBusyAction(undefined);
+    }
+  }
+
+  async function openDictationLaboratory() {
+    if (!tauriRuntime) {
+      setDictationExperimentNotice({ tone: "warning", message: "Abrí estos ajustes desde la aplicación para usar el laboratorio." });
+      return;
+    }
+    setBusyAction("dictationLab");
+    try {
+      await invoke("show_dictation_lab_window");
+      setDictationExperimentNotice({ tone: "success", message: "Dictation Laboratory se abrió en una ventana separada." });
+    } catch (error) {
+      setDictationExperimentNotice({ tone: "danger", message: formatHotkeyEditReason(error) });
     } finally {
       setBusyAction(undefined);
     }
@@ -1049,6 +1102,41 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
               <p>Elegí cómo se comporta Dictation mientras grabás y cuando entrega el resultado.</p>
             </div>
           </div>
+          <section className="settings-dictation-experiment" aria-labelledby="settings-dictation-experiment-title">
+            <header className="settings-dictation-experiment-header">
+              <div>
+                <h3 id="settings-dictation-experiment-title">Receta activa</h3>
+                <p>Tu profile publicado sigue siendo la autoridad. Los overrides de próximo dictado o sesión son temporales.</p>
+              </div>
+              <span className="settings-panel-count">
+                {dictationExperimentLoaded
+                  ? resolveDictationExperimentRecipe(dictationExperimentState.active?.recipeId).label
+                  : "Leyendo"}
+              </span>
+            </header>
+            <dl className="settings-dictation-recipe-details" aria-label="Resumen de receta activa">
+              <div><dt>Fuente</dt><dd>{dictationExperimentState.active ? "Override local temporal" : "Profile publicado"}</dd></div>
+              <div><dt>Alcance</dt><dd>{dictationExperimentState.active?.scope === "next-dictation" ? "Próximo dictado" : dictationExperimentState.active?.scope === "session" ? "Esta sesión" : "Asignación efectiva"}</dd></div>
+              <div><dt>Estado</dt><dd>{summarizeDictationExperimentState(dictationExperimentState)}</dd></div>
+            </dl>
+            <footer className="settings-dictation-experiment-footer">
+              <div className="settings-hotkey-editor-feedback" data-tone={dictationExperimentNotice.tone} aria-live="polite">
+                <strong>{dictationExperimentNotice.message || "Edición, validación, runs y publicación viven en el laboratorio."}</strong>
+              </div>
+              <button
+                type="button"
+                className="settings-editor-button settings-editor-button-primary"
+                disabled={!tauriRuntime || busyAction === "dictationLab"}
+                onClick={() => void openDictationLaboratory()}
+              >
+                {busyAction === "dictationLab" ? "Abriendo" : "Abrir laboratorio"}
+              </button>
+            </footer>
+          </section>
+
+          <div className="settings-subsection-heading">
+            <strong>Grabación y entrega</strong>
+          </div>
           <div className="settings-hotkey-list" aria-label="Preferencias de dictado">
             <PreferenceToggle
               label="Detener después de un silencio"
@@ -1070,6 +1158,13 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
               checked={userPreferences.dictationSoundCuesEnabled}
               disabled={!tauriRuntime || busyAction === "preferences"}
               onClick={() => void toggleUserPreference("dictationSoundCuesEnabled")}
+            />
+            <PreferenceToggle
+              label="Mejorar grabaciones con volumen bajo"
+              detail="Amplifica automáticamente sólo cuando la voz llega muy baja, con límite para evitar saturación."
+              checked={userPreferences.enhanceLowVolumeEnabled}
+              disabled={!tauriRuntime || busyAction === "preferences"}
+              onClick={() => void toggleUserPreference("enhanceLowVolumeEnabled")}
             />
             <PreferenceSelect
               label="Modo de entrega"

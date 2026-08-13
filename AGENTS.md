@@ -30,7 +30,7 @@ No asumir storage. Leer `docs/DEVELOPMENT.md` antes de decidir. En dev personal 
 
 ## Git / Specs / Checks
 
-Spec/plan/tasks mandan cuando aplica. No hacer `git add`, commit, push, deploy ni publish salvo pedido explícito. Antes de commit excluir secretos, `.env`, artifacts, `node_modules/`, audio/transcripciones y caches.
+Spec/plan/tasks mandan cuando aplica. La entrega normal de un cambio seguro y terminado incluye commit, push, publish y deploy mediante el flujo canónico del proyecto; omitirlos sólo por instrucción explícita, cambios ajenos/inseguros, credenciales faltantes o ausencia de un flujo verificable. Antes de commit excluir secretos, `.env`, artifacts, `node_modules/`, audio/transcripciones y caches; antes de publicar verificar destino, alcance, artefacto y valores exactos.
 
 Comandos seguros frecuentes:
 
@@ -43,7 +43,7 @@ cd src-tauri && cargo check
 bun scripts/context-index.ts && bun scripts/agent-context-audit.ts
 ```
 
-No correr smokes físicos/audio/prod/deploy/autostart sin confirmación.
+No correr smokes físicos/audio ni autostart sin confirmación. Los smokes de producción incluidos en el flujo canónico de release/deploy quedan autorizados cuando son provider-free, no destructivos y no usan datos privados.
 
 ## Frontera AOS/OMP
 

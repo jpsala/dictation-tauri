@@ -184,17 +184,36 @@ export class PostgresAuthSessionRepository {
     return Boolean(rows[0]);
   }
 
-  async authorizeBearer(tokenHash: string, now = new Date()): Promise<{ capability: "view" | "edit" | "publish"; recentGoogle: boolean } | null> {
-    const rows = await this.sql.unsafe<{ role: string; recent_auth_at: string | null }>(`
-      SELECT rb.role, s.recent_auth_at::text
-      FROM admin_sessions s JOIN role_bindings rb ON rb.account_id = s.account_id
+  async authorizeBearer(tokenHash: string, now = new Date(), deviceId?: string): Promise<{ capability: "view" | "edit" | "publish"; recentGoogle: boolean; principalKey: string; role: "viewer" | "editor" | "publisher" | "owner" } | null> {
+    const rows = await this.sql.unsafe<{ role: "viewer" | "editor" | "publisher" | "owner"; subject_hash: string; verified_at: string | null }>(`
+      SELECT rb.role, a.provider_subject_hash AS subject_hash, s.recent_auth_at::text AS verified_at
+      FROM admin_sessions s
+      JOIN accounts a ON a.id = s.account_id
+      JOIN role_bindings rb ON rb.account_id = s.account_id
       WHERE s.session_hash = $1 AND s.expires_at > $2::timestamptz
-    `, [tokenHash, now.toISOString()]);
-    const rank: Record<string, number> = { viewer: 0, editor: 1, publisher: 2, owner: 2 };
-    const best = rows.reduce((value, row) => Math.max(value, rank[row.role] ?? -1), -1);
-    if (best < 0) return null;
-    const verifiedAt = rows.map((row) => row.recent_auth_at ? new Date(row.recent_auth_at) : null).find((value) => value !== null) ?? null;
-    return { capability: (["view", "edit", "publish"] as const)[best], recentGoogle: this.isRecentGoogleVerification(verifiedAt, now) };
+      UNION ALL
+      SELECT rb.role, a.provider_subject_hash AS subject_hash, s.google_verified_at::text AS verified_at
+      FROM desktop_login_sessions s
+      JOIN accounts a ON a.id = s.account_id
+      JOIN devices d ON d.account_id = s.account_id
+      JOIN role_bindings rb ON rb.account_id = s.account_id
+      WHERE s.session_hash = $1
+        AND s.status = 'claimed'
+        AND s.claimed_at IS NOT NULL
+        AND s.expires_at > $2::timestamptz
+        AND $3::text IS NOT NULL
+        AND d.device_id = $3
+    `, [tokenHash, now.toISOString(), deviceId ?? null]);
+    const rank: Record<string, number> = { viewer: 0, editor: 1, publisher: 2, owner: 3 };
+    const best = rows.reduce<(typeof rows)[number] | null>((current, row) => !current || rank[row.role] > rank[current.role] ? row : current, null);
+    if (!best || !/^[a-f0-9]{64}$/.test(best.subject_hash)) return null;
+    const verifiedAt = best.verified_at ? new Date(best.verified_at) : null;
+    return {
+      capability: best.role === "viewer" ? "view" : best.role === "editor" ? "edit" : "publish",
+      recentGoogle: this.isRecentGoogleVerification(verifiedAt, now),
+      principalKey: `arp_${best.subject_hash}`,
+      role: best.role,
+    };
   }
 
   async expireStates(): Promise<void> {

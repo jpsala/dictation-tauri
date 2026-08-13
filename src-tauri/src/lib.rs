@@ -1,6 +1,8 @@
 mod companion_window;
 mod desktop_control;
 mod desktop_delivery;
+mod dictation_lab;
+mod dictation_experiments;
 mod dock_shell;
 mod fixvox_cloud;
 mod native_capture;
@@ -25,7 +27,7 @@ pub fn run() {
             let startup_policy = startup_smoke::current();
             if startup_policy.hide_webviews {
                 dock_shell::prepare_hidden_dock_for_startup_smoke();
-                for label in ["main", "dock-companion", "preset-picker", "settings"] {
+                for label in ["main", "dock-companion", "preset-picker", "settings", "dictation-lab"] {
                     if let Some(window) = app.get_webview_window(label) {
                         window.hide()?;
                     }
@@ -35,6 +37,7 @@ pub fn run() {
                 dock_shell::configure_dock_window(app.handle())?;
                 companion_window::configure_companion_window(app.handle());
                 settings_window::configure_settings_window(app.handle());
+                settings_window::configure_dictation_lab_window(app.handle());
             }
 
             if startup_policy.suppress_desktop_side_effects {
@@ -58,6 +61,9 @@ pub fn run() {
             native_capture::get_native_microphone_capture_level,
             native_capture::stop_native_microphone_capture,
             native_capture::cancel_native_microphone_capture,
+            dictation_experiments::get_dictation_experiment_state,
+            dictation_experiments::set_dictation_experiment_selection,
+            dictation_lab::request_dictation_lab,
             runtime_transcription::get_runtime_transcription_readiness,
             runtime_transcription::prewarm_fixvox_managed_transcription,
             runtime_transcription::transcribe_captured_audio,
@@ -117,6 +123,7 @@ pub fn run() {
             result_history::clear_result_history,
             settings_window::show_settings_window,
             settings_window::show_account_setup_window,
+            settings_window::show_dictation_lab_window,
             settings_window::show_admin_control_room,
             sound_cues::play_dictation_sound_cue,
             startup_launch::get_startup_launch_config,

@@ -7,6 +7,10 @@ const ACCOUNT_SETUP_WINDOW_LABEL: &str = "account-setup";
 const ACCOUNT_SETUP_WINDOW_TITLE: &str = "Fixvox Setup";
 const ACCOUNT_SETUP_WINDOW_URL: &str = "index.html?surface=onboarding";
 const DEFAULT_ADMIN_CONTROL_ROOM_URL: &str = "https://fixvox.jpsala.dev/admin/pi";
+pub const DICTATION_LAB_WINDOW_LABEL: &str = "dictation-lab";
+const DICTATION_LAB_WINDOW_TITLE: &str = "Dictation Laboratory";
+const DICTATION_LAB_WINDOW_URL: &str = "index.html?surface=dictation-lab";
+
 
 pub fn configure_settings_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
@@ -16,6 +20,12 @@ pub fn configure_settings_window<R: Runtime>(app: &AppHandle<R>) {
         eprintln!("[dictation-tauri][settings] configured window not found during setup");
     }
 }
+pub fn configure_dictation_lab_window<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(DICTATION_LAB_WINDOW_LABEL) {
+        attach_close_lifecycle(window);
+    }
+}
+
 
 fn show_existing_settings_window<R: Runtime>(window: WebviewWindow<R>) -> Result<(), String> {
     window
@@ -45,6 +55,16 @@ pub fn show_settings_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<()
 
     show_existing_settings_window(window)
 }
+pub fn show_dictation_lab_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let window = if let Some(window) = app.get_webview_window(DICTATION_LAB_WINDOW_LABEL) {
+        window
+    } else {
+        create_fresh_dictation_lab_window(app)
+            .map_err(|error| format!("dictation laboratory window unavailable: {error}"))?
+    };
+    show_existing_settings_window(window)
+}
+
 
 pub fn show_account_setup_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     eprintln!("[dictation-tauri][settings] account setup show requested");
@@ -106,6 +126,29 @@ fn create_fresh_settings_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result
     eprintln!("[dictation-tauri][settings] created fresh window fallback");
     Ok(window)
 }
+fn create_fresh_dictation_lab_window<R: Runtime>(
+    app: &AppHandle<R>,
+) -> tauri::Result<WebviewWindow<R>> {
+    let window = tauri::WebviewWindowBuilder::new(
+        app,
+        DICTATION_LAB_WINDOW_LABEL,
+        WebviewUrl::App(DICTATION_LAB_WINDOW_URL.into()),
+    )
+    .title(DICTATION_LAB_WINDOW_TITLE)
+    .inner_size(1120.0, 760.0)
+    .min_inner_size(840.0, 620.0)
+    .resizable(true)
+    .decorations(true)
+    .shadow(true)
+    .focused(true)
+    .skip_taskbar(false)
+    .visible(false)
+    .build()?;
+
+    attach_close_lifecycle(window.clone());
+    Ok(window)
+}
+
 
 fn create_fresh_account_setup_window<R: Runtime>(
     app: &AppHandle<R>,
@@ -143,6 +186,11 @@ fn attach_close_lifecycle<R: Runtime>(window: WebviewWindow<R>) {
 pub fn show_settings_window(app: AppHandle) -> Result<(), String> {
     show_settings_window_for_app(&app)
 }
+#[tauri::command]
+pub fn show_dictation_lab_window(app: AppHandle) -> Result<(), String> {
+    show_dictation_lab_window_for_app(&app)
+}
+
 
 #[tauri::command]
 pub async fn show_account_setup_window(app: AppHandle) -> Result<(), String> {

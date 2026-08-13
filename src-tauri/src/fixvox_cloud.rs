@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
     sync::{Arc, Condvar, Mutex, OnceLock},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 pub(crate) const PREFERRED_FIXVOX_BACKEND_URL: &str = "https://auth-fixvox.jpsala.dev";
@@ -492,14 +492,6 @@ pub(crate) struct ManagedSttParsedResponse {
 struct ManagedSttResponseBody {
     text: Option<String>,
     model: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ManagedSttInput {
-    pub(crate) audio_file_name: String,
-    pub(crate) model: String,
-    pub(crate) language: Option<String>,
-    pub(crate) prompt: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2279,6 +2271,80 @@ pub(crate) fn policy_allows_admin_settings() -> bool {
         })
 }
 
+pub(crate) async fn request_authenticated_product_json(
+    method: reqwest::Method,
+    endpoint_path: &str,
+    body: Option<serde_json::Value>,
+) -> Result<serde_json::Value, FixvoxCloudError> {
+    let device_path = resolve_device_state_path(&read_env_value)?;
+    let device_state = read_device_state(&device_path)?.ok_or_else(|| {
+        error(
+            "DICTATION_LAB_DEVICE_MISSING",
+            "Dictation Laboratory requires a bootstrapped device.",
+        )
+    })?;
+    let device_id = device_state.device_id.ok_or_else(|| {
+        error(
+            "DICTATION_LAB_DEVICE_MISSING",
+            "Dictation Laboratory requires a registered device.",
+        )
+    })?;
+    let auth_path = resolve_auth_session_state_path(&read_env_value)?;
+    let auth_state = read_auth_session_state(&auth_path)?.ok_or_else(|| {
+        error(
+            "DICTATION_LAB_AUTH_MISSING",
+            "Dictation Laboratory requires a signed-in account.",
+        )
+    })?;
+    let session_secret = auth_state.session_secret.ok_or_else(|| {
+        error(
+            "DICTATION_LAB_AUTH_MISSING",
+            "Dictation Laboratory requires a signed-in account.",
+        )
+    })?;
+
+    let client = fixvox_http_client()?;
+    let mut request = client
+        .request(
+            method,
+            join_url(&resolve_backend_base_url(&read_env_value)?, endpoint_path),
+        )
+        .timeout(Duration::from_secs(10))
+        .header("X-Device-Id", device_id)
+        .bearer_auth(session_secret);
+    if let Some(body) = body {
+        request = request.json(&body);
+    }
+    let response = request.send().await.map_err(|_| {
+        error(
+            "DICTATION_LAB_UNAVAILABLE",
+            "Dictation Laboratory could not reach the control plane.",
+        )
+    })?;
+    let status = response.status();
+    if !status.is_success() {
+        let code = match status {
+            reqwest::StatusCode::UNAUTHORIZED => "DICTATION_LAB_UNAUTHORIZED",
+            reqwest::StatusCode::FORBIDDEN => "DICTATION_LAB_FORBIDDEN",
+            reqwest::StatusCode::CONFLICT => "DICTATION_LAB_CONFLICT",
+            reqwest::StatusCode::NOT_FOUND => "DICTATION_LAB_NOT_FOUND",
+            reqwest::StatusCode::UNPROCESSABLE_ENTITY => "DICTATION_LAB_INVALID_DEFINITION",
+            reqwest::StatusCode::NOT_IMPLEMENTED => "DICTATION_LAB_NOT_IMPLEMENTED",
+            _ => "DICTATION_LAB_UNAVAILABLE",
+        };
+        return Err(error(
+            code,
+            "Dictation Laboratory operation was rejected by the control plane.",
+        ));
+    }
+    response.json::<serde_json::Value>().await.map_err(|_| {
+        error(
+            "DICTATION_LAB_RESPONSE_INVALID",
+            "Dictation Laboratory received an invalid control-plane response.",
+        )
+    })
+}
+
 #[tauri::command]
 pub async fn get_fixvox_cloud_status() -> Result<FixvoxCloudStatus, FixvoxCloudError> {
     let status = ensure_fixvox_device_bootstrapped_with_reqwest(&read_env_value).await?;
@@ -3478,7 +3544,6 @@ fn redact_identifier(value: Option<&str>) -> Option<String> {
 
 pub(crate) fn build_managed_stt_request_preview(
     config: FixvoxCloudConfig,
-    input: ManagedSttInput,
 ) -> Result<ManagedSttRequestPreview, FixvoxCloudError> {
     let device_id = config
         .device_id
@@ -3490,45 +3555,14 @@ pub(crate) fn build_managed_stt_request_preview(
             )
         })?;
 
-    let cloudflare_authority =
-        trim_trailing_slashes(&config.backend_base_url) == PREFERRED_FIXVOX_BACKEND_URL;
-    let (endpoint_path, multipart_fields) = if cloudflare_authority {
-        let mut fields = vec!["file".to_string(), "model".to_string()];
-        if input
-            .language
-            .as_ref()
-            .and_then(|value| clean_env_value(Some(value.clone())))
-            .filter(|value| !value.eq_ignore_ascii_case("auto"))
-            .is_some()
-        {
-            fields.push("language".to_string());
-        }
-        if input
-            .prompt
-            .as_ref()
-            .and_then(|value| clean_env_value(Some(value.clone())))
-            .is_some()
-        {
-            fields.push("prompt".to_string());
-        }
-        fields.push("response_format".to_string());
-        fields.push("timestamp_granularities[]".to_string());
-        fields.push("timestamp_granularities[]".to_string());
-        fields.push("temperature".to_string());
-        ("/v1/audio/transcriptions", fields)
-    } else {
-        // The self-hosted product boundary owns provider/model/prompt selection.
-        (
-            "/product/v1/runtime/transcriptions",
-            vec!["metadata".to_string(), "audio".to_string()],
-        )
-    };
-
     Ok(ManagedSttRequestPreview {
-        endpoint: join_url(&config.backend_base_url, endpoint_path),
+        endpoint: join_url(
+            &config.backend_base_url,
+            "/product/v1/runtime/transcriptions",
+        ),
         headers: vec![("X-Device-Id".to_string(), device_id)],
         has_authorization_header: false,
-        multipart_fields,
+        multipart_fields: vec!["metadata".to_string(), "audio".to_string()],
     })
 }
 
@@ -4509,5 +4543,28 @@ mod tests {
         let (next_flight, next_owner) = begin_personal_vocabulary_refresh(&scope);
         assert!(next_owner);
         finish_personal_vocabulary_refresh(&scope, next_flight, Ok(status));
+    }
+    #[test]
+    fn managed_stt_uses_product_boundary_for_preferred_and_self_hosted_backends() {
+        for backend_base_url in [
+            PREFERRED_FIXVOX_BACKEND_URL.to_string(),
+            "https://self-hosted.example.invalid".to_string(),
+        ] {
+            let preview = build_managed_stt_request_preview(FixvoxCloudConfig {
+                backend_base_url,
+                device_id: Some("device_test".to_string()),
+            })
+            .expect("managed STT preview");
+
+            assert!(preview
+                .endpoint
+                .ends_with("/product/v1/runtime/transcriptions"));
+            assert_eq!(preview.multipart_fields, ["metadata", "audio"]);
+            assert_eq!(
+                preview.headers,
+                [("X-Device-Id".to_string(), "device_test".to_string())]
+            );
+            assert!(!preview.has_authorization_header);
+        }
     }
 }

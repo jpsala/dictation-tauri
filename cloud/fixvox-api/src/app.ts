@@ -1,6 +1,8 @@
 import type { BudgetLedgerPort, BudgetReserveDecision } from "../../fixvox-core/src/ports/budget-ledger.ts";
 import type { BudgetShadowEvidence, LegacyBudgetDecision } from "../../fixvox-core/src/execution/budget-shadow.ts";
 import { compareBudgetLedgerShadow } from "../../fixvox-core/src/execution/budget-shadow.ts";
+import { buildBoundedSttMetadata, resolveEvaluationRecipe, resolvePostprocessEvaluationRecipe } from "../../fixvox-core/src/control-plane/evaluation-recipes.ts";
+import { evaluatePostprocessSemanticSafety } from "../../fixvox-core/src/execution/postprocess-semantic-safety.ts";
 import type { FixvoxApiConfig } from "./config.ts";
 import type { BudgetPricingPort } from "./postgres/budget-pricing-repository.ts";
 import { createAllowlistLogger, requestId, type Logger } from "./observability.ts";
@@ -467,51 +469,116 @@ async function dispatch(
     const declared = Number(request.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > deps.config.maxRequestBytes) throw productError(413, "payload_too_large", "request", false);
     let form: FormData;
-    try { form = await request.formData(); } catch { throw productError(400, "invalid_request", "request", false); }
+    try { form = await request.formData(); } catch { throw productError(400, "invalid_request", "multipart", false); }
     const fieldNames = [...form.keys()];
     if (fieldNames.length !== 2 || new Set(fieldNames).size !== 2 || !fieldNames.includes("metadata") || !fieldNames.includes("audio")) {
-      throw productError(400, "invalid_request", "request", false);
+      throw productError(400, "invalid_request", "parts", false);
     }
     const metadataPart = form.get("metadata");
     const audio = form.get("audio");
-    if (typeof metadataPart !== "string" || !(audio instanceof Blob) || audio.size > deps.config.maxRequestBytes || !audio.type.toLowerCase().startsWith("audio/")) throw productError(400, "invalid_request", "request", false);
+    if (typeof metadataPart !== "string" || !(audio instanceof Blob) || audio.size > deps.config.maxRequestBytes || !audio.type.toLowerCase().startsWith("audio/")) throw productError(400, "invalid_request", "audio", false);
     let metadata: Record<string, unknown>;
-    try { metadata = JSON.parse(metadataPart) as Record<string, unknown>; } catch { throw productError(400, "invalid_request", "request", false); }
-    rejectUnknown(metadata, ["operationId", "durationMs", "language", "hints"]);
+    try {
+      const parsed = JSON.parse(metadataPart) as unknown;
+      if (!isRecord(parsed)) throw new Error("metadata_invalid");
+      metadata = parsed;
+    } catch {
+      throw productError(400, "invalid_request", "metadata", false);
+    }
+    rejectUnknown(metadata, ["operationId", "durationMs", "language", "hints", "evaluationRecipeId"]);
+    const evaluationRecipe = metadata.evaluationRecipeId === undefined ? null : (() => {
+      try {
+        return resolveEvaluationRecipe(metadata.evaluationRecipeId);
+      } catch {
+        throw productError(400, "invalid_request", "evaluationRecipeId", false);
+      }
+    })();
     const operationId = operation(metadata.operationId);
     if (!operationId || typeof metadata.durationMs !== "number" || metadata.durationMs < 0) throw productError(400, "invalid_request", "request", false);
-    const providerRequest = new Request(request.url, { method: "POST", body: form });
+    if (evaluationRecipe && evaluationRecipe.language !== "auto") {
+      metadata.language = evaluationRecipe.language;
+    }
+    const providerForm = new FormData();
+    const providerMetadata = evaluationRecipe
+      ? {
+          ...metadata,
+          evaluationRecipe: {
+            id: evaluationRecipe.id,
+            version: evaluationRecipe.version,
+            prompt: evaluationRecipe.prompt,
+            model: evaluationRecipe.model,
+          },
+        }
+      : metadata;
+    providerForm.set("metadata", JSON.stringify(providerMetadata));
+    providerForm.set("audio", audio, audio instanceof File && audio.name ? audio.name : "audio.wav");
+    const providerRequest = new Request(request.url, { method: "POST", body: providerForm });
     const result = await executeRuntime({ deps, identity, operationId, usageKind: "stt", engineKind: "audio", capability: "transcription", providerRequest, durationMs: metadata.durationMs, activeOperations, terminalOperations, now });
     const payload = await safeProviderJson(result.response);
     const output = text(payload.text);
+    const boundedSttMetadata = evaluationRecipe ? buildBoundedSttMetadata(payload, operationId) : undefined;
+    const sttMetadata = boundedSttMetadata?.public;
     if (!output) throw productError(502, "upstream_rejected", "upstream", false);
-    return productJson({ operationId, text: output, ...(text(metadata.language) ? { language: text(metadata.language) } : {}), usage: { kind: "stt", charged: result.charged }, policy: { profileVersion: identity.profile.version, postprocessEligible: capabilityEnabled(identity.profile, "postprocess") } });
+    return productJson({
+      operationId,
+      text: output,
+      ...(text(metadata.language) ? { language: text(metadata.language) } : {}),
+      ...(evaluationRecipe && boundedSttMetadata ? { evaluationRecipeId: evaluationRecipe.id, sttMetadata, sttMetadataPrivate: boundedSttMetadata.private } : {}),
+      usage: { kind: "stt", charged: result.charged },
+      policy: { profileVersion: identity.profile.version, postprocessEligible: capabilityEnabled(identity.profile, "postprocess") },
+    });
   }
   if (request.method === "POST" && url.pathname === "/product/v1/runtime/actions") {
     const identity = await requireRuntimeIdentity(request, deps);
     const body = await readJson(request, deps.config.maxRequestBytes);
-    rejectUnknown(body, ["operationId", "kind", "input"]);
+    rejectUnknown(body, ["operationId", "kind", "input", "evaluationRecipeId"]);
     const operationId = operation(body.operationId);
     const kind = body.kind;
     const input = record(body.input);
     if (!operationId || !["postprocess", "selection_transform", "assistant"].includes(String(kind))) throw productError(400, "invalid_request", "request", false);
-    const allowedInput = kind === "postprocess" ? ["transcript"] : kind === "selection_transform" ? ["selectedText", "presetKey", "instruction"] : ["utterance", "conversationSummary"];
+    const evaluationRecipe = body.evaluationRecipeId === undefined ? null : (() => {
+      if (kind !== "postprocess") throw productError(400, "invalid_request", "evaluationRecipeId", false);
+      try {
+        return resolvePostprocessEvaluationRecipe(body.evaluationRecipeId);
+      } catch {
+        throw productError(400, "invalid_request", "evaluationRecipeId", false);
+      }
+    })();
+    const allowedInput = kind === "postprocess" ? ["transcript", "prosodyHints"] : kind === "selection_transform" ? ["selectedText", "presetKey", "instruction"] : ["utterance", "conversationSummary"];
     rejectUnknown(input, allowedInput);
     const content = kind === "postprocess" ? text(input.transcript) : kind === "selection_transform" ? text(input.selectedText) : text(input.utterance);
     const instruction = kind === "selection_transform" ? text(input.instruction) : null;
+    const prosodyHints = kind === "postprocess" ? text(input.prosodyHints) : null;
     if (!content || (kind === "selection_transform" && !instruction)) throw productError(400, "invalid_request", "request", false);
+    if (evaluationRecipe?.variant === "with-prosody" && !prosodyHints) throw productError(400, "invalid_request", "prosodyHints", false);
+    if (evaluationRecipe?.variant === "without-prosody" && prosodyHints) throw productError(400, "invalid_request", "prosodyHints", false);
     const typedProviderInput = kind === "postprocess"
-      ? { transcript: content }
+      ? { transcript: content, ...(prosodyHints ? { prosodyHints } : {}) }
       : kind === "selection_transform"
         ? { selectedText: content, instruction, ...(text(input.presetKey) ? { presetKey: text(input.presetKey) } : {}) }
         : { utterance: content, ...(text(input.conversationSummary) ? { conversationSummary: text(input.conversationSummary) } : {}) };
-    const providerBody = { messages: [{ role: "system", content: `fixvox:${kind}` }, { role: "user", content: JSON.stringify(typedProviderInput) }] };
-    const result = await executeRuntime({ deps, identity, operationId, usageKind: "llm", engineKind: "chat", capability: String(kind), providerRequest: new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(providerBody) }), activeOperations, terminalOperations, now });
+    const providerBody = {
+      messages: [{ role: "system", content: `fixvox:${kind}` }, { role: "user", content: JSON.stringify(typedProviderInput) }],
+      ...(evaluationRecipe ? { temperature: evaluationRecipe.temperature, max_completion_tokens: evaluationRecipe.maxCompletionTokens } : {}),
+    };
+    const evaluationEngine = evaluationRecipe ? { provider: evaluationRecipe.provider, model: evaluationRecipe.model, prompt: "" } : undefined;
+    const result = await executeRuntime({ deps, identity, operationId, usageKind: "llm", engineKind: "chat", capability: String(kind), providerRequest: new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(providerBody) }), activeOperations, terminalOperations, now, engineOverride: evaluationEngine });
     const payload = await safeProviderJson(result.response);
     const transformed = text(record((Array.isArray(payload.choices) ? record(payload.choices[0]) : {}).message).content);
-    if (!transformed) throw productError(502, "upstream_rejected", "upstream", false);
-    const output = kind === "assistant" ? { reply: transformed, surface: "quick_chat" } : { text: transformed };
-    return productJson({ operationId, kind, output, usage: { kind: "llm", charged: result.charged } });
+    if (!transformed && kind !== "postprocess") throw productError(502, "upstream_rejected", "upstream", false);
+    const providerText = transformed ?? "";
+    const semanticSafety = kind === "postprocess" ? evaluatePostprocessSemanticSafety(content, providerText) : null;
+    const output = kind === "assistant"
+      ? { reply: providerText, surface: "quick_chat" }
+      : { text: semanticSafety?.text ?? providerText };
+    return productJson({
+      operationId,
+      kind,
+      output,
+      ...(evaluationRecipe ? { evaluationRecipe: { id: evaluationRecipe.id, version: evaluationRecipe.version, variant: evaluationRecipe.variant, provider: evaluationRecipe.provider, model: evaluationRecipe.model, promptId: evaluationRecipe.promptId } } : {}),
+      ...(semanticSafety ? { semanticSafety: semanticSafety.receipt } : {}),
+      usage: { kind: "llm", charged: result.charged },
+    });
   }
   if (request.method === "POST" && (url.pathname === "/v2/device/register" || url.pathname === "/v2/device/activate")) {
     const body = await readJson(request, deps.config.maxRequestBytes);
@@ -768,14 +835,14 @@ async function safeProviderJson(response: Response): Promise<Record<string, unkn
 async function executeRuntime(input: {
   deps: ApiDependencies; identity: RuntimeIdentity; operationId: string; usageKind: "stt" | "llm";
   engineKind: "audio" | "chat"; capability: string; providerRequest: Request; durationMs?: number; activeOperations: Set<string>;
-  terminalOperations: Set<string>; now: () => Date; legacy?: boolean;
+  terminalOperations: Set<string>; now: () => Date; legacy?: boolean; engineOverride?: Record<string, unknown>;
 }): Promise<{ response: Response; charged: boolean }> {
   const { deps, identity } = input;
   if (!capabilityEnabled(identity.profile, input.capability)) {
     if (input.legacy) throw new HttpError(403, "engine_not_allowed");
     throw productError(403, "capability_disabled", "policy", false);
   }
-  const engine = resolveEngine(identity.profile, input.engineKind, input.capability);
+  const engine = input.engineOverride ?? resolveEngine(identity.profile, input.engineKind, input.capability);
   if (!engine) throw input.legacy ? new HttpError(403, "engine_not_allowed") : productError(403, "capability_disabled", "policy", false);
   if (!deps.quota) throw input.legacy ? new HttpError(503, "service_unavailable") : productError(503, "service_unavailable", "dependency", true);
   if (input.activeOperations.has(input.operationId) || input.terminalOperations.has(input.operationId)) throw input.legacy ? new HttpError(409, "operation_conflict") : productError(409, "conflict", "request", false);
