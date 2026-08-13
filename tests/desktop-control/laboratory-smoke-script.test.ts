@@ -12,7 +12,7 @@ describe("real Tauri Dictation Laboratory smoke", () => {
     expect(smoke).toContain("windowsResponding = $windowsResponding");
     expect(smoke).toContain("@(720, 620)");
     expect(smoke).toMatch(/document\.documentElement\.style\.zoom\s*=\s*'2'/);
-    expect(smoke).toContain("Settings opens Dictation Laboratory");
+    expect(smoke).toContain("Settings command opens Dictation Laboratory");
     expect(smoke).toContain("Laboratory responds at 200 percent zoom");
     expect(smoke).toContain("providerFree = $true");
     expect(smoke).toContain("Real Tauri provider-free replay completes with zero provider calls");

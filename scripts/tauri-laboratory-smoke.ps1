@@ -73,14 +73,20 @@ function Stop-Tree([int]$ProcessIdToStop) {
 }
 
 function Get-CdpPages([int]$Port) {
-  try { return @(Invoke-RestMethod -Uri "http://127.0.0.1:$Port/json/list" -TimeoutSec 2) } catch { return @() }
+  try {
+    $response = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/json/list" -TimeoutSec 2
+    foreach ($item in $response) { Write-Output $item }
+  } catch { }
 }
 
 function Wait-ForCdpPage([int]$Port, [string]$UrlPart, [int]$TimeoutSeconds) {
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while ((Get-Date) -lt $deadline) {
-    $page = Get-CdpPages $Port | Where-Object { $_.url -like "*$UrlPart*" -and $_.webSocketDebuggerUrl } | Select-Object -First 1
-    if ($page) { return $page }
+    foreach ($candidate in @(Get-CdpPages $Port)) {
+      if ($candidate.url -like "*$UrlPart*" -and $candidate.webSocketDebuggerUrl) {
+        return $candidate
+      }
+    }
     Start-Sleep -Milliseconds 500
   }
   throw "Tauri WebView2 CDP page containing '$UrlPart' was not available before timeout."
@@ -158,14 +164,34 @@ try {
   Add-Check 'Tauri WebView2 page is available' ([bool]$mainPageInfo.webSocketDebuggerUrl) @{ port = $RemoteDebugPort }
 
   $settingsPage = @(Wait-ForCdpPage $RemoteDebugPort '#settings' 20)[0]
-  Add-Check 'Settings WebView host is configured' ([bool]$settingsPage.webSocketDebuggerUrl) @{}
+  Start-Sleep -Seconds 2
+  $settingsProbe = Invoke-CdpExpression $settingsPage "JSON.stringify({url:location.href,ready:document.readyState,hasDictation:[...document.querySelectorAll('button')].some((item)=>item.textContent?.includes('Dictado')&&item.textContent?.includes('Audio y entrega'))})" | ConvertFrom-Json
+  Add-Check 'Settings WebView host is configured' ([bool]$settingsPage.webSocketDebuggerUrl -and $settingsProbe.url -like '*#settings' -and $settingsProbe.hasDictation) @{ url = $settingsProbe.url; ready = $settingsProbe.ready }
+  $laboratoryPageBefore = @(Wait-ForCdpPage $RemoteDebugPort 'surface=dictation-lab' 20)[0]
+  $laboratoryNavigationBefore = [double](Invoke-CdpExpression $laboratoryPageBefore "performance.timeOrigin")
+  $settingsSectionResult = Invoke-CdpExpression $settingsPage "(()=>{const section=[...document.querySelectorAll('button')].find((item)=>item.textContent?.includes('Dictado')&&item.textContent?.includes('Audio y entrega'));if(!section)throw new Error('dictation-settings-section-unavailable');section.click();return 'selected';})()"
+  if ($settingsSectionResult -ne 'selected') { throw 'Settings Dictation section did not activate.' }
+  Start-Sleep -Milliseconds 500
+  $settingsEntryResult = Invoke-CdpExpression $settingsPage "(()=>{const open=[...document.querySelectorAll('button')].find((item)=>item.textContent?.trim()==='Abrir laboratorio');if(!open||open.disabled)throw new Error('laboratory-entry-unavailable');open.click();return 'clicked';})()"
+  if ($settingsEntryResult -ne 'clicked') { throw 'Settings Laboratory entry did not execute.' }
+  $settingsOpenResult = $false
+  $settingsOpenDeadline = (Get-Date).AddSeconds(20)
+  while (-not $settingsOpenResult -and (Get-Date) -lt $settingsOpenDeadline) {
+    Start-Sleep -Milliseconds 250
+    try {
+      $laboratoryPageAfter = @(Wait-ForCdpPage $RemoteDebugPort 'surface=dictation-lab' 2)[0]
+      $laboratoryNavigationAfter = [double](Invoke-CdpExpression $laboratoryPageAfter "performance.timeOrigin")
+      $settingsOpenResult = $laboratoryNavigationAfter -gt $laboratoryNavigationBefore
+    } catch { }
+  }
+  Add-Check 'Settings command opens Dictation Laboratory' $settingsOpenResult @{ navigationBefore = $laboratoryNavigationBefore; navigationAfter = $laboratoryNavigationAfter }
 
   $laboratoryPage = @(Wait-ForCdpPage $RemoteDebugPort 'surface=dictation-lab' 20)[0]
   Start-Sleep -Seconds 2
   $initialExpression = "JSON.stringify({title:document.querySelector('h1')?.textContent||document.title,workspaceCount:document.querySelectorAll('[data-workspace-id]').length,noProviderActions:[...document.querySelectorAll('button')].filter((item)=>/Transcribe with provider|Start provider|Run provider|Deliver/i.test(item.textContent||'')).length,ready:document.readyState,responding:Boolean(document.querySelector('.lab-shell')),pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth})"
   $capture = Invoke-CdpExpression $laboratoryPage $initialExpression | ConvertFrom-Json
   $report.capture = $capture
-  Add-Check 'Settings opens Dictation Laboratory' ($capture.workspaceCount -eq 5 -and $capture.title -eq 'Dictation Laboratory') @{ workspaceCount = $capture.workspaceCount }
+  Add-Check 'Dictation Laboratory renders all five workspaces' ($capture.workspaceCount -eq 5 -and $capture.title -eq 'Dictation Laboratory') @{ workspaceCount = $capture.workspaceCount }
   Add-Check 'Laboratory starts provider-free and read-only' ($capture.noProviderActions -eq 0) @{}
 
   $laboratoryHwnd = [LaboratorySmokeWin32]::FindVisibleWindow('Dictation Laboratory')
