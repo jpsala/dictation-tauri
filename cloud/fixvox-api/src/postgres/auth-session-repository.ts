@@ -3,6 +3,7 @@
 import { DeviceBindingConflictError } from "./control-plane-repository.ts";
 
 export const RECENT_GOOGLE_AUTH_MS = 10 * 60 * 1000;
+export const DESKTOP_PRODUCT_SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function accountHandleForSubjectHash(subjectHash: string): string {
   if (!/^[a-f0-9]{64}$/.test(subjectHash)) throw new Error("oauth_subject_hash_invalid");
@@ -162,7 +163,7 @@ export class PostgresAuthSessionRepository {
       `, [session.subject_hash, accountHandle]);
       if (devices[0].account_id && devices[0].account_id !== accounts[0].id) throw new DeviceBindingConflictError();
       await tx.unsafe("UPDATE devices SET account_id = $2::uuid, updated_at = now() WHERE id = $1::uuid", [devices[0].id, accounts[0].id]);
-      const claimed = await tx.unsafe(`UPDATE desktop_login_sessions SET status = 'claimed', claimed_at = now(), account_id = $2::uuid, updated_at = now() WHERE session_hash = $1 AND claimed_at IS NULL RETURNING session_hash`, [input.sessionHash, accounts[0].id]);
+      const claimed = await tx.unsafe(`UPDATE desktop_login_sessions SET status = 'claimed', claimed_at = now(), expires_at = $3::timestamptz, account_id = $2::uuid, updated_at = now() WHERE session_hash = $1 AND claimed_at IS NULL RETURNING session_hash`, [input.sessionHash, accounts[0].id, new Date(Date.now() + DESKTOP_PRODUCT_SESSION_MS).toISOString()]);
       return claimed[0] ? { deviceId: input.deviceId, accountId: accounts[0].id } : null;
     });
   }

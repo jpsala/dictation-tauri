@@ -586,7 +586,9 @@ describe("Bun API adapter", () => {
       body: JSON.stringify({ deviceId: "fixture-device-001", claimProof: statusData.claimProof }),
     }));
     expect(claimed.status).toBe(200);
-    const encoded = JSON.stringify(await claimed.json());
+    const claimedBody = await claimed.json() as { data: { session: { expiresAt: string } } };
+    const encoded = JSON.stringify(claimedBody);
+    expect(claimedBody.data.session.expiresAt).toBe("2026-01-31T00:00:00.000Z");
     expect(encoded).not.toMatch(/oauth|google|accountId|provider|model/i);
   });
 });

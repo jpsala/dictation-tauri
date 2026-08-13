@@ -332,7 +332,7 @@ async function dispatch(
       if (!profile) throw productError(503, "service_unavailable", "dependency", true);
       const registered = await deps.devices.resolveDevice(deviceId);
       return productJson({
-        session: { token: claimProof, expiresAt: new Date(now().getTime() + 5 * 60_000).toISOString() },
+        session: { token: claimProof, expiresAt: new Date(now().getTime() + 30 * 24 * 60 * 60_000).toISOString() },
         context: await effectiveProductContext(deps, profile, registered?.accountId ?? null),
       });
     }
