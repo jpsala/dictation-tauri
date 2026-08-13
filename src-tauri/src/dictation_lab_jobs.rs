@@ -157,11 +157,12 @@ fn validate_definition(definition: &LabExperimentDefinition) -> Result<(), Dicta
     }
     if definition.mode == PROVIDER_REAL_MODE && (definition.corpus_id != REAL_CORPUS
         || definition.sample_ids.iter().map(String::as_str).collect::<Vec<_>>() != REAL_SAMPLE_IDS
-        || definition.stt_recipes.iter().any(|recipe| !REAL_STT_RECIPES.contains(&recipe.as_str()))
+        || definition.stt_recipes.iter().map(String::as_str).collect::<Vec<_>>() != REAL_STT_RECIPES
         || !definition.postprocess_recipes.is_empty()
         || definition.prosody_modes != ["off"]
         || definition.vocabulary_modes != ["off"]
-        || definition.materializations != ["response-text-kept"]) {
+        || definition.materializations != ["response-text-kept"]
+        || definition.baseline_candidate_id.is_some()) {
         return Err(DictationLabJobError::new("provider-real-definition-unsupported"));
     }
     if definition.mode == PROVIDER_FREE_MODE && (definition.corpus_id != PROVIDER_FREE_CORPUS
@@ -210,23 +211,8 @@ pub async fn estimate_dictation_lab_experiment(
     estimate_definition(definition)
 }
 
-fn grant_matches(estimate: &LabExperimentEstimate, grant: &LabExecutionGrant) -> bool {
-    if grant.definition_hash != estimate.definition_hash || grant.estimate.definition_hash != estimate.definition_hash { return false; }
-    if grant.estimate.sample_count != estimate.sample_count || grant.estimate.candidate_count != estimate.candidate_count
-        || grant.estimate.combination_count != estimate.combination_count || grant.estimate.stt_calls != estimate.stt_calls
-        || grant.estimate.postprocess_calls != estimate.postprocess_calls || grant.estimate.reused_raw_count != estimate.reused_raw_count
-        || grant.estimate.max_requests != estimate.max_requests || (grant.estimate.max_cost_usd - estimate.max_cost_usd).abs() > f64::EPSILON
-        || grant.estimate.provider_required != estimate.provider_required || grant.estimate.one_variable_warnings != estimate.one_variable_warnings {
-        return false;
-    }
-    let expiry_valid = grant.expires_at.parse::<u64>()
-        .map(|expiry| expiry > now_epoch())
-        .unwrap_or_else(|_| grant.expires_at.as_str() > now_iso().as_str());
-    expiry_valid
-}
 
-
-fn spawn_runner(mode: &str, run_id: &str, estimate: &LabExperimentEstimate) -> Result<Arc<Mutex<Child>>, DictationLabJobError> {
+fn spawn_runner(mode: &str, run_id: &str, _estimate: &LabExperimentEstimate) -> Result<Arc<Mutex<Child>>, DictationLabJobError> {
     let args = match mode {
         PROVIDER_FREE_MODE => vec![
             "run".to_string(),
@@ -234,17 +220,14 @@ fn spawn_runner(mode: &str, run_id: &str, estimate: &LabExperimentEstimate) -> R
             "--run-id".to_string(),
             run_id.to_string(),
         ],
-        PROVIDER_REAL_MODE => vec![
-            "run".to_string(),
-            "scripts/transcription-quality-product-baseline.ts".to_string(),
-            "--allow-provider-call".to_string(),
-            "--max-requests".to_string(),
-            estimate.max_requests.to_string(),
-            "--max-cost-usd".to_string(),
-            format!("{:.6}", estimate.max_cost_usd),
-            "--run-id".to_string(),
-            run_id.to_string(),
-        ],
+        // Provider-real is intentionally closed until the control plane can
+        // consume an authoritative one-shot grant. Keep this guard directly
+        // beside process creation so no provider runner can be spawned.
+        PROVIDER_REAL_MODE => {
+            return Err(DictationLabJobError::new(
+                "authoritative_one_shot_grant_unavailable",
+            ));
+        }
         _ => return Err(DictationLabJobError::new("runner-mode-not-allowlisted")),
     };
     let child = Command::new("bun")
@@ -257,12 +240,34 @@ fn spawn_runner(mode: &str, run_id: &str, estimate: &LabExperimentEstimate) -> R
         .map_err(|_| DictationLabJobError::new("runner-unavailable"))?;
     Ok(Arc::new(Mutex::new(child)))
 }
+pub async fn start_provider_free_smoke_job() -> Result<LabJobSnapshot, DictationLabJobError> {
+    start_dictation_lab_job(
+        LabExperimentDefinition {
+            schema_version: 1,
+            mode: PROVIDER_FREE_MODE.to_string(),
+            corpus_id: PROVIDER_FREE_CORPUS.to_string(),
+            sample_ids: PROVIDER_FREE_SAMPLE_IDS.iter().map(|value| (*value).to_string()).collect(),
+            stt_recipes: vec![PROVIDER_FREE_STT_RECIPE.to_string()],
+            materializations: vec![MATERIALIZATION_IDENTITY.to_string()],
+            postprocess_recipes: Vec::new(),
+            prosody_modes: vec!["off".to_string()],
+            vocabulary_modes: vec!["off".to_string()],
+            baseline_candidate_id: None,
+        },
+        None,
+    )
+    .await
+}
 #[tauri::command]
-pub async fn start_dictation_lab_job(definition: LabExperimentDefinition, execution_grant: Option<LabExecutionGrant>) -> Result<LabJobSnapshot, DictationLabJobError> {
+pub async fn start_dictation_lab_job(
+    definition: LabExperimentDefinition,
+    _execution_grant: Option<LabExecutionGrant>,
+) -> Result<LabJobSnapshot, DictationLabJobError> {
     let estimate = estimate_definition(definition.clone())?;
     if definition.mode == PROVIDER_REAL_MODE {
-        let grant = execution_grant.as_ref().ok_or_else(|| DictationLabJobError::new("execution-grant-required"))?;
-        if !grant_matches(&estimate, grant) { return Err(DictationLabJobError::new("execution-grant-invalid-or-expired")); }
+        return Err(DictationLabJobError::new(
+            "authoritative_one_shot_grant_unavailable",
+        ));
     }
     let mut guard = active_job().lock().map_err(|_| DictationLabJobError::new("job-state-unavailable"))?;
     if guard.as_ref().is_some_and(|job| job.snapshot.state == "queued" || job.snapshot.state == "running") {
@@ -342,6 +347,50 @@ mod tests {
             baseline_candidate_id: None,
         }
     }
+    fn gate_a_definition() -> LabExperimentDefinition {
+        LabExperimentDefinition {
+            schema_version: 1,
+            mode: PROVIDER_REAL_MODE.to_string(),
+            corpus_id: REAL_CORPUS.to_string(),
+            sample_ids: REAL_SAMPLE_IDS.iter().map(|value| (*value).to_string()).collect(),
+            stt_recipes: REAL_STT_RECIPES.iter().map(|value| (*value).to_string()).collect(),
+            materializations: vec!["response-text-kept".to_string()],
+            postprocess_recipes: Vec::new(),
+            prosody_modes: vec!["off".to_string()],
+            vocabulary_modes: vec!["off".to_string()],
+            baseline_candidate_id: None,
+        }
+    }
+
+    #[test]
+    fn exact_gate_a_estimate_is_the_frozen_matrix() {
+        let estimate = estimate_definition(gate_a_definition()).expect("Gate A estimate");
+        assert_eq!(estimate.sample_count, 3);
+        assert_eq!(estimate.candidate_count, 4);
+        assert_eq!(estimate.combination_count, 12);
+        assert_eq!(estimate.stt_calls, 12);
+        assert_eq!(estimate.postprocess_calls, 0);
+        assert_eq!(estimate.max_requests, 12);
+        assert_eq!(estimate.max_cost_usd, 0.005);
+        assert!(estimate.provider_required);
+    }
+
+    #[test]
+    fn altered_gate_a_matrix_is_rejected_before_runner_creation() {
+        let mut definition = gate_a_definition();
+        definition.stt_recipes.pop();
+        let error = estimate_definition(definition).expect_err("subset Gate A must reject");
+        assert_eq!(error.code, "provider-real-definition-unsupported");
+    }
+
+    #[test]
+    fn provider_real_runner_is_closed_without_spawning() {
+        let estimate = estimate_definition(gate_a_definition()).expect("Gate A estimate");
+        let error = spawn_runner(PROVIDER_REAL_MODE, "redacted-run", &estimate)
+            .expect_err("provider-real must remain closed");
+        assert_eq!(error.code, "authoritative_one_shot_grant_unavailable");
+    }
+
 
     #[test]
     fn provider_free_estimate_is_deterministic_and_has_zero_provider_budget() {

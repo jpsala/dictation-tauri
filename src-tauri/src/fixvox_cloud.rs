@@ -2323,6 +2323,20 @@ pub(crate) async fn request_authenticated_product_json(
     })?;
     let status = response.status();
     if !status.is_success() {
+        let body = response.json::<serde_json::Value>().await.ok();
+        let authoritative_unavailable = body
+            .as_ref()
+            .and_then(|value| value.get("availability"))
+            .and_then(|value| value.get("reasonCode"))
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| *value == "authoritative_one_shot_grant_unavailable")
+            .is_some();
+        if authoritative_unavailable {
+            return Err(error(
+                "authoritative_one_shot_grant_unavailable",
+                "The laboratory execution grant is unavailable.",
+            ));
+        }
         let code = match status {
             reqwest::StatusCode::UNAUTHORIZED => "DICTATION_LAB_UNAUTHORIZED",
             reqwest::StatusCode::FORBIDDEN => "DICTATION_LAB_FORBIDDEN",

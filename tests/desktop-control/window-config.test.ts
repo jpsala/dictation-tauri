@@ -49,6 +49,29 @@ describe("Tauri dev dock window config", () => {
     expect(main?.minHeight).toBe(32);
   });
 
+
+  it("keeps the Dictation Laboratory at the shared 720x620 native floor", () => {
+    const config = JSON.parse(
+      readFileSync("src-tauri/tauri.conf.json", "utf8"),
+    ) as TauriConfig;
+    const laboratory = config.app.windows.find(
+      (window) => window.label === "dictation-lab",
+    );
+
+    expect(laboratory).toMatchObject({
+      title: "Dictation Laboratory",
+      url: "index.html?surface=dictation-lab",
+      width: 720,
+      height: 620,
+      minWidth: 720,
+      minHeight: 620,
+      resizable: true,
+      decorations: true,
+      transparent: false,
+      alwaysOnTop: false,
+      visible: false,
+    });
+  });
   it("keeps the transient companion transparent so only the notice chrome is visible", () => {
     const config = JSON.parse(
       readFileSync("src-tauri/tauri.conf.json", "utf8"),

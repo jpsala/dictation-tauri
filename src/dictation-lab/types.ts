@@ -13,47 +13,80 @@ export type LaboratorySession = {
   recentGoogle: boolean;
 };
 
-export type RecipeRuntimeOperation = {
-  engineId?: string;
+/** The only runtime fields accepted by profile definitions. */
+export type RecipeRuntimeOperation = JsonObject & {
+  engineId: string;
   promptId?: string;
-  language?: string;
-  enabled?: boolean;
-  [key: string]: JsonValue | undefined;
 };
 
-export type RecipeDefinition = JsonObject & {
-  schemaVersion?: number;
-  profileId?: string;
-  label?: string;
-  version?: number;
-  status?: "draft" | "published";
-  runtime?: JsonObject & {
-    transcription?: RecipeRuntimeOperation;
-    postprocess?: RecipeRuntimeOperation;
-    selectionTransform?: RecipeRuntimeOperation;
-  };
-  semanticSafety?: JsonObject;
-  vocabulary?: JsonObject;
-  defaults?: JsonObject;
-  limits?: JsonObject;
-  userControls?: JsonObject;
-  access?: JsonObject & { capabilities?: JsonValue[] };
+export type RecipeRuntime = JsonObject & {
+  transcription: RecipeRuntimeOperation;
+  postprocess: RecipeRuntimeOperation;
+  selectionTransform: RecipeRuntimeOperation;
+};
+
+export type ProfileAccess = JsonObject & {
+  capabilities: string[];
+};
+
+export type ProfileLimits = JsonObject & {
+  mode: "block" | "warn";
+  dailyUsd?: number;
+  monthlyUsd?: number;
+  quotaProfile?: string;
+};
+
+export type ProfileUserControls = JsonObject & {
+  [key: string]: "hidden" | "visible-locked" | "editable";
+};
+
+export type ProfileDefaults = JsonObject & {
+  [key: string]: string | number | boolean;
+};
+
+/** Canonical mutation payload. Version/profile metadata is deliberately outside this object. */
+export type RecipeDefinition = {
+  schemaVersion: 1;
+  label: string;
+  access: ProfileAccess;
+  runtime: RecipeRuntime;
+  limits: ProfileLimits;
+  userControls: ProfileUserControls;
+  defaults: ProfileDefaults;
+  [key: string]: JsonValue;
+};
+
+export type ProfileVersionStatus = "draft" | "published" | "historical";
+
+/** Server-owned metadata wrapped around one canonical definition. */
+export type ProfileVersionMetadata = {
+  version: number;
+  status: ProfileVersionStatus;
+  authorityRevision: number;
+  createdAt: string;
+  publishedAt: string | null;
+  definition: RecipeDefinition;
 };
 
 export type LaboratoryProfile = {
   profileId: string;
   label: string;
+  lifecycleStatus: string;
   revision: number;
-  published: RecipeDefinition | null;
-  draft: RecipeDefinition | null;
-  history: RecipeDefinition[];
+  activePublishedVersion: number | null;
+  currentDraftVersion: number | null;
+  published: ProfileVersionMetadata | null;
+  draft: ProfileVersionMetadata | null;
+  versions: ProfileVersionMetadata[];
+  /** Derived convenience list; every item retains its nested lifecycle metadata. */
+  history: ProfileVersionMetadata[];
 };
 
 export type ProfilesResponse = { ok: true; profiles: LaboratoryProfile[] };
 
 export type EngineOption = {
   id: string;
-  kind: string;
+  kind: "transcription" | "postprocess" | "selectionTransform" | string;
   provider?: string;
   model?: string;
   providerLabel?: string;
@@ -63,13 +96,62 @@ export type EngineOption = {
   revision?: number;
 };
 
-export type PromptOption = { id: string; kind: string; version: string; source?: string };
+export type PromptOption = { id: string; kind: string; version: string; source?: string; lifecycleStatus?: string; availability?: string };
 export type ConfigurationResponse = {
   ok: true;
   engineOptions: EngineOption[];
   promptOptions: PromptOption[];
   groupOptions: Array<{ id: string; label: string; policyId?: string | null }>;
 };
+
+export type CatalogEntryAvailability = {
+  status: "available" | "partial" | "unavailable";
+  reasonCode: string | null;
+};
+
+export type CatalogCompatibility = {
+  profileRuntimeKinds: Array<"transcription" | "postprocess" | "selectionTransform">;
+  prosodyModes: Array<"off" | "advisory">;
+  requiresVocabularySnapshot: boolean;
+};
+
+export type LaboratoryCatalogEntry = {
+  id: string;
+  label: string;
+  version: string;
+  lifecycleStatus: "active" | "retired" | "experimental";
+  availability: CatalogEntryAvailability;
+  executionModes: Array<"provider-free-replay" | "provider-real">;
+  compatibility: CatalogCompatibility;
+  profileMaterialization: {
+    engineId?: string;
+    promptId?: string;
+    defaults?: Record<string, string | number | boolean>;
+  } | null;
+};
+
+export type LaboratoryCatalog = {
+  schemaVersion: 1;
+  revision: string;
+  engines: LaboratoryCatalogEntry[];
+  prompts: LaboratoryCatalogEntry[];
+  sttRecipes: LaboratoryCatalogEntry[];
+  postprocessRecipes: LaboratoryCatalogEntry[];
+  prosodyModes: LaboratoryCatalogEntry[];
+  vocabularyModes: Array<LaboratoryCatalogEntry & {
+    snapshotPrerequisite: {
+      required: boolean;
+      immutableIdentityFields: readonly ["snapshotId", "revision", "source"];
+    };
+  }>;
+  materializations: LaboratoryCatalogEntry[];
+  providerAuthorization: {
+    status: "unavailable";
+    reasonCode: "authoritative_one_shot_grant_unavailable";
+  };
+};
+
+export type CatalogResponse = { ok: true; catalog: LaboratoryCatalog };
 
 export type AccountSummary = {
   accountHandle: string;
@@ -103,9 +185,10 @@ export type ProfileValidationReceipt = {
 };
 
 export type ProfilePreviewChange = {
+  kind: "add" | "remove" | "change";
   path: string;
-  before: JsonValue;
-  after: JsonValue;
+  before: JsonValue | null;
+  after: JsonValue | null;
 };
 
 export type ProfilePreviewReceipt = {
@@ -115,25 +198,50 @@ export type ProfilePreviewReceipt = {
     revision: number;
     baseVersion: number | null;
     candidateLabel: string;
+    candidateFingerprint: string;
     changed: boolean;
     changes: ProfilePreviewChange[];
     truncated: boolean;
   };
 };
 
+export type EvidenceIdentityLayer = {
+  availability: LabAvailability;
+  value: JsonValue | null;
+  source: string | null;
+};
+
 export type EvidenceIdentity = {
   configured: JsonValue | null;
   resolved: JsonValue | null;
   observed: JsonValue | null;
+  configuredState?: EvidenceIdentityLayer;
+  resolvedState?: EvidenceIdentityLayer;
+  observedState?: EvidenceIdentityLayer;
+};
+
+export type LaboratoryResourceName =
+  | "profiles"
+  | "configuration"
+  | "catalog"
+  | "accounts"
+  | "audit"
+  | "history";
+
+export type LaboratoryResourceState = {
+  status: "available" | "partial" | "unavailable";
+  code: string | null;
 };
 
 export type LaboratoryLoad = {
   session: LaboratorySession;
   profiles: ProfilesResponse;
   configuration: ConfigurationResponse;
+  catalog: LaboratoryCatalog | null;
   accounts: AccountsResponse;
   audit: AuditResponse;
   runs: readonly LabRunEvidence[];
+  resources: Record<LaboratoryResourceName, LaboratoryResourceState>;
 };
 
 export type LabAvailability = {

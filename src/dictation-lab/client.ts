@@ -7,17 +7,22 @@ import type {
   ConfigurationResponse,
   LabArtifactIndex,
   JsonObject,
+  JsonValue,
   LabHumanVerdictMutation,
   LabSampleSummary,
+  LaboratoryCatalog,
   LaboratoryLoad,
+  LaboratoryResourceName,
+  LaboratoryResourceState,
   LaboratorySession,
   ProfileMutationReceipt,
+  ProfilePreviewChange,
   ProfilePreviewReceipt,
   ProfilesResponse,
   ProfileValidationReceipt,
+  ProfileVersionMetadata,
   RecipeDefinition,
 } from "./types";
-
 export type DictationLabRequest =
   | { kind: "session" }
   | { kind: "profiles" }
@@ -27,6 +32,7 @@ export type DictationLabRequest =
   | { kind: "devices" }
   | { kind: "audit" }
   | { kind: "usage" }
+  | { kind: "laboratoryCatalog" }
   | { kind: "pricing" }
   | { kind: "validateProfile"; profileId: string; expectedRevision: number; definition: RecipeDefinition }
   | { kind: "previewProfile"; profileId: string; expectedRevision: number; baseVersion?: number; definition: RecipeDefinition }
@@ -78,6 +84,85 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort((left, right) => left.localeCompare(right)).map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export function stableDefinitionFingerprint(value: unknown): string {
+  return stableJson(value);
+}
+
+export function diffDefinition(before: unknown, after: unknown): ProfilePreviewChange[] {
+  const changes: ProfilePreviewChange[] = [];
+  const visit = (left: unknown, right: unknown, path: string): void => {
+    if (stableJson(left) === stableJson(right)) return;
+    if (left && right && typeof left === "object" && typeof right === "object" && !Array.isArray(left) && !Array.isArray(right)) {
+      const leftRecord = left as Record<string, unknown>;
+      const rightRecord = right as Record<string, unknown>;
+      const keys = [...new Set([...Object.keys(leftRecord), ...Object.keys(rightRecord)])].sort((a, b) => a.localeCompare(b));
+      for (const key of keys) visit(leftRecord[key], rightRecord[key], path ? `${path}.${key}` : key);
+      return;
+    }
+    changes.push({
+      kind: left === undefined ? "add" : right === undefined ? "remove" : "change",
+      path: path || "$",
+      before: left === undefined ? null : left as JsonValue,
+      after: right === undefined ? null : right as JsonValue,
+    });
+  };
+  visit(before, after, "");
+  return changes;
+}
+
+function profileVersion(value: unknown): ProfileVersionMetadata {
+  const candidate = object(value);
+  const status = String(candidate.status);
+  if (
+    !Number.isInteger(candidate.version)
+    || !["draft", "published", "historical"].includes(status)
+    || !Number.isInteger(candidate.authorityRevision)
+    || typeof candidate.createdAt !== "string"
+    || (candidate.publishedAt !== null && typeof candidate.publishedAt !== "string")
+  ) {
+    throw new DictationLabUnavailableError("DICTATION_LAB_PROFILE_VERSION_INVALID", "Una versión de perfil no conserva metadata canónica.");
+  }
+  return {
+    version: Number(candidate.version),
+    status: status as ProfileVersionMetadata["status"],
+    authorityRevision: Number(candidate.authorityRevision),
+    createdAt: candidate.createdAt,
+    publishedAt: candidate.publishedAt as string | null,
+    definition: structuredClone(object(candidate.definition)) as RecipeDefinition,
+  };
+}
+
+function laboratoryCatalog(value: unknown): LaboratoryCatalog {
+  const response = object(value);
+  const candidate = object(response.ok === true && response.catalog ? response.catalog : value);
+  for (const key of ["engines", "prompts", "sttRecipes", "postprocessRecipes", "prosodyModes", "vocabularyModes", "materializations"]) {
+    if (!Array.isArray(candidate[key])) throw new DictationLabUnavailableError("DICTATION_LAB_CATALOG_INVALID", "El catálogo del laboratorio no está disponible.");
+  }
+  if (candidate.schemaVersion !== 1 || (candidate.sttRecipes as unknown[]).length !== 4 || (candidate.postprocessRecipes as unknown[]).length !== 2) {
+    throw new DictationLabUnavailableError("DICTATION_LAB_CATALOG_INVALID", "El catálogo del laboratorio no coincide con la autoridad evaluativa.");
+  }
+  return candidate as LaboratoryCatalog;
+}
+
+function resource(status: LaboratoryResourceState["status"], code: string | null = null): LaboratoryResourceState {
+  return { status, code };
+}
+
+function unavailableCode(reason: PromiseSettledResult<unknown>): string | null {
+  if (reason.status === "fulfilled") return null;
+  const value = reason.reason as { code?: unknown };
+  return typeof value?.code === "string" ? value.code : "DICTATION_LAB_RESOURCE_UNAVAILABLE";
+}
+
 async function request<T>(payload: DictationLabRequest): Promise<T> {
   if (!isTauri()) {
     throw new DictationLabUnavailableError("DICTATION_LAB_TAURI_REQUIRED", "El laboratorio está disponible únicamente en la aplicación de escritorio.");
@@ -98,29 +183,34 @@ export function parseProfilesResponse(value: unknown): ProfilesResponse {
   if (candidate.ok !== true || !Array.isArray(candidate.profiles)) {
     throw new DictationLabUnavailableError("DICTATION_LAB_PROFILES_INVALID", "El catálogo de perfiles no está disponible.");
   }
-  const normalized = candidate.profiles.map((raw) => {
+  const profiles = candidate.profiles.map((raw) => {
     const profile = object(raw);
-    const versions = Array.isArray(profile.versions) ? profile.versions.map((rawVersion) => {
-      const version = object(rawVersion);
-      const definition = object(version.definition);
-      return {
-        ...definition,
-        version: Number(version.version),
-        status: String(version.status) === "draft" ? "draft" as const : "published" as const,
-      } as RecipeDefinition;
-    }) : [];
-    const activeVersion = Number(profile.activePublishedVersion);
-    const draftVersion = Number(profile.currentDraftVersion);
+    if (
+      typeof profile.profileId !== "string"
+      || typeof profile.label !== "string"
+      || typeof profile.lifecycleStatus !== "string"
+      || !Number.isInteger(profile.revision)
+      || !Array.isArray(profile.versions)
+    ) {
+      throw new DictationLabUnavailableError("DICTATION_LAB_PROFILE_INVALID", "Un perfil no conserva identidad y revisión canónicas.");
+    }
+    const versions = profile.versions.map(profileVersion);
+    const published = profile.published === null ? null : profileVersion(profile.published);
+    const draft = profile.draft === null ? null : profileVersion(profile.draft);
     return {
-      profileId: String(profile.profileId),
-      label: String(profile.label),
+      profileId: profile.profileId,
+      label: profile.label,
+      lifecycleStatus: profile.lifecycleStatus,
       revision: Number(profile.revision),
-      published: versions.find((version) => version.version === activeVersion && version.status !== "draft") ?? null,
-      draft: versions.find((version) => version.version === draftVersion && version.status === "draft") ?? null,
-      history: versions.filter((version) => version.status !== "draft"),
+      activePublishedVersion: profile.activePublishedVersion === null ? null : Number(profile.activePublishedVersion),
+      currentDraftVersion: profile.currentDraftVersion === null ? null : Number(profile.currentDraftVersion),
+      published,
+      draft,
+      versions,
+      history: versions.filter((version) => version.status === "historical"),
     };
   });
-  return { ok: true, profiles: normalized };
+  return { ok: true, profiles };
 }
 
 function configuration(value: unknown): ConfigurationResponse {
@@ -178,20 +268,33 @@ export function createDictationLabClient(): DictationLabClient {
     async load() {
       const sessionValue = await request<unknown>({ kind: "session" });
       const authorizedSession = session(sessionValue);
-      const [profilesValue, configurationValue, accountsValue, auditValue, historyValue] = await Promise.all([
+      const settled = await Promise.allSettled([
         request<unknown>({ kind: "profiles" }),
         request<unknown>({ kind: "configuration" }),
+        invoke<unknown>("get_dictation_lab_catalog"),
         request<unknown>({ kind: "accounts" }),
         request<unknown>({ kind: "audit" }),
         invoke<unknown[]>("list_result_history_entries"),
       ]);
+      const [profilesValue, configurationValue, catalogValue, accountsValue, auditValue, historyValue] = settled;
+      if (profilesValue.status === "rejected") throw profilesValue.reason;
+      if (configurationValue.status === "rejected") throw configurationValue.reason;
       return {
         session: authorizedSession,
-        profiles: parseProfilesResponse(profilesValue),
-        configuration: configuration(configurationValue),
-        accounts: accounts(accountsValue),
-        audit: audit(auditValue),
-        runs: resultHistory(historyValue),
+        profiles: parseProfilesResponse(profilesValue.value),
+        configuration: configuration(configurationValue.value),
+        catalog: catalogValue.status === "fulfilled" ? laboratoryCatalog(catalogValue.value) : null,
+        accounts: accountsValue.status === "fulfilled" ? accounts(accountsValue.value) : { ok: true, accounts: [], nextCursor: null },
+        audit: auditValue.status === "fulfilled" ? audit(auditValue.value) : { schemaVersion: 1, records: [] },
+        runs: historyValue.status === "fulfilled" ? resultHistory(historyValue.value) : [],
+        resources: {
+          profiles: resource("available"),
+          configuration: resource("available"),
+          catalog: resource(catalogValue.status === "fulfilled" ? "available" : "unavailable", unavailableCode(catalogValue)),
+          accounts: resource(accountsValue.status === "fulfilled" ? "available" : "unavailable", unavailableCode(accountsValue)),
+          audit: resource(auditValue.status === "fulfilled" ? "available" : "unavailable", unavailableCode(auditValue)),
+          history: resource(historyValue.status === "fulfilled" ? "available" : "unavailable", unavailableCode(historyValue)),
+        } satisfies Record<LaboratoryResourceName, LaboratoryResourceState>,
       };
     },
     async reloadProfiles() {

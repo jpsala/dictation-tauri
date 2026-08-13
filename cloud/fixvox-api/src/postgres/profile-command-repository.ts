@@ -18,6 +18,24 @@ export type ProfileCommandResult = {
   auditId: string;
   idempotentReplay: boolean;
 };
+export type ProfileDefinition = Readonly<{
+  schemaVersion: 1;
+  label: string;
+  access: Readonly<{ capabilities: readonly string[] }>;
+  runtime: Readonly<Record<"transcription" | "postprocess" | "selectionTransform", Readonly<{
+    engineId: string;
+    promptId?: string;
+  }>>>;
+  limits: Readonly<{
+    mode: "block" | "warn";
+    dailyUsd?: number;
+    monthlyUsd?: number;
+    quotaProfile?: string;
+  }>;
+  userControls: Readonly<Record<string, "hidden" | "visible-locked" | "editable">>;
+  defaults: Readonly<Record<string, string | number | boolean>>;
+}>;
+
 export type ProfileVersionMetadata = {
   version: number;
   status: "draft" | "published" | "historical";
@@ -38,12 +56,18 @@ export type ProfileDetail = {
   versions: ProfileVersionMetadata[];
 };
 export type ProfileValidationResult = { profileId: string; revision: number; valid: true };
-export type ProfilePreviewChange = { path: string; before: unknown; after: unknown };
+export type ProfilePreviewChange = {
+  kind: "add" | "remove" | "change";
+  path: string;
+  before: unknown | null;
+  after: unknown | null;
+};
 export type ProfilePreviewResult = {
   profileId: string;
   revision: number;
   baseVersion: number | null;
   candidateLabel: string;
+  candidateFingerprint: string;
   changed: boolean;
   changes: ProfilePreviewChange[];
   truncated: boolean;
@@ -118,7 +142,12 @@ function diffDefinitions(before: Record<string, unknown>, after: Record<string, 
       for (const key of keys) visit((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key], path ? `${path}.${key}` : key, depth + 1);
       return;
     }
-    changes.push({ path: path || "$", before: boundedValue(left), after: boundedValue(right) });
+    changes.push({
+      kind: left === undefined ? "add" : right === undefined ? "remove" : "change",
+      path: path || "$",
+      before: left === undefined ? null : boundedValue(left),
+      after: right === undefined ? null : boundedValue(right),
+    });
   };
   visit(before, after, "", 0);
   return { changes, truncated: changes.length >= 100 && stableJson(before) !== stableJson(after) };
@@ -215,6 +244,7 @@ export class PostgresProfileCommandRepository {
         revision: detail.revision,
         baseVersion,
         candidateLabel: String(input.definition.label ?? detail.label),
+        candidateFingerprint: fingerprint(input.definition),
         changed: changes.length > 0,
         changes,
         truncated,
@@ -235,7 +265,8 @@ export class PostgresProfileCommandRepository {
     return this.execute(input.profileId, input.expectedRevision, input.actorRefHash, commandFingerprint, async (tx, profile) => {
       const targets = await tx.unsafe<{ definition: Record<string, unknown> | string }>(`SELECT definition FROM profile_versions WHERE profile_id = $1::uuid AND version = $2 AND status <> 'draft'`, [profile.id, input.targetVersion]);
       if (!targets[0]) throw new Error("profile_version_not_found");
-      const target: Record<string, unknown> = { ...definition(targets[0].definition), basedOnVersion: input.targetVersion };
+      const target = definition(targets[0].definition);
+      await validateDefinition(tx, target);
       return { action: "profile.rollback", targetVersion: input.targetVersion, definition: target, label: String(target.label ?? profile.label) };
     });
   }

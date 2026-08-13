@@ -20,9 +20,9 @@ export type IdentitySource = "configured" | "resolved" | "observed" | "mixed" | 
 
 /** Keep all three authorities visible; effective identity is derived, never substituted. */
 export type IdentityLayers = Readonly<{
-  configured?: RecipeIdentity;
-  resolved?: RecipeIdentity;
-  observed?: RecipeIdentity;
+  configured?: RecipeIdentity | null;
+  resolved?: RecipeIdentity | null;
+  observed?: RecipeIdentity | null;
 }>;
 
 export type EffectiveIdentity = RecipeIdentity & Readonly<{ source: IdentitySource }>;
@@ -471,15 +471,15 @@ function normalizeIdentityLayers(identity: unknown, configured: unknown, resolve
   };
 }
 
-function normalizeIdentityLayer(value: unknown): RecipeIdentity | undefined {
-  if (!isRecord(value)) return undefined;
+function normalizeIdentityLayer(value: unknown): RecipeIdentity | null {
+  if (!isRecord(value)) return null;
   const result: Record<string, string | number> = {};
   for (const key of ["profileId", "version", "revision", "recipeId", "recipeVersion"] as const) {
     const candidate = value[key];
     if (typeof candidate === "string" && candidate.trim()) result[key] = candidate.slice(0, MAX_ID_LENGTH);
     else if (typeof candidate === "number" && Number.isFinite(candidate)) result[key] = candidate;
   }
-  return Object.keys(result).length ? result : undefined;
+  return Object.keys(result).length ? result : null;
 }
 
 function normalizeObserved(value: unknown): ObservedExecution {
@@ -577,7 +577,7 @@ function unavailableLength(reason: string): LengthRefEvidence { return { availab
 function unavailableLatency(reason: string): LatencyEvidence { return { availability: unavailableEvidence(reason), redacted: true }; }
 function unavailableCost(reason: string): CostEvidence { return { currency: "USD", availability: unavailableEvidence(reason), redacted: true }; }
 function unavailableFallback(reason: string): FallbackEvidence { return { used: false, stages: [], reason: boundedString(reason), availability: unavailableEvidence(reason), redacted: true }; }
-function deliveryEvidence(status: DeliveryEvidenceStatus | undefined, missing?: string): LabRunEvidence["delivery"] { return { ...(status ? { status } : {}), availability: missing ? partialEvidence([missing]) : availableEvidence(), redacted: true }; }
+function deliveryEvidence(status: DeliveryEvidenceStatus | undefined, missing?: string): LabRunEvidence["delivery"] { return { ...(status ? { status } : {}), availability: missing ? unavailableEvidence(missing) : availableEvidence(), redacted: true }; }
 function normalizeSafety(value: unknown, fallbackReason?: string): SemanticSafetySignals {
   const record = isRecord(value) ? value : {};
   const status = record.status === "pass" || record.status === "warn" || record.status === "fail" ? record.status : "unavailable";

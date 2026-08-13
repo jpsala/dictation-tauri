@@ -1312,36 +1312,53 @@ La autorizacion de un benchmark no autoriza deploy, production policy changes,
 cuentas, instalaciones, release, commit ni push.
 
 
-## Cierre Dictation Laboratory — 2026-08-13
+## Dictation Laboratory — Frozen Closure Contract — 2026-08-13
 
-El editor de perfiles quedó convertido en un laboratorio Tauri de cinco
-workspaces: Overview, Experiments, Results, Recipes y Corpus. Reutiliza
-`profiles`/`profile_versions`, el corpus y los artifacts canónicos bajo
-`artifacts/transcription-quality`; no introduce storage paralelo.
+Este cierre quedó validado provider-free el 2026-08-13. La implementación y
+sus pruebas preservan:
 
-- El gateway local indexa sólo raíces allowlisted, rechaza traversal/symlinks y
-  expone texto o audio privado exclusivamente por ID y comandos Tauri
-  allowlisted. Las proyecciones públicas conservan refs opacas, disponibilidad
-  `available`/`partial`/`unavailable` y métricas faltantes como `null`.
-- La identidad conserva `configured`, `resolved` y `observed` por separado.
-- El replay provider-free ejecutó en Tauri real y completó `2/2` unidades con
-  `0` requests y `USD 0`.
-- El gate provider-real reproduce exactamente Gate A: `3` samples × `4`
-  candidates, máximo `12` requests y `USD 0.005`. La UI no crea ni prolonga
-  grants; sin grant externo exacto y vigente el inicio permanece deshabilitado.
-- La adjudicación persiste un sidecar privado atómico, bounded y versionado; su
-  proyección pública contiene sólo IDs, verdict y hash de contenido.
-- La promoción copia candidate + provenance al draft local existente y conserva
-  validación/preview/publicación server-owned como pasos obligatorios.
+- `profiles` y `profile_versions` siguen siendo la única autoridad; la metadata
+  de profile/version queda anidada fuera de la definición canónica y una mutación
+  envía únicamente `definition`.
+- El catálogo es `GET /product/v1/control-room/laboratory/catalog` y sólo expone
+  metadata segura: exactamente cuatro recipes STT y dos recipes de
+  postprocess de `evaluation-recipes.ts`; IDs descubiertos en artifacts nunca
+  se vuelven autoridad seleccionable.
+- En runtime, cada operación sólo usa `engineId` y `promptId`; el idioma vive
+  en `defaults["transcript.language"]`.
+- `POST /product/v1/control-room/laboratory/execution-grants` debe devolver
+  `authoritative_one_shot_grant_unavailable`. Provider-real falla cerrado antes
+  de spawn o red mientras no exista consumo atómico de un grant autorizado.
+- Gate A debe ser exactamente `GATE_A_DEFINITION` o rechazar antes de ejecutar.
+  Gate B y vocabulary permanecen unavailable sin sus prerrequisitos exactos.
+- `configured`, `resolved` y `observed` son capas independientes; la UI muestra
+  `null`/`unavailable` cuando no existe evidencia, sin completar huecos.
+- Preview usa cambios `add`/`remove`/`change` y `candidateFingerprint`; un diff
+  viejo se marca stale y no habilita publicación. Los estados no-op y vacíos son
+  explícitos.
+- Un receipt de mutación `success` no se convierte en error si falla el refresh:
+  la mutación y el refresh se muestran como hechos separados.
+- Roles, sesión y recursos no disponibles deben bloquear de forma honesta;
+  audio, gold, raw, final, paths, secretos y payloads de provider permanecen
+  detrás de refs/comandos allowlisted y nunca aparecen en proyecciones públicas.
+- La ventana desktop usa un mínimo/default de `720x620` y sólo resize nativo;
+  no usa Win/Super, menú de sistema ni snap.
 
-No hubo provider calls reales ni cambio de policy productiva.
+La validación observada pasó `35` tests frontend focales, `4` tests de recipes,
+`26` tests API y `9` tests Rust del laboratorio, más `npm run check`,
+`npm run build`, `cargo check` e index/audit sin errores. El smoke Tauri real:
 
-## Proximo Corte
+- abrió la superficie con cinco workspaces y estado signed-out honesto;
+- mantuvo `Responding=true` y cero overflow tras resize nativo a `720x620` y
+  `900x700`, además de 200% zoom;
+- ejecutó el replay provider-free a través del host Tauri: `2/2` samples,
+  `providerCalls.enabled=false`, `maxRequests=0`;
+- no ejecutó provider-real, audio, delivery ni mutación productiva.
 
-**Batch 3A — A/B Inicial De Prompt STT E Idioma.**
+## Próximo Corte
 
-Objetivo: ejecutar la matriz inicial de Phase 3 sobre audio constante, sin
-mezclar cambios de route ni audio prep.
-
-Próximo paso: declarar candidates, request cap y costo; ejecutar sólo con nueva
-autorización provider-real explícita. Batch 2D no autoriza esas llamadas.
+**Batch 3A — A/B inicial de prompt STT e idioma**, gated. Antes de ejecutarlo
+se requiere una autorización provider-real nueva para la definición exacta de
+tres samples por cuatro recipes, `12` requests y costo máximo `USD 0.005`.
+Auth mutation contra PostgreSQL, Gate B, deploy, producción y release tampoco
+se afirman en este cierre.

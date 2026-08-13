@@ -58,6 +58,116 @@ pub struct LabExperimentDefinition { pub schema_version: u8, pub mode: String, p
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LabExperimentEstimate { pub definition_hash: String, pub sample_count: usize, pub candidate_count: usize, pub combination_count: usize, pub stt_calls: usize, pub postprocess_calls: usize, pub reused_raw_count: usize, pub max_requests: usize, pub max_cost_usd: f64, pub provider_required: bool, pub one_variable_warnings: Vec<String> }
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaboratoryCatalogAvailability {
+    pub status: String,
+    pub reason_code: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaboratoryCatalogCompatibility {
+    pub profile_runtime_kinds: Vec<String>,
+    pub prosody_modes: Vec<String>,
+    pub requires_vocabulary_snapshot: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaboratoryCatalogMaterialization {
+    pub engine_id: Option<String>,
+    pub prompt_id: Option<String>,
+    pub defaults: Option<Map<String, Value>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaboratoryCatalogEntry {
+    pub id: String,
+    pub label: String,
+    pub version: String,
+    pub lifecycle_status: String,
+    pub availability: LaboratoryCatalogAvailability,
+    pub execution_modes: Vec<String>,
+    pub compatibility: LaboratoryCatalogCompatibility,
+    pub profile_materialization: Option<LaboratoryCatalogMaterialization>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaboratoryVocabularyCatalogEntry {
+    #[serde(flatten)]
+    pub entry: LaboratoryCatalogEntry,
+    pub snapshot_prerequisite: LaboratorySnapshotPrerequisite,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaboratorySnapshotPrerequisite {
+    pub required: bool,
+    pub immutable_identity_fields: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaboratoryProviderAuthorization {
+    pub status: String,
+    pub reason_code: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaboratoryCatalog {
+    pub schema_version: u8,
+    pub revision: String,
+    pub engines: Vec<LaboratoryCatalogEntry>,
+    pub prompts: Vec<LaboratoryCatalogEntry>,
+    pub stt_recipes: Vec<LaboratoryCatalogEntry>,
+    pub postprocess_recipes: Vec<LaboratoryCatalogEntry>,
+    pub prosody_modes: Vec<LaboratoryCatalogEntry>,
+    pub vocabulary_modes: Vec<LaboratoryVocabularyCatalogEntry>,
+    pub materializations: Vec<LaboratoryCatalogEntry>,
+    pub provider_authorization: LaboratoryProviderAuthorization,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaboratoryExecutionGrantRequest {
+    pub schema_version: u8,
+    pub definition_hash: String,
+    pub estimate_hash: String,
+    pub bounds: LaboratoryExecutionGrantBounds,
+    pub confirmation: LaboratoryExecutionGrantConfirmation,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaboratoryExecutionGrantBounds {
+    pub max_requests: usize,
+    pub max_cost_usd: f64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaboratoryExecutionGrantConfirmation {
+    pub accepted: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaboratoryExecutionGrantAvailability {
+    pub status: String,
+    pub reason_code: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaboratoryExecutionGrantResult {
+    pub ok: bool,
+    pub availability: LaboratoryExecutionGrantAvailability,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LabJobSnapshot { pub job_id: String, pub state: String, pub mode: String, pub estimate: LabExperimentEstimate, pub completed_units: usize, pub total_units: usize, pub run_id: Option<String>, pub error_code: Option<String>, pub created_at: String, pub updated_at: String }
@@ -125,6 +235,94 @@ pub async fn request_dictation_lab(request: DictationLabRequest) -> Result<Value
     };
     request_authenticated_product_json(method, &path, body).await
 }
+const LABORATORY_CATALOG_PATH: &str = "/product/v1/control-room/laboratory/catalog";
+const LABORATORY_PROVIDER_AUTH_UNAVAILABLE: &str =
+    "authoritative_one_shot_grant_unavailable";
+const LABORATORY_STT_RECIPE_IDS: &[&str] = &[
+    "transcription-quality-v1-short-auto",
+    "transcription-quality-v1-rich-auto",
+    "transcription-quality-v1-short-es",
+    "transcription-quality-v1-rich-es",
+];
+const LABORATORY_POSTPROCESS_RECIPE_IDS: &[&str] = &[
+    "transcription-quality-v1-postprocess-120b-plain",
+    "transcription-quality-v1-postprocess-120b-prosody",
+];
+
+fn laboratory_catalog_payload(value: Value) -> Result<LaboratoryCatalog, FixvoxCloudError> {
+    let candidate = if value.get("schemaVersion").is_some() {
+        value
+    } else {
+        value
+            .get("data")
+            .cloned()
+            .ok_or_else(|| lab_error("DICTATION_LAB_CATALOG_INVALID", "The laboratory catalog is invalid."))?
+    };
+    let catalog: LaboratoryCatalog = serde_json::from_value(candidate)
+        .map_err(|_| lab_error("DICTATION_LAB_CATALOG_INVALID", "The laboratory catalog is invalid."))?;
+    let stt_ids: Vec<&str> = catalog.stt_recipes.iter().map(|entry| entry.id.as_str()).collect();
+    let postprocess_ids: Vec<&str> = catalog
+        .postprocess_recipes
+        .iter()
+        .map(|entry| entry.id.as_str())
+        .collect();
+    if catalog.schema_version != 1
+        || stt_ids.as_slice() != LABORATORY_STT_RECIPE_IDS
+        || postprocess_ids.as_slice() != LABORATORY_POSTPROCESS_RECIPE_IDS
+        || catalog.provider_authorization.status != "unavailable"
+        || catalog.provider_authorization.reason_code != LABORATORY_PROVIDER_AUTH_UNAVAILABLE
+    {
+        return Err(lab_error(
+            "DICTATION_LAB_CATALOG_INVALID",
+            "The laboratory catalog is invalid.",
+        ));
+    }
+    Ok(catalog)
+}
+
+#[tauri::command]
+pub async fn get_dictation_lab_catalog() -> Result<LaboratoryCatalog, FixvoxCloudError> {
+    let value = request_authenticated_product_json(
+        reqwest::Method::GET,
+        LABORATORY_CATALOG_PATH,
+        None,
+    )
+    .await?;
+    laboratory_catalog_payload(value)
+}
+
+#[tauri::command]
+pub async fn request_dictation_lab_execution_grant(
+    request: LaboratoryExecutionGrantRequest,
+) -> Result<LaboratoryExecutionGrantResult, FixvoxCloudError> {
+    let body = serde_json::to_value(request)
+        .map_err(|_| lab_error("DICTATION_LAB_GRANT_INVALID", "The execution grant request is invalid."))?;
+    match request_authenticated_product_json(
+        reqwest::Method::POST,
+        "/product/v1/control-room/laboratory/execution-grants",
+        Some(body),
+    )
+    .await
+    {
+        Ok(value) => serde_json::from_value(value).map_err(|_| {
+            lab_error(
+                "DICTATION_LAB_GRANT_INVALID",
+                "The execution grant response is invalid.",
+            )
+        }),
+        Err(error) if error.code == LABORATORY_PROVIDER_AUTH_UNAVAILABLE => {
+            Ok(LaboratoryExecutionGrantResult {
+                ok: false,
+                availability: LaboratoryExecutionGrantAvailability {
+                    status: "unavailable".to_string(),
+                    reason_code: LABORATORY_PROVIDER_AUTH_UNAVAILABLE.to_string(),
+                },
+            })
+        }
+        Err(error) => Err(error),
+    }
+}
+
 
 #[derive(Clone)] struct IndexedRun { run_id: String, root: PathBuf, run: Value, manifest: Value, summary: Value, results: Vec<Value>, missing: Vec<String> }
 fn lab_error(code: &str, message: &str) -> FixvoxCloudError { FixvoxCloudError { code: code.to_string(), message: message.to_string(), redacted: true } }

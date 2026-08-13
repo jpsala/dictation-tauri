@@ -13,6 +13,8 @@ export type ExperimentRecipeOptions = {
   stt: readonly string[];
   postprocess: readonly string[];
   materialization: readonly string[];
+  prosody: readonly LabExperimentDefinition["prosodyModes"][number][];
+  vocabulary: readonly LabExperimentDefinition["vocabularyModes"][number][];
 };
 
 export type ExperimentPromotionSelection = {
@@ -39,51 +41,16 @@ export type ExperimentWorkspaceProps = {
   onRefreshArtifacts?: () => void;
   /** Parent owns draft mutation and PromotionDraft provenance. */
   onPromoteCandidate?: (selection: ExperimentPromotionSelection) => void;
-  /** Optional allowlisted options from loaded configuration. No options are invented here. */
-  availableRecipeIds?: ExperimentRecipeOptions;
+  availableRecipeIds?: Partial<ExperimentRecipeOptions>;
 };
 
 type Axis = "stt" | "postprocess" | "vocabulary";
 
-const prosodyModes: LabExperimentDefinition["prosodyModes"] = ["off", "advisory"];
-const vocabularyModes: LabExperimentDefinition["vocabularyModes"] = ["off", "automatic", "ask"];
 
 function unique(values: readonly string[]): string[] {
   return Array.from(new Set(values.filter((value) => value.trim().length > 0)));
 }
 
-function jsonObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-function nestedString(value: unknown, paths: readonly string[][]): string | null {
-  for (const path of paths) {
-    let current: unknown = value;
-    for (const key of path) current = jsonObject(current)[key];
-    if (typeof current === "string" && current.trim()) return current;
-  }
-  return null;
-}
-
-function recipeOptionsFromArtifacts(artifacts: LabArtifactState): ExperimentRecipeOptions {
-  const stt: string[] = [];
-  const postprocess: string[] = [];
-  const materialization: string[] = [];
-  for (const run of artifacts.index?.runs ?? []) {
-    for (const candidate of run.candidates) {
-      const recipe = candidate.recipe;
-      const sttId = nestedString(recipe, [["stt", "evaluationRecipeId"], ["stt", "recipeId"], ["transcription", "recipeId"], ["evaluationRecipeId"]]);
-      const postprocessValue = jsonObject(recipe).postprocess;
-      const postId = nestedString(recipe, [["postprocess", "recipeId"], ["postprocess", "id"], ["postProcess", "recipeId"]])
-        ?? (postprocessValue === null ? "off" : nestedString(recipe, [["postprocess", "cleanupLevel"], ["postprocess", "prosody"]]));
-      const materializationId = nestedString(recipe, [["materialization", "id"], ["materialization", "recipeId"], ["materialization", "mode"], ["materializationId"]]);
-      if (sttId) stt.push(sttId);
-      if (postId) postprocess.push(postId);
-      if (materializationId) materialization.push(materializationId);
-    }
-  }
-  return { stt: unique(stt), postprocess: unique(postprocess), materialization: unique(materialization) };
-}
 
 function labelForOption(id: string): string {
   const normalized = id.toLowerCase();
@@ -118,12 +85,13 @@ export function ExperimentWorkspace({
   onPromoteCandidate,
   availableRecipeIds,
 }: ExperimentWorkspaceProps) {
-  const discovered = useMemo(() => recipeOptionsFromArtifacts(artifacts), [artifacts]);
   const options = useMemo<ExperimentRecipeOptions>(() => ({
-    stt: unique([...(availableRecipeIds?.stt ?? []), ...discovered.stt, ...definition.sttRecipes]),
-    postprocess: unique([...(availableRecipeIds?.postprocess ?? []), ...discovered.postprocess, ...definition.postprocessRecipes]),
-    materialization: unique([...(availableRecipeIds?.materialization ?? []), ...discovered.materialization, ...definition.materializations]),
-  }), [availableRecipeIds, discovered, definition.materializations, definition.postprocessRecipes, definition.sttRecipes]);
+    stt: unique(availableRecipeIds?.stt ?? []),
+    postprocess: unique(availableRecipeIds?.postprocess ?? []),
+    materialization: unique(availableRecipeIds?.materialization ?? []),
+    prosody: availableRecipeIds?.prosody ?? [],
+    vocabulary: availableRecipeIds?.vocabulary ?? [],
+  }), [availableRecipeIds]);
   const [providerBoundaryAcknowledged, setProviderBoundaryAcknowledged] = useState(false);
   const [promotionCandidate, setPromotionCandidate] = useState<ExperimentPromotionSelection | null>(null);
   const [lastJobState, setLastJobState] = useState<LabJobSnapshot["state"] | null>(job?.state ?? null);
@@ -176,7 +144,7 @@ export function ExperimentWorkspace({
 
       <div className="lab-split-layout">
         <form className="lab-panel lab-experiment-form" onSubmit={(event) => { event.preventDefault(); onEstimate(); }}>
-          <div className="lab-section-heading"><div><h3>Experiment definition</h3><p>Only IDs discovered in loaded configuration, artifacts, or the current definition are offered.</p></div><span>Schema v{definition.schemaVersion}</span></div>
+          <div className="lab-section-heading"><div><h3>Experiment definition</h3><p>Selectable axes come only from the authenticated server catalog. Evidence artifacts never add options.</p></div><span>Schema v{definition.schemaVersion}</span></div>
           <fieldset className="lab-choice-group">
             <legend>Execution mode</legend>
             <label>
@@ -240,8 +208,8 @@ export function ExperimentWorkspace({
           <div className="lab-experiment-matrix" aria-label="Experiment matrix">
             <fieldset className="lab-choice-group"><legend>STT recipe axis, short/rich and auto/es where allowlisted</legend>{options.stt.length ? options.stt.map((id) => <label key={id}><input type="checkbox" checked={definition.sttRecipes.includes(id)} onChange={(event) => changeAxis("stt", id, event.currentTarget.checked)} /><span><strong>{labelForOption(id)}</strong><small>Allowlisted evaluation recipe</small></span></label>) : <p className="lab-empty">No allowlisted STT recipes are loaded.</p>}</fieldset>
             <fieldset className="lab-choice-group"><legend>Post-process axis</legend>{options.postprocess.length ? options.postprocess.map((id) => <label key={id}><input type="checkbox" checked={definition.postprocessRecipes.includes(id)} onChange={(event) => changeAxis("postprocess", id, event.currentTarget.checked)} /><span><strong>{labelForOption(id)}</strong><small>Existing post-process recipe</small></span></label>) : <p className="lab-empty">No allowlisted post-process recipes are loaded.</p>}</fieldset>
-            <fieldset className="lab-choice-group"><legend>Prosody axis</legend>{prosodyModes.map((mode) => <label key={mode}><input type="checkbox" checked={definition.prosodyModes.includes(mode)} onChange={(event) => onChange({ ...definition, prosodyModes: toggle(definition.prosodyModes, mode, event.currentTarget.checked) as LabExperimentDefinition["prosodyModes"] })} /><span><strong>{mode === "off" ? "Off" : "Advisory"}</strong><small>{mode === "off" ? "No prosody pass" : "Allow advisory prosody handling"}</small></span></label>)}</fieldset>
-            <fieldset className="lab-choice-group"><legend>Vocabulary axis</legend>{vocabularyModes.map((mode) => <label key={mode}><input type="checkbox" checked={definition.vocabularyModes.includes(mode)} onChange={(event) => changeAxis("vocabulary", mode, event.currentTarget.checked)} /><span><strong>{mode === "off" ? "Off" : mode === "automatic" ? "Automatic" : "Ask"}</strong><small>Keep each vocabulary mode explicit</small></span></label>)}</fieldset>
+            <fieldset className="lab-choice-group"><legend>Prosody axis</legend>{options.prosody.map((mode) => <label key={mode}><input type="checkbox" checked={definition.prosodyModes.includes(mode)} onChange={(event) => onChange({ ...definition, prosodyModes: toggle(definition.prosodyModes, mode, event.currentTarget.checked) as LabExperimentDefinition["prosodyModes"] })} /><span><strong>{mode === "off" ? "Off" : "Advisory"}</strong><small>{mode === "off" ? "No prosody pass" : "Catalog-authorized advisory prosody"}</small></span></label>)}</fieldset>
+            <fieldset className="lab-choice-group"><legend>Vocabulary axis</legend>{options.vocabulary.map((mode) => <label key={mode}><input type="checkbox" checked={definition.vocabularyModes.includes(mode)} onChange={(event) => changeAxis("vocabulary", mode, event.currentTarget.checked)} /><span><strong>{mode === "off" ? "Off" : mode === "automatic" ? "Automatic" : "Ask"}</strong><small>Catalog-authorized vocabulary mode</small></span></label>)}</fieldset>
           </div>
 
           <div className="lab-form-actions"><button type="submit" className="lab-secondary-button" disabled={!canEstimate || estimateLoading || jobActive}>{estimateLoading ? "Estimating" : "Estimate exact matrix"}</button><button type="button" className="lab-primary-button" disabled={!estimate || estimate.providerRequired || definition.mode === "provider-real" || estimateLoading || jobActive} onClick={onStart}>Start provider-free job</button></div>

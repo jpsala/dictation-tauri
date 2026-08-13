@@ -39,6 +39,23 @@ pub fn run() {
                 companion_window::configure_companion_window(app.handle());
                 settings_window::configure_settings_window(app.handle());
                 settings_window::configure_dictation_lab_window(app.handle());
+                if std::env::var_os("DICTATION_LAB_SMOKE_SHOW_WINDOW").is_some() {
+                    settings_window::show_dictation_lab_window_for_app(app.handle())?;
+                }
+                if std::env::var_os("DICTATION_LAB_SMOKE_RUN_REPLAY").is_some() {
+                    tauri::async_runtime::spawn(async {
+                        match dictation_lab_jobs::start_provider_free_smoke_job().await {
+                            Ok(snapshot) => eprintln!(
+                                "[dictation-tauri][laboratory-smoke] provider-free replay started: {}",
+                                snapshot.job_id
+                            ),
+                            Err(error) => eprintln!(
+                                "[dictation-tauri][laboratory-smoke] provider-free replay failed: {}",
+                                error.code
+                            ),
+                        }
+                    });
+                }
             }
 
             if startup_policy.suppress_desktop_side_effects {
@@ -68,8 +85,9 @@ pub fn run() {
             dictation_lab_jobs::start_dictation_lab_job,
             dictation_lab_jobs::get_dictation_lab_job,
             dictation_lab_jobs::cancel_dictation_lab_job,
+            dictation_lab::get_dictation_lab_catalog,
+            dictation_lab::request_dictation_lab_execution_grant,
             dictation_lab::request_dictation_lab,
-            dictation_lab::list_dictation_lab_artifacts,
             dictation_lab::load_dictation_lab_run,
             dictation_lab::load_dictation_lab_sample,
             dictation_lab::read_dictation_lab_private_text,

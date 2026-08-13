@@ -123,6 +123,20 @@ function SettingsIcon({ name }: { name: SettingsIconName }) {
   );
 }
 
+function formatDictationLabReason(error: unknown): string {
+  const value = error && typeof error === "object" ? error as { code?: unknown } : {};
+  if (value.code === "DICTATION_LAB_UNAUTHORIZED" || value.code === "admin_unauthorized") {
+    return "El laboratorio requiere una sesión de escritorio vinculada a Control Room.";
+  }
+  if (value.code === "forbidden") {
+    return "Tu sesión no tiene un rol habilitado para abrir el laboratorio.";
+  }
+  if (value.code === "DICTATION_LAB_CATALOG_INVALID") {
+    return "El catálogo seguro del laboratorio no está disponible.";
+  }
+  return "No pudimos abrir Dictation Laboratory. Tu perfil y tus overrides no cambiaron.";
+}
+
 export function SettingsSurface({ initialSection = "general", initialCloudStatus, initialAuthSessionStatus, vocabularyClient }: SettingsSurfaceProps = {}) {
   const tauriRuntime = isTauri();
   const [dictationShortcut, setDictationShortcut] = useState("Alt+Space");
@@ -713,7 +727,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       await invoke("show_dictation_lab_window");
       setDictationExperimentNotice({ tone: "success", message: "Dictation Laboratory se abrió en una ventana separada." });
     } catch (error) {
-      setDictationExperimentNotice({ tone: "danger", message: formatHotkeyEditReason(error) });
+      setDictationExperimentNotice({ tone: "danger", message: formatDictationLabReason(error) });
     } finally {
       setBusyAction(undefined);
     }

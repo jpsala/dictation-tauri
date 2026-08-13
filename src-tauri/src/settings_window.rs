@@ -70,6 +70,9 @@ pub fn show_dictation_lab_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Resu
 
 
 pub fn show_account_setup_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    if std::env::var_os("DICTATION_LAB_SMOKE_SHOW_WINDOW").is_some() {
+        return Ok(());
+    }
     eprintln!("[dictation-tauri][settings] account setup show requested");
     let window = if let Some(window) = app.get_webview_window(ACCOUNT_SETUP_WINDOW_LABEL) {
         eprintln!("[dictation-tauri][settings] reusing account setup window");
@@ -138,8 +141,8 @@ fn create_fresh_dictation_lab_window<R: Runtime>(
         WebviewUrl::App(DICTATION_LAB_WINDOW_URL.into()),
     )
     .title(DICTATION_LAB_WINDOW_TITLE)
-    .inner_size(1120.0, 760.0)
-    .min_inner_size(840.0, 620.0)
+    .inner_size(720.0, 620.0)
+    .min_inner_size(720.0, 620.0)
     .resizable(true)
     .decorations(true)
     .shadow(true)

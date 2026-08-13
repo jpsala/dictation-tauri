@@ -6,25 +6,22 @@ import type {
   LabJobSnapshot,
 } from "./types";
 
-/** A server-owned grant; the laboratory UI may pass one through but never mint one. */
-export type LabExecutionGrant = {
-  definitionHash: string;
-  estimate: LabExperimentEstimate;
-  expiresAt: string;
-};
-
 export class DictationLabJobsUnavailableError extends Error {
-  readonly code = "DICTATION_LAB_JOBS_UNAVAILABLE";
+  readonly code: string;
 
-  constructor() {
-    super("Dictation laboratory jobs require the Tauri host.");
+  constructor(
+    code = "DICTATION_LAB_JOBS_UNAVAILABLE",
+    message = "Dictation laboratory jobs require the Tauri host.",
+  ) {
+    super(message);
+    this.code = code;
     this.name = "DictationLabJobsUnavailableError";
   }
 }
-
 export type DictationLabJobsClient = {
+  requestExecutionGrant(definition: LabExperimentDefinition): Promise<never>;
   estimateExperiment(definition: LabExperimentDefinition): Promise<LabExperimentEstimate>;
-  startJob(definition: LabExperimentDefinition, executionGrant?: LabExecutionGrant): Promise<LabJobSnapshot>;
+  startJob(definition: LabExperimentDefinition): Promise<LabJobSnapshot>;
   getJob(): Promise<LabJobSnapshot | null>;
   cancelJob(jobId: string): Promise<LabJobSnapshot>;
 };
@@ -39,12 +36,25 @@ export function createDictationLabJobsClient(): DictationLabJobsClient {
       requireTauri();
       return invoke<LabExperimentEstimate>("estimate_dictation_lab_experiment", { definition });
     },
-    startJob(definition, executionGrant) {
+    startJob(definition) {
       requireTauri();
+      if (definition.mode === "provider-real") {
+        return Promise.reject(new DictationLabJobsUnavailableError(
+          "authoritative_one_shot_grant_unavailable",
+          "Provider execution is unavailable until the server can issue and consume an authoritative one-shot grant.",
+        ));
+      }
       return invoke<LabJobSnapshot>("start_dictation_lab_job", {
         definition,
-        executionGrant: executionGrant ?? null,
+        executionGrant: null,
       });
+    },
+    requestExecutionGrant() {
+      requireTauri();
+      return Promise.reject(new DictationLabJobsUnavailableError(
+        "authoritative_one_shot_grant_unavailable",
+        "Provider execution is unavailable until the server can issue and consume an authoritative one-shot grant.",
+      ));
     },
     getJob() {
       requireTauri();

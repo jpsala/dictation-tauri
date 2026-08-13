@@ -2,6 +2,7 @@ import type { PostgresAdminRepository } from "../postgres/admin-repository.ts";
 import type { PostgresAuthSessionRepository } from "../postgres/auth-session-repository.ts";
 import type { PostgresProfileCommandRepository, ProfileCommandResult } from "../postgres/profile-command-repository.ts";
 import type { PostgresEngineCatalogRepository } from "../postgres/engine-catalog-repository.ts";
+import { buildLaboratoryCatalog, type LaboratoryExecutionGrantResult } from "../../../fixvox-core/src/control-plane/catalog.ts";
 
 export type AdminCapability = "view" | "edit" | "publish";
 export type AdminRouteDependencies = { repository: PostgresAdminRepository; profileCommands: PostgresProfileCommandRepository; keys: Partial<Record<AdminCapability, string>>; sessions?: PostgresAuthSessionRepository; engineCatalog?: PostgresEngineCatalogRepository };
@@ -31,11 +32,17 @@ async function controlRoomPrincipal(request: Request, deps: AdminRouteDependenci
   if (!/^arp_[a-f0-9]{64}$/.test(principalKey)) return null;
   const role = await deps.repository.roleForPrincipal(principalKey);
   if (!role) return null;
-  const recentAt = request.headers.get("x-fixvox-recent-google-at");
-  const recentTime = recentAt ? Date.parse(recentAt) : Number.NaN;
-  return { ...actual, principalKey, role, recentGoogle: Number.isFinite(recentTime) && Math.abs(Date.now() - recentTime) <= 10 * 60_000 };
+  return { ...actual, principalKey, role, recentGoogle: false };
 }
-function cors(_request: Request, response: Response): Response { const headers = new Headers(response.headers); headers.set("Access-Control-Allow-Origin", "null"); headers.set("Vary", "Origin"); headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS"); headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Fixvox-Principal-Key, X-Fixvox-Recent-Google-At"); headers.set("Access-Control-Max-Age", "86400"); return new Response(response.body, { status: response.status, headers }); }
+function cors(_request: Request, response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("Access-Control-Allow-Origin", "null");
+  headers.set("Vary", "Origin");
+  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Device-Id, X-Fixvox-Principal-Key");
+  headers.set("Access-Control-Max-Age", "86400");
+  return new Response(response.body, { status: response.status, headers });
+}
 function error(code: string, status: number): Response { return json({ error: { code, message: "Control Room operation is unavailable.", redacted: true } }, status); }
 async function body(request: Request): Promise<Record<string, unknown>> {
   const text = await request.text();
@@ -47,22 +54,6 @@ async function body(request: Request): Promise<Record<string, unknown>> {
   } catch { throw new Error("invalid_body"); }
 }
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
-function normalizedDefinition(value: unknown): Record<string, unknown> {
-  const candidate = structuredClone(record(value));
-  const runtime = record(candidate.runtime);
-  for (const key of ["transcription", "postprocess", "selectionTransform"]) {
-    const { engineKey, promptKey, ...operation } = record(runtime[key]);
-    runtime[key] = {
-      ...operation,
-      ...(operation.engineId === undefined && engineKey !== undefined ? { engineId: engineKey } : {}),
-      ...(operation.promptId === undefined && promptKey !== undefined ? { promptId: promptKey } : {}),
-    };
-  }
-  candidate.runtime = runtime;
-  const { quotaProfileKey, ...limits } = record(candidate.limits);
-  candidate.limits = { ...limits, ...(limits.quotaProfile === undefined && quotaProfileKey !== undefined ? { quotaProfile: quotaProfileKey } : {}) };
-  return candidate;
-}
 function profileCommandResponse(result: ProfileCommandResult, action: "apply" | "rollback"): Response {
   return json({ ok: true, data: { profile: { key: result.profileId, label: result.label, publishedVersion: result.resultingVersion, revision: result.revision }, publication: { previousVersion: result.previousVersion, resultingVersion: result.resultingVersion }, audit: { id: result.auditId, action, result: "success" }, idempotentReplay: result.idempotentReplay } });
 }
@@ -95,6 +86,17 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
       const page = { limit: limit(url), cursor: url.searchParams.get("cursor") };
       const prefix = "/product/v1/control-room";
       if (request.method === "GET" && url.pathname === `${prefix}/session`) return cors(request, json({ ok: true, role: operator.role, principalKey: operator.principalKey, recentGoogle: operator.recentGoogle }));
+      if (request.method === "GET" && url.pathname === `${prefix}/laboratory/catalog`) {
+        return cors(request, json({ ok: true, data: buildLaboratoryCatalog() }));
+      }
+      if (request.method === "POST" && url.pathname === `${prefix}/laboratory/execution-grants`) {
+        if (!permitted(operator, "edit") || !["editor", "publisher", "owner"].includes(operator.role)) return cors(request, error("forbidden", 403));
+        const unavailable: LaboratoryExecutionGrantResult = {
+          ok: false,
+          availability: { status: "unavailable", reasonCode: "authoritative_one_shot_grant_unavailable" },
+        };
+        return cors(request, json(unavailable, 503));
+      }
       if (request.method === "GET" && url.pathname === `${prefix}/roles`) return cors(request, json(await deps.repository.linkedPrincipals()));
       const roleMatch = url.pathname.match(/^\/product\/v1\/control-room\/roles\/(arp_[a-f0-9]{64})$/);
       if (roleMatch && (request.method === "PUT" || request.method === "DELETE")) {
@@ -129,7 +131,7 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
           if (Object.keys(command).some((key) => !allowed.includes(key))) throw new Error("invalid_body");
           const expectedRevision = command.expectedRevision === undefined ? undefined : Number(command.expectedRevision);
           if (expectedRevision !== undefined && (!Number.isInteger(expectedRevision) || expectedRevision < 0)) throw new Error("invalid_body");
-          const definition = normalizedDefinition(command.definition);
+          const definition = structuredClone(record(command.definition));
           if (action === "validate") {
             const result = await deps.profileCommands.validate({ profileId, definition, ...(expectedRevision === undefined ? {} : { expectedRevision }) });
             return cors(request, json({ ok: true, data: result }));
@@ -151,7 +153,7 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
           if (!Number.isInteger(expectedRevision) || expectedRevision < 0) throw new Error("invalid_body");
           if (profileMatch[2] === "apply") {
             if (Object.keys(command).some((key) => !["expectedRevision", "definition", "confirmation"].includes(key)) || confirmation.action !== "apply" || confirmation.profileKey !== profileId || Number(confirmation.expectedRevision) !== expectedRevision || confirmation.phrase !== `APPLY ${profileId} REV ${expectedRevision}`) throw new Error("invalid_confirmation");
-            const result = await deps.profileCommands.apply({ profileId, expectedRevision, definition: normalizedDefinition(command.definition), actorRefHash: operator.principalKey, confirmation: String(confirmation.phrase) });
+            const result = await deps.profileCommands.apply({ profileId, expectedRevision, definition: structuredClone(record(command.definition)), actorRefHash: operator.principalKey, confirmation: String(confirmation.phrase) });
             return cors(request, profileCommandResponse(result, "apply"));
           }
           const targetVersion = Number(command.targetVersion);

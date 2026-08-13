@@ -1,3 +1,5 @@
+import { EVALUATION_RECIPES, POSTPROCESS_EVALUATION_RECIPES, type EvaluationRecipeId, type PostprocessEvaluationRecipeId } from "./evaluation-recipes.ts";
+
 export const BUILTIN_CATALOG_VERSION = "1" as const;
 
 export type BuiltinCatalogKind = "profile" | "variant" | "engine" | "prompt" | "default";
@@ -38,6 +40,89 @@ export type BuiltinEngine = Readonly<{
   defaultEffortId: string | null;
   source: "built-in";
 }>;
+
+export type LaboratoryAvailability = Readonly<{
+  status: "available" | "partial" | "unavailable";
+  reasonCode: string | null;
+}>;
+
+export type LaboratoryCompatibility = Readonly<{
+  profileRuntimeKinds: readonly BuiltinEngineKind[];
+  prosodyModes: readonly ("off" | "advisory")[];
+  requiresVocabularySnapshot: boolean;
+}>;
+
+export type LaboratoryCatalogEntry = Readonly<{
+  id: string;
+  label: string;
+  version: string;
+  lifecycleStatus: "active" | "retired" | "experimental";
+  availability: LaboratoryAvailability;
+  executionModes: readonly ("provider-free-replay" | "provider-real")[];
+  compatibility: LaboratoryCompatibility;
+  profileMaterialization: Readonly<{
+    engineId?: string;
+    promptId?: string;
+    defaults?: Readonly<Record<string, string | number | boolean>>;
+  }> | null;
+}>;
+
+export type LaboratoryCatalog = Readonly<{
+  schemaVersion: 1;
+  revision: string;
+  engines: readonly LaboratoryCatalogEntry[];
+  prompts: readonly LaboratoryCatalogEntry[];
+  sttRecipes: readonly (LaboratoryCatalogEntry & { id: EvaluationRecipeId })[];
+  postprocessRecipes: readonly (LaboratoryCatalogEntry & { id: PostprocessEvaluationRecipeId })[];
+  prosodyModes: readonly LaboratoryCatalogEntry[];
+  vocabularyModes: readonly (LaboratoryCatalogEntry & {
+    snapshotPrerequisite: Readonly<{
+      required: boolean;
+      immutableIdentityFields: readonly ["snapshotId", "revision", "source"];
+    }>;
+  })[];
+  materializations: readonly LaboratoryCatalogEntry[];
+  providerAuthorization: Readonly<{
+    status: "unavailable";
+    reasonCode: "authoritative_one_shot_grant_unavailable";
+  }>;
+}>;
+
+export type LaboratoryResourceName =
+  | "session"
+  | "profiles"
+  | "configuration"
+  | "catalog"
+  | "accounts"
+  | "audit";
+
+export type LaboratoryResourceState = Readonly<{
+  resource: LaboratoryResourceName;
+  availability: LaboratoryAvailability;
+}>;
+
+export type LaboratoryEffectiveIdentity = Readonly<{
+  configured: Readonly<{ availability: LaboratoryAvailability; value: unknown | null; source: string | null }>;
+  resolved: Readonly<{ availability: LaboratoryAvailability; value: unknown | null; source: string | null }>;
+  observed: Readonly<{ availability: LaboratoryAvailability; value: unknown | null; source: string | null }>;
+}>;
+
+export type LaboratoryExecutionGrantRequest = Readonly<{
+  schemaVersion: 1;
+  definitionHash: string;
+  estimateHash: string;
+  bounds: Readonly<{ maxRequests: number; maxCostUsd: number }>;
+  confirmation: Readonly<{ accepted: true }>;
+}>;
+
+export type LaboratoryExecutionGrantResult = Readonly<{
+  ok: false;
+  availability: Readonly<{
+    status: "unavailable";
+    reasonCode: "authoritative_one_shot_grant_unavailable";
+  }>;
+}>;
+
 
 const NO_REASONING_EFFORTS: readonly BuiltinEngineEffort[] = Object.freeze([]);
 const STANDARD_REASONING_EFFORTS: readonly BuiltinEngineEffort[] = Object.freeze([
@@ -84,7 +169,7 @@ export function builtinEngineCatalog(): BuiltinCatalog {
 export type BuiltinPromptKind = BuiltinEngineKind | "assistant";
 export type BuiltinPrompt = Readonly<{ id: string; label: string; kind: BuiltinPromptKind; version: string; summary: string; body: string; enabled: boolean; source: "built-in" }>;
 
-const BUILTIN_PROMPT_DEFINITIONS: readonly Omit<BuiltinPrompt, "enabled">[] = [] = [
+const BUILTIN_PROMPT_DEFINITIONS: readonly Omit<BuiltinPrompt, "enabled">[] = [
   { id: "none", label: "Sin prompt", kind: "assistant", version: "v1", summary: "No aplica prompt de sistema.", body: "", source: "built-in" },
   { id: "transcriptBase", label: "Transcript base", kind: "transcription", version: "v1", summary: "Español rioplatense técnico; conserva comandos, URLs, modelos, archivos y puntuación hablada literal.", body: "Transcribe el audio con precisión. Mantén español rioplatense cuando corresponda, conserva términos técnicos, nombres de modelos, URLs, comandos, paths y puntuación hablada cuando sea claramente intencional.", source: "built-in" },
   { id: "postProcessBase", label: "Post-process base", kind: "postprocess", version: "v1", summary: "Limpia dictado español/bilingüe con cambios mínimos; reconstruye tokens técnicos y listas cuando está claro.", body: "Limpia el dictado manteniendo el significado. Corrige errores evidentes de STT, reconstruye términos técnicos, puntuación y listas cuando sea claro. No agregues explicaciones ni cambies intención.", source: "built-in" },
@@ -142,6 +227,141 @@ export function validateBuiltinVariants(variants: readonly BuiltinVariant[] = BU
 export function builtinVariantCatalog(): BuiltinCatalog {
   validateBuiltinVariants();
   return { version: BUILTIN_CATALOG_VERSION, items: BUILTIN_VARIANTS.map((variant) => ({ id: variant.id, kind: "variant" as const })) };
+}
+
+const LABORATORY_CATALOG_REVISION = "laboratory-v1";
+
+function laboratoryEntry(input: {
+  id: string;
+  label: string;
+  version?: string;
+  availability?: LaboratoryAvailability;
+  executionModes?: readonly ("provider-free-replay" | "provider-real")[];
+  compatibility?: LaboratoryCompatibility;
+  profileMaterialization?: LaboratoryCatalogEntry["profileMaterialization"];
+}): LaboratoryCatalogEntry {
+  return Object.freeze({
+    id: input.id,
+    label: input.label,
+    version: input.version ?? "v1",
+    lifecycleStatus: "active" as const,
+    availability: Object.freeze(input.availability ?? { status: "available" as const, reasonCode: null }),
+    executionModes: Object.freeze([...(input.executionModes ?? ["provider-free-replay" as const])]),
+    compatibility: Object.freeze(input.compatibility ?? {
+      profileRuntimeKinds: Object.freeze([]),
+      prosodyModes: Object.freeze(["off" as const]),
+      requiresVocabularySnapshot: false,
+    }),
+    profileMaterialization: input.profileMaterialization
+      ? Object.freeze({
+        ...input.profileMaterialization,
+        ...(input.profileMaterialization.defaults ? { defaults: Object.freeze({ ...input.profileMaterialization.defaults }) } : {}),
+      })
+      : null,
+  });
+}
+
+/**
+ * Builds the server-owned laboratory catalog from the exact evaluation
+ * authorities. Only labels, IDs, compatibility, and bounded availability are
+ * exposed; recipe prompts and managed prompt bodies never enter this DTO.
+ */
+export function buildLaboratoryCatalog(revision = LABORATORY_CATALOG_REVISION): LaboratoryCatalog {
+  validateBuiltinEngines();
+  validateBuiltinPrompts();
+  const engines = BUILTIN_ENGINES.map((engine) => laboratoryEntry({
+    id: engine.id,
+    label: engine.label,
+    version: BUILTIN_CATALOG_VERSION,
+    compatibility: {
+      profileRuntimeKinds: Object.freeze([engine.kind]),
+      prosodyModes: Object.freeze(["off"]),
+      requiresVocabularySnapshot: false,
+    },
+    profileMaterialization: {
+      engineId: engine.id,
+      promptId: engine.promptKey,
+    },
+  }));
+  const prompts = BUILTIN_PROMPTS.map((prompt) => laboratoryEntry({
+    id: prompt.id,
+    label: prompt.label,
+    version: prompt.version,
+    compatibility: {
+      profileRuntimeKinds: Object.freeze([prompt.kind === "assistant" ? "postprocess" : prompt.kind]),
+      prosodyModes: Object.freeze(["off"]),
+      requiresVocabularySnapshot: false,
+    },
+  }));
+  const unavailableGateB = { status: "unavailable" as const, reasonCode: "gate_b_unavailable" };
+  const sttRecipes = EVALUATION_RECIPES.map((recipe) => laboratoryEntry({
+    id: recipe.id,
+    label: `${recipe.promptMode === "short" ? "Short" : "Rich"} · ${recipe.language.toUpperCase()}`,
+    version: recipe.version,
+    executionModes: ["provider-real"],
+    compatibility: {
+      profileRuntimeKinds: Object.freeze(["transcription"]),
+      prosodyModes: Object.freeze(["off"]),
+      requiresVocabularySnapshot: false,
+    },
+    profileMaterialization: {
+      engineId: "stt-groq-whisper-turbo",
+      promptId: "transcriptBase",
+      defaults: { "transcript.language": recipe.language },
+    },
+  })) as LaboratoryCatalog["sttRecipes"];
+  const postprocessRecipes = POSTPROCESS_EVALUATION_RECIPES.map((recipe) => laboratoryEntry({
+    id: recipe.id,
+    label: recipe.variant === "with-prosody" ? "120B · advisory prosody" : "120B · plain",
+    version: recipe.version,
+    availability: unavailableGateB,
+    executionModes: ["provider-real"],
+    compatibility: {
+      profileRuntimeKinds: Object.freeze(["postprocess"]),
+      prosodyModes: Object.freeze([recipe.variant === "with-prosody" ? "advisory" : "off"]),
+      requiresVocabularySnapshot: false,
+    },
+    profileMaterialization: {
+      engineId: "postprocess-groq-gpt-oss-120b",
+      promptId: "postProcessBase",
+    },
+  })) as LaboratoryCatalog["postprocessRecipes"];
+  const unavailableVocabulary = { status: "unavailable" as const, reasonCode: "vocabulary_snapshot_unavailable" };
+  const prosodyModes = [
+    laboratoryEntry({ id: "off", label: "Off", executionModes: ["provider-free-replay", "provider-real"], compatibility: { profileRuntimeKinds: Object.freeze(["transcription", "postprocess"]), prosodyModes: Object.freeze(["off"]), requiresVocabularySnapshot: false } }),
+    laboratoryEntry({ id: "advisory", label: "Advisory", availability: unavailableGateB, compatibility: { profileRuntimeKinds: Object.freeze(["postprocess"]), prosodyModes: Object.freeze(["advisory"]), requiresVocabularySnapshot: false } }),
+  ];
+  const vocabularyModes = [
+    Object.freeze({ ...laboratoryEntry({ id: "off", label: "Off", executionModes: ["provider-free-replay", "provider-real"], compatibility: { profileRuntimeKinds: Object.freeze(["transcription", "postprocess"]), prosodyModes: Object.freeze(["off"]), requiresVocabularySnapshot: false } }), snapshotPrerequisite: Object.freeze({ required: false, immutableIdentityFields: ["snapshotId", "revision", "source"] as const }) }),
+    Object.freeze({ ...laboratoryEntry({ id: "automatic", label: "Automatic", availability: unavailableVocabulary, compatibility: { profileRuntimeKinds: Object.freeze(["transcription", "postprocess"]), prosodyModes: Object.freeze(["off"]), requiresVocabularySnapshot: true } }), snapshotPrerequisite: Object.freeze({ required: true, immutableIdentityFields: ["snapshotId", "revision", "source"] as const }) }),
+    Object.freeze({ ...laboratoryEntry({ id: "ask", label: "Ask", availability: unavailableVocabulary, compatibility: { profileRuntimeKinds: Object.freeze(["transcription", "postprocess"]), prosodyModes: Object.freeze(["off"]), requiresVocabularySnapshot: true } }), snapshotPrerequisite: Object.freeze({ required: true, immutableIdentityFields: ["snapshotId", "revision", "source"] as const }) }),
+  ];
+  const materializations = [
+    laboratoryEntry({
+      id: "identity",
+      label: "Identity replay",
+      executionModes: ["provider-free-replay"],
+      compatibility: { profileRuntimeKinds: Object.freeze(["transcription"]), prosodyModes: Object.freeze(["off"]), requiresVocabularySnapshot: false },
+    }),
+    laboratoryEntry({
+      id: "response-text-kept",
+      label: "Keep provider response text",
+      executionModes: ["provider-real"],
+      compatibility: { profileRuntimeKinds: Object.freeze(["transcription"]), prosodyModes: Object.freeze(["off"]), requiresVocabularySnapshot: false },
+    }),
+  ];
+  return Object.freeze({
+    schemaVersion: 1,
+    revision,
+    engines: Object.freeze(engines),
+    prompts: Object.freeze(prompts),
+    sttRecipes: Object.freeze(sttRecipes),
+    postprocessRecipes: Object.freeze(postprocessRecipes),
+    prosodyModes: Object.freeze(prosodyModes),
+    vocabularyModes: Object.freeze(vocabularyModes),
+    materializations: Object.freeze(materializations),
+    providerAuthorization: Object.freeze({ status: "unavailable" as const, reasonCode: "authoritative_one_shot_grant_unavailable" as const }),
+  });
 }
 
 const KINDS: readonly BuiltinCatalogKind[] = ["profile", "variant", "engine", "prompt", "default"];

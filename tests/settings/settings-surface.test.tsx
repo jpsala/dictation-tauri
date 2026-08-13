@@ -298,7 +298,7 @@ describe("SettingsSurface", () => {
     expect(nonAdminHtml).not.toContain("Abrir Control Room");
   });
 
-  it("renders Dictado, Privacidad and Ayuda without account or runtime internals", () => {
+  it("keeps Dictado focused on local capture and delivery settings", () => {
     const dictation = renderToStaticMarkup(<SettingsSurface initialSection="dictation" />);
     const privacy = renderToStaticMarkup(<SettingsSurface initialSection="privacy" />);
     const help = renderToStaticMarkup(<SettingsSurface initialSection="help" />);
@@ -309,6 +309,16 @@ describe("SettingsSurface", () => {
     expect(dictation).toContain("Modo de entrega");
     expect(dictation).toContain("Entrada directa");
     expect(dictation).toContain("Pegado rápido");
+    expect(dictation).not.toContain("Configuración de prueba");
+    expect(dictation).toContain("Según mi perfil");
+    expect(dictation).not.toContain("Literal");
+    expect(dictation).not.toContain("Limpieza segura");
+    expect(dictation).not.toContain("Experimental");
+    expect(dictation).not.toContain("Próximo dictado");
+    expect(dictation).not.toContain("Hasta cerrar Dictation");
+    expect(dictation).toContain("Edición, validación, runs y publicación viven en el laboratorio.");
+    expect(dictation).not.toContain("server-owned");
+    expect(dictation).not.toContain("policy del perfil");
     expect(dictation).not.toContain("Cloud");
     expect(dictation).not.toContain("policy");
     expect(privacy).toContain("Privacidad");
@@ -406,6 +416,8 @@ describe("SettingsSurface", () => {
     expect(source).toContain("Silenciar salida al grabar");
     expect(source).toContain("dictationSoundCuesEnabled");
     expect(source).toContain("Sonidos de dictado");
+    expect(source).toContain("enhanceLowVolumeEnabled");
+    expect(source).toContain("Mejorar grabaciones con volumen bajo");
     expect(source).toContain("pasteWithoutFocusChange");
     expect(source).toContain("Pegar sin cambiar de ventana");
     expect(source).toContain("Envía Ctrl+V sólo al input que siga activo al entregar");
@@ -438,6 +450,7 @@ describe("SettingsSurface", () => {
     expect(settingsControlSource).toContain("autoStopOnSilenceEnabled");
     expect(settingsControlSource).toContain("defaultAutoStopSilenceMs");
     expect(settingsControlSource).toContain("createMuteOutputPolicy");
+    expect(settingsControlSource).toContain("enhanceLowVolumeEnabled");
     expect(appSource).toContain("forcePressEnterAfterPasteRef.current");
     expect(appSource).toContain("reviewBeforeDelivery ? \"review_only\" : \"paste_send\"");
   });

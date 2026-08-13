@@ -227,6 +227,8 @@ export class PostgresAuthSessionRepository {
   }
 
   isRecentGoogleVerification(verifiedAt: Date | null, now = new Date()): boolean {
-    return verifiedAt !== null && now.getTime() - verifiedAt.getTime() <= RECENT_GOOGLE_AUTH_MS;
+    if (verifiedAt === null) return false;
+    const age = now.getTime() - verifiedAt.getTime();
+    return age >= 0 && age <= RECENT_GOOGLE_AUTH_MS;
   }
 }

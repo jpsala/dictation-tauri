@@ -110,4 +110,45 @@ describe("dictation lab generic evidence adapter", () => {
     expect(evidence.semanticSafety).toMatchObject({ status: "pass", omissions: 1, additions: 2 });
     expect(JSON.stringify(evidence)).not.toContain("private");
   });
+  it("keeps unavailable identity and capability evidence explicit", () => {
+    expect(effectiveRecipeIdentity({})).toEqual({ source: "unavailable" });
+
+    const evidence = adaptLabRunInput({
+      runId: "no-telemetry",
+      source: "dictation",
+      terminalState: "done",
+      configured: { profileId: "configured", version: 1 },
+    });
+
+    expect(evidence.identity).toEqual({
+      configured: { profileId: "configured", version: 1 },
+      resolved: null,
+      observed: null,
+    });
+    expect(evidence.observed.availability.status).toBe("unavailable");
+    expect(evidence.raw.availability.status).toBe("unavailable");
+    expect(evidence.final.availability.status).toBe("unavailable");
+    expect(evidence.delivery.availability.status).toBe("unavailable");
+  });
+
+  it("redacts opaque evidence even when untrusted input includes paths and secrets", () => {
+    const evidence = adaptLabRunInput({
+      runId: "safe-1",
+      source: "dictation",
+      terminalState: "done",
+      transcript: "PRIVATE GOLD TEXT",
+      output: "PRIVATE FINAL TEXT",
+      rawRef: "C:/Users/private/audio.wav",
+      finalRef: "C:/Users/private/final.txt",
+      observed: { provider: "provider", model: "model", promptId: "prompt-private" },
+      cost: { estimatedUsd: 0.02 },
+    });
+
+    const serialized = JSON.stringify(evidence);
+    expect(serialized).not.toContain("PRIVATE GOLD TEXT");
+    expect(serialized).not.toContain("PRIVATE FINAL TEXT");
+    expect(serialized).not.toContain("C:/Users/private");
+    expect(serialized).toContain("prompt-private");
+    expect(evidence.redacted).toBe(true);
+  });
 });
