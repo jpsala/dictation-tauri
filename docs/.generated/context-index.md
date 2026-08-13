@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-08-11T17:16:06.811Z
+Generated: 2026-08-13T20:32:01.811Z
 
 ## Topics
 
@@ -27,6 +27,7 @@ Generated: 2026-08-11T17:16:06.811Z
 - active: [selection-and-assistant-actions](../topics/selection-and-assistant-actions.md) - texto seleccionado, seleccion, assistant mode, asistente, quick chat, alt-q, presets, hotkeys
 - reference: [source-project-map](../topics/source-project-map.md) - proyectos fuente, proyecto Tauri, Copicu, copicu, proyecto canonico, Fixvox, fixvox, que implementar
 - active: [speckit-workflow](../topics/speckit-workflow.md) - speckit, spec kit, spec, plan, tasks.md, feature grande, Small Batches, small batches
+- active: [transcription-quality-and-evaluation](../topics/transcription-quality-and-evaluation.md) - calidad de transcripcion, mejorar transcripcion, evaluar STT, modelos de voz, prompts STT, postprocess de dictado, benchmark de transcripcion, corpus de audio
 - active: [ui-design-and-impeccable](../topics/ui-design-and-impeccable.md) - UI, diseño, design, frontend, React, app shell, voice dock, settings
 
 ## Tracks
@@ -35,25 +36,26 @@ Generated: 2026-08-11T17:16:06.811Z
 
 ## Specs
 
-- [001-port-foundation](../../specs/001-port-foundation/)
-- [002-simulated-pipeline](../../specs/002-simulated-pipeline/)
-- [003-synthetic-audio-stt](../../specs/003-synthetic-audio-stt/)
-- [004-real-microphone-capture](../../specs/004-real-microphone-capture/)
-- [005-runtime-transcription-delivery](../../specs/005-runtime-transcription-delivery/)
-- [006-host-runtime-transcription-boundary](../../specs/006-host-runtime-transcription-boundary/)
-- [007-usable-dictation-loop](../../specs/007-usable-dictation-loop/)
-- [008-real-provider-ui-gate](../../specs/008-real-provider-ui-gate/)
-- [009-fixvox-cloud-runtime-port](../../specs/009-fixvox-cloud-runtime-port/)
-- [010-desktop-dictation-control-delivery](../../specs/010-desktop-dictation-control-delivery/)
-- [011-selection-transform-and-recovery-ergonomics](../../specs/011-selection-transform-and-recovery-ergonomics/)
-- [012-fixvox-dock-dictation-key](../../specs/012-fixvox-dock-dictation-key/)
-- [013-fixvox-text-runtime-parity](../../specs/013-fixvox-text-runtime-parity/)
-- [014-fixvox-parity-tray-settings-hotkeys](../../specs/014-fixvox-parity-tray-settings-hotkeys/)
-- [015-fixvox-auth-policy-groups](../../specs/015-fixvox-auth-policy-groups/)
-- [016-fixvox-cloud-consolidation](../../specs/016-fixvox-cloud-consolidation/)
-- [017-verified-paste-observer](../../specs/017-verified-paste-observer/)
-- [018-fixvox-audio-runtime-parity](../../specs/018-fixvox-audio-runtime-parity/)
-- [019-fixvox-self-hosted-control-plane](../../specs/019-fixvox-self-hosted-control-plane/)
+- No active spec directories found.
+- historical: [001-port-foundation](../../specs/001-port-foundation/)
+- historical: [002-simulated-pipeline](../../specs/002-simulated-pipeline/)
+- historical: [003-synthetic-audio-stt](../../specs/003-synthetic-audio-stt/)
+- historical: [004-real-microphone-capture](../../specs/004-real-microphone-capture/)
+- historical: [005-runtime-transcription-delivery](../../specs/005-runtime-transcription-delivery/)
+- historical: [006-host-runtime-transcription-boundary](../../specs/006-host-runtime-transcription-boundary/)
+- historical: [007-usable-dictation-loop](../../specs/007-usable-dictation-loop/)
+- historical: [008-real-provider-ui-gate](../../specs/008-real-provider-ui-gate/)
+- historical: [009-fixvox-cloud-runtime-port](../../specs/009-fixvox-cloud-runtime-port/)
+- historical: [010-desktop-dictation-control-delivery](../../specs/010-desktop-dictation-control-delivery/)
+- historical: [011-selection-transform-and-recovery-ergonomics](../../specs/011-selection-transform-and-recovery-ergonomics/)
+- historical: [012-fixvox-dock-dictation-key](../../specs/012-fixvox-dock-dictation-key/)
+- historical: [013-fixvox-text-runtime-parity](../../specs/013-fixvox-text-runtime-parity/)
+- historical: [014-fixvox-parity-tray-settings-hotkeys](../../specs/014-fixvox-parity-tray-settings-hotkeys/)
+- historical: [015-fixvox-auth-policy-groups](../../specs/015-fixvox-auth-policy-groups/)
+- historical: [016-fixvox-cloud-consolidation](../../specs/016-fixvox-cloud-consolidation/)
+- historical: [017-verified-paste-observer](../../specs/017-verified-paste-observer/)
+- historical: [018-fixvox-audio-runtime-parity](../../specs/018-fixvox-audio-runtime-parity/)
+- historical: [019-fixvox-self-hosted-control-plane](../../specs/019-fixvox-self-hosted-control-plane/)
 
 ## Skills
 

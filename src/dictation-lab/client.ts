@@ -5,7 +5,10 @@ import type {
   AccountsResponse,
   AuditResponse,
   ConfigurationResponse,
+  LabArtifactIndex,
   JsonObject,
+  LabHumanVerdictMutation,
+  LabSampleSummary,
   LaboratoryLoad,
   LaboratorySession,
   ProfileMutationReceipt,
@@ -30,6 +33,33 @@ export type DictationLabRequest =
   | { kind: "applyProfile"; profileId: string; expectedRevision: number; definition: RecipeDefinition; confirmation: JsonObject }
   | { kind: "rollbackProfile"; profileId: string; expectedRevision: number; targetVersion: number; confirmation: JsonObject }
   | { kind: "assignAccount"; accountHandle: string; policyId: string; policyLabel?: string };
+
+export type DictationLabRunDetail = {
+  run: JsonObject;
+  summary: JsonObject;
+  resultCount: number;
+  availability: { status: "available" | "partial" | "unavailable"; missing: string[] };
+};
+
+export type DictationLabAudioCapability = {
+  available: boolean;
+  kind: "audio";
+  mimeType: string;
+  bytes: number;
+  audioId: string;
+  readable: boolean;
+};
+export type DictationLabVerdictReceipt = {
+  ok: true;
+  revision: number;
+  summary: {
+    runId: string;
+    sampleId: string;
+    candidateId: string;
+    verdict: LabHumanVerdictMutation["verdict"];
+    contentHash: string;
+  };
+};
 
 export class DictationLabUnavailableError extends Error {
   readonly code: string;
@@ -130,6 +160,12 @@ export type DictationLabClient = {
   load(): Promise<LaboratoryLoad>;
   reloadProfiles(): Promise<ProfilesResponse>;
   reloadAudit(): Promise<AuditResponse>;
+  listArtifacts(): Promise<LabArtifactIndex>;
+  loadRun(runId: string): Promise<DictationLabRunDetail>;
+  loadSample(runId: string, sampleId: string, candidateId: string): Promise<LabSampleSummary>;
+  readPrivateText(runId: string, sampleId: string, candidateId: string, kind: "raw" | "final" | "gold"): Promise<string>;
+  recordVerdict(mutation: LabHumanVerdictMutation): Promise<DictationLabVerdictReceipt>;
+  resolveAudio(runId: string, sampleId: string, candidateId?: string): Promise<DictationLabAudioCapability>;
   validateDraft(profileId: string, expectedRevision: number, definition: RecipeDefinition): Promise<ProfileValidationReceipt>;
   previewDraft(profileId: string, expectedRevision: number, baseVersion: number | undefined, definition: RecipeDefinition): Promise<ProfilePreviewReceipt>;
   applyProfile(profileId: string, expectedRevision: number, definition: RecipeDefinition, phrase: string): Promise<ProfileMutationReceipt>;
@@ -140,9 +176,6 @@ export type DictationLabClient = {
 export function createDictationLabClient(): DictationLabClient {
   return {
     async load() {
-      // Fail fast on operator authorization before fanning out read requests.
-      // A rejected laboratory session must not consume the shared desktop host
-      // with catalog/history work or affect the dictation dock.
       const sessionValue = await request<unknown>({ kind: "session" });
       const authorizedSession = session(sessionValue);
       const [profilesValue, configurationValue, accountsValue, auditValue, historyValue] = await Promise.all([
@@ -166,6 +199,24 @@ export function createDictationLabClient(): DictationLabClient {
     },
     async reloadAudit() {
       return audit(await request<unknown>({ kind: "audit" }));
+    },
+    async listArtifacts() {
+      return invoke<LabArtifactIndex>("list_dictation_lab_artifacts");
+    },
+    async loadRun(runId) {
+      return invoke<DictationLabRunDetail>("load_dictation_lab_run", { runId });
+    },
+    async loadSample(runId, sampleId, candidateId) {
+      return invoke<LabSampleSummary>("load_dictation_lab_sample", { runId, sampleId, candidateId });
+    },
+    async readPrivateText(runId, sampleId, candidateId, kind) {
+      return invoke<string>("read_dictation_lab_private_text", { runId, sampleId, candidateId, kind });
+    },
+    async resolveAudio(runId, sampleId, candidateId) {
+      return invoke<DictationLabAudioCapability>("resolve_dictation_lab_audio", { runId, sampleId, candidateId });
+    },
+    async recordVerdict(mutation) {
+      return invoke<DictationLabVerdictReceipt>("record_dictation_lab_verdict", { mutation });
     },
     async validateDraft(profileId, expectedRevision, definition) {
       return request<ProfileValidationReceipt>({ kind: "validateProfile", profileId, expectedRevision, definition });

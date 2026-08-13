@@ -3,60 +3,77 @@
 Router operativo corto; el detalle durable vive en topics, tracks, specs y
 decisiones.
 
-Última actualización: 2026-08-11.
+Última actualización: 2026-08-13.
 
 ## Foco Único De Ejecución
 
 - **Estado:** `complete`.
-- **Referencia:** `docs/tracks/fixvox-minimal-reliability-and-truthfulness.md`.
-- **Siguiente acción:** priorizar un frente nuevo; Phase 4 requiere autorización explícita.
+- **Referencia:** `docs/tracks/transcription-quality-program.md`.
+- **Siguiente acción:** autenticar un principal con rol Control Room para cargar perfiles reales en Dictation Laboratory; cualquier corrida Gate A provider-real sigue requiriendo aprobación explícita en el punto de riesgo.
 
 ## Estado Vivo
 
-- Reliability/truthfulness quedó cerrado localmente: Settings reabre sin
-  recargar, las nueve secciones reinician su scroll, Presets/Atajos/Correcciones
-  muestran estados honestos y el cierre pasó 18 tests focales, 2 smokes
-  Playwright, build, cargo check y Tauri real. Phase 4, deploy, VPS, provider,
-  commit y push no se ejecutaron.
+- Wave 1 provider-free conserva metadata STT privada bounded detrás de refs;
+  receipts públicos quedan redacted. Fallbacks segmentarios usan máximo
+  `no_speech_prob` y mínimo `avg_logprob`.
+- Identidad separa `configured`, `resolved` y `observed`; un prompt ID nunca se
+  presenta como hash de cuerpo.
+- Gate A quedó fijado a tres samples × cuatro recipes, `12` requests,
+  `USD 0.005`, audio prep único, secuencial y stop-on-first-error. Checks
+  provider-free completos y cero red sin autorización.
+- Dictation Laboratory quedó implementado en Tauri con cinco workspaces,
+  gateway privado allowlisted, replay provider-free `2/2`, adjudicación
+  versionada y promoción a draft. El gate real muestra exactamente `3 × 4`,
+  `12` requests y `USD 0.005`, pero no puede iniciar sin grant externo exacto.
+- Corte server-owned inicial: backup cifrado
+  `fixvox-20260812T191930155462815Z.dump.zst.age`, schema PostgreSQL `6→8`
+  mediante migraciones aditivas `0007`/`0008`.
+- Deploy Gate B inicial: release `a909ece64107d62d`, rollback histórico
+  `f86ee896478cbd03`.
+- Batch 3D autorizado y publicado: release inmutable actual
+  `9279c043233eada6`, rollback inmediato `a909ece64107d62d`. Sin migraciones,
+  provider calls ni cambios de prompt/modelo/policy. Servicio active/running,
+  `NRestarts=0`, listener loopback y health/readiness local más health público
+  verdes con `cloudflare-authority`.
+- Gate A completó `12/12`: `short-auto`/`short-es` empataron y dominaron al
+  prompt rico; baseline corta/auto permanece.
+- Gate B completó `6/6`: plain mejoró WER/CER pero omitió contenido; prosodia
+  degradó ambos y obedeció una petición dictada. No se promueve postprocess ni
+  prosodia; los scores históricos no se reinterpretan.
+- Batch 3C agregó una única autoridad pura en `cloud/fixvox-core`: alineación
+  token a token, receipt redacted y fallback raw. Smoke histórico: cuatro casos
+  seguros aceptados y los dos peligrosos rechazados sin red.
+- Batch 3D publicó sólo esa defensa. Cualquier benchmark posterior requiere
+  hipótesis medible y autorización nueva.
+- Batch 3E/3F provider-free descubrió `6.546` pares reales locales, `5.682`
+  cotidianos usables y seleccionó determinísticamente `18` (`6`
+  audio+raw+final, `12` raw+final). JP adjudicó `12/12`: `10` referencias
+  aprobadas (`raw=2`, `final=3`, `equivalent=5`) y `2` rechazadas por errores
+  STT ya compartidos entre raw/final. Artifacts privados y summary redacted:
+  `artifacts/transcription-quality/everyday-prototype-39a746e23c60/`.
+- Batch 3G replayó siete correcciones técnicas sin provider/STT: all-auto llevó
+  entidades `0/8→8/8`; JP promovió `5 automatic` y `2 ask`. El snapshot
+  aprobado dejó WER `0.25094→0.15964`, CER `0.16926→0.14375` y entidades
+  automáticas `0/8→5/8`; `18` controles cotidianos tuvieron cero cambios.
+  Persistencia de producto todavía no aplicada.
+- Batch 3H agregó experimentación personal host-owned: cuatro recetas
+  versionadas, alcance próximo dictado o sesión, one-shot atómico, precedencia
+  conservadora y recipe ID/version/source en telemetry redacted. Estado sólo en
+  memoria; sin provider calls ni policy/account changes. Smoke Tauri real aplicó
+  `Literal` al próximo dictado sin ejecutar dictado ni delivery.
+- Batch 3I agregó Dictation Laboratory desktop-first sobre profiles server-owned:
+  builder, validate/preview bounded, apply/rollback/assignment gated y
+  comparación provider-free de history redacted. Build, Rust, cloud baseline y
+  tests focales pasan. Smoke Tauri abre la ventana; el principal actual recibe
+  `DICTATION_LAB_UNAUTHORIZED`. Deploy y role binding siguen sin ejecutar.
+- Reliability/truthfulness quedó cerrado localmente; evidencia y gates de
+  Phase 4 viven en su track.
 - Dictation Tauri y Control Room son el producto canónico; `C:/dev/fixvox`
   queda como referencia de comportamiento Fixvox-like.
-- El runtime cloud/self-hosted y Checkpoint F están cerrados. Estado, receipts,
-  rollback y hashes viven en las tracks de cloud/VPS y en Spec 019; cualquier
-  operación nueva requiere un brief y gate explícitos.
-- Fixvox Admin conserva la superficie “Pi Chat”, pero su runtime efectivo ya es
-  OMP nativo: binario root-pinned `/opt/fixvox-agent/bin/omp`, RPC `--mode rpc
-  --auto-approve`, perfil/sesiones aislados bajo `/var/lib/fixvox-agent` y
-  brokers acotados para workspaces, Constelaciones y releases. La autenticación
-  de modelo usa el broker central loopback `fixvox-omp-auth-broker.service`;
-  refresh OAuth permanece en el perfil `jpsal` y `fixvox-agent` recibe sólo el
-  bearer del broker. Cutover productivo activo en source `2219e89`.
-- Desktop mantiene compatibilidad `CF-DESKTOP`; OAuth/account linkage y prompt
-  parity quedaron corregidos. Smokes reales, instalación, release, provider,
-  VPS, DNS y deploy siguen gated.
-- Error recovery quedó publicado y validado: un intento sin transcript ya no
-  reutiliza History; copy/paste-last conservan causa y operación; Copy y cierre
-  nativo de Companion vuelven a `Ready`; tray/botón derecho preservan el target,
-  incluido Windows Terminal. Dictado, Paste last e History usan Unicode directo
-  por defecto y no tocan el clipboard. Settings permite elegir el pegado rápido
-  con snapshot/restore; su write transitorio lleva marca y owner verificados
-  para que Copicu lo omita sin ocultar `Copy transcript` explícito.
-- History quedó corregido, publicado e instalado: cada dictado usa el
-  `captureId` nativo y ya no sobrescribe resultados bajo `sim-run-0001`. La UI es
-  una tabla estable con preview flotante a 800 ms, Paste explícito y navegación
-  por flechas. VS Code sigue limitado por eventos Unicode seriales: no existe otra
-  API Windows universal para inserción bulk cross-process en el caret. JP descartó
-  extensiones por aplicación; se conservan `EM_REPLACESEL` y `SendInput`, sin
-  clipboard ni hacks específicos. Smokes redacted pasaron y no hubo provider calls.
-- La regresión mixed-DPI quedó cerrada físicamente en la PC afectada: el dock
-  cruza correctamente del monitor inferior al 100% al superior al 150%. El
-  guardrail conserva movimiento position-only antes del resize/refresh.
-- Último cierre publicado, redescargado e instalado:
-  `fixvox-tauri-v0.1.0-20260731220417`, source `94114d9`, SHA-256
-  `bc70205e…f70795b`. Installer/checksum remoto coinciden, instalación local
-  exit `0` y app instalada viva. Incluye la sincronización dock/hotkey: si el
-  dictado empieza por clic, el primer `Alt+Space` ya detiene la sesión. El release
-  History `...20260730182241` queda superseded; CRLF del fallback Chromium
-  continúa como follow-up separado.
+- Cloud/self-hosted, Checkpoint F, runtime OMP de Fixvox Admin, desktop parity,
+  error recovery, History, mixed-DPI y el último release instalado permanecen
+  cerrados en sus tracks/specs canónicos. Operaciones reales nuevas, provider,
+  VPS, DNS, deploy, instalación y release siguen gated.
 - Standard Product UX cerró su operación local. Pi Chat Batch 2, App Audit y el
   roadmap de usuarios registrados están pausados hasta nueva priorización.
 - La evidencia detallada no se duplica aquí: permanece en las tracks, specs,
@@ -66,6 +83,7 @@ decisiones.
 
 | Frente | Estado | Abrir primero |
 | --- | --- | --- |
+| Calidad de transcripción | activo; Batch 3E listo para adjudicar | `docs/tracks/transcription-quality-program.md` |
 | Reliability/truthfulness | local completo; Phase 4 gated | `docs/tracks/fixvox-minimal-reliability-and-truthfulness.md` |
 | Dock/Wispr | listo para retomar | `docs/tracks/dock-skins-visual-refinement.md` |
 | Cloud/runtime | referencia cerrada | Spec 019 y `docs/topics/fixvox-cloud-runtime-port.md` |

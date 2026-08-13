@@ -1,21 +1,56 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
-import { compareLabRuns } from "./evaluation";
 import { createDictationLabClient, type DictationLabClient } from "./client";
-import type { JsonObject, JsonValue, LaboratoryLoad, LaboratoryProfile, ProfilePreviewReceipt, RecipeDefinition } from "./types";
+import { createDictationLabJobsClient, type DictationLabJobsClient } from "./jobs-client";
+import { ExperimentWorkspace, type ExperimentPromotionSelection } from "./ExperimentWorkspace";
+import {
+  EvidenceCorpusWorkspace,
+  EvidenceOverviewWorkspace,
+  EvidenceResultsWorkspace,
+} from "./EvidenceWorkspaces";
+import {
+  labWorkspaces,
+  StatusChip,
+  StatePanel,
+  type LabArtifactState,
+  type LabWorkspace,
+} from "./LabWorkspaces";
+import type {
+  JsonObject,
+  JsonValue,
+  LabExperimentDefinition,
+  LabExperimentEstimate,
+  LabJobSnapshot,
+  LaboratoryLoad,
+  LaboratoryProfile,
+  ProfilePreviewReceipt,
+  RecipeDefinition,
+} from "./types";
 import "./dictation-lab.css";
 
-type LabTab = "builder" | "effective" | "bench" | "runs";
+type RecipeView = "builder" | "effective" | "audit";
 type Notice = { tone: "idle" | "success" | "warning" | "danger"; message: string };
 
-const tabs: Array<{ id: LabTab; label: string }> = [
-  { id: "builder", label: "Receta" },
-  { id: "effective", label: "Configuración efectiva" },
-  { id: "bench", label: "Test bench" },
-  { id: "runs", label: "Runs y auditoría" },
+const recipeViews: ReadonlyArray<{ id: RecipeView; label: string }> = [
+  { id: "builder", label: "Recipe draft" },
+  { id: "effective", label: "Effective configuration" },
+  { id: "audit", label: "Versions and audit" },
 ];
-const defaultDictationLabClient = createDictationLabClient();
 
+const defaultDictationLabClient = createDictationLabClient();
+const defaultJobsClient = createDictationLabJobsClient();
+const defaultExperiment: LabExperimentDefinition = {
+  schemaVersion: 1,
+  mode: "provider-free-replay",
+  corpusId: "synthetic-audio-stt",
+  sampleIds: ["en-clean-note", "es-short-reminder"],
+  sttRecipes: ["provider-free-manifest-replay"],
+  materializations: ["identity"],
+  postprocessRecipes: [],
+  prosodyModes: ["off"],
+  vocabularyModes: ["off"],
+  baselineCandidateId: null,
+};
 
 function copyDefinition(value: RecipeDefinition | null): RecipeDefinition | null {
   return value ? structuredClone(value) : null;
@@ -29,14 +64,11 @@ function operation(draft: RecipeDefinition, key: "transcription" | "postprocess"
   return asObject(asObject(draft.runtime)[key]);
 }
 
-function updateOperation(
-  draft: RecipeDefinition,
-  key: "transcription" | "postprocess",
-  patch: JsonObject,
-): RecipeDefinition {
+function updateOperation(draft: RecipeDefinition, key: "transcription" | "postprocess", patch: JsonObject): RecipeDefinition {
   const runtime = asObject(draft.runtime);
   return { ...draft, runtime: { ...runtime, [key]: { ...asObject(runtime[key]), ...patch } } };
 }
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   if (error && typeof error === "object") {
@@ -53,13 +85,22 @@ function versionOf(profile: LaboratoryProfile | undefined): number | null {
   return typeof value === "number" ? value : null;
 }
 
-export function DictationLabSurface({ client = defaultDictationLabClient }: { client?: DictationLabClient }) {
+type ArtifactClient = Pick<DictationLabClient, "listArtifacts">;
+
+export function DictationLabSurface({
+  client = defaultDictationLabClient,
+  jobsClient = defaultJobsClient,
+}: {
+  client?: DictationLabClient;
+  jobsClient?: DictationLabJobsClient;
+}) {
   const [load, setLoad] = useState<LaboratoryLoad>();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [workspace, setWorkspace] = useState<LabWorkspace>("overview");
+  const [recipeView, setRecipeView] = useState<RecipeView>("builder");
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [draft, setDraft] = useState<RecipeDefinition | null>(null);
-  const [tab, setTab] = useState<LabTab>("builder");
   const [advanced, setAdvanced] = useState(false);
   const [advancedText, setAdvancedText] = useState("");
   const [notice, setNotice] = useState<Notice>({ tone: "idle", message: "" });
@@ -70,8 +111,13 @@ export function DictationLabSurface({ client = defaultDictationLabClient }: { cl
   const [rollbackVersion, setRollbackVersion] = useState<number | null>(null);
   const [rollbackPhrase, setRollbackPhrase] = useState("");
   const [accountHandle, setAccountHandle] = useState("");
-  const [baselineRunId, setBaselineRunId] = useState("");
-  const [candidateRunId, setCandidateRunId] = useState("");
+  const [artifacts, setArtifacts] = useState<LabArtifactState>({ index: null, loading: true, error: "" });
+  const [experiment, setExperiment] = useState<LabExperimentDefinition>(defaultExperiment);
+  const [estimate, setEstimate] = useState<LabExperimentEstimate | null>(null);
+  const [estimateLoading, setEstimateLoading] = useState(false);
+  const [estimateError, setEstimateError] = useState("");
+  const [job, setJob] = useState<LabJobSnapshot | null>(null);
+  const [jobsAvailable, setJobsAvailable] = useState(true);
 
   const profiles = load?.profiles.profiles ?? [];
   const selectedProfile = profiles.find((profile) => profile.profileId === selectedProfileId) ?? profiles[0];
@@ -79,13 +125,7 @@ export function DictationLabSurface({ client = defaultDictationLabClient }: { cl
   const prompts = load?.configuration.promptOptions ?? [];
   const canPublish = Boolean(load?.session.recentGoogle && ["publisher", "owner"].includes(load.session.role));
   const expectedApplyPhrase = selectedProfile ? `APPLY ${selectedProfile.profileId} REV ${selectedProfile.revision}` : "";
-  const expectedRollbackPhrase = selectedProfile && rollbackVersion
-    ? `ROLLBACK ${selectedProfile.profileId} TO ${rollbackVersion} REV ${selectedProfile.revision}`
-    : "";
-  const runs = load?.runs ?? [];
-  const baselineRun = runs.find((run) => run.runId === baselineRunId) ?? runs[0];
-  const candidateRun = runs.find((run) => run.runId === candidateRunId) ?? runs[1];
-  const comparison = baselineRun && candidateRun ? compareLabRuns(baselineRun, candidateRun) : null;
+  const expectedRollbackPhrase = selectedProfile && rollbackVersion ? `ROLLBACK ${selectedProfile.profileId} TO ${rollbackVersion} REV ${selectedProfile.revision}` : "";
 
   const dirty = useMemo(() => {
     if (!draft || !selectedProfile?.published) return false;
@@ -113,6 +153,44 @@ export function DictationLabSurface({ client = defaultDictationLabClient }: { cl
       });
     return () => { disposed = true; };
   }, [client]);
+
+  useEffect(() => {
+    let disposed = false;
+    const artifactClient = client as DictationLabClient & Partial<ArtifactClient>;
+    if (typeof artifactClient.listArtifacts !== "function") {
+      setArtifacts({ index: null, loading: false, error: "" });
+      return;
+    }
+    setArtifacts((current) => ({ ...current, loading: true, error: "" }));
+    artifactClient.listArtifacts()
+      .then((index) => {
+        if (!disposed) setArtifacts({ index, loading: false, error: "" });
+      })
+      .catch((error) => {
+        if (!disposed) setArtifacts({ index: null, loading: false, error: errorMessage(error) });
+      });
+    return () => { disposed = true; };
+  }, [client]);
+
+  useEffect(() => {
+    let disposed = false;
+    jobsClient.getJob()
+      .then((snapshot) => {
+        if (disposed) return;
+        setJob(snapshot);
+        setJobsAvailable(true);
+      })
+      .catch(() => {
+        if (!disposed) setJobsAvailable(false);
+      });
+    return () => { disposed = true; };
+  }, [jobsClient]);
+
+  useEffect(() => {
+    if (!experiment.corpusId && artifacts.index?.corpora[0]) {
+      setExperiment((current) => ({ ...current, corpusId: artifacts.index?.corpora[0]?.corpusId ?? "" }));
+    }
+  }, [artifacts.index, experiment.corpusId]);
 
   function selectProfile(profile: LaboratoryProfile) {
     if (dirty && !window.confirm("Descartar el draft local y abrir otra receta?")) return;
@@ -159,12 +237,7 @@ export function DictationLabSurface({ client = defaultDictationLabClient }: { cl
       ]);
       setPreview(nextPreview.data);
       setPreviewFingerprint(JSON.stringify(draft));
-      setNotice({
-        tone: "success",
-        message: nextPreview.data.changed
-          ? `Draft válido: ${nextPreview.data.changes.length} cambios${nextPreview.data.truncated ? " (vista acotada)" : ""}.`
-          : "Draft válido, sin cambios respecto de la versión publicada.",
-      });
+      setNotice({ tone: "success", message: nextPreview.data.changed ? `Draft válido: ${nextPreview.data.changes.length} cambios${nextPreview.data.truncated ? " (vista acotada)" : ""}.` : "Draft válido, sin cambios respecto de la versión publicada." });
     } catch (error) {
       setPreview(null);
       setPreviewFingerprint("");
@@ -222,158 +295,202 @@ export function DictationLabSurface({ client = defaultDictationLabClient }: { cl
     }
   }
 
+  function changeExperiment(next: LabExperimentDefinition) {
+    setExperiment(next);
+    setEstimate(null);
+    setEstimateError("");
+  }
+
+  async function estimateExperiment() {
+    setEstimateLoading(true);
+    setEstimateError("");
+    try {
+      const next = await jobsClient.estimateExperiment(experiment);
+      setEstimate(next);
+      setJobsAvailable(true);
+    } catch (error) {
+      setEstimate(null);
+      setEstimateError(errorMessage(error));
+    } finally {
+      setEstimateLoading(false);
+    }
+  }
+
+  async function startExperiment() {
+    if (!estimate || estimate.providerRequired) return;
+    setEstimateError("");
+    try {
+      setJob(await jobsClient.startJob(experiment));
+    } catch (error) {
+      setEstimateError(errorMessage(error));
+    }
+  }
+
+  async function cancelExperiment() {
+    if (!job || (job.state !== "queued" && job.state !== "running")) return;
+    try {
+      setJob(await jobsClient.cancelJob(job.jobId));
+    } catch (error) {
+      setEstimateError(errorMessage(error));
+    }
+  }
+
+  async function reloadJob() {
+    try {
+      setJob(await jobsClient.getJob());
+      setJobsAvailable(true);
+    } catch {
+      setJobsAvailable(false);
+    }
+  }
+
+  async function refreshArtifacts() {
+    setArtifacts((current) => ({ ...current, loading: true, error: "" }));
+    try {
+      setArtifacts({ index: await client.listArtifacts(), loading: false, error: "" });
+    } catch (error) {
+      setArtifacts({ index: null, loading: false, error: errorMessage(error) });
+    }
+  }
+
+  function promoteCandidate(selection: ExperimentPromotionSelection) {
+    if (!selectedProfile || !draft) return;
+    const candidate = asObject(selection.recipe);
+    const candidateStt = asObject(candidate.stt ?? candidate.transcription);
+    const candidatePostprocess = candidate.postprocess === null
+      ? { enabled: false }
+      : asObject(candidate.postprocess);
+    const runtime = asObject(draft.runtime);
+    const next: RecipeDefinition = {
+      ...draft,
+      runtime: {
+        ...runtime,
+        ...(Object.keys(candidateStt).length ? { transcription: candidateStt } : {}),
+        ...(candidate.postprocess !== undefined ? { postprocess: candidatePostprocess } : {}),
+      },
+      transcriptionQualityProvenance: {
+        kind: "transcription-quality-candidate",
+        runId: selection.runId,
+        candidateId: selection.candidateId,
+      },
+    };
+    setDraftValue(next);
+    setWorkspace("recipes");
+    setRecipeView("builder");
+    setNotice({ tone: "success", message: `Candidate ${selection.candidateId} promoted to a local draft. Validate and preview before publishing.` });
+  }
+
+
+  function handleWorkspaceKeys(event: KeyboardEvent<HTMLButtonElement>, current: LabWorkspace) {
+    if (!(["ArrowDown", "ArrowUp", "Home", "End"] as string[]).includes(event.key)) return;
+    event.preventDefault();
+    const currentIndex = labWorkspaces.findIndex((item) => item.id === current);
+    const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? labWorkspaces.length - 1 : (currentIndex + (event.key === "ArrowDown" ? 1 : -1) + labWorkspaces.length) % labWorkspaces.length;
+    const next = labWorkspaces[nextIndex];
+    if (!next) return;
+    setWorkspace(next.id);
+    document.querySelector<HTMLButtonElement>(`[data-workspace-id="${next.id}"]`)?.focus();
+  }
+
   if (loading) {
-    return <main className="lab-shell lab-loading" aria-busy="true"><div className="lab-skeleton" /><div className="lab-skeleton large" /></main>;
+    return <main className="lab-shell lab-loading" aria-busy="true" aria-label="Loading Dictation Laboratory"><div className="lab-skeleton" /><div className="lab-skeleton large" /></main>;
   }
 
   if (loadError || !load) {
-    return (
-      <main className="lab-shell lab-unavailable">
-        <section>
-          <h1>Dictation Laboratory no disponible</h1>
-          <p>{loadError || "No pudimos cargar el control plane."}</p>
-          <p className="lab-muted">No se cargaron datos de ejemplo ni se ejecutó ningún provider.</p>
-        </section>
-      </main>
-    );
+    return <main className="lab-shell lab-unavailable"><section><h1>Dictation Laboratory no disponible</h1><p>{loadError || "No pudimos cargar el control plane."}</p><p className="lab-muted">No se cargaron datos de ejemplo ni se ejecutó ningún provider.</p></section></main>;
   }
-
-  const transcription = draft ? operation(draft, "transcription") : {};
-  const postprocess = draft ? operation(draft, "postprocess") : {};
-  const previousVersions = selectedProfile?.history.filter((item) => item.version !== versionOf(selectedProfile)) ?? [];
 
   return (
     <main className="lab-shell">
       <header className="lab-topbar">
-        <div><h1>Dictation Laboratory</h1><p>Recetas versionadas sobre perfiles de Control Room</p></div>
-        <div className="lab-session"><span>{load.session.role}</span><strong>{load.session.recentGoogle ? "Sesión reciente" : "Reautenticación requerida"}</strong></div>
+        <div><h1>Dictation Laboratory</h1><p>Controlled experiments and versioned production recipes</p></div>
+        <div className="lab-session"><StatusChip label={load.session.role} /><strong>{load.session.recentGoogle ? "Recent session" : "Reauthentication required"}</strong></div>
       </header>
-
-      <div className="lab-workspace">
-        <aside className="lab-navigator" aria-label="Catálogo de recetas">
-          <div className="lab-nav-heading"><strong>Profiles</strong><span>{profiles.length}</span></div>
-          {profiles.length ? profiles.map((profile) => (
-            <button key={profile.profileId} type="button" data-active={profile.profileId === selectedProfile?.profileId} onClick={() => selectProfile(profile)}>
-              <strong>{profile.label}</strong>
-              <small>{profile.profileId} · v{versionOf(profile) ?? "sin publicar"} · rev {profile.revision}</small>
-            </button>
-          )) : <p className="lab-empty">El servidor no devolvió profiles.</p>}
-          <div className="lab-temporary-note"><strong>Override temporal</strong><span>Próximo dictado y sesión siguen locales. No modifican estas versiones.</span></div>
-        </aside>
-
-        <section className="lab-main">
-          <div className="lab-title-row">
-            <div><h2>{selectedProfile?.label ?? "Sin profile"}</h2><p>{dirty ? "Draft local con cambios" : "Copia local de la versión publicada"}</p></div>
-            <div className="lab-version"><span>Publicada</span><strong>v{versionOf(selectedProfile) ?? "—"}</strong><small>rev {selectedProfile?.revision ?? "—"}</small></div>
-          </div>
-
-          <nav className="lab-tabs" aria-label="Secciones del laboratorio">
-            {tabs.map((item) => <button key={item.id} type="button" data-active={tab === item.id} onClick={() => setTab(item.id)}>{item.label}</button>)}
-          </nav>
-
-          {tab === "builder" && draft ? (
-            <div className="lab-builder">
-              <section className="lab-editor-section">
-                <div className="lab-section-heading"><div><h3>Transcripción</h3><p>Motor, prompt e idioma configurados para STT.</p></div><span>configured</span></div>
-                <div className="lab-field-grid">
-                  <label><span>Motor STT</span><select value={String(transcription.engineId ?? "")} onChange={(event) => setDraftValue(updateOperation(draft, "transcription", { engineId: event.target.value }))}><option value="">Sin configurar</option>{engines.filter((item) => item.kind === "transcription").map((item) => <option key={item.id} value={item.id}>{item.providerLabel || item.provider || "Provider"} · {item.modelLabel || item.model || item.id}</option>)}</select></label>
-                  <label><span>Prompt</span><select value={String(transcription.promptId ?? "")} onChange={(event) => setDraftValue(updateOperation(draft, "transcription", { promptId: event.target.value }))}><option value="">Sin configurar</option>{prompts.filter((item) => item.kind === "transcription").map((item) => <option key={item.id} value={item.id}>{item.id} · {item.version}</option>)}</select></label>
-                  <label><span>Idioma</span><input value={String(transcription.language ?? "")} placeholder="auto" onChange={(event) => setDraftValue(updateOperation(draft, "transcription", { language: event.target.value }))} /></label>
-                </div>
-              </section>
-
-              <section className="lab-editor-section">
-                <div className="lab-section-heading"><div><h3>Post-proceso y seguridad semántica</h3><p>La validación y ejecución permanecen server-owned.</p></div><span>configured</span></div>
-                <div className="lab-field-grid">
-                  <label><span>Motor</span><select value={String(postprocess.engineId ?? "")} onChange={(event) => setDraftValue(updateOperation(draft, "postprocess", { engineId: event.target.value }))}><option value="">Sin configurar</option>{engines.filter((item) => item.kind === "postprocess").map((item) => <option key={item.id} value={item.id}>{item.providerLabel || item.provider || "Provider"} · {item.modelLabel || item.model || item.id}</option>)}</select></label>
-                  <label><span>Prompt</span><select value={String(postprocess.promptId ?? "")} onChange={(event) => setDraftValue(updateOperation(draft, "postprocess", { promptId: event.target.value }))}><option value="">Sin configurar</option>{prompts.filter((item) => item.kind === "postprocess").map((item) => <option key={item.id} value={item.id}>{item.id} · {item.version}</option>)}</select></label>
-                  <label><span>Estado</span><select value={postprocess.enabled === false ? "off" : "on"} onChange={(event) => setDraftValue(updateOperation(draft, "postprocess", { enabled: event.target.value === "on" }))}><option value="on">Habilitado</option><option value="off">Deshabilitado</option></select></label>
-                </div>
-                <div className="lab-json-summaries"><span>Vocabulary/defaults: {Object.keys(asObject(draft.defaults)).length} claves</span><span>Limits: {Object.keys(asObject(draft.limits)).length} claves</span><span>User controls: {Object.keys(asObject(draft.userControls)).length} claves</span><span>Capabilities: {Array.isArray(asObject(draft.access).capabilities) ? (asObject(draft.access).capabilities as JsonValue[]).length : 0}</span></div>
-              </section>
-
-              <section className="lab-advanced">
-                <button type="button" className="lab-link-button" onClick={() => setAdvanced((value) => !value)}>{advanced ? "Ocultar JSON avanzado" : "Abrir JSON avanzado"}</button>
-                {advanced && <div><textarea aria-label="Definición JSON avanzada" value={advancedText} onChange={(event) => setAdvancedText(event.target.value)} spellCheck={false} /><button type="button" className="lab-secondary-button" onClick={applyAdvancedJson}>Aplicar JSON al draft</button></div>}
-              </section>
-              {preview && previewFingerprint === JSON.stringify(draft) ? (
-                <section className="lab-preview" aria-label="Preview server-owned">
-                  <div className="lab-section-heading">
-                    <div><h3>Preview server-owned</h3><p>Diff contra v{preview.baseVersion ?? "sin base"}. No mutó el profile.</p></div>
-                    <span>{preview.changed ? `${preview.changes.length} cambios` : "Sin cambios"}</span>
-                  </div>
-                  {preview.changes.length ? (
-                    <div className="lab-preview-list">
-                      {preview.changes.map((change) => (
-                        <div key={change.path}><code>{change.path}</code><span>{JSON.stringify(change.before)} → {JSON.stringify(change.after)}</span></div>
-                      ))}
-                    </div>
-                  ) : null}
-                </section>
-              ) : null}
-            </div>
-          ) : null}
-
-          {tab === "effective" && (
-            <div className="lab-evidence-grid">
-              <EvidencePanel title="Configured" value={selectedProfile?.published ?? null} detail="Definición publicada seleccionada." />
-              <EvidencePanel title="Resolved" value={null} detail="La proyección efectiva por asignación todavía no está incluida en accounts/devices." />
-              <EvidencePanel title="Observed" value={null} detail="No hay identidad de último run en las rutas canónicas cargadas." />
-            </div>
-          )}
-
-          {tab === "bench" && (
-            <section className="lab-run-picker">
-              <div className="lab-section-heading"><div><h3>Test bench provider-free</h3><p>Selecciona dos dictados locales ya terminados. No vuelve a llamar STT ni postprocess.</p></div><span>{runs.length} elegibles</span></div>
-              <div className="lab-field-grid">
-                <label><span>Baseline</span><select value={baselineRun?.runId ?? ""} onChange={(event) => setBaselineRunId(event.target.value)}><option value="">Elegir run</option>{runs.map((run) => <option key={`base-${run.runId}`} value={run.runId}>{run.runId} · {run.final.length ?? "sin longitud"} chars</option>)}</select></label>
-                <label><span>Candidate</span><select value={candidateRun?.runId ?? ""} onChange={(event) => setCandidateRunId(event.target.value)}><option value="">Elegir run</option>{runs.map((run) => <option key={`candidate-${run.runId}`} value={run.runId}>{run.runId} · {run.final.length ?? "sin longitud"} chars</option>)}</select></label>
-              </div>
-              {!runs.length ? <p className="lab-empty">No hay dictados terminados en el historial local.</p> : null}
-            </section>
-          )}
-
-          {tab === "runs" && (
-            <div className="lab-runs-layout">
-              {comparison ? (
-                <section className="lab-comparison">
-                  <div className="lab-section-heading"><div><h3>Comparación redacted</h3><p>{comparison.baseline.runId} → {comparison.candidate.runId}</p></div><span>{comparison.evidence.status}</span></div>
-                  <div className="lab-comparison-grid">
-                    <ComparisonMetric label="Longitud final" baseline={comparison.finalLength.baseline} candidate={comparison.finalLength.candidate} delta={comparison.finalLength.delta} />
-                    <ComparisonMetric label="Latencia ms" baseline={comparison.latencyMs.baseline} candidate={comparison.latencyMs.candidate} delta={comparison.latencyMs.delta} />
-                    <ComparisonMetric label="Costo observado USD" baseline={comparison.costUsd.observed.baseline} candidate={comparison.costUsd.observed.candidate} delta={comparison.costUsd.observed.delta} />
-                    <div><span>Provider / modelo</span><strong>{comparison.observedExecution.baseline.provider ?? "no observado"} / {comparison.observedExecution.baseline.model ?? "no observado"}</strong><strong>{comparison.observedExecution.candidate.provider ?? "no observado"} / {comparison.observedExecution.candidate.model ?? "no observado"}</strong></div>
-                  </div>
-                  <p className="lab-muted">Evidencia faltante: {comparison.evidence.missing.join(", ") || "ninguna"}. Raw/final permanecen como longitudes y refs opacas.</p>
-                </section>
-              ) : <UnavailableSection title="Comparación de runs" detail="Elegí dos runs distintos en Test bench." />}
-              <section className="lab-audit"><div className="lab-section-heading"><div><h3>Auditoría</h3><p>Registros redacted más recientes.</p></div><span>{load.audit.records.length}</span></div>{load.audit.records.length ? load.audit.records.map((record, index) => <div className="lab-audit-row" key={`${record.occurredAt}-${index}`}><strong>{record.action}</strong><span>{record.targetType} · {record.result}</span><time>{new Date(record.occurredAt).toLocaleString()}</time></div>) : <p className="lab-empty">Sin registros disponibles.</p>}</section>
-            </div>
-          )}
-
-          <footer className="lab-command-bar">
-            <div className="lab-notice" data-tone={notice.tone} aria-live="polite">{notice.message || "Sin cambios server-side."}</div>
-            <div className="lab-command-actions">
-              <button type="button" className="lab-secondary-button" disabled={!draft || busy !== null} onClick={() => void validateDraft()}>{busy === "validate" ? "Validando" : "Validar draft"}</button>
-              <details><summary>Publicar</summary><div className="lab-command-popover"><p>Escribí <code>{expectedApplyPhrase}</code></p><input value={applyPhrase} onChange={(event) => setApplyPhrase(event.target.value)} /><button type="button" className="lab-primary-button" disabled={!dirty || previewFingerprint !== JSON.stringify(draft) || !canPublish || applyPhrase !== expectedApplyPhrase || busy !== null} onClick={() => void applyDraft()}>{busy === "apply" ? "Publicando" : "Publicar versión"}</button>{previewFingerprint !== JSON.stringify(draft) && <small>Validá y revisá el preview antes de publicar.</small>}{!canPublish && <small>Requiere publisher/owner y Google reciente.</small>}</div></details>
-              <details><summary>Rollback</summary><div className="lab-command-popover"><select value={rollbackVersion ?? ""} onChange={(event) => { setRollbackVersion(Number(event.target.value) || null); setRollbackPhrase(""); }}><option value="">Elegir versión</option>{previousVersions.map((item) => <option key={String(item.version)} value={Number(item.version)}>v{String(item.version)}</option>)}</select><p>Escribí <code>{expectedRollbackPhrase || "Elegí una versión"}</code></p><input value={rollbackPhrase} onChange={(event) => setRollbackPhrase(event.target.value)} /><button type="button" className="lab-danger-button" disabled={!canPublish || !rollbackVersion || rollbackPhrase !== expectedRollbackPhrase || busy !== null} onClick={() => void rollback()}>{busy === "rollback" ? "Restaurando" : "Publicar rollback"}</button></div></details>
-              <details><summary>Asignar cuenta</summary><div className="lab-command-popover"><select value={accountHandle} onChange={(event) => setAccountHandle(event.target.value)}><option value="">Elegir cuenta</option>{load.accounts.accounts.map((account) => <option key={account.accountHandle} value={account.accountHandle}>{account.label || account.accountHandle}</option>)}</select><p>Asigna el profile publicado. El draft local no se asigna.</p><button type="button" className="lab-primary-button" disabled={!accountHandle || busy !== null} onClick={() => void assign()}>{busy === "assign" ? "Asignando" : "Asignar profile"}</button></div></details>
-            </div>
-          </footer>
+      <div className="lab-frame">
+        <nav className="lab-primary-nav" aria-label="Laboratory workspaces">
+          <div className="lab-nav-heading"><strong>Workspaces</strong><span>5</span></div>
+          {labWorkspaces.map((item) => <button key={item.id} type="button" data-workspace-id={item.id} data-active={workspace === item.id} aria-current={workspace === item.id ? "page" : undefined} onClick={() => setWorkspace(item.id)} onKeyDown={(event) => handleWorkspaceKeys(event, item.id)}><strong>{item.label}</strong><small>{item.description}</small></button>)}
+          <div className="lab-privacy-note"><strong>Private by default</strong><span>Human text and audio stay behind local allowlisted commands.</span></div>
+        </nav>
+        <section className="lab-main" aria-label={`${labWorkspaces.find((item) => item.id === workspace)?.label ?? "Laboratory"} workspace`}>
+          {workspace === "overview" ? <EvidenceOverviewWorkspace artifacts={artifacts} localRunCount={load.runs.length} /> : null}
+          {workspace === "experiments" ? <ExperimentWorkspace artifacts={artifacts} definition={experiment} estimate={estimate} estimateLoading={estimateLoading} estimateError={estimateError} job={job} orchestrationAvailable={jobsAvailable} onChange={changeExperiment} onEstimate={() => void estimateExperiment()} onStart={() => void startExperiment()} onCancel={() => void cancelExperiment()} onReload={() => void reloadJob()} onRefreshArtifacts={() => void refreshArtifacts()} onPromoteCandidate={promoteCandidate} /> : null}
+          {workspace === "results" ? <EvidenceResultsWorkspace artifacts={artifacts} client={client} /> : null}
+          {workspace === "recipes" ? <RecipesWorkspace load={load} profiles={profiles} selectedProfile={selectedProfile} draft={draft} dirty={dirty} recipeView={recipeView} advanced={advanced} advancedText={advancedText} preview={preview} previewFingerprint={previewFingerprint} notice={notice} busy={busy} canPublish={canPublish} applyPhrase={applyPhrase} expectedApplyPhrase={expectedApplyPhrase} rollbackVersion={rollbackVersion} rollbackPhrase={rollbackPhrase} expectedRollbackPhrase={expectedRollbackPhrase} accountHandle={accountHandle} engines={engines} prompts={prompts} onSelectProfile={selectProfile} onRecipeView={setRecipeView} onDraftValue={setDraftValue} onAdvanced={setAdvanced} onAdvancedText={setAdvancedText} onApplyAdvancedJson={applyAdvancedJson} onValidate={() => void validateDraft()} onApply={() => void applyDraft()} onApplyPhrase={setApplyPhrase} onRollbackVersion={(value) => { setRollbackVersion(value); setRollbackPhrase(""); }} onRollbackPhrase={setRollbackPhrase} onRollback={() => void rollback()} onAccountHandle={setAccountHandle} onAssign={() => void assign()} /> : null}
+          {workspace === "corpus" ? <EvidenceCorpusWorkspace artifacts={artifacts} /> : null}
         </section>
       </div>
     </main>
   );
 }
 
+type RecipesWorkspaceProps = {
+  load: LaboratoryLoad;
+  profiles: readonly LaboratoryProfile[];
+  selectedProfile: LaboratoryProfile | undefined;
+  draft: RecipeDefinition | null;
+  dirty: boolean;
+  recipeView: RecipeView;
+  advanced: boolean;
+  advancedText: string;
+  preview: ProfilePreviewReceipt["data"] | null;
+  previewFingerprint: string;
+  notice: Notice;
+  busy: "validate" | "apply" | "rollback" | "assign" | null;
+  canPublish: boolean;
+  applyPhrase: string;
+  expectedApplyPhrase: string;
+  rollbackVersion: number | null;
+  rollbackPhrase: string;
+  expectedRollbackPhrase: string;
+  accountHandle: string;
+  engines: LaboratoryLoad["configuration"]["engineOptions"];
+  prompts: LaboratoryLoad["configuration"]["promptOptions"];
+  onSelectProfile: (profile: LaboratoryProfile) => void;
+  onRecipeView: (view: RecipeView) => void;
+  onDraftValue: (draft: RecipeDefinition) => void;
+  onAdvanced: (open: boolean) => void;
+  onAdvancedText: (value: string) => void;
+  onApplyAdvancedJson: () => void;
+  onValidate: () => void;
+  onApply: () => void;
+  onRollback: () => void;
+  onAssign: () => void;
+  onApplyPhrase: (value: string) => void;
+  onRollbackVersion: (value: number | null) => void;
+  onRollbackPhrase: (value: string) => void;
+  onAccountHandle: (value: string) => void;
+};
+
+function RecipesWorkspace(props: RecipesWorkspaceProps) {
+  const { load, profiles, selectedProfile, draft, dirty, recipeView, advanced, advancedText, preview, previewFingerprint, notice, busy, canPublish, applyPhrase, expectedApplyPhrase, rollbackVersion, rollbackPhrase, expectedRollbackPhrase, accountHandle, engines, prompts } = props;
+  const transcription = draft ? operation(draft, "transcription") : {};
+  const postprocess = draft ? operation(draft, "postprocess") : {};
+  const previousVersions = selectedProfile?.history.filter((item) => item.version !== versionOf(selectedProfile)) ?? [];
+  return (
+    <div className="lab-recipes-workspace">
+      <header className="lab-page-heading"><div><h2>Recipes</h2><p>Profiles, versioned definitions, effective evidence and guarded publication.</p></div><StatusChip label={dirty ? "Local draft changed" : "Published copy"} tone={dirty ? "warning" : "neutral"} /></header>
+      <div className="lab-recipes-layout">
+        <aside className="lab-profile-list" aria-label="Recipe profiles"><div className="lab-nav-heading"><strong>Profiles</strong><span>{profiles.length}</span></div>{profiles.length ? profiles.map((profile) => <button key={profile.profileId} type="button" data-active={profile.profileId === selectedProfile?.profileId} onClick={() => props.onSelectProfile(profile)}><strong>{profile.label}</strong><small>{profile.profileId} · v{versionOf(profile) ?? "unpublished"} · rev {profile.revision}</small></button>) : <p className="lab-empty">The server returned no profiles. Create one in Control Room before editing a recipe.</p>}<div className="lab-temporary-note"><strong>Temporary override</strong><span>Next-dictation and session overrides stay local. They do not modify these versions.</span></div></aside>
+        <div className="lab-recipe-editor">
+          <div className="lab-title-row"><div><h3>{selectedProfile?.label ?? "No profile"}</h3><p>{dirty ? "Local draft with unpublished changes" : "Local copy of the published version"}</p></div><div className="lab-version"><span>Published</span><strong>v{versionOf(selectedProfile) ?? "—"}</strong><small>rev {selectedProfile?.revision ?? "—"}</small></div></div>
+          <nav className="lab-tabs" aria-label="Recipe sections">{recipeViews.map((item) => <button key={item.id} type="button" data-active={recipeView === item.id} aria-current={recipeView === item.id ? "page" : undefined} onClick={() => props.onRecipeView(item.id)}>{item.label}</button>)}</nav>
+          {recipeView === "builder" && draft ? <div className="lab-builder">
+            <section className="lab-editor-section"><div className="lab-section-heading"><div><h3>Transcription</h3><p>Engine, prompt and language configured for STT.</p></div><StatusChip label="configured" /></div><div className="lab-field-grid"><label><span>STT engine</span><select value={String(transcription.engineId ?? "")} onChange={(event) => props.onDraftValue(updateOperation(draft, "transcription", { engineId: event.target.value }))}><option value="">Not configured</option>{engines.filter((item) => item.kind === "transcription").map((item) => <option key={item.id} value={item.id}>{item.providerLabel || item.provider || "Provider"} · {item.modelLabel || item.model || item.id}</option>)}</select></label><label><span>Prompt</span><select value={String(transcription.promptId ?? "")} onChange={(event) => props.onDraftValue(updateOperation(draft, "transcription", { promptId: event.target.value }))}><option value="">Not configured</option>{prompts.filter((item) => item.kind === "transcription").map((item) => <option key={item.id} value={item.id}>{item.id} · {item.version}</option>)}</select></label><label><span>Language</span><input value={String(transcription.language ?? "")} placeholder="auto" onChange={(event) => props.onDraftValue(updateOperation(draft, "transcription", { language: event.target.value }))} /></label></div></section>
+            <section className="lab-editor-section"><div className="lab-section-heading"><div><h3>Post-process and semantic safety</h3><p>Validation and execution remain server-owned.</p></div><StatusChip label="configured" /></div><div className="lab-field-grid"><label><span>Engine</span><select value={String(postprocess.engineId ?? "")} onChange={(event) => props.onDraftValue(updateOperation(draft, "postprocess", { engineId: event.target.value }))}><option value="">Not configured</option>{engines.filter((item) => item.kind === "postprocess").map((item) => <option key={item.id} value={item.id}>{item.providerLabel || item.provider || "Provider"} · {item.modelLabel || item.model || item.id}</option>)}</select></label><label><span>Prompt</span><select value={String(postprocess.promptId ?? "")} onChange={(event) => props.onDraftValue(updateOperation(draft, "postprocess", { promptId: event.target.value }))}><option value="">Not configured</option>{prompts.filter((item) => item.kind === "postprocess").map((item) => <option key={item.id} value={item.id}>{item.id} · {item.version}</option>)}</select></label><label><span>Status</span><select value={postprocess.enabled === false ? "off" : "on"} onChange={(event) => props.onDraftValue(updateOperation(draft, "postprocess", { enabled: event.target.value === "on" }))}><option value="on">Enabled</option><option value="off">Disabled</option></select></label></div><div className="lab-json-summaries"><span>Vocabulary/defaults: {Object.keys(asObject(draft.defaults)).length} keys</span><span>Limits: {Object.keys(asObject(draft.limits)).length} keys</span><span>User controls: {Object.keys(asObject(draft.userControls)).length} keys</span><span>Capabilities: {Array.isArray(asObject(draft.access).capabilities) ? (asObject(draft.access).capabilities as JsonValue[]).length : 0}</span></div></section>
+            <section className="lab-advanced"><button type="button" className="lab-link-button" aria-expanded={advanced} onClick={() => props.onAdvanced(!advanced)}>{advanced ? "Hide advanced JSON" : "Open advanced JSON"}</button>{advanced ? <div><label htmlFor="lab-advanced-json">Advanced recipe definition</label><textarea id="lab-advanced-json" value={advancedText} onChange={(event) => props.onAdvancedText(event.target.value)} spellCheck={false} /><button type="button" className="lab-secondary-button" onClick={props.onApplyAdvancedJson}>Apply JSON to draft</button></div> : null}</section>
+            {preview && previewFingerprint === JSON.stringify(draft) ? <section className="lab-preview" aria-label="Server-owned preview"><div className="lab-section-heading"><div><h3>Server-owned preview</h3><p>Diff against v{preview.baseVersion ?? "no base"}. The profile was not mutated.</p></div><StatusChip label={preview.changed ? `${preview.changes.length} changes` : "No changes"} /></div>{preview.changes.length ? <div className="lab-preview-list">{preview.changes.map((change) => <div key={change.path}><code>{change.path}</code><span>{JSON.stringify(change.before)} → {JSON.stringify(change.after)}</span></div>)}</div> : null}</section> : null}
+          </div> : null}
+          {recipeView === "builder" && !draft ? <StatePanel title="No published recipe" detail="This profile has no published definition to copy into a local draft." /> : null}
+          {recipeView === "effective" ? <div className="lab-evidence-grid"><EvidencePanel title="Configured" value={selectedProfile?.published ?? null} detail="Selected published definition." /><EvidencePanel title="Resolved" value={null} detail="The effective assignment projection is not included in the canonical account and device routes." /><EvidencePanel title="Observed" value={null} detail="No last-run identity is present in the canonical routes currently loaded." /></div> : null}
+          {recipeView === "audit" ? <div className="lab-runs-layout"><section className="lab-panel"><div className="lab-section-heading"><div><h3>Published versions</h3><p>Server-owned history for the selected profile.</p></div><span>{selectedProfile?.history.length ?? 0}</span></div>{selectedProfile?.history.length ? <div className="lab-version-list">{selectedProfile.history.map((version) => <div key={String(version.version)}><strong>v{String(version.version)}</strong><span>{version.status ?? "published"}</span><code>{String(version.profileId ?? selectedProfile.profileId)}</code></div>)}</div> : <p className="lab-empty">No published version history is available.</p>}</section><section className="lab-audit"><div className="lab-section-heading"><div><h3>Audit</h3><p>Most recent redacted records.</p></div><span>{load.audit.records.length}</span></div>{load.audit.records.length ? load.audit.records.map((record, index) => <div className="lab-audit-row" key={`${record.occurredAt}-${index}`}><strong>{record.action}</strong><span>{record.targetType} · {record.result}</span><time>{new Date(record.occurredAt).toLocaleString()}</time></div>) : <p className="lab-empty">No audit records are available.</p>}</section></div> : null}
+        </div>
+      </div>
+      <footer className="lab-command-bar"><div className="lab-notice" data-tone={notice.tone} aria-live="polite">{notice.message || "No server-side changes."}</div><div className="lab-command-actions"><button type="button" className="lab-secondary-button" disabled={!draft || busy !== null} onClick={props.onValidate}>{busy === "validate" ? "Validating" : "Validate draft"}</button><details><summary>Publish</summary><div className="lab-command-popover"><label><span>Confirmation phrase</span><input value={applyPhrase} onChange={(event) => props.onApplyPhrase(event.target.value)} aria-describedby="lab-publish-phrase" /></label><p id="lab-publish-phrase">Type <code>{expectedApplyPhrase}</code></p><button type="button" className="lab-primary-button" disabled={!dirty || previewFingerprint !== JSON.stringify(draft) || !canPublish || applyPhrase !== expectedApplyPhrase || busy !== null} onClick={props.onApply}>{busy === "apply" ? "Publishing" : "Publish version"}</button>{previewFingerprint !== JSON.stringify(draft) ? <small>Validate and review the preview before publishing.</small> : null}{!canPublish ? <small>Requires publisher or owner role and recent Google authentication.</small> : null}</div></details><details><summary>Rollback</summary><div className="lab-command-popover"><label><span>Target version</span><select value={rollbackVersion ?? ""} onChange={(event) => props.onRollbackVersion(Number(event.target.value) || null)}><option value="">Choose a version</option>{previousVersions.map((item) => <option key={String(item.version)} value={Number(item.version)}>v{String(item.version)}</option>)}</select></label><label><span>Confirmation phrase</span><input value={rollbackPhrase} onChange={(event) => props.onRollbackPhrase(event.target.value)} aria-describedby="lab-rollback-phrase" /></label><p id="lab-rollback-phrase">Type <code>{expectedRollbackPhrase || "Choose a version first"}</code></p><button type="button" className="lab-danger-button" disabled={!canPublish || !rollbackVersion || rollbackPhrase !== expectedRollbackPhrase || busy !== null} onClick={props.onRollback}>{busy === "rollback" ? "Restoring" : "Publish rollback"}</button></div></details><details><summary>Assign account</summary><div className="lab-command-popover"><label><span>Account</span><select value={accountHandle} onChange={(event) => props.onAccountHandle(event.target.value)}><option value="">Choose an account</option>{load.accounts.accounts.map((account) => <option key={account.accountHandle} value={account.accountHandle}>{account.label || account.accountHandle}</option>)}</select></label><p>Assigns the published profile. The local draft is never assigned.</p><button type="button" className="lab-primary-button" disabled={!accountHandle || busy !== null} onClick={props.onAssign}>{busy === "assign" ? "Assigning" : "Assign profile"}</button></div></details></div></footer>
+    </div>
+  );
+}
+
 function EvidencePanel({ title, value, detail }: { title: string; value: JsonValue | null; detail: string }) {
-  return <section className="lab-evidence-panel"><div><h3>{title}</h3><span>{value ? "Disponible" : "No observado"}</span></div><p>{detail}</p>{value && <pre>{JSON.stringify(value, null, 2)}</pre>}</section>;
-}
-
-function UnavailableSection({ title, detail }: { title: string; detail: string }) {
-  return <section className="lab-unavailable-section"><h3>{title}</h3><p>{detail}</p><span>Unavailable</span></section>;
-}
-
-function ComparisonMetric({ label, baseline, candidate, delta }: { label: string; baseline?: number; candidate?: number; delta?: number }) {
-  return <div><span>{label}</span><strong>{baseline ?? "no observado"}</strong><strong>{candidate ?? "no observado"}{delta === undefined ? "" : ` (${delta >= 0 ? "+" : ""}${delta})`}</strong></div>;
+  return <section className="lab-evidence-panel"><div><h3>{title}</h3><StatusChip label={value ? "Available" : "Not observed"} tone={value ? "success" : "neutral"} /></div><p>{detail}</p>{value ? <pre>{JSON.stringify(value, null, 2)}</pre> : null}</section>;
 }

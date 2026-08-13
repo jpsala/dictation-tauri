@@ -2,6 +2,7 @@ mod companion_window;
 mod desktop_control;
 mod desktop_delivery;
 mod dictation_lab;
+mod dictation_lab_jobs;
 mod dictation_experiments;
 mod dock_shell;
 mod fixvox_cloud;
@@ -63,8 +64,17 @@ pub fn run() {
             native_capture::cancel_native_microphone_capture,
             dictation_experiments::get_dictation_experiment_state,
             dictation_experiments::set_dictation_experiment_selection,
+            dictation_lab_jobs::estimate_dictation_lab_experiment,
+            dictation_lab_jobs::start_dictation_lab_job,
+            dictation_lab_jobs::get_dictation_lab_job,
+            dictation_lab_jobs::cancel_dictation_lab_job,
             dictation_lab::request_dictation_lab,
-            runtime_transcription::get_runtime_transcription_readiness,
+            dictation_lab::list_dictation_lab_artifacts,
+            dictation_lab::load_dictation_lab_run,
+            dictation_lab::load_dictation_lab_sample,
+            dictation_lab::read_dictation_lab_private_text,
+            dictation_lab::resolve_dictation_lab_audio,
+            dictation_lab::record_dictation_lab_verdict,
             runtime_transcription::prewarm_fixvox_managed_transcription,
             runtime_transcription::transcribe_captured_audio,
             runtime_transcription::transform_selected_text,
