@@ -62,6 +62,9 @@ pub fn show_dictation_lab_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Resu
         create_fresh_dictation_lab_window(app)
             .map_err(|error| format!("dictation laboratory window unavailable: {error}"))?
     };
+    window
+        .eval("window.location.replace('index.html?surface=dictation-lab')")
+        .map_err(|error| format!("dictation laboratory navigation failed: {error}"))?;
     show_existing_settings_window(window)
 }
 
