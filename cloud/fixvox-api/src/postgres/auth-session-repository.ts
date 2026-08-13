@@ -185,13 +185,15 @@ export class PostgresAuthSessionRepository {
   }
 
   async authorizeBearer(tokenHash: string, now = new Date(), deviceId?: string): Promise<{ capability: "view" | "edit" | "publish"; recentGoogle: boolean; principalKey: string; role: "viewer" | "editor" | "publisher" | "owner" } | null> {
-    const rows = await this.sql.unsafe<{ role: "viewer" | "editor" | "publisher" | "owner"; subject_hash: string; verified_at: string | null }>(`
+    type AuthorizedRow = { role: "viewer" | "editor" | "publisher" | "owner"; subject_hash: string; verified_at: string | null };
+    const adminRows = await this.sql.unsafe<AuthorizedRow>(`
       SELECT rb.role, a.provider_subject_hash AS subject_hash, s.recent_auth_at::text AS verified_at
       FROM admin_sessions s
       JOIN accounts a ON a.id = s.account_id
       JOIN role_bindings rb ON rb.account_id = s.account_id
       WHERE s.session_hash = $1 AND s.expires_at > $2::timestamptz
-      UNION ALL
+    `, [tokenHash, now.toISOString()]);
+    const desktopRows = deviceId ? await this.sql.unsafe<AuthorizedRow>(`
       SELECT rb.role, a.provider_subject_hash AS subject_hash, s.google_verified_at::text AS verified_at
       FROM desktop_login_sessions s
       JOIN accounts a ON a.id = s.account_id
@@ -201,11 +203,11 @@ export class PostgresAuthSessionRepository {
         AND s.status = 'claimed'
         AND s.claimed_at IS NOT NULL
         AND s.expires_at > $2::timestamptz
-        AND $3::text IS NOT NULL
         AND d.device_id = $3
-    `, [tokenHash, now.toISOString(), deviceId ?? null]);
+    `, [tokenHash, now.toISOString(), deviceId]) : [];
+    const rows = [...adminRows, ...desktopRows];
     const rank: Record<string, number> = { viewer: 0, editor: 1, publisher: 2, owner: 3 };
-    const best = rows.reduce<(typeof rows)[number] | null>((current, row) => !current || rank[row.role] > rank[current.role] ? row : current, null);
+    const best = rows.reduce<AuthorizedRow | null>((current, row) => !current || rank[row.role] > rank[current.role] ? row : current, null);
     if (!best || !/^[a-f0-9]{64}$/.test(best.subject_hash)) return null;
     const verifiedAt = best.verified_at ? new Date(best.verified_at) : null;
     return {
