@@ -39,6 +39,7 @@ public static class LaboratorySmokeWin32 {
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out Rect rect);
+  [DllImport("user32.dll")] public static extern bool IsHungAppWindow(IntPtr hWnd);
   [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
   public static IntPtr FindVisibleWindow(string title) {
     IntPtr found = IntPtr.Zero;
@@ -54,6 +55,9 @@ public static class LaboratorySmokeWin32 {
   public static bool Resize(IntPtr hWnd, int width, int height) {
     const uint SWP_NOMOVE = 0x0002, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_SHOWWINDOW = 0x0040;
     return SetWindowPos(hWnd, IntPtr.Zero, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+  }
+  public static bool IsResponding(IntPtr hWnd) {
+    return hWnd != IntPtr.Zero && !IsHungAppWindow(hWnd);
   }
   public static string Bounds(IntPtr hWnd) {
     Rect rect;
@@ -171,7 +175,8 @@ try {
     Start-Sleep -Milliseconds 500
     $bounds = [LaboratorySmokeWin32]::Bounds($laboratoryHwnd)
     $probe = Invoke-CdpExpression $laboratoryPage "JSON.stringify({ready:document.readyState,responding:Boolean(document.querySelector('.lab-shell')),width:innerWidth,height:innerHeight,pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth})" | ConvertFrom-Json
-    Add-Check "Laboratory responds after native resize to $($size[0])x$($size[1])" ($probe.ready -eq 'complete' -and $probe.responding -and -not $probe.pageOverflow) @{ nativeBounds = $bounds; viewport = @{ width = $probe.width; height = $probe.height } }
+    $windowsResponding = [LaboratorySmokeWin32]::IsResponding($laboratoryHwnd)
+    Add-Check "Laboratory responds after native resize to $($size[0])x$($size[1])" ($windowsResponding -and $probe.ready -eq 'complete' -and $probe.responding -and -not $probe.pageOverflow) @{ nativeBounds = $bounds; windowsResponding = $windowsResponding; viewport = @{ width = $probe.width; height = $probe.height } }
     if ($size[0] -eq 720) { Save-WindowScreenshot $laboratoryHwnd $screenshotPath }
   }
 

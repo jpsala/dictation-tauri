@@ -8,6 +8,8 @@ describe("real Tauri Dictation Laboratory smoke", () => {
 
     expect(smoke).toContain("SetWindowPos");
     expect(smoke).toContain("FindVisibleWindow('Dictation Laboratory')");
+    expect(smoke).toContain("IsHungAppWindow");
+    expect(smoke).toContain("windowsResponding = $windowsResponding");
     expect(smoke).toContain("@(720, 620)");
     expect(smoke).toMatch(/document\.documentElement\.style\.zoom\s*=\s*'2'/);
     expect(smoke).toContain("Settings opens Dictation Laboratory");
