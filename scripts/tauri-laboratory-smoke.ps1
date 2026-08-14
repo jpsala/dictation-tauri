@@ -208,7 +208,11 @@ try {
     $probe = Invoke-CdpExpression $RemoteDebugPort 'dictation-lab' "JSON.stringify({ready:document.readyState,responding:Boolean(document.querySelector('.lab-shell')),width:innerWidth,height:innerHeight,pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth})" | ConvertFrom-Json
     $windowsResponding = [LaboratorySmokeWin32]::IsResponding($laboratoryHwnd)
     Add-Check "Laboratory responds after native resize to $($size[0])x$($size[1])" ($windowsResponding -and $probe.ready -eq 'complete' -and $probe.responding -and -not $probe.pageOverflow) @{ nativeBounds = $bounds; windowsResponding = $windowsResponding; viewport = @{ width = $probe.width; height = $probe.height } }
-    if ($size[0] -eq 720) { Save-WindowScreenshot $laboratoryHwnd $screenshotPath }
+    if ($size[0] -eq 720) {
+      Save-WindowScreenshot $laboratoryHwnd $screenshotPath
+      $scrollProbe = Invoke-CdpExpression $RemoteDebugPort 'dictation-lab' "JSON.stringify((()=>{const main=document.querySelector('.lab-main');if(!main)return {scrollable:false,clientHeight:0,scrollHeight:0,scrollTop:0};const maximum=Math.max(0,main.scrollHeight-main.clientHeight);main.scrollTop=maximum;const scrollTop=main.scrollTop;main.scrollTop=0;return {scrollable:maximum>0&&scrollTop>0,clientHeight:main.clientHeight,scrollHeight:main.scrollHeight,scrollTop};})())" | ConvertFrom-Json
+      Add-Check 'Laboratory content scrolls at 720x620' ($scrollProbe.scrollable) @{ clientHeight = $scrollProbe.clientHeight; scrollHeight = $scrollProbe.scrollHeight; scrollTop = $scrollProbe.scrollTop }
+    }
   }
 
   $zoomProbe = Invoke-CdpExpression $RemoteDebugPort 'dictation-lab' "document.documentElement.style.zoom='2';JSON.stringify({ready:document.readyState,responding:Boolean(document.querySelector('.lab-shell')),pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,workspaceCount:document.querySelectorAll('[data-workspace-id]').length})" | ConvertFrom-Json

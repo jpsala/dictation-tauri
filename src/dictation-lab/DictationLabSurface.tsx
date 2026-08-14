@@ -574,7 +574,7 @@ export function DictationLabSurface({
         className="lab-shell lab-loading"
         data-app-surface="dictation-lab"
         aria-busy="true"
-        aria-label="Loading Dictation Laboratory"
+        aria-label="Cargando Dictation Laboratory"
       >
         <div className="lab-skeleton" />
         <div className="lab-skeleton large" />
@@ -591,16 +591,16 @@ export function DictationLabSurface({
         <header className="lab-topbar">
           <div>
             <h1>Dictation Laboratory</h1>
-            <p>Controlled experiments and versioned production recipes</p>
+            <p>Compará configuraciones con evidencia antes de publicar cambios</p>
           </div>
           <div className="lab-session">
-            <StatusChip label="Local replay unavailable" tone="warning" />
+            <StatusChip label="Replay local no disponible" tone="warning" />
           </div>
         </header>
         <div className="lab-frame">
-          <nav className="lab-primary-nav" aria-label="Laboratory workspaces">
+          <nav className="lab-primary-nav" aria-label="Secciones del laboratorio">
             <div className="lab-nav-heading">
-              <strong>Workspaces</strong>
+              <strong>Secciones</strong>
               <span>5</span>
             </div>
             {labWorkspaces.map((item) => (
@@ -620,10 +620,10 @@ export function DictationLabSurface({
           </nav>
           <section className="lab-main">
             <StatePanel
-              title="Local replay unavailable"
+              title="Replay local no disponible"
               detail={
                 loadError ||
-                "The host-owned provider-free plan could not be loaded."
+                "No se pudo cargar el plan local sin proveedor."
               }
               tone="danger"
             />
@@ -638,23 +638,23 @@ export function DictationLabSurface({
       <header className="lab-topbar">
         <div>
           <h1>Dictation Laboratory</h1>
-          <p>Controlled experiments and versioned production recipes</p>
+          <p>Compará configuraciones con evidencia antes de publicar cambios</p>
         </div>
         <div className="lab-session">
-          <StatusChip label={load.session?.role ?? "signed out"} />
+          <StatusChip label={load.session?.role ?? "sin sesión"} />
           <strong>
             {load.session
               ? load.session.recentGoogle
-                ? "Recent session"
-                : "Reauthentication required"
-              : "Local replay only"}
+                ? "Sesión reciente"
+                : "Reautenticación necesaria"
+              : "Sólo replay local"}
           </strong>
         </div>
       </header>
       <div className="lab-frame">
-        <nav className="lab-primary-nav" aria-label="Laboratory workspaces">
+        <nav className="lab-primary-nav" aria-label="Secciones del laboratorio">
           <div className="lab-nav-heading">
-            <strong>Workspaces</strong>
+            <strong>Secciones</strong>
             <span>5</span>
           </div>
           {labWorkspaces.map((item) => (
@@ -672,15 +672,15 @@ export function DictationLabSurface({
             </button>
           ))}
           <div className="lab-privacy-note">
-            <strong>Private by default</strong>
+            <strong>Privado por defecto</strong>
             <span>
-              Human text and audio stay behind local allowlisted commands.
+              El texto y el audio requieren acciones locales explícitas.
             </span>
           </div>
         </nav>
         <section
           className="lab-main"
-          aria-label={`${labWorkspaces.find((item) => item.id === workspace)?.label ?? "Laboratory"} workspace`}
+          aria-label={`${labWorkspaces.find((item) => item.id === workspace)?.label ?? "Laboratorio"} del laboratorio`}
         >
           {workspace === "overview" ? (
             <EvidenceOverviewWorkspace

@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { ExperimentWorkspace } from "../../src/dictation-lab/ExperimentWorkspace";
+import { EvidenceOverviewWorkspace } from "../../src/dictation-lab/EvidenceWorkspaces";
 import { OverviewWorkspace } from "../../src/dictation-lab/LabWorkspaces";
 import type {
   LabArtifactIndex,
@@ -84,7 +85,24 @@ const artifacts: LabArtifactIndex = {
 };
 
 describe("Dictation Laboratory workspace contracts", () => {
-  it("offers only catalog/configuration recipe IDs, never artifact-discovered IDs", () => {
+  it("explains the laboratory workflow before exposing evidence details", () => {
+    const html = renderToStaticMarkup(
+      <EvidenceOverviewWorkspace
+        artifacts={{ index: artifacts, loading: false, error: "" }}
+        localRunCount={0}
+      />,
+    );
+
+    expect(html).toContain("Cómo leer el laboratorio");
+    expect(html).toContain("Corpus");
+    expect(html).toContain("Experimentos");
+    expect(html).toContain("Resultados");
+    expect(html).toContain("Recetas");
+    expect(html).toContain("no cambia la configuración activa");
+    expect(html).toContain("falta evidencia, no que el valor sea cero");
+  });
+
+  it("keeps recipe axes locked and excludes artifact-discovered IDs", () => {
     const html = renderToStaticMarkup(
       <ExperimentWorkspace
         artifacts={{ index: artifacts, loading: false, error: "" }}
@@ -108,8 +126,8 @@ describe("Dictation Laboratory workspace contracts", () => {
       />,
     );
 
-    expect(html).toContain("transcription-quality-v1-rich-es");
-    expect(html).toContain("transcription-quality-v1-postprocess-120b-prosody");
+    expect(html).toContain("Configured plan");
+    expect(html).toContain("Dimensions are locked");
     expect(html).not.toContain("artifact-only-stt");
     expect(html).not.toContain("artifact-only-postprocess");
     expect(html).not.toContain("artifact-only-materialization");
@@ -136,9 +154,10 @@ describe("Dictation Laboratory workspace contracts", () => {
 
     expect(html).toContain("Experiment orchestration unavailable");
     expect(html).toContain("No provider call will be attempted.");
-    expect(html).toContain("Provider confirmation required");
+    expect(html).toContain("Cloud recipe catalog unavailable");
     expect(html).not.toContain("Start experiment");
     expect(html).toContain("authoritative_one_shot_grant_unavailable");
+    expect(html).toContain("no cloud recipe is inferred");
   });
 
   it("renders empty canonical states without substituting example runs", () => {

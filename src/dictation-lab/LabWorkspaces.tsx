@@ -22,25 +22,29 @@ export const labWorkspaces: ReadonlyArray<{
 }> = [
   {
     id: "overview",
-    label: "Overview",
-    description: "Readiness and recent work",
+    label: "Resumen",
+    description: "Estado y próximos pasos",
   },
   {
     id: "experiments",
-    label: "Experiments",
-    description: "Define and run comparisons",
+    label: "Experimentos",
+    description: "Comparar configuraciones",
   },
   {
     id: "results",
-    label: "Results",
-    description: "Runs, candidates and evidence",
+    label: "Resultados",
+    description: "Revisar evidencia",
   },
   {
     id: "recipes",
-    label: "Recipes",
-    description: "Profiles and published versions",
+    label: "Recetas",
+    description: "Configuración activa y versiones",
   },
-  { id: "corpus", label: "Corpus", description: "Approved evaluation inputs" },
+  {
+    id: "corpus",
+    label: "Corpus",
+    description: "Casos de prueba aprobados",
+  },
 ];
 
 export type LabArtifactState = {

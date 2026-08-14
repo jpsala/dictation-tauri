@@ -36,6 +36,14 @@ const FAMILY_DEFINITIONS = [
 function toneForAvailability(status: "available" | "partial" | "unavailable"): Tone {
   return status === "available" ? "success" : status === "partial" ? "warning" : "neutral";
 }
+function availabilityLabel(status: "available" | "partial" | "unavailable"): string {
+  return status === "available"
+    ? "disponible"
+    : status === "partial"
+      ? "parcial"
+      : "no disponible";
+}
+
 
 function Status({ label, tone = "neutral" }: { label: string; tone?: Tone }) {
   return <span className="lab-status-chip" data-tone={tone}>{label}</span>;
@@ -126,8 +134,84 @@ export function EvidenceOverviewWorkspace({ artifacts, localRunCount = 0 }: { ar
     return { ...family, matches, status: matches.length && matches.every((run) => run.availability.status === "available") ? "available" as const : "partial" as const, missing: matches.length ? missing : ["No matching indexed run"] };
   });
   return <div className="lab-workspace-content">
-    <header className="lab-page-heading"><div><h2>Evidence overview</h2><p>Canonical run families and readiness are shown without inventing missing measurements.</p></div><Status label={artifacts.index?.availability.status ?? "unavailable"} tone={artifacts.index ? toneForAvailability(artifacts.index.availability.status) : "neutral"} /></header>
-    <dl className="lab-summary-strip" aria-label="Evidence summary"><div><dt>Indexed runs</dt><dd>{artifacts.index ? runs.length : "—"}</dd></div><div><dt>Completed runs</dt><dd>{artifacts.index ? runs.filter((run) => run.status === "completed").length : "—"}</dd></div><div><dt>Corpora</dt><dd>{artifacts.index ? artifacts.index.corpora.length : "—"}</dd></div><div><dt>Partial artifacts</dt><dd>{artifacts.index ? runs.filter((run) => run.availability.status !== "available").length : "—"}</dd></div><div><dt>Local replay inputs</dt><dd>{localRunCount}</dd></div></dl>
+    <header className="lab-page-heading">
+      <div>
+        <h2>Resumen de evidencia</h2>
+        <p>
+          Familias de ejecuciones canónicas y su disponibilidad, sin inventar
+          mediciones faltantes.
+        </p>
+      </div>
+      <Status
+        label={artifacts.index ? availabilityLabel(artifacts.index.availability.status) : "no disponible"}
+        tone={artifacts.index ? toneForAvailability(artifacts.index.availability.status) : "neutral"}
+      />
+    </header>
+    <section className="lab-guide" aria-labelledby="lab-guide-title">
+      <div>
+        <h3 id="lab-guide-title">Cómo leer el laboratorio</h3>
+        <p>
+          Sirve para responder una pregunta: qué configuración dicta mejor sin
+          empeorar seguridad, costo o latencia.
+        </p>
+      </div>
+      <ol className="lab-guide-steps">
+        <li>
+          <span>1</span>
+          <div>
+            <strong>Corpus</strong>
+            <p>Define los casos de prueba aprobados que todos comparan.</p>
+          </div>
+        </li>
+        <li>
+          <span>2</span>
+          <div>
+            <strong>Experimentos</strong>
+            <p>Elige configuraciones, calcula el límite y ejecuta la comparación.</p>
+          </div>
+        </li>
+        <li>
+          <span>3</span>
+          <div>
+            <strong>Resultados</strong>
+            <p>Compara calidad, seguridad, latencia y costo con la misma evidencia.</p>
+          </div>
+        </li>
+        <li>
+          <span>4</span>
+          <div>
+            <strong>Recetas</strong>
+            <p>Revisa la configuración activa y publica sólo una decisión explícita.</p>
+          </div>
+        </li>
+      </ol>
+      <p className="lab-guide-rule">
+        Ejecutar una prueba no cambia la configuración activa. “No observado”
+        significa que falta evidencia, no que el valor sea cero.
+      </p>
+    </section>
+    <dl className="lab-summary-strip" aria-label="Resumen de evidencia">
+      <div>
+        <dt>Ejecuciones indexadas</dt>
+        <dd>{artifacts.index ? runs.length : "—"}</dd>
+      </div>
+      <div>
+        <dt>Ejecuciones completas</dt>
+        <dd>{artifacts.index ? runs.filter((run) => run.status === "completed").length : "—"}</dd>
+      </div>
+      <div>
+        <dt>Corpus</dt>
+        <dd>{artifacts.index ? artifacts.index.corpora.length : "—"}</dd>
+      </div>
+      <div>
+        <dt>Artifacts parciales</dt>
+        <dd>{artifacts.index ? runs.filter((run) => run.availability.status !== "available").length : "—"}</dd>
+      </div>
+      <div>
+        <dt>Entradas de replay local</dt>
+        <dd>{localRunCount}</dd>
+      </div>
+    </dl>
     {artifacts.loading ? <section className="lab-state-panel" data-tone="info"><h3>Reading canonical artifacts</h3><p>Counts remain unknown until the local artifact index responds.</p></section> : artifacts.error ? <section className="lab-state-panel" data-tone="danger"><h3>Artifact index unavailable</h3><p>{artifacts.error} No example evidence was substituted.</p></section> : null}
     <section className="lab-panel" aria-labelledby="evidence-family-title"><div className="lab-section-heading"><div><h3 id="evidence-family-title">Structured run families</h3><p>Specialized families remain visible when only partial artifacts are present.</p></div><span>{familyRows.length} tracked</span></div><div className="lab-evidence-family-list">{familyRows.map((family) => <div key={family.id}><div><strong>{family.label}</strong><small>{family.matches.length ? `${family.matches.length} indexed run${family.matches.length === 1 ? "" : "s"}` : "No indexed run matched"}</small></div><div><Status label={family.status} tone={toneForAvailability(family.status)} />{family.missing.length ? <small>{family.missing.join(", ")}</small> : null}</div></div>)}</div></section>
     <section className="lab-panel"><div className="lab-section-heading"><div><h3>Recent canonical runs</h3><p>Newest completion timestamp first, then stable run ID.</p></div><span>{runs.length}</span></div>{runs.length ? <div className="lab-compact-list">{runs.slice().sort((a, b) => runTimestamp(b) - runTimestamp(a) || a.runId.localeCompare(b.runId)).slice(0, 8).map((run) => <div key={run.runId}><div><strong>{run.runId}</strong><span>{run.corpusId} · {run.candidateCount} candidates</span></div><div><Status label={run.availability.status} tone={toneForAvailability(run.availability.status)} /><time>{run.completedAt ?? run.startedAt ?? "No timestamp"}</time></div></div>)}</div> : <p className="lab-empty">No canonical runs are indexed.</p>}</section>
