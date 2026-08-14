@@ -9,12 +9,15 @@ import {
 export const userPreferencesChangedEvent = "settings://user-preferences-changed";
 
 export type DeliveryMode = "direct" | "clipboardPaste";
+export type DictationMode = "profile" | "complete";
+
 
 export type UserPreferences = {
   schemaVersion: 1;
   showDockOnStartup: boolean;
   dockSkin: DockSkinId;
   deliveryMode: DeliveryMode;
+  dictationMode: DictationMode;
   reviewBeforeDelivery: boolean;
   pressEnterAfterPaste: boolean;
   pasteWithoutFocusChange: boolean;
@@ -44,6 +47,7 @@ export const defaultUserPreferences: UserPreferences = {
   showDockOnStartup: true,
   dockSkin: defaultDockSkinId,
   deliveryMode: "direct",
+  dictationMode: "profile",
   reviewBeforeDelivery: false,
   pressEnterAfterPaste: false,
   pasteWithoutFocusChange: false,
@@ -71,12 +75,16 @@ export function normalizeUserPreferences(
   const deliveryMode = preferences?.deliveryMode === "clipboardPaste"
     ? "clipboardPaste"
     : "direct";
+  const dictationMode = preferences?.dictationMode === "complete"
+    ? "complete"
+    : "profile";
   return {
     ...defaultUserPreferences,
     ...preferences,
     schemaVersion: 1,
     dockSkin: normalizeDockSkinId(preferences?.dockSkin),
     deliveryMode,
+    dictationMode,
     autoStopSilenceMs: normalizeAutoStopSilenceMs(
       preferences?.autoStopSilenceMs ?? defaultAutoStopSilenceMs,
     ),

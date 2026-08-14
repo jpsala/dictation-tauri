@@ -63,6 +63,15 @@ provider, y agrego un baseline server-owned de postprocess. Es evidencia de la
 intencion y del contrato probado entonces, no prueba suficiente del runtime
 efectivo actual despues del cutover `product-v1`.
 
+Decision 2026-08-14: el modo normal de dictado es una preferencia host-owned
+versionada con dos valores. `profile` es el default compatible y proyecta el
+profile publicado sin override local. `complete` fuerza la ruta canónica de
+postprocess habilitada, pero no fija prompt, provider ni modelo en el cliente:
+esas decisiones siguen siendo profile/server-owned. Un override temporal del
+Laboratory conserva precedencia para el próximo dictado o la sesión. Settings
+expone ambos como `Según mi perfil` y `Dictado completo`; la selección persiste
+en `user-preferences.v1.json` y nunca guarda prompts ni payloads.
+
 Validacion 2026-06-25: el flujo fue probado con CUA visible y con TTS local controlado. Managed STT + postprocess y el runtime real Tauri/Rust pasaron casos redacted de fillers/correcciones, identificadores tecnicos y pregunta neutral con signos `¿...?` cuando STT reconoce la pregunta. Caveat durable: una frase TTS mexicana con forma argentina `sentis` no reconocio `como/sentis` en STT; el postprocess no debe inventar una pregunta si la transcripcion no conserva suficiente señal. Para robustecer ese caso, investigar STT language/prompt/prosody o fixtures de voz humana antes de cambiar el sanitizer.
 
 El runtime debe tener una frontera propia:

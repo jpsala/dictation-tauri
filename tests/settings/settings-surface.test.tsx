@@ -408,6 +408,10 @@ describe("SettingsSurface", () => {
     expect(source).toContain("getUserPreferences");
     expect(source).toContain("setUserPreferences");
     expect(source).toContain("autoStopOnSilenceEnabled");
+    expect(source).toContain("dictationMode");
+    expect(source).toContain("Según mi perfil");
+    expect(source).toContain("Dictado completo");
+    expect(source).toContain("updateDictationMode");
     expect(source).toContain("autoStopSilenceMs");
     expect(source).toContain("Detener después de un silencio");
     expect(source).toContain("followFocusUntilDelivery");

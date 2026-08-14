@@ -216,6 +216,14 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
   const settingsHeading = sectionHeading(selectedSectionMeta.id);
   const settingsSummary = sectionSummary(selectedSectionMeta.id);
   const selectedPreset = presetItems.find((preset) => preset.id === selectedPresetId) ?? presetItems[0];
+  const canUseCompleteDictation = cloudStatus?.authPolicy?.capabilities?.includes("postprocess") === true;
+  const activeDictationModeLabel = !dictationExperimentLoaded
+    ? "Leyendo"
+    : dictationExperimentState.active
+      ? resolveDictationExperimentRecipe(dictationExperimentState.active.recipeId).label
+      : userPreferences.dictationMode === "complete"
+        ? "Dictado completo"
+        : cloudStatus?.policyLabel ?? "Según mi perfil";
   const presetDraftChanged = Boolean(
     selectedPreset && (
       presetDraft !== selectedPreset.body ||
@@ -717,6 +725,19 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
     }
   }
 
+  async function updateDictationMode(dictationMode: UserPreferences["dictationMode"]) {
+    setBusyAction("preferences");
+    try {
+      const saved = await setUserPreferences({
+        ...userPreferences,
+        dictationMode,
+      });
+      setUserPreferencesState(saved);
+    } finally {
+      setBusyAction(undefined);
+    }
+  }
+
   async function openDictationLaboratory() {
     if (!tauriRuntime) {
       setDictationExperimentNotice({ tone: "warning", message: "Abrí estos ajustes desde la aplicación para usar el laboratorio." });
@@ -1119,19 +1140,49 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
           <section className="settings-dictation-experiment" aria-labelledby="settings-dictation-experiment-title">
             <header className="settings-dictation-experiment-header">
               <div>
-                <h3 id="settings-dictation-experiment-title">Receta activa</h3>
-                <p>Tu profile publicado sigue siendo la autoridad. Los overrides de próximo dictado o sesión son temporales.</p>
+                <h3 id="settings-dictation-experiment-title">Modo de dictado</h3>
+                <p>Elegí un comportamiento estable. Un override del laboratorio puede reemplazarlo sólo para el próximo dictado o la sesión actual.</p>
               </div>
-              <span className="settings-panel-count">
-                {dictationExperimentLoaded
-                  ? resolveDictationExperimentRecipe(dictationExperimentState.active?.recipeId).label
-                  : "Leyendo"}
-              </span>
+              <span className="settings-panel-count">{activeDictationModeLabel}</span>
             </header>
-            <dl className="settings-dictation-recipe-details" aria-label="Resumen de receta activa">
-              <div><dt>Fuente</dt><dd>{dictationExperimentState.active ? "Override local temporal" : "Profile publicado"}</dd></div>
-              <div><dt>Alcance</dt><dd>{dictationExperimentState.active?.scope === "next-dictation" ? "Próximo dictado" : dictationExperimentState.active?.scope === "session" ? "Esta sesión" : "Asignación efectiva"}</dd></div>
-              <div><dt>Estado</dt><dd>{summarizeDictationExperimentState(dictationExperimentState)}</dd></div>
+            <div className="settings-dictation-recipe-list" role="radiogroup" aria-label="Modo de dictado">
+              <button
+                type="button"
+                className="settings-dictation-recipe-row"
+                role="radio"
+                aria-checked={userPreferences.dictationMode === "profile"}
+                data-selected={userPreferences.dictationMode === "profile"}
+                disabled={!tauriRuntime || busyAction === "preferences"}
+                onClick={() => void updateDictationMode("profile")}
+              >
+                <span className="settings-dictation-recipe-marker" aria-hidden="true" />
+                <span>
+                  <strong>Según mi perfil</strong>
+                  <small>Usa el comportamiento publicado de tu cuenta. Hoy: {cloudStatus?.policyLabel ?? "perfil administrado"}.</small>
+                </span>
+                <span className="settings-panel-count">Perfil</span>
+              </button>
+              <button
+                type="button"
+                className="settings-dictation-recipe-row"
+                role="radio"
+                aria-checked={userPreferences.dictationMode === "complete"}
+                data-selected={userPreferences.dictationMode === "complete"}
+                disabled={!tauriRuntime || busyAction === "preferences" || (cloudStatusResolved && !canUseCompleteDictation)}
+                onClick={() => void updateDictationMode("complete")}
+              >
+                <span className="settings-dictation-recipe-marker" aria-hidden="true" />
+                <span>
+                  <strong>Dictado completo</strong>
+                  <small>Whisper administrado, limpieza con IA y sanitización conservadora. Conserva listas y reconstruye paths dictados.</small>
+                </span>
+                <span className="settings-panel-count">Completo</span>
+              </button>
+            </div>
+            <dl className="settings-dictation-recipe-details" aria-label="Resumen del modo efectivo">
+              <div><dt>Fuente</dt><dd>{dictationExperimentState.active ? "Override local temporal" : userPreferences.dictationMode === "complete" ? "Modo guardado en este equipo" : "Perfil publicado"}</dd></div>
+              <div><dt>Alcance</dt><dd>{dictationExperimentState.active?.scope === "next-dictation" ? "Próximo dictado" : dictationExperimentState.active?.scope === "session" ? "Esta sesión" : "Todos los dictados"}</dd></div>
+              <div><dt>Estado</dt><dd>{dictationExperimentState.active ? summarizeDictationExperimentState(dictationExperimentState) : activeDictationModeLabel}</dd></div>
             </dl>
             <footer className="settings-dictation-experiment-footer">
               <div className="settings-hotkey-editor-feedback" data-tone={dictationExperimentNotice.tone} aria-live="polite">

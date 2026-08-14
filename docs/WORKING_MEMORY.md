@@ -62,6 +62,10 @@ decisiones.
   postprocess `openai/gpt-oss-120b`; no se serializan en receipts ni UI. Un
   dictado sintético real único confirmó `fixvox-cloud` + postprocess
   policy-owned, sin fallback, y materializó una lista numerada.
+- Settings expone un modo host-owned persistente: `Según mi perfil` (default)
+  o `Dictado completo`. El segundo fuerza postprocess canónico sin duplicar
+  prompt/provider/model locales; los overrides temporales del Laboratory
+  conservan precedencia.
 - Un replay separado y aprobado del dictado complejo de `59.3 s` ejecutó una
   sola llamada STT y una postprocess, sin retries. El raw STT conservó la lista
   hablada y el path fonético; `openai/gpt-oss-120b` los convirtió en una lista

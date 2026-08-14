@@ -571,11 +571,13 @@ pub async fn transcribe_captured_audio(
     app: AppHandle,
     request: HostTranscriptionRequest,
 ) -> HostTranscriptionResponse {
-    let (request, applied_experiment) =
-        crate::dictation_experiments::apply_dictation_experiment(request);
+    let preferences = read_user_preferences_for_app(&app);
+    let (request, applied_experiment) = crate::dictation_experiments::apply_dictation_experiment(
+        request,
+        preferences.dictation_mode,
+    );
     if request.mode == "real" && request.allow_provider_call {
-        let enhance_low_volume_enabled =
-            read_user_preferences_for_app(&app).enhance_low_volume_enabled;
+        let enhance_low_volume_enabled = preferences.enhance_low_volume_enabled;
         let response = transcribe_captured_audio_with_provider_call(
             request,
             &read_host_env_value,

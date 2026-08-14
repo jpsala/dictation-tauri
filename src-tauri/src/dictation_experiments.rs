@@ -1,4 +1,7 @@
-use crate::runtime_transcription::{HostPostProcessPolicy, HostTranscriptionRequest};
+use crate::{
+    runtime_transcription::{HostPostProcessPolicy, HostTranscriptionRequest},
+    user_preferences::DictationMode,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::{LazyLock, Mutex};
 
@@ -75,6 +78,7 @@ pub fn set_dictation_experiment_selection(
 
 pub fn apply_dictation_experiment(
     mut request: HostTranscriptionRequest,
+    dictation_mode: DictationMode,
 ) -> (
     HostTranscriptionRequest,
     Option<DictationExperimentSelection>,
@@ -93,6 +97,19 @@ pub fn apply_dictation_experiment(
         }
     };
     let Some(selection) = selection else {
+        if dictation_mode == DictationMode::Complete {
+            request.post_process = Some(HostPostProcessPolicy {
+                enabled: true,
+                prompt: None,
+                provider: None,
+                model: None,
+                source: Some("dictation-mode-complete-v1".to_string()),
+                policy_id: None,
+                voice_routing_profile_id: None,
+                experiment_recipe_id: None,
+                experiment_recipe_version: None,
+            });
+        }
         return (request, None);
     };
     let source = match selection.scope {
@@ -173,11 +190,11 @@ mod tests {
         })
         .expect("selection should be valid");
 
-        let (first, applied) = apply_dictation_experiment(request());
+        let (first, applied) = apply_dictation_experiment(request(), DictationMode::Profile);
         assert!(!first.post_process.expect("policy").enabled);
         complete_dictation_experiment(applied.clone(), false);
         assert!(get_dictation_experiment_state().active.is_some());
-        let (_, retried) = apply_dictation_experiment(request());
+        let (_, retried) = apply_dictation_experiment(request(), DictationMode::Profile);
         complete_dictation_experiment(retried, true);
         assert!(get_dictation_experiment_state().active.is_none());
     }
@@ -195,8 +212,9 @@ mod tests {
         })
         .expect("selection should be valid");
 
-        let (_, first) = apply_dictation_experiment(request());
-        let (second, second_selection) = apply_dictation_experiment(request());
+        let (_, first) = apply_dictation_experiment(request(), DictationMode::Profile);
+        let (second, second_selection) =
+            apply_dictation_experiment(request(), DictationMode::Profile);
         assert!(first.is_some());
         assert!(second_selection.is_none());
         assert!(second.post_process.is_none());
@@ -216,7 +234,8 @@ mod tests {
         .expect("selection should be valid");
 
         for _ in 0..2 {
-            let (applied, selection) = apply_dictation_experiment(request());
+            let (applied, selection) =
+                apply_dictation_experiment(request(), DictationMode::Profile);
             let policy = applied.post_process.expect("policy");
             assert!(policy.enabled);
             assert_eq!(
@@ -257,7 +276,7 @@ mod tests {
             experiment_recipe_id: None,
             experiment_recipe_version: None,
         });
-        let (result, selection) = apply_dictation_experiment(explicit);
+        let (result, selection) = apply_dictation_experiment(explicit, DictationMode::Profile);
         assert!(selection.is_none());
         assert_eq!(
             result
@@ -282,12 +301,50 @@ mod tests {
             scope: DictationExperimentScope::Session,
         })
         .expect("selection should be valid");
-        let (result, _) = apply_dictation_experiment(request());
+        let (result, _) = apply_dictation_experiment(request(), DictationMode::Profile);
         assert_eq!(
             result.evaluation_recipe_id.as_deref(),
             Some("transcription-quality-v1-rich-auto")
         );
         assert!(!result.post_process.expect("policy").enabled);
+    }
+
+    #[test]
+    fn complete_mode_enables_the_canonical_postprocess_route() {
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        reset();
+        let (result, selection) = apply_dictation_experiment(request(), DictationMode::Complete);
+        let policy = result.post_process.expect("complete mode policy");
+        assert!(policy.enabled);
+        assert_eq!(policy.source.as_deref(), Some("dictation-mode-complete-v1"));
+        assert!(policy.prompt.is_none());
+        assert!(policy.provider.is_none());
+        assert!(policy.model.is_none());
+        assert!(selection.is_none());
+    }
+
+    #[test]
+    fn temporary_recipe_overrides_the_persistent_complete_mode() {
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        reset();
+        set_dictation_experiment_selection(DictationExperimentSelection {
+            recipe_id: LITERAL_RECIPE_ID.to_string(),
+            recipe_version: "v1".to_string(),
+            scope: DictationExperimentScope::Session,
+        })
+        .expect("selection should be valid");
+        let (result, selection) = apply_dictation_experiment(request(), DictationMode::Complete);
+        let policy = result.post_process.expect("literal override policy");
+        assert!(!policy.enabled);
+        assert_eq!(
+            policy.source.as_deref(),
+            Some("dictation-experiment-session")
+        );
+        assert!(selection.is_some());
     }
 
     #[test]

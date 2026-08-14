@@ -15,6 +15,7 @@ describe("user preference contracts", () => {
     expect(defaultUserPreferences).toMatchObject({
       dockSkin: "compact-5",
       deliveryMode: "direct",
+      dictationMode: "profile",
       followFocusUntilDelivery: true,
       pasteWithoutFocusChange: false,
       autoStopOnSilenceEnabled: false,
@@ -60,6 +61,12 @@ describe("user preference contracts", () => {
     expect(normalizeUserPreferences({ deliveryMode: "clipboardPaste" }).deliveryMode).toBe("clipboardPaste");
     expect(normalizeUserPreferences({ deliveryMode: "direct" }).deliveryMode).toBe("direct");
     expect(normalizeUserPreferences({ deliveryMode: "unsupported" as never }).deliveryMode).toBe("direct");
+  });
+
+  it("accepts only the two supported dictation modes", () => {
+    expect(normalizeUserPreferences({ dictationMode: "profile" }).dictationMode).toBe("profile");
+    expect(normalizeUserPreferences({ dictationMode: "complete" }).dictationMode).toBe("complete");
+    expect(normalizeUserPreferences({ dictationMode: "unsupported" as never }).dictationMode).toBe("profile");
   });
 
   it("keeps only supported dock skin identifiers", () => {

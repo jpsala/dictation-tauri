@@ -24,6 +24,14 @@ pub enum DeliveryMode {
     ClipboardPaste,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DictationMode {
+    #[default]
+    Profile,
+    Complete,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserPreferences {
@@ -34,6 +42,8 @@ pub struct UserPreferences {
     pub dock_skin: DockSkinId,
     #[serde(default)]
     pub delivery_mode: DeliveryMode,
+    #[serde(default)]
+    pub dictation_mode: DictationMode,
     #[serde(default)]
     pub review_before_delivery: bool,
     #[serde(default)]
@@ -69,6 +79,7 @@ pub fn set_user_preferences(
         show_dock_on_startup: preferences.show_dock_on_startup,
         dock_skin: preferences.dock_skin,
         delivery_mode: preferences.delivery_mode,
+        dictation_mode: preferences.dictation_mode,
         review_before_delivery: preferences.review_before_delivery,
         press_enter_after_paste: preferences.press_enter_after_paste,
         paste_without_focus_change: preferences.paste_without_focus_change,
@@ -121,6 +132,7 @@ pub fn default_user_preferences() -> UserPreferences {
         show_dock_on_startup: default_show_dock_on_startup(),
         dock_skin: DockSkinId::default(),
         delivery_mode: DeliveryMode::default(),
+        dictation_mode: DictationMode::default(),
         review_before_delivery: false,
         press_enter_after_paste: false,
         paste_without_focus_change: false,
@@ -163,6 +175,7 @@ mod tests {
         assert!(defaults.show_dock_on_startup);
         assert_eq!(defaults.dock_skin, DockSkinId::Compact5);
         assert_eq!(defaults.delivery_mode, DeliveryMode::Direct);
+        assert_eq!(defaults.dictation_mode, DictationMode::Profile);
         assert!(!defaults.review_before_delivery);
         assert!(!defaults.press_enter_after_paste);
         assert!(!defaults.paste_without_focus_change);
@@ -201,6 +214,20 @@ mod tests {
         ] {
             assert_eq!(serde_json::to_string(&mode).unwrap(), encoded);
             assert_eq!(serde_json::from_str::<DeliveryMode>(encoded).unwrap(), mode);
+        }
+    }
+
+    #[test]
+    fn dictation_mode_ids_match_renderer_contract() {
+        for (mode, encoded) in [
+            (DictationMode::Profile, "\"profile\""),
+            (DictationMode::Complete, "\"complete\""),
+        ] {
+            assert_eq!(serde_json::to_string(&mode).unwrap(), encoded);
+            assert_eq!(
+                serde_json::from_str::<DictationMode>(encoded).unwrap(),
+                mode
+            );
         }
     }
 
