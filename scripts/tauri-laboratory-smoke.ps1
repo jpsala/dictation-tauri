@@ -218,6 +218,8 @@ try {
   $zoomProbe = Invoke-CdpExpression $RemoteDebugPort 'dictation-lab' "document.documentElement.style.zoom='2';JSON.stringify({ready:document.readyState,responding:Boolean(document.querySelector('.lab-shell')),pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,workspaceCount:document.querySelectorAll('[data-workspace-id]').length})" | ConvertFrom-Json
   Save-WindowScreenshot $laboratoryHwnd $zoomScreenshotPath
   Add-Check 'Laboratory responds at 200 percent zoom' ($zoomProbe.ready -eq 'complete' -and $zoomProbe.responding -and -not $zoomProbe.pageOverflow -and $zoomProbe.workspaceCount -eq 5) @{ workspaceCount = $zoomProbe.workspaceCount }
+  $zoomReset = Invoke-CdpExpression $RemoteDebugPort 'dictation-lab' "document.documentElement.style.zoom='1';JSON.stringify({zoom:document.documentElement.style.zoom,responding:Boolean(document.querySelector('.lab-shell'))})" | ConvertFrom-Json
+  Add-Check 'Laboratory returns to 100 percent zoom' ($zoomReset.zoom -eq '1' -and $zoomReset.responding) @{ zoom = $zoomReset.zoom }
 
   $networkLog = @((Get-Content -LiteralPath $tauriOutLog -ErrorAction SilentlyContinue) + (Get-Content -LiteralPath $tauriErrLog -ErrorAction SilentlyContinue)) -join "`n"
   $forbiddenActivity = $networkLog -match '(?i)(product/v1/desktop/bootstrap|v2/device/register|v2/execution|groq|provider[_ -]?call|mutation)'
