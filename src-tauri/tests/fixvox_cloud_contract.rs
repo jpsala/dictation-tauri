@@ -177,8 +177,9 @@ fn current_tauri_routes_use_canonical_product_boundaries_and_retain_named_aliase
         "pub(crate) fn build_managed_chat_completion_request_preview(",
     );
     assert!(stt_preview.contains("/product/v1/runtime/transcriptions"));
-    assert!(stt_preview.contains("/v1/audio/transcriptions"));
-    assert!(stt_preview.contains("PREFERRED_FIXVOX_BACKEND_URL"));
+    assert!(!stt_preview.contains("/v1/audio/transcriptions"));
+    assert!(stt_preview.contains("\"metadata\""));
+    assert!(stt_preview.contains("\"audio\""));
 
     let action_preview = source_section(
         cloud,
@@ -827,25 +828,16 @@ fn maps_preflight_denials_to_fail_closed_error_codes() {
 }
 
 #[test]
-fn managed_stt_uses_device_id_header_and_never_vendor_bearer() {
-    let preview = build_managed_stt_request_preview(
-        FixvoxCloudConfig {
-            backend_base_url: PREFERRED_FIXVOX_BACKEND_URL.to_string(),
-            device_id: Some("dev_test_1234567890abcdef".to_string()),
-        },
-        ManagedSttInput {
-            audio_file_name: "capture.wav".to_string(),
-            model: "whisper-large-v3-turbo".to_string(),
-            language: Some("es".to_string()),
-            prompt: Some("prompt fixture".to_string()),
-        },
-    )
+fn managed_stt_uses_product_boundary_device_header_and_no_vendor_bearer() {
+    let preview = build_managed_stt_request_preview(FixvoxCloudConfig {
+        backend_base_url: PREFERRED_FIXVOX_BACKEND_URL.to_string(),
+        device_id: Some("dev_test_1234567890abcdef".to_string()),
+    })
     .expect("managed STT request preview should be constructable without network");
 
-    assert_eq!(
-        preview.endpoint,
-        "https://auth-fixvox.jpsala.dev/v1/audio/transcriptions",
-    );
+    assert!(preview
+        .endpoint
+        .ends_with("/product/v1/runtime/transcriptions"));
     assert!(preview
         .headers
         .iter()
@@ -857,33 +849,16 @@ fn managed_stt_uses_device_id_header_and_never_vendor_bearer() {
         .all(|(name, _)| !name.eq_ignore_ascii_case("authorization")));
     assert_eq!(
         preview.multipart_fields,
-        vec![
-            "file".to_string(),
-            "model".to_string(),
-            "language".to_string(),
-            "prompt".to_string(),
-            "response_format".to_string(),
-            "timestamp_granularities[]".to_string(),
-            "timestamp_granularities[]".to_string(),
-            "temperature".to_string(),
-        ],
+        vec!["metadata".to_string(), "audio".to_string()],
     );
 }
 
 #[test]
 fn managed_stt_uses_canonical_product_boundary_for_self_hosted_backends() {
-    let preview = build_managed_stt_request_preview(
-        FixvoxCloudConfig {
-            backend_base_url: "http://127.0.0.1:8788".to_string(),
-            device_id: Some("dev_test_1234567890abcdef".to_string()),
-        },
-        ManagedSttInput {
-            audio_file_name: "capture.wav".to_string(),
-            model: "server-owned".to_string(),
-            language: Some("es".to_string()),
-            prompt: None,
-        },
-    )
+    let preview = build_managed_stt_request_preview(FixvoxCloudConfig {
+        backend_base_url: "http://127.0.0.1:8788".to_string(),
+        device_id: Some("dev_test_1234567890abcdef".to_string()),
+    })
     .expect("self-hosted managed STT preview should be constructable without network");
 
     assert_eq!(

@@ -50,6 +50,8 @@ pub struct UserPreferences {
     pub mute_output_during_recording: bool,
     #[serde(default)]
     pub dictation_sound_cues_enabled: bool,
+    #[serde(default = "default_enhance_low_volume_enabled")]
+    pub enhance_low_volume_enabled: bool,
 }
 
 #[tauri::command]
@@ -75,6 +77,7 @@ pub fn set_user_preferences(
         auto_stop_silence_ms: normalize_auto_stop_silence_ms(preferences.auto_stop_silence_ms),
         mute_output_during_recording: preferences.mute_output_during_recording,
         dictation_sound_cues_enabled: preferences.dictation_sound_cues_enabled,
+        enhance_low_volume_enabled: preferences.enhance_low_volume_enabled,
     };
     let path = preferences_path(&app).map_err(|error| error.to_string())?;
     if let Some(parent) = path.parent() {
@@ -126,6 +129,7 @@ pub fn default_user_preferences() -> UserPreferences {
         auto_stop_silence_ms: default_auto_stop_silence_ms(),
         mute_output_during_recording: false,
         dictation_sound_cues_enabled: false,
+        enhance_low_volume_enabled: default_enhance_low_volume_enabled(),
     }
 }
 
@@ -139,6 +143,10 @@ fn default_follow_focus_until_delivery() -> bool {
 
 fn default_auto_stop_silence_ms() -> u64 {
     1_200
+}
+
+fn default_enhance_low_volume_enabled() -> bool {
+    true
 }
 
 fn normalize_auto_stop_silence_ms(value: u64) -> u64 {
@@ -163,6 +171,14 @@ mod tests {
         assert_eq!(defaults.auto_stop_silence_ms, 1_200);
         assert!(!defaults.mute_output_during_recording);
         assert!(!defaults.dictation_sound_cues_enabled);
+        assert!(defaults.enhance_low_volume_enabled);
+    }
+
+    #[test]
+    fn older_preferences_enable_low_volume_enhancement_by_default() {
+        let parsed: UserPreferences =
+            serde_json::from_str(r#"{"schemaVersion":1}"#).expect("legacy preferences should load");
+        assert!(parsed.enhance_low_volume_enabled);
     }
 
     #[test]

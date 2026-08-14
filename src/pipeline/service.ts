@@ -310,6 +310,8 @@ export class PipelineService {
         transcript: transcription.text,
         latencyMs: transcription.latencyMs,
         stt: transcription.stt,
+        audioTelemetry: transcription.audioTelemetry,
+        postProcess: transcription.postProcess,
       },
     });
 

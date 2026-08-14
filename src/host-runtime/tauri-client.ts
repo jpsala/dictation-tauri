@@ -41,6 +41,7 @@ function createSafeTranscriptionPayload(
     ...(request.provider === undefined ? {} : { provider: request.provider }),
     ...(request.model === undefined ? {} : { model: request.model }),
     ...(request.language === undefined ? {} : { language: request.language }),
+    ...(request.evaluationRecipeId === undefined ? {} : { evaluationRecipeId: request.evaluationRecipeId }),
     mode: request.mode,
     allowProviderCall: request.allowProviderCall,
     ...(request.postProcess === undefined ? {} : { postProcess: request.postProcess }),

@@ -21,6 +21,7 @@ describe("user preference contracts", () => {
       autoStopSilenceMs: defaultAutoStopSilenceMs,
       muteOutputDuringRecording: false,
       dictationSoundCuesEnabled: false,
+      enhanceLowVolumeEnabled: true,
     });
   });
 
@@ -51,6 +52,7 @@ describe("user preference contracts", () => {
       autoStopSilenceMs: defaultAutoStopSilenceMs,
       muteOutputDuringRecording: false,
       dictationSoundCuesEnabled: false,
+      enhanceLowVolumeEnabled: true,
     });
   });
 

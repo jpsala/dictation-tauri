@@ -49,6 +49,9 @@ test("resets settings content scroll when switching rail sections", async ({ pag
   const content = page.locator(".settings-content");
   await expect(content).toBeVisible();
   await page.getByRole("button", { name: /Dictado/ }).click();
+  await expect(
+    page.getByRole("switch", { name: "Mejorar grabaciones con volumen bajo" }),
+  ).toBeChecked();
   await content.evaluate((element) => {
     const owner = element as HTMLElement;
     owner.style.overflowY = "auto";

@@ -4,6 +4,20 @@ Registro corto de decisiones durables.
 
 ## Aprobadas
 
+### 2026-08-12 - Specs cerradas son referencia, no contexto activo
+
+Estado: accepted
+
+Decision: `docs/.generated/context-index.md` identifica como `active` sólo la
+spec elegida por `.specify/feature.json` cuando su estado no está cerrado. Las
+demás specs se etiquetan `historical`. Al cerrar una spec se limpia el selector;
+la lista histórica permanece recuperable sin presentarse como trabajo vigente.
+
+Motivo: el índice anterior enumeraba las 19 specs bajo un único heading y
+`.specify/feature.json` seguía apuntando a la Spec 018 completa. Eso podía hacer
+que apuntes de planificación antiguos pareciesen instrucciones activas aunque
+`WORKING_MEMORY.md` declaraba el foco completo.
+
 ### 2026-07-16 - Producto primero para la arquitectura self-hosted
 
 Estado: accepted

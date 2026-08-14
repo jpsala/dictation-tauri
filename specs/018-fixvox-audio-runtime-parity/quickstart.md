@@ -8,6 +8,21 @@ npm run build
 cd src-tauri && cargo check
 ```
 
+Low-volume enhancement is host-owned and enabled by default. It is a no-op at
+or above `-48 dBFS` RMS. Below that threshold it targets `-34 dBFS`, caps gain
+at `+18 dB`, and preserves at least `-6 dBFS` peak headroom before the MP3
+upload is encoded. The Dictation setting can disable it.
+When gain is actually applied, the dock shows a passive `Mejorado +N dB`
+notice for 3.5 seconds. Skipped and fallback outcomes do not show it.
+
+Focused provider-free verification:
+
+```powershell
+cd src-tauri
+cargo test low_level_normalization --lib
+cargo test audio_prep_applies_gain_only_to_low_level_speech_when_enabled --lib
+```
+
 ## Expected Gated Smokes
 
 Run only when the relevant side effects are approved:

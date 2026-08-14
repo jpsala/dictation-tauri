@@ -5,6 +5,8 @@ import {
   DEFAULT_V2_VOICE_POST_PROCESS_PROMPT,
   buildFixvoxManagedSpeechRequestPreview,
   buildRawVoicePostProcessSystemPrompt,
+  detectProsodyPauses,
+  formatProsodyHints,
   materializeFixvoxNormalDictationOutput,
   resolveDictationRuntimePlanFromPolicyCache,
   resolveEffectiveFixvoxVoiceRuntime,
@@ -59,6 +61,23 @@ describe("Fixvox text runtime regressions", () => {
     expect(light).toContain("Use the smallest safe edit");
     expect(strong).toContain("Cleanup level: strong.");
     expect(strong).toContain("You may lightly normalize email, Slack, notes, and task-list formatting");
+  });
+
+  it("derives bounded advisory prosody hints from valid word timings", () => {
+    const words = [
+      { word: "seguimos", start: 0, end: 0.4 },
+      { word: "ahora", start: 0.4, end: 1.7 },
+      { word: "tema", start: 1.7, end: 4 },
+      { word: "", start: 4, end: 5 },
+    ];
+    expect(detectProsodyPauses(words)).toEqual([
+      { afterWord: "ahora", afterWordIndex: 1, pauseMs: 800, suggestedPunctuation: "period", confidence: "medium" },
+      { afterWord: "tema", afterWordIndex: 2, pauseMs: 1900, suggestedPunctuation: "paragraph", confidence: "high" },
+    ]);
+    const hints = formatProsodyHints(words);
+    expect(hints).toContain('After "ahora": ~800ms');
+    expect(hints).toContain("advisory only");
+    expect(formatProsodyHints([])).toContain("No reliable pause signal");
   });
 
   it("pins prompt clauses for Spanish punctuation, corrections, fillers, and technical identifiers", () => {

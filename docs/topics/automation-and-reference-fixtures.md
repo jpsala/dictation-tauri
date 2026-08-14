@@ -18,6 +18,8 @@ primary_refs:
   - docs/DECISIONS.md
   - docs/topics/product-direction.md
   - docs/topics/privacy-and-dictation-data.md
+  - docs/topics/transcription-quality-and-evaluation.md
+  - docs/tracks/transcription-quality-program.md
   - docs/tracks/mvp-and-reference-resources.md
 ---
 

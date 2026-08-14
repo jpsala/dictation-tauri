@@ -19,6 +19,8 @@ primary_refs:
   - docs/topics/product-direction.md
   - docs/topics/backend-and-model-routing.md
   - docs/topics/automation-and-reference-fixtures.md
+  - docs/topics/transcription-quality-and-evaluation.md
+  - docs/tracks/transcription-quality-program.md
 ---
 
 # Mapa De Proyectos Fuente
@@ -191,25 +193,35 @@ No traer todavia salvo que sea dependencia directa de dictado normal:
 
 ### Benchmarks STT/Postprocess
 
-Estado: `adapt` desde Fixvox.
+Estado actualizado 2026-08-12: `adapt-process` desde Fixvox dentro del programa
+activo `docs/tracks/transcription-quality-program.md`.
 
-Implementar harness propio:
+El harness debe reutilizar el contrato y aprendizaje de Fixvox sin copiar su
+runtime desktop legacy. Debe comparar por separado audio prep, STT raw,
+materialización, postprocess, prosodia, filtros y vocabulario sobre el mismo
+audio.
 
-- frases de benchmark sinteticas;
-- prompts STT y postprocess como fixtures;
-- salida JSON con latencia, costo estimado, provider/model y texto esperado;
-- logs redacted;
-- uso local de `.env` permitido en dev.
+Recursos fuente prioritarios:
 
-Recursos fuente utiles:
-
+- `C:\dev\fixvox\scripts\run-voice-benchmark-matrix.ts`;
+- `C:\dev\fixvox\docs\reference\ops\voice-reference-manifest.yaml`;
 - `C:\dev\fixvox\docs\reference\ops\tts-benchmark-phrases.txt`;
 - matrices `voice-benchmark-matrix.*.json`;
-- prompts en `voice-benchmark-prompts\`.
+- prompts en `voice-benchmark-prompts\`;
+- decisiones y resultados en
+  `docs/navigation/topics/voice-postprocess-models/`.
 
-Regla:
+Reglas vigentes:
 
-- se pueden usar muestras humanas locales como referencia, pero no copiarlas al repo sin decision explicita.
+- manifests y gold sintéticos/no sensibles pueden versionarse;
+- audio humano, transcripts y provider payloads quedan locales salvo decisión
+  explícita;
+- muestras humanas de Fixvox se inventarían y clasifican antes de reutilizarse;
+- cada corrida registra provider/modelo/prompt, audio, latencia, costo, raw,
+  final, fallback y scores por dimensión;
+- TTS permite regresión determinista, pero no basta para promover calidad;
+- la metodología durable vive en
+  `docs/topics/transcription-quality-and-evaluation.md`.
 
 ### ModelGateway Y Managed Cloud
 

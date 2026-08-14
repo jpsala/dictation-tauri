@@ -23,6 +23,7 @@ export type UserPreferences = {
   autoStopSilenceMs: number;
   muteOutputDuringRecording: boolean;
   dictationSoundCuesEnabled: boolean;
+  enhanceLowVolumeEnabled: boolean;
 };
 
 export const minAutoStopSilenceMs = 500;
@@ -51,6 +52,7 @@ export const defaultUserPreferences: UserPreferences = {
   autoStopSilenceMs: defaultAutoStopSilenceMs,
   muteOutputDuringRecording: false,
   dictationSoundCuesEnabled: false,
+  enhanceLowVolumeEnabled: true,
 };
 
 export function normalizeAutoStopSilenceMs(value: number): number {

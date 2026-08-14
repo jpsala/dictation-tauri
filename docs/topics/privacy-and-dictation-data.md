@@ -52,13 +52,30 @@ El asistente puede leer y usar `.env`, variables locales, logs, audio, transcrip
 
 La companion muestra `Clear history`; la accion borra el archivo local completo mediante `clear_result_history`. No borra presets, configuracion, cuentas ni datos Cloud. Presets/configuracion tienen ciclo de vida propio y permanecen hasta editar, resetear o borrar explicitamente.
 
+### Artifacts De Calidad De Transcripción
+
+Decisión inicial del Transcription Quality Program:
+
+- manifest/gold sintético no sensible y schemas pueden versionarse;
+- audio/gold/raw/final humano y provider payloads quedan locales/gitignored por
+  referencia;
+- summaries portables contienen sólo IDs, categorías, hashes, lengths, métricas
+  y estados;
+- retención inicial `manual-delete`, sin upload automático;
+- `Clear history` no borra `artifacts/transcription-quality/`.
+
+El contrato y próximo corte viven en
+`docs/reference/transcription-quality-fixvox-inventory.md` y
+`docs/tracks/transcription-quality-program.md`.
+
 ## Pendiente
 
 Registrar decisiones sobre:
 
 - motor local o externo;
 - rutas de datos locales;
-- que artifacts se versionan, ignoran o quedan en app data;
+- ciclo de vida definitivo de artifacts más allá de la retención inicial
+  `manual-delete`;
 - logs utiles para desarrollo;
 - modo debug;
 - exportacion y retencion de otros artifacts fuera de result history.

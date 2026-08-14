@@ -11,6 +11,7 @@ import {
   describeDeveloperDeliveryStatus,
   formatDesktopRecoveryAction,
   getReviewCopyLabel,
+  getAudioEnhancementNotice,
   getTranscriptReview,
   markPersistentPresetRuntimeResult,
   mapPipelineEvidenceToDesktopEvidence,
@@ -27,6 +28,38 @@ import {
 } from "../../src/pipeline/ui-result";
 import type { SelectionContext } from "../../src/selection-transform";
 
+
+describe("audio enhancement dock notice", () => {
+  const summary = (status: string, gainDb?: string): SimulatedRunSummary => ({
+    runId: "gain-notice-run",
+    fixtureId: "microphone",
+    inputKind: "microphone",
+    events: [],
+    states: ["done"],
+    terminalState: "done",
+    durationMs: 100,
+    runtimeTelemetryStages: [{
+      stage: "audio-prep",
+      status: "ok",
+      audio: {
+        levelNormalization: {
+          status,
+          reason: status === "applied" ? "low_input_level" : "level_sufficient",
+          gainDb,
+        },
+      },
+      redacted: true,
+    }],
+  });
+
+  it("shows only an applied low-level gain", () => {
+    expect(getAudioEnhancementNotice(summary("applied", "16.0"))).toBe(
+      "Mejorado +16 dB",
+    );
+    expect(getAudioEnhancementNotice(summary("skipped"))).toBeUndefined();
+    expect(getAudioEnhancementNotice(undefined)).toBeUndefined();
+  });
+});
 describe("App delivery fallback", () => {
   it("formats controller recovery actions for the shared recovery line", () => {
     expect(

@@ -55,6 +55,62 @@ Mejorar `wispr-flow` por comparación visual iterativa sin alterar `classic-7`, 
 - Validación física completada por JP en la PC afectada con el prerelease publicado: el dock vuelve a cruzar correctamente entre el monitor inferior al 100% y el superior al 150%; ya no aparece por milisegundos ni queda invisible.
 - Estado: batch mixed-DPI cerrado. Guardrail durable: no fusionar el movimiento position-only y el resize/refresh en un único `SetWindowPos`; el comentario nativo, el test Rust de transición de escala y el contrato host Vitest protegen esa secuencia.
 
+## Feedback De Uso Y Conversación Visual — 2026-08-13
+
+Estado: primer prototipo aplicado en dev; pendiente de feedback visual de JP.
+
+- `compact-5` prioriza mínima intrusión, pero el glow/gradiente de los puntos
+  pierde nitidez a esta escala, los estados compactos se distinguen poco y los
+  controles activos se perciben como elementos separados en vez de un único
+  instrumento.
+- JP observa que, después de algún cambio de estado cercano al fin de la
+  grabación, el dock puede quedar más arriba que la posición inferior elegida.
+  Hay que identificar la transición exacta y conservar el ancla visual, no sólo
+  las coordenadas de la ventana transparente.
+- Primer prototipo: el contenido de `compact-5` baja `4px` dentro del shell y
+  el margen inferior nativo pasa de `8px` a `0px`, sin invadir todavía el
+  rectángulo de la barra de tareas.
+- JP quiere poder arrastrar el dock más abajo y evaluar si puede ocupar la zona
+  de la barra de tareas de Windows. Separar dos objetivos: acercar visualmente el
+  contenido a la barra sin solaparla, y permitir solapamiento real con la barra.
+- La implementación actual usa el work area del monitor, que excluye la barra
+  de tareas, y clampa toda posición arrastrada dentro de esa área. También usa
+  `HWND_TOPMOST`; eso garantiza precedencia sobre ventanas no-topmost, pero no
+  una precedencia estable sobre otra superficie topmost como la barra de tareas.
+- Sugerencias a conservar para la discusión: reducir blur/glow, dar siluetas más
+  distinguibles a idle/listening/processing, unificar puntos y acciones en una
+  superficie común y revisar la semántica visual de check/enter/cancel.
+- Primer prototipo rechazado por JP: las cápsulas negras de idle y recording
+  producían bloques sobredimensionados, tocaban visualmente la taskbar y hacían
+  que iconos y puntos parecieran pequeños y desbalanceados. No conservar esa
+  dirección visual.
+- La posición compacta se recuerda por monitor antes de expandir el shell y se
+  restaura al volver desde processing/review/error; evita que el clamp del panel
+  expandido eleve permanentemente el launcher.
+- Segundo prototipo: conserva sólo la corrección geométrica y elimina ambas
+  cápsulas. Idle vuelve a cinco puntos flotantes, ahora planos y con glow corto;
+  recording vuelve a acciones independientes, restaura el check verde y alinea
+  los glifos hacia abajo. El offset visible de idle baja de `4px` a `1px` para
+  recuperar aire sobre la taskbar sin perder la posición inferior del shell.
+- Verificación local del segundo prototipo: contratos UI `17/17`, build correcto
+  y smoke físico idle → `Alt+Space` recording → `Escape` idle. La posición
+  permaneció en `y=1019`; no hubo transcripción ni llamada a provider.
+- Corrección confirmada por comparación antes/después: trasladar
+  `.voice-dock__main` no movía el VU relativo como se había inferido; la captura
+  anterior seguía mostrando el grupo en `x≈66`, pegado a `Stop & submit`. El
+  offset se aplica ahora directamente a `.voice-dock__status` durante
+  arming/recording. Captura posterior del Tauri real muestra el grupo en `x≈79`,
+  centrado entre `Stop & submit` (`x≈41`) y `Cancel` (`x≈117`). Se canceló con
+  `Escape`; contrato focal `7/7` y build correctos.
+- Feedback posterior: el chip de processing seguía alto porque `.voice-dock`
+  conserva `36px` dentro del viewport nativo expandido de `84px` y
+  `.voice-panel` lo centraba verticalmente. Mover el chip a `bottom: 2px` dentro
+  de esos `36px` no corregía los `24px` externos. `compact-5` processing usa
+  ahora `align-self: end`, además del `bottom: 2px` del chip. Verificación de
+  layout en la superficie real del frontend: viewport bottom `544`, dock bottom
+  `544`, chip bottom `542`; queda exactamente `2px` por encima del borde
+  inferior. Contratos UI `17/17` y build correctos.
+
 ## Batch 1 — Wispr Flow Visual Refinement
 
 1. Capturar idle, hover, recording y processing del Tauri real sin mover ni rediseñar otras skins.

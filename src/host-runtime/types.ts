@@ -30,6 +30,8 @@ export type HostPostProcessPolicy = {
   source?: string | null;
   policyId?: string | null;
   voiceRoutingProfileId?: string | null;
+  experimentRecipeId?: string | null;
+  experimentRecipeVersion?: string | null;
 };
 
 export type HostTranscriptionRequest = {
@@ -38,6 +40,7 @@ export type HostTranscriptionRequest = {
   provider?: HostRuntimeProvider;
   model?: string;
   language?: string;
+  evaluationRecipeId?: string;
   mode: HostRuntimeMode;
   allowProviderCall: boolean;
   postProcess?: HostPostProcessPolicy;
@@ -53,6 +56,9 @@ export type HostAudioPrepEvidence = {
   compressionRatio?: string;
   optimizationStatus?: "skipped" | "applied" | "fallback" | string;
   optimizationReason?: string;
+  levelNormalizationStatus?: "skipped" | "applied" | "fallback" | string;
+  levelNormalizationReason?: string;
+  levelNormalizationGainDb?: string;
   audioDurationMs: number;
   voiceActivity: {
     durationMs: number;
@@ -141,6 +147,8 @@ export type HostPostProcessEvidence = {
   source?: string | null;
   policyId?: string | null;
   voiceRoutingProfileId?: string | null;
+  experimentRecipeId?: string | null;
+  experimentRecipeVersion?: string | null;
   sanitizedChanged?: boolean;
   sanitizerReason?: "final_marker" | "explanation_marker" | "too_long" | null;
   fallbackToRaw: boolean;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getAudioEnhancementNotice,
   getRuntimeRecoveryAction,
   getTranscriptReview,
 } from "../../src/App";
@@ -24,6 +25,46 @@ describe("createHostClientTranscriptionAdapter", () => {
       latencyMs: 42,
       requestId: "req_redacted_007",
       redacted: true,
+      audioPrep: {
+        originalBytes: 1_000,
+        uploadBytes: 400,
+        uploadMimeType: "audio/mpeg",
+        uploadSource: "ffmpeg-mp3",
+        uploadFileName: "recording.mp3",
+        compressionMs: 80,
+        compressionRatio: "0.4000",
+        optimizationStatus: "applied",
+        optimizationReason: "optimized_audio_smaller",
+        levelNormalizationStatus: "applied",
+        levelNormalizationReason: "low_input_level",
+        levelNormalizationGainDb: "14.7",
+        audioDurationMs: 3_000,
+        voiceActivity: {
+          durationMs: 3_000,
+          frameCount: 60,
+          voicedFrameCount: 45,
+          voicedMs: 2_250,
+          rmsPpm: 3_000,
+          peakPpm: 55_000,
+          hasSpeech: true,
+        },
+        redacted: true,
+      },
+      postProcess: {
+        enabled: true,
+        ran: true,
+        source: "dictation-experiment-session",
+        policyId: null,
+        voiceRoutingProfileId: null,
+        experimentRecipeId: "daily-safe-cleanup-v1",
+        experimentRecipeVersion: "v1",
+        sanitizedChanged: false,
+        sanitizerReason: null,
+        fallbackToRaw: false,
+        rawTranscriptLength: 26,
+        finalTextLength: 26,
+        redacted: true,
+      },
     });
 
     const summary = await createHostClientPipeline(client).run(
@@ -45,6 +86,16 @@ describe("createHostClientTranscriptionAdapter", () => {
       latencyMs: 42,
       requestId: "req_redacted_007",
     });
+    expect(getAudioEnhancementNotice(summary)).toBe("Mejorado +14.7 dB");
+    expect(summary.runtimeTelemetryStages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "postprocess",
+        status: "ok",
+        recipeId: "daily-safe-cleanup-v1",
+        recipeVersion: "v1",
+        source: "dictation-experiment-session",
+      }),
+    ]));
     expect(requests).toEqual([
       expect.objectContaining({
         runId: "host-client-adapter-run",

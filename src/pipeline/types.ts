@@ -95,6 +95,9 @@ export type RuntimeTelemetryStage = {
   promptId?: string;
   model?: string;
   provider?: string;
+  recipeId?: string;
+  recipeVersion?: string;
+  source?: string;
   audio?: {
     durationMs?: number;
     originalBytes?: number;
@@ -102,6 +105,11 @@ export type RuntimeTelemetryStage = {
     mimeType?: string;
     source?: string;
     compressionRatio?: string;
+    levelNormalization?: {
+      status: string;
+      reason: string;
+      gainDb?: string;
+    };
     voiceActivity?: {
       durationMs: number;
       voicedMs: number;
@@ -161,6 +169,15 @@ export type MockTranscriptionResult =
         mode: "mock" | "dry-run" | "real";
         audioPath?: string;
         requestId?: string;
+      };
+      audioTelemetry?: RuntimeTelemetryStage["audio"];
+      postProcess?: {
+        enabled: boolean;
+        ran: boolean;
+        fallbackToRaw: boolean;
+        recipeId?: string;
+        recipeVersion?: string;
+        source?: string;
       };
       error?: never;
     }
@@ -222,6 +239,15 @@ export type TranscriptionCompletedEvent = {
       mode: "mock" | "dry-run" | "real";
       audioPath?: string;
       requestId?: string;
+    };
+    audioTelemetry?: RuntimeTelemetryStage["audio"];
+    postProcess?: {
+      enabled: boolean;
+      ran: boolean;
+      fallbackToRaw: boolean;
+      recipeId?: string;
+      recipeVersion?: string;
+      source?: string;
     };
   };
 };

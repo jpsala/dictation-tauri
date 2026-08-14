@@ -434,6 +434,11 @@ function createHostRuntimeTelemetryStages(
         mimeType: response.audioPrep.uploadMimeType,
         source: response.audioPrep.uploadSource,
         compressionRatio: response.audioPrep.compressionRatio,
+        levelNormalization: {
+          status: response.audioPrep.levelNormalizationStatus ?? "skipped",
+          reason: response.audioPrep.levelNormalizationReason ?? "not_reported",
+          gainDb: response.audioPrep.levelNormalizationGainDb,
+        },
         voiceActivity: response.audioPrep.voiceActivity,
       },
       redacted: true,

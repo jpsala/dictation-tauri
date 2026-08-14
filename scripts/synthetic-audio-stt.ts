@@ -19,8 +19,12 @@ import type {
   SimulatedRunSummary,
   TranscriptionCompletedEvent,
 } from "../src/pipeline/types";
+import { runProviderFreeTranscriptionQuality } from "./transcription-quality-provider-free";
 
-type PlaceholderMode = "fixture-check" | "stt-dry-run";
+type PlaceholderMode =
+  | "fixture-check"
+  | "stt-dry-run"
+  | "quality-provider-free";
 
 export type SyntheticSttReport = {
   reportId: string;
@@ -81,12 +85,16 @@ function readMode(): PlaceholderMode {
   const modeIndex = args.indexOf("--mode");
   const mode = modeIndex >= 0 ? args[modeIndex + 1] : undefined;
 
-  if (mode === "fixture-check" || mode === "stt-dry-run") {
+  if (
+    mode === "fixture-check" ||
+    mode === "stt-dry-run" ||
+    mode === "quality-provider-free"
+  ) {
     return mode;
   }
 
   console.error(
-    "Usage: bun scripts/synthetic-audio-stt.ts --mode <fixture-check|stt-dry-run> --dry-run",
+    "Usage: bun scripts/synthetic-audio-stt.ts --mode <fixture-check|stt-dry-run|quality-provider-free> --dry-run",
   );
   process.exit(2);
 }
@@ -295,7 +303,11 @@ async function main() {
 
   const mode = readMode();
   const result =
-    mode === "fixture-check" ? createFixtureCheckResult() : await runSttDryRun();
+    mode === "fixture-check"
+      ? createFixtureCheckResult()
+      : mode === "stt-dry-run"
+        ? await runSttDryRun()
+        : await runProviderFreeTranscriptionQuality();
 
   console.log(JSON.stringify(result, null, 2));
 }

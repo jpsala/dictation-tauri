@@ -121,6 +121,25 @@ describe("VoiceDock UI", () => {
     expect(html).toContain("Assistant mode available");
   });
 
+  it("renders a passive transient audio enhancement notice", () => {
+    const { html } = renderDock(
+      createVoiceDockState({ state: "idle" }),
+    );
+    const enhancedHtml = renderToStaticMarkup(
+      <VoiceDock
+        state={createVoiceDockState({ state: "idle" })}
+        audioEnhancementNotice="Mejorado +16 dB"
+        onCommand={vi.fn()}
+      />,
+    );
+
+    expect(html).not.toContain('data-testid="voice-dock-audio-enhancement"');
+    expect(enhancedHtml).toContain('data-testid="voice-dock-audio-enhancement"');
+    expect(enhancedHtml).toContain('role="status"');
+    expect(enhancedHtml).toContain("Mejorado +16 dB");
+    expect(countNeedles(enhancedHtml, "<button")).toBe(1);
+  });
+
   it("renders review state copy and safe recovery actions without overclaiming insertion", () => {
     const { html } = renderDock(
       createVoiceDockState(

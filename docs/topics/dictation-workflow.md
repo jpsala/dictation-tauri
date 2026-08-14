@@ -14,6 +14,8 @@ primary_refs:
   - docs/topics/product-direction.md
   - docs/topics/privacy-and-dictation-data.md
   - docs/topics/automation-and-reference-fixtures.md
+  - docs/topics/transcription-quality-and-evaluation.md
+  - docs/tracks/transcription-quality-program.md
   - docs/topics/fixvox-dock-and-hotkeys-reference.md
 ---
 
@@ -45,20 +47,21 @@ Estado 2026-06-25 (`013` completo): `src/fixvox-text-runtime` contiene los primi
 
 Estado 2026-07-11 (`018` completo): audio runtime parity cubre VAD/no-speech local, auto-stop por silencio, optimización MP3/fallback, preferencias de mute-output/sound cues y stage telemetry redacted para capture/audio-prep/STT/postprocess/delivery. Audio prep comprime cuando `originalBytes >= 160_000`, prefiere FFmpeg 7.1.1 empaquetado junto al ejecutable, conserva fallback a `PATH`/WAV y en Windows usa `CREATE_NO_WINDOW`. Los reports host-owned surfacean `runtimeTelemetryStages` + `runtimeTelemetrySummary` con metadata concisa y sin raw transcript/audio.
 
-Correccion 2026-06-29: `013` cerro parity de primitivos y materializacion, pero no garantiza parity del **runtime efectivo**. En la maquina de JP, Fixvox real resuelve desde policy/cache `pro`: STT `groq/whisper-large-v3-turbo`, prompt tecnico de transcripcion y `enableRawPostProcess=false`. Dictation Tauri todavia puede caer a `whisper-large-v3`, no envia todos los campos Fixvox del request STT y fuerza postprocess desde React. Por lo tanto, hasta completar `docs/tracks/fixvox-effective-runtime-parity.md`, no afirmar que el flujo real Tauri trabaja igual que Fixvox.
+Diagnostico 2026-08-12: parity de componentes no garantiza calidad ni runtime
+efectivo. El contrato `product-v1` actual persiste profile/actions en una forma
+que el resolver Rust legacy no usa para decidir postprocess; reportes locales
+recientes muestran postprocess disabled. La frontera server-owned tambien reduce
+la respuesta STT a texto, perdiendo words/segments para prosodia y no-speech, y
+el prompt builtin puede ser mas corto que el prompt tecnico Fixvox. La
+investigacion, baseline y reparaciones pasan al programa activo
+`docs/tracks/transcription-quality-program.md`; la metodologia durable vive en
+`docs/topics/transcription-quality-and-evaluation.md`.
 
-Correccion local 2026-07-24: el boundary self-hosted materializa
-internamente el cuerpo del `promptId` seleccionado por profile y lo entrega al
-provider sin exponerlo al desktop. STT vuelve a enviar `prompt`,
-`temperature=0`, `verbose_json` y granularidades word/segment; postprocess
-reemplaza cualquier system prompt del caller por un baseline server-owned para
-puntuacion, preguntas en español, correcciones habladas, fillers y terminos
-tecnicos, seguido del prompt administrable. Tests unitarios y PostgreSQL cubren
-el request upstream y la materializacion. Release productiva
-`89750e99f55f7d01`: health/readiness local y publico 200, context 200,
-`NRestarts=0`; rollback inmediato `e835f7f678b528c8`. Como PostgreSQL
-productivo no contiene filas de prompt, el runtime usa el fallback code-owned
-Fixvox-compatible sin exponer prompts ni transcript al desktop.
+Cierre historico 2026-07-24: el boundary self-hosted materializo internamente
+prompt, `temperature=0`, `verbose_json` y granularidades word/segment hacia el
+provider, y agrego un baseline server-owned de postprocess. Es evidencia de la
+intencion y del contrato probado entonces, no prueba suficiente del runtime
+efectivo actual despues del cutover `product-v1`.
 
 Validacion 2026-06-25: el flujo fue probado con CUA visible y con TTS local controlado. Managed STT + postprocess y el runtime real Tauri/Rust pasaron casos redacted de fillers/correcciones, identificadores tecnicos y pregunta neutral con signos `¿...?` cuando STT reconoce la pregunta. Caveat durable: una frase TTS mexicana con forma argentina `sentis` no reconocio `como/sentis` en STT; el postprocess no debe inventar una pregunta si la transcripcion no conserva suficiente señal. Para robustecer ese caso, investigar STT language/prompt/prosody o fixtures de voz humana antes de cambiar el sanitizer.
 

@@ -26,7 +26,7 @@ pub const WISPR_IDLE_DOCK_HEIGHT: i32 = 32;
 pub const WISPR_RECORDING_DOCK_WIDTH: i32 = 125;
 pub const WISPR_RECORDING_DOCK_HEIGHT: i32 = 36;
 pub const DOCK_WINDOW_MARGIN: i32 = 16;
-pub const DOCK_BOTTOM_MARGIN: i32 = 8;
+pub const DOCK_BOTTOM_MARGIN: i32 = 0;
 pub const LEGACY_DOCK_POSITION_FILE: &str = "dock-position.v1.json";
 pub const DOCK_POSITION_FILE: &str = "dock-positions.v2.json";
 const DOCK_MONITOR_POLL_INTERVAL: Duration = Duration::from_millis(180);
@@ -36,6 +36,8 @@ static LAST_DOCK_STATE: Mutex<DockShellState> = Mutex::new(DockShellState::Idle)
 static LAST_DOCK_SKIN: Mutex<DockSkinId> = Mutex::new(DockSkinId::Compact5);
 static LAST_IDLE_MONITOR_KEY: Mutex<Option<String>> = Mutex::new(None);
 static DOCK_MONITOR_WATCHER: Once = Once::new();
+static LAST_COMPACT_DOCK_POSITIONS: Mutex<BTreeMap<String, DockPosition>> =
+    Mutex::new(BTreeMap::new());
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DockWorkArea {
@@ -288,19 +290,29 @@ fn resolve_state_position<R: Runtime>(
     skin: DockSkinId,
 ) -> Result<DockPosition, Box<dyn Error>> {
     let work_area = resolve_work_area(app, window)?;
+    let work_area_key = monitor_key(&work_area);
     let current_position = window.outer_position()?;
     let current_size = window.outer_size()?;
+    let current_position = DockPosition {
+        x: current_position.x,
+        y: current_position.y,
+    };
+    let metrics = dock_layout_metrics(scale_factor, skin);
+    let current_is_compact = current_size.width as i32 == metrics.compact_width
+        && current_size.height as i32 == metrics.compact_height;
 
-    Ok(calculate_centered_bottom_resize_position_with_metrics(
-        DockPosition {
-            x: current_position.x,
-            y: current_position.y,
-        },
+    if current_is_compact {
+        remember_compact_dock_position(&work_area_key, current_position);
+    }
+
+    Ok(calculate_state_resize_position(
+        current_position,
         current_size.width as i32,
         current_size.height as i32,
         next_layout,
         work_area,
-        dock_layout_metrics(scale_factor, skin),
+        metrics,
+        remembered_compact_dock_position(&work_area_key),
     ))
 }
 
@@ -485,6 +497,18 @@ fn last_idle_monitor_key() -> Option<String> {
         .lock()
         .ok()
         .and_then(|stored_key| stored_key.clone())
+}
+fn remember_compact_dock_position(key: &str, position: DockPosition) {
+    if let Ok(mut positions) = LAST_COMPACT_DOCK_POSITIONS.lock() {
+        positions.insert(key.to_string(), position);
+    }
+}
+
+fn remembered_compact_dock_position(key: &str) -> Option<DockPosition> {
+    LAST_COMPACT_DOCK_POSITIONS
+        .lock()
+        .ok()
+        .and_then(|positions| positions.get(key).copied())
 }
 
 fn start_dock_monitor_watcher<R: Runtime>(app: &AppHandle<R>) {
@@ -737,6 +761,26 @@ fn calculate_centered_bottom_resize_position_with_metrics(
     work_area: DockWorkArea,
     metrics: DockLayoutMetrics,
 ) -> DockPosition {
+    calculate_state_resize_position(
+        current_position,
+        current_width,
+        current_height,
+        next_layout,
+        work_area,
+        metrics,
+        None,
+    )
+}
+
+fn calculate_state_resize_position(
+    current_position: DockPosition,
+    current_width: i32,
+    current_height: i32,
+    next_layout: DockShellLayout,
+    work_area: DockWorkArea,
+    metrics: DockLayoutMetrics,
+    remembered_compact_position: Option<DockPosition>,
+) -> DockPosition {
     let current_layout = DockShellLayout {
         width: current_width,
         height: current_height,
@@ -753,6 +797,16 @@ fn calculate_centered_bottom_resize_position_with_metrics(
             );
         }
         return clamp_dock_position(current_position, work_area, next_layout);
+    }
+
+    let next_is_compact =
+        next_layout.width == metrics.compact_width && next_layout.height == metrics.compact_height;
+    let current_is_compact =
+        current_width == metrics.compact_width && current_height == metrics.compact_height;
+    if next_is_compact && !current_is_compact {
+        if let Some(position) = remembered_compact_position {
+            return clamp_dock_position(position, work_area, next_layout);
+        }
     }
 
     let current_content_offset_x = (current_width - metrics.compact_width).max(0) / 2;
@@ -1060,7 +1114,7 @@ mod tests {
                 },
                 dock_shell_layout(DockShellState::Idle),
             ),
-            DockPosition { x: 878, y: 1030 }
+            DockPosition { x: 878, y: 1038 }
         );
     }
 
@@ -1076,7 +1130,7 @@ mod tests {
                 },
                 dock_shell_layout(DockShellState::Idle),
             ),
-            DockPosition { x: -722, y: 954 }
+            DockPosition { x: -722, y: 962 }
         );
     }
 
@@ -1113,7 +1167,7 @@ mod tests {
                 },
                 dock_shell_layout(DockShellState::Idle),
             ),
-            DockPosition { x: 16, y: 1030 }
+            DockPosition { x: 16, y: 1038 }
         );
     }
 
@@ -1231,7 +1285,7 @@ mod tests {
                     height: 1080,
                 },
             ),
-            DockPosition { x: 878, y: 1030 }
+            DockPosition { x: 878, y: 1038 }
         );
     }
 
@@ -1275,7 +1329,7 @@ mod tests {
                 },
                 scale_dock_shell_layout(dock_shell_layout(DockShellState::Idle), 1.5),
             ),
-            DockPosition { x: 837, y: 969 }
+            DockPosition { x: 837, y: 977 }
         );
     }
 
@@ -1294,7 +1348,7 @@ mod tests {
                     height: 1080,
                 },
             ),
-            DockPosition { x: 830, y: 982 }
+            DockPosition { x: 830, y: 990 }
         );
     }
 
@@ -1313,7 +1367,32 @@ mod tests {
                     height: 1080,
                 },
             ),
-            DockPosition { x: 830, y: 982 }
+            DockPosition { x: 830, y: 990 }
+        );
+    }
+
+    #[test]
+    fn compact_layout_restores_its_visual_anchor_after_expanded_state() {
+        let work_area = DockWorkArea {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        let compact_layout = dock_shell_layout_for_skin(DockShellState::Idle, DockSkinId::Compact5);
+        let metrics = dock_layout_metrics(1.0, DockSkinId::Compact5);
+
+        assert_eq!(
+            calculate_state_resize_position(
+                DockPosition { x: 814, y: 990 },
+                260,
+                90,
+                compact_layout,
+                work_area,
+                metrics,
+                Some(DockPosition { x: 878, y: 1044 }),
+            ),
+            DockPosition { x: 878, y: 1044 }
         );
     }
 

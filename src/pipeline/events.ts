@@ -229,6 +229,9 @@ function deriveRuntimeTelemetryStages(input: {
   }
 
   const artifact = input.capture?.artifact;
+  const transcriptionEvent = [...input.events].reverse().find(
+    (event) => event.type === "transcription_completed",
+  );
   if (input.capture) {
     stages.push(createRuntimeTelemetryStage({
       stage: "audio-prep",
@@ -240,12 +243,17 @@ function deriveRuntimeTelemetryStages(input: {
         mimeType: artifact?.mimeType ?? input.capture.mimeType,
         source: input.capture.source,
         voiceActivity: input.capture.localSpeechDecision?.voiceActivity,
+        ...(
+          transcriptionEvent?.type === "transcription_completed"
+            ? transcriptionEvent.data.audioTelemetry
+            : undefined
+        ),
       },
       redacted: true,
     }));
   }
 
-  const transcriptionEvent = [...input.events].reverse().find((event) => event.type === "transcription_completed");
+
   if (transcriptionEvent?.type === "transcription_completed") {
     stages.push(createRuntimeTelemetryStage({
       stage: "stt",
@@ -265,10 +273,20 @@ function deriveRuntimeTelemetryStages(input: {
   }
 
   if (transcriptionEvent?.type === "transcription_completed") {
+    const postProcess = transcriptionEvent.data.postProcess;
     stages.push(createRuntimeTelemetryStage({
       stage: "postprocess",
-      status: "skipped",
-      reason: "postprocess_telemetry_not_available",
+      status: !postProcess?.enabled
+        ? "skipped"
+        : postProcess.ran
+          ? postProcess.fallbackToRaw ? "fallback" : "ok"
+          : "skipped",
+      reason: postProcess
+        ? postProcess.fallbackToRaw ? "fallback_to_raw" : postProcess.ran ? "completed" : "disabled"
+        : "postprocess_telemetry_not_available",
+      recipeId: postProcess?.recipeId,
+      recipeVersion: postProcess?.recipeVersion,
+      source: postProcess?.source,
       redacted: true,
     }));
   }

@@ -53,6 +53,19 @@ export function createDryRunModelGateway(
         };
       }
 
+      if (fixture.expectedText === undefined) {
+        return {
+          status: "setup-error",
+          error: createRedactedModelGatewayError(
+            "EXPECTED_TEXT_NOT_AVAILABLE",
+            "Dry-run model gateway only supports non-sensitive fixtures with inline expected text.",
+          ),
+          provider,
+          model,
+          latencyMs,
+        };
+      }
+
       return {
         status: "ok",
         text: fixture.expectedText,

@@ -46,6 +46,32 @@ export function mapHostTranscriptionResponse(
         mode: "dry-run",
         requestId: response.requestId,
       },
+      audioTelemetry: response.audioPrep
+        ? {
+          durationMs: response.audioPrep.audioDurationMs,
+          originalBytes: response.audioPrep.originalBytes,
+          uploadBytes: response.audioPrep.uploadBytes,
+          mimeType: response.audioPrep.uploadMimeType,
+          source: response.audioPrep.uploadSource,
+          compressionRatio: response.audioPrep.compressionRatio,
+          levelNormalization: {
+            status: response.audioPrep.levelNormalizationStatus ?? "skipped",
+            reason: response.audioPrep.levelNormalizationReason ?? "not_reported",
+            gainDb: response.audioPrep.levelNormalizationGainDb,
+          },
+          voiceActivity: response.audioPrep.voiceActivity,
+        }
+        : undefined,
+      postProcess: response.postProcess
+        ? {
+          enabled: response.postProcess.enabled,
+          ran: response.postProcess.ran,
+          fallbackToRaw: response.postProcess.fallbackToRaw,
+          recipeId: response.postProcess.experimentRecipeId ?? undefined,
+          recipeVersion: response.postProcess.experimentRecipeVersion ?? undefined,
+          source: response.postProcess.source ?? undefined,
+        }
+        : undefined,
     };
   }
 

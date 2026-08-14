@@ -1,7 +1,7 @@
 /// <reference path="../types/node-shims.d.ts" />
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 const root = process.cwd();
 const outputPath = join(root, "docs", ".generated", "context-index.md");
@@ -13,6 +13,21 @@ function exists(path: string) {
 function read(path: string) {
   return readFileSync(join(root, path), "utf8");
 }
+
+function configuredActiveSpecPath(): string | undefined {
+  if (!exists(".specify/feature.json")) return undefined;
+  try {
+    const config = JSON.parse(read(".specify/feature.json")) as {
+      feature_directory?: unknown;
+    };
+    return typeof config.feature_directory === "string" && config.feature_directory.trim()
+      ? resolve(root, config.feature_directory)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 
 function frontmatter(content: string) {
   return content.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] ?? "";
@@ -115,12 +130,23 @@ lines.push("", "## Specs", "");
 if (exists("specs")) {
   const specs = readdirSync(join(root, "specs"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
-  if (specs.length) {
-    for (const spec of specs) lines.push(`- [${spec}](../../specs/${spec}/)`);
-  } else {
-    lines.push("- No active spec directories found.");
+    .map((entry) => ({
+      name: entry.name,
+      path: resolve(root, "specs", entry.name),
+      closed: exists(`specs/${entry.name}/spec.md`)
+        ? /^(complete|completed|stable|superseded|archived)\b/.test(
+          read(`specs/${entry.name}/spec.md`)
+            .match(/^\*\*Status\*\*:\s*(.+)$/mi)?.[1]?.trim().toLowerCase() ?? "",
+        )
+        : false,
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const configuredPath = configuredActiveSpecPath();
+  const activeSpec = specs.find((spec) => spec.path === configuredPath && !spec.closed);
+  if (activeSpec) lines.push(`- active: [${activeSpec.name}](../../specs/${activeSpec.name}/)`);
+  else lines.push("- No active spec directories found.");
+  for (const spec of specs.filter((spec) => spec !== activeSpec)) {
+    lines.push(`- historical: [${spec.name}](../../specs/${spec.name}/)`);
   }
 } else {
   lines.push("- Missing specs/");

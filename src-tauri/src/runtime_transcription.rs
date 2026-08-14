@@ -9,9 +9,10 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use crate::fixvox_cloud;
+use crate::{fixvox_cloud, user_preferences::read_user_preferences_for_app};
 use reqwest::header;
 use serde::{Deserialize, Serialize};
+use tauri::AppHandle;
 
 const ARTIFACT_ROOT: &str = "artifacts/microphone-capture";
 const AUDIO_ROOT: &str = "artifacts/microphone-capture/audio/";
@@ -28,6 +29,10 @@ const VAD_MIN_VOICED_MS: u64 = 150;
 const VAD_RMS_THRESHOLD: f64 = 0.002;
 const VAD_PEAK_THRESHOLD: f64 = 0.006;
 const AUDIO_COMPRESSION_MIN_BYTES: usize = 160_000;
+const LOW_LEVEL_RMS_THRESHOLD_PPM: u64 = 3_981;
+const LOW_LEVEL_TARGET_RMS_DBFS: f64 = -34.0;
+const LOW_LEVEL_PEAK_CEILING_DBFS: f64 = -6.0;
+const LOW_LEVEL_MAX_GAIN_DB: f64 = 18.0;
 const POST_STT_NO_SPEECH_THRESHOLD: f64 = 0.85;
 const POST_STT_WEAK_NO_SPEECH_THRESHOLD: f64 = 0.7;
 const POST_STT_LOW_LOGPROB_THRESHOLD: f64 = -1.0;
@@ -60,15 +65,16 @@ pub struct HostRuntimeReadiness {
 
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct HostTranscriptionRequest {
-    run_id: String,
-    audio_path: String,
-    provider: Option<String>,
-    model: Option<String>,
-    language: Option<String>,
-    mode: String,
-    allow_provider_call: bool,
-    post_process: Option<HostPostProcessPolicy>,
+pub(crate) struct HostTranscriptionRequest {
+    pub(crate) run_id: String,
+    pub(crate) audio_path: String,
+    pub(crate) provider: Option<String>,
+    pub(crate) model: Option<String>,
+    pub(crate) language: Option<String>,
+    pub(crate) evaluation_recipe_id: Option<String>,
+    pub(crate) mode: String,
+    pub(crate) allow_provider_call: bool,
+    pub(crate) post_process: Option<HostPostProcessPolicy>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -130,14 +136,16 @@ pub type HostAssistantChatResponse = HostSelectionTransformResponse;
 
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-struct HostPostProcessPolicy {
-    enabled: bool,
-    prompt: Option<String>,
-    provider: Option<String>,
-    model: Option<String>,
-    source: Option<String>,
-    policy_id: Option<String>,
-    voice_routing_profile_id: Option<String>,
+pub(crate) struct HostPostProcessPolicy {
+    pub(crate) enabled: bool,
+    pub(crate) prompt: Option<String>,
+    pub(crate) provider: Option<String>,
+    pub(crate) model: Option<String>,
+    pub(crate) source: Option<String>,
+    pub(crate) policy_id: Option<String>,
+    pub(crate) voice_routing_profile_id: Option<String>,
+    pub(crate) experiment_recipe_id: Option<String>,
+    pub(crate) experiment_recipe_version: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -176,6 +184,10 @@ pub struct HostPostProcessEvidence {
     policy_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     voice_routing_profile_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    experiment_recipe_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    experiment_recipe_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sanitized_changed: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -251,6 +263,10 @@ pub struct HostAudioPrepEvidence {
     voice_activity: HostVoiceActivityEvidence,
     #[serde(skip_serializing_if = "Option::is_none")]
     no_speech_reason: Option<String>,
+    level_normalization_status: String,
+    level_normalization_reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    level_normalization_gain_db: Option<String>,
     redacted: bool,
 }
 
@@ -297,6 +313,9 @@ struct SpeechUploadPayload {
     optimization_reason: &'static str,
     voice_activity: HostVoiceActivityEvidence,
     audio_duration_ms: u64,
+    level_normalization_status: &'static str,
+    level_normalization_reason: &'static str,
+    level_normalization_gain_db: Option<String>,
 }
 
 impl SpeechUploadPayload {
@@ -314,6 +333,9 @@ impl SpeechUploadPayload {
             audio_duration_ms: self.audio_duration_ms,
             voice_activity: self.voice_activity.clone(),
             no_speech_reason,
+            level_normalization_status: self.level_normalization_status.to_string(),
+            level_normalization_reason: self.level_normalization_reason.to_string(),
+            level_normalization_gain_db: self.level_normalization_gain_db.clone(),
             redacted: true,
         }
     }
@@ -534,10 +556,28 @@ pub fn get_runtime_transcription_readiness() -> HostRuntimeReadiness {
 
 #[tauri::command]
 pub async fn transcribe_captured_audio(
+    app: AppHandle,
     request: HostTranscriptionRequest,
 ) -> HostTranscriptionResponse {
+    let (request, applied_experiment) =
+        crate::dictation_experiments::apply_dictation_experiment(request);
     if request.mode == "real" && request.allow_provider_call {
-        return transcribe_captured_audio_with_provider_call(request, &read_host_env_value).await;
+        let enhance_low_volume_enabled =
+            read_user_preferences_for_app(&app).enhance_low_volume_enabled;
+        let response = transcribe_captured_audio_with_provider_call(
+            request,
+            &read_host_env_value,
+            enhance_low_volume_enabled,
+        )
+        .await;
+        let attempted = matches!(
+            &response,
+            HostTranscriptionResponse::Ok { .. }
+                | HostTranscriptionResponse::ProviderError { .. }
+                | HostTranscriptionResponse::Empty { .. }
+        );
+        crate::dictation_experiments::complete_dictation_experiment(applied_experiment, attempted);
+        return response;
     }
 
     transcribe_captured_audio_without_provider_call(request, &read_host_env_value)
@@ -1061,6 +1101,7 @@ fn prewarm_transcription_request() -> HostTranscriptionRequest {
         provider: None,
         model: None,
         language: None,
+        evaluation_recipe_id: None,
         mode: "real".to_string(),
         allow_provider_call: true,
         post_process: None,
@@ -1253,6 +1294,7 @@ fn transcribe_captured_audio_without_provider_call(
 async fn transcribe_captured_audio_with_provider_call(
     request: HostTranscriptionRequest,
     env_lookup: &(dyn Fn(&str) -> Option<String> + Sync),
+    enhance_low_volume_enabled: bool,
 ) -> HostTranscriptionResponse {
     if let Err(validation_error) = validate_audio_path(&request.audio_path) {
         return HostTranscriptionResponse::MissingAudio {
@@ -1397,8 +1439,21 @@ async fn transcribe_captured_audio_with_provider_call(
         }
     };
 
-    let upload_payload = prepare_speech_upload_payload(Path::new(&audio_file_path), audio);
+    let upload_payload = prepare_speech_upload_payload(
+        Path::new(&audio_file_path),
+        audio,
+        enhance_low_volume_enabled,
+    );
     let audio_prep = upload_payload.evidence(None);
+    eprintln!(
+        "[dictation-tauri][audio-prep] run_id={} low_level_status={} reason={} gain_db={} rms_ppm={} peak_ppm={}",
+        request.run_id,
+        audio_prep.level_normalization_status,
+        audio_prep.level_normalization_reason,
+        audio_prep.level_normalization_gain_db.as_deref().unwrap_or("none"),
+        audio_prep.voice_activity.rms_ppm,
+        audio_prep.voice_activity.peak_ppm,
+    );
     if !upload_payload.voice_activity.has_speech {
         let response = HostTranscriptionResponse::Empty {
             error: error("NO_SPEECH_DETECTED", "No speech detected in recording."),
@@ -1758,6 +1813,8 @@ fn resolve_dictation_runtime_plan_from_policy_json(
             }),
             policy_id,
             voice_routing_profile_id,
+            experiment_recipe_id: None,
+            experiment_recipe_version: None,
         },
     }
 }
@@ -1787,6 +1844,8 @@ fn fallback_dictation_runtime_plan(policy_id: Option<String>) -> DictationRuntim
             source: Some("disabled".to_string()),
             policy_id,
             voice_routing_profile_id,
+            experiment_recipe_id: None,
+            experiment_recipe_version: None,
         },
     }
 }
@@ -1920,11 +1979,78 @@ fn resolve_ffmpeg_executable() -> PathBuf {
     PathBuf::from("ffmpeg")
 }
 
-fn prepare_speech_upload_payload(audio_file_path: &Path, audio: Vec<u8>) -> SpeechUploadPayload {
+#[derive(Clone, Debug, PartialEq)]
+struct LevelNormalizationPlan {
+    gain_db: Option<f64>,
+    status: &'static str,
+    reason: &'static str,
+}
+
+fn resolve_level_normalization(
+    enabled: bool,
+    voice_activity: &HostVoiceActivityEvidence,
+) -> LevelNormalizationPlan {
+    if !enabled {
+        return LevelNormalizationPlan {
+            gain_db: None,
+            status: "skipped",
+            reason: "preference_disabled",
+        };
+    }
+    if !voice_activity.has_speech {
+        return LevelNormalizationPlan {
+            gain_db: None,
+            status: "skipped",
+            reason: "no_speech",
+        };
+    }
+    if voice_activity.rms_ppm == 0 || voice_activity.peak_ppm == 0 {
+        return LevelNormalizationPlan {
+            gain_db: None,
+            status: "skipped",
+            reason: "level_unavailable",
+        };
+    }
+    if voice_activity.rms_ppm >= LOW_LEVEL_RMS_THRESHOLD_PPM {
+        return LevelNormalizationPlan {
+            gain_db: None,
+            status: "skipped",
+            reason: "level_sufficient",
+        };
+    }
+
+    let rms_dbfs = 20.0 * (voice_activity.rms_ppm as f64 / 1_000_000.0).log10();
+    let peak_dbfs = 20.0 * (voice_activity.peak_ppm as f64 / 1_000_000.0).log10();
+    let gain_db = (LOW_LEVEL_TARGET_RMS_DBFS - rms_dbfs)
+        .min(LOW_LEVEL_PEAK_CEILING_DBFS - peak_dbfs)
+        .min(LOW_LEVEL_MAX_GAIN_DB)
+        .max(0.0);
+    if gain_db < 0.5 {
+        return LevelNormalizationPlan {
+            gain_db: None,
+            status: "skipped",
+            reason: "peak_headroom_insufficient",
+        };
+    }
+
+    LevelNormalizationPlan {
+        gain_db: Some(gain_db),
+        status: "candidate",
+        reason: "low_input_level",
+    }
+}
+
+fn prepare_speech_upload_payload(
+    audio_file_path: &Path,
+    audio: Vec<u8>,
+    enhance_low_volume_enabled: bool,
+) -> SpeechUploadPayload {
     let original_bytes = audio.len();
     let voice_activity = analyze_wav_voice_activity(&audio);
     let audio_duration_ms = voice_activity.duration_ms;
-    if original_bytes < AUDIO_COMPRESSION_MIN_BYTES {
+    let level_normalization =
+        resolve_level_normalization(enhance_low_volume_enabled, &voice_activity);
+    if original_bytes < AUDIO_COMPRESSION_MIN_BYTES && level_normalization.gain_db.is_none() {
         return SpeechUploadPayload {
             bytes: audio,
             mime_type: "audio/wav",
@@ -1937,6 +2063,9 @@ fn prepare_speech_upload_payload(audio_file_path: &Path, audio: Vec<u8>) -> Spee
             optimization_reason: "below_optimization_threshold",
             voice_activity,
             audio_duration_ms,
+            level_normalization_status: level_normalization.status,
+            level_normalization_reason: level_normalization.reason,
+            level_normalization_gain_db: None,
         };
     }
 
@@ -1956,7 +2085,11 @@ fn prepare_speech_upload_payload(audio_file_path: &Path, audio: Vec<u8>) -> Spee
         .arg("-loglevel")
         .arg("error")
         .arg("-i")
-        .arg(audio_file_path)
+        .arg(audio_file_path);
+    if let Some(gain_db) = level_normalization.gain_db {
+        ffmpeg.arg("-af").arg(format!("volume={gain_db:.1}dB"));
+    }
+    ffmpeg
         .arg("-ac")
         .arg("1")
         .arg("-ar")
@@ -1992,6 +2125,15 @@ fn prepare_speech_upload_payload(audio_file_path: &Path, audio: Vec<u8>) -> Spee
                         optimization_reason: "optimized_audio_smaller",
                         voice_activity,
                         audio_duration_ms,
+                        level_normalization_status: if level_normalization.gain_db.is_some() {
+                            "applied"
+                        } else {
+                            level_normalization.status
+                        },
+                        level_normalization_reason: level_normalization.reason,
+                        level_normalization_gain_db: level_normalization
+                            .gain_db
+                            .map(|gain_db| format!("{gain_db:.1}")),
                     };
                 }
             }
@@ -2011,6 +2153,17 @@ fn prepare_speech_upload_payload(audio_file_path: &Path, audio: Vec<u8>) -> Spee
         optimization_reason: "conversion_failed_original_audio_used",
         voice_activity,
         audio_duration_ms,
+        level_normalization_status: if level_normalization.gain_db.is_some() {
+            "fallback"
+        } else {
+            level_normalization.status
+        },
+        level_normalization_reason: if level_normalization.gain_db.is_some() {
+            "conversion_failed_original_audio_used"
+        } else {
+            level_normalization.reason
+        },
+        level_normalization_gain_db: None,
     }
 }
 
@@ -2889,33 +3042,25 @@ async fn transcribe_fixvox_managed_audio(
 ) -> ProviderTranscriptionOutcome {
     let started_at = Instant::now();
     let file_name = upload_payload.file_name.clone();
-    let preview = match fixvox_cloud::build_managed_stt_request_preview(
-        fixvox_cloud::FixvoxCloudConfig {
+    let preview =
+        match fixvox_cloud::build_managed_stt_request_preview(fixvox_cloud::FixvoxCloudConfig {
             backend_base_url: config.backend_base_url.clone(),
             device_id: Some(config.device_id.clone()),
-        },
-        fixvox_cloud::ManagedSttInput {
-            audio_file_name: file_name.clone(),
-            model: config.model.clone(),
-            language: config.language.clone(),
-            prompt: config.stt_prompt.clone(),
-        },
-    ) {
-        Ok(preview) => preview,
-        Err(reason) => {
-            return ProviderTranscriptionOutcome::ProviderError {
-                code: reason.code,
-                message: reason.message,
-                provider: Some(config.provider),
-                model: Some(config.model),
-                latency_ms: Some(elapsed_ms(started_at)),
-                request_id: None,
-                fixvox_metadata: None,
-            };
-        }
-    };
+        }) {
+            Ok(preview) => preview,
+            Err(reason) => {
+                return ProviderTranscriptionOutcome::ProviderError {
+                    code: reason.code,
+                    message: reason.message,
+                    provider: Some(config.provider),
+                    model: Some(config.model),
+                    latency_ms: Some(elapsed_ms(started_at)),
+                    request_id: None,
+                    fixvox_metadata: None,
+                };
+            }
+        };
 
-    let legacy_cloudflare_transport = preview.endpoint.ends_with("/v1/audio/transcriptions");
     let file_part = match reqwest::multipart::Part::bytes(upload_payload.bytes)
         .file_name(file_name)
         .mime_str(upload_payload.mime_type)
@@ -2933,34 +3078,17 @@ async fn transcribe_fixvox_managed_audio(
             };
         }
     };
-    let form = if legacy_cloudflare_transport {
-        let mut form = reqwest::multipart::Form::new()
-            .text("model", config.model.clone())
-            .part("file", file_part);
-        if let Some(language) = config
-            .language
-            .clone()
-            .filter(|value| !value.eq_ignore_ascii_case("auto"))
-        {
-            form = form.text("language", language);
-        }
-        if let Some(prompt) = config.stt_prompt.clone() {
-            form = form.text("prompt", prompt);
-        }
-        form.text("response_format", "verbose_json")
-            .text("timestamp_granularities[]", "word")
-            .text("timestamp_granularities[]", "segment")
-            .text("temperature", "0")
-    } else {
-        let metadata = serde_json::json!({
-            "operationId": request.run_id.trim(),
-            "durationMs": 0,
-            "language": config.language.clone().filter(|value| !value.eq_ignore_ascii_case("auto"))
-        });
-        reqwest::multipart::Form::new()
-            .text("metadata", metadata.to_string())
-            .part("audio", file_part)
-    };
+    let mut metadata = serde_json::json!({
+        "operationId": request.run_id.trim(),
+        "durationMs": upload_payload.audio_duration_ms,
+        "language": config.language.clone().filter(|value| !value.eq_ignore_ascii_case("auto"))
+    });
+    if let Some(evaluation_recipe_id) = request.evaluation_recipe_id.as_ref() {
+        metadata["evaluationRecipeId"] = serde_json::Value::String(evaluation_recipe_id.clone());
+    }
+    let form = reqwest::multipart::Form::new()
+        .text("metadata", metadata.to_string())
+        .part("audio", file_part);
 
     let client = match fixvox_cloud::fixvox_http_client() {
         Ok(client) => client,
@@ -3092,13 +3220,7 @@ async fn transcribe_fixvox_managed_audio(
     let no_speech_probability =
         average_segment_number(parsed_segments.as_deref(), "no_speech_prob");
     let average_log_probability = average_segment_number(parsed_segments.as_deref(), "avg_logprob");
-    let resolved_model = parsed.model.unwrap_or_else(|| {
-        if legacy_cloudflare_transport {
-            config.model.clone()
-        } else {
-            "server-owned".to_string()
-        }
-    });
+    let resolved_model = parsed.model.unwrap_or_else(|| "server-owned".to_string());
     if let Some(reason) = should_discard_provider_no_speech(
         &parsed.text,
         no_speech_probability,
@@ -3162,6 +3284,14 @@ async fn apply_fixvox_managed_postprocess(
                 .map(|value| redact_host_text(&value)),
             voice_routing_profile_id: policy
                 .voice_routing_profile_id
+                .clone()
+                .map(|value| redact_host_text(&value)),
+            experiment_recipe_id: policy
+                .experiment_recipe_id
+                .clone()
+                .map(|value| redact_host_text(&value)),
+            experiment_recipe_version: policy
+                .experiment_recipe_version
                 .clone()
                 .map(|value| redact_host_text(&value)),
             sanitized_changed,
@@ -3369,7 +3499,7 @@ fn sanitize_raw_voice_postprocess_output(
         return SanitizedPostProcessOutput {
             text: String::new(),
             changed: false,
-            reason: None,
+            reason: Some("empty_provider_text".to_string()),
         };
     }
 
@@ -3379,7 +3509,7 @@ fn sanitize_raw_voice_postprocess_output(
             return SanitizedPostProcessOutput {
                 text,
                 changed: true,
-                reason: Some("final_marker".to_string()),
+                reason: Some("trailing_hallucination_removed".to_string()),
             };
         }
     }
@@ -3400,18 +3530,23 @@ fn sanitize_raw_voice_postprocess_output(
         return SanitizedPostProcessOutput {
             text: transcript.trim().to_string(),
             changed: true,
-            reason: Some(if looks_like_explanation {
-                "explanation_marker".to_string()
-            } else {
-                "too_long".to_string()
-            }),
+            reason: Some("complete_hallucination".to_string()),
+        };
+    }
+
+    let normalized = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized != raw {
+        return SanitizedPostProcessOutput {
+            text: normalized,
+            changed: true,
+            reason: Some("whitespace_normalized".to_string()),
         };
     }
 
     SanitizedPostProcessOutput {
         text: raw.to_string(),
         changed: false,
-        reason: None,
+        reason: Some("provider_text_kept".to_string()),
     }
 }
 
@@ -4484,6 +4619,8 @@ mod tests {
             source: Some("test".to_string()),
             policy_id: Some("dictation-basic-without-llm".to_string()),
             voice_routing_profile_id: None,
+            experiment_recipe_id: None,
+            experiment_recipe_version: None,
         });
         let state = fixvox_cloud::FixvoxDeviceState {
             install_id: "install_postprocess_denied".to_string(),
@@ -4614,6 +4751,7 @@ mod tests {
                 provider: None,
                 model: None,
                 language: None,
+                evaluation_recipe_id: None,
                 mode: "real".to_string(),
                 allow_provider_call: false,
                 post_process: None,
@@ -4965,9 +5103,65 @@ mod tests {
     }
 
     #[test]
+    fn low_level_normalization_is_selective_and_bounded() {
+        let low_input = HostVoiceActivityEvidence {
+            duration_ms: 16_120,
+            frame_count: 323,
+            voiced_frame_count: 283,
+            voiced_ms: 14_150,
+            rms_ppm: 3_170,
+            peak_ppm: 63_568,
+            has_speech: true,
+        };
+        let plan = resolve_level_normalization(true, &low_input);
+        assert_eq!(plan.status, "candidate");
+        assert_eq!(plan.reason, "low_input_level");
+        assert!((plan.gain_db.unwrap() - 16.0).abs() < 0.1);
+
+        let sufficient_input = HostVoiceActivityEvidence {
+            rms_ppm: 5_704,
+            peak_ppm: 70_404,
+            ..low_input.clone()
+        };
+        assert_eq!(
+            resolve_level_normalization(true, &sufficient_input),
+            LevelNormalizationPlan {
+                gain_db: None,
+                status: "skipped",
+                reason: "level_sufficient",
+            }
+        );
+        assert_eq!(
+            resolve_level_normalization(false, &low_input),
+            LevelNormalizationPlan {
+                gain_db: None,
+                status: "skipped",
+                reason: "preference_disabled",
+            }
+        );
+    }
+
+    #[test]
+    fn low_level_normalization_respects_peak_headroom() {
+        let peak_limited = HostVoiceActivityEvidence {
+            duration_ms: 1_000,
+            frame_count: 20,
+            voiced_frame_count: 20,
+            voiced_ms: 1_000,
+            rms_ppm: 1_000,
+            peak_ppm: 300_000,
+            has_speech: true,
+        };
+        let gain_db = resolve_level_normalization(true, &peak_limited)
+            .gain_db
+            .expect("low input should receive bounded gain");
+        assert!((gain_db - 4.46).abs() < 0.1);
+    }
+
+    #[test]
     fn audio_prep_keeps_short_wav_and_records_redacted_evidence() {
         let wav = create_test_wav_bytes(1_000, 0.008);
-        let payload = prepare_speech_upload_payload(Path::new("recording.wav"), wav);
+        let payload = prepare_speech_upload_payload(Path::new("recording.wav"), wav, false);
         let evidence = payload.evidence(None);
 
         assert_eq!(payload.source, "wav");
@@ -4978,6 +5172,9 @@ mod tests {
         assert_eq!(evidence.optimization_status, "skipped");
         assert_eq!(evidence.optimization_reason, "below_optimization_threshold");
         assert_eq!(evidence.audio_duration_ms, 1_000);
+        assert_eq!(evidence.level_normalization_status, "skipped");
+        assert_eq!(evidence.level_normalization_reason, "preference_disabled");
+        assert_eq!(evidence.level_normalization_gain_db, None);
         assert!(evidence.voice_activity.has_speech);
         assert!(evidence.redacted);
     }
@@ -4993,7 +5190,7 @@ mod tests {
         ));
         let wav = create_test_wav_bytes(5_000, 0.02);
         fs::write(&temp_path, &wav).expect("test wav should be writable");
-        let payload = prepare_speech_upload_payload(&temp_path, wav.clone());
+        let payload = prepare_speech_upload_payload(&temp_path, wav.clone(), false);
         let _ = fs::remove_file(&temp_path);
         let _ = fs::remove_file(temp_path.with_extension("wav.stt.mp3"));
 
@@ -5013,7 +5210,7 @@ mod tests {
             current_time_ms()
         ));
         let wav = create_test_wav_bytes(5_000, 0.02);
-        let payload = prepare_speech_upload_payload(&temp_path, wav.clone());
+        let payload = prepare_speech_upload_payload(&temp_path, wav.clone(), false);
         let evidence = payload.evidence(None);
 
         assert_eq!(payload.source, "wav");
@@ -5027,6 +5224,34 @@ mod tests {
         assert_eq!(evidence.upload_bytes, evidence.original_bytes);
         assert_eq!(evidence.optimization_status, "fallback");
         assert!(evidence.redacted);
+    }
+
+    #[test]
+    fn audio_prep_applies_gain_only_to_low_level_speech_when_enabled() {
+        if Command::new("ffmpeg").arg("-version").output().is_err() {
+            return;
+        }
+        let temp_path = std::env::temp_dir().join(format!(
+            "dictation-tauri-low-level-audio-prep-{}.wav",
+            current_time_ms()
+        ));
+        let wav = create_low_level_speech_test_wav_bytes(5_000);
+        fs::write(&temp_path, &wav).expect("test wav should be writable");
+        let payload = prepare_speech_upload_payload(&temp_path, wav, true);
+        let _ = fs::remove_file(&temp_path);
+        let _ = fs::remove_file(temp_path.with_extension("wav.stt.mp3"));
+        let evidence = payload.evidence(None);
+
+        assert_eq!(payload.source, "ffmpeg-mp3");
+        assert_eq!(evidence.level_normalization_status, "applied");
+        assert_eq!(evidence.level_normalization_reason, "low_input_level");
+        let gain_db = evidence
+            .level_normalization_gain_db
+            .expect("low-level speech should report applied gain")
+            .parse::<f64>()
+            .expect("reported gain should be numeric");
+        assert!(gain_db > 10.0);
+        assert!(gain_db <= LOW_LEVEL_MAX_GAIN_DB);
     }
 
     #[test]
@@ -5170,6 +5395,24 @@ mod tests {
         bytes
     }
 
+    fn create_low_level_speech_test_wav_bytes(duration_ms: u64) -> Vec<u8> {
+        let mut bytes = create_test_wav_bytes(duration_ms, 0.0);
+        let sample_value = (0.01 * i16::MAX as f32) as i16;
+        for (index, sample) in bytes[44..].chunks_exact_mut(2).enumerate() {
+            let value = if index % 10 == 0 {
+                if (index / 10) % 2 == 0 {
+                    sample_value
+                } else {
+                    -sample_value
+                }
+            } else {
+                0
+            };
+            sample.copy_from_slice(&value.to_le_bytes());
+        }
+        bytes
+    }
+
     #[test]
     #[ignore]
     fn fixvox_audio_prep_managed_smoke_real_redacted() {
@@ -5193,6 +5436,7 @@ mod tests {
             provider: None,
             model: None,
             language: None,
+            evaluation_recipe_id: None,
             mode: "real".to_string(),
             allow_provider_call: true,
             post_process: None,
@@ -5202,9 +5446,12 @@ mod tests {
         let _ =
             tauri::async_runtime::block_on(preflight_fixvox_managed_transcription(&config, true));
         let started_at = Instant::now();
-        let response = tauri::async_runtime::block_on(
-            transcribe_captured_audio_with_provider_call(request.clone(), &read_host_env_value),
-        );
+        let response =
+            tauri::async_runtime::block_on(transcribe_captured_audio_with_provider_call(
+                request.clone(),
+                &read_host_env_value,
+                true,
+            ));
         let total_ms = elapsed_ms(started_at);
         let status = match &response {
             HostTranscriptionResponse::Ok { .. } => "ok",
@@ -5259,6 +5506,7 @@ mod tests {
             provider: None,
             model: None,
             language: None,
+            evaluation_recipe_id: None,
             mode: "real".to_string(),
             allow_provider_call: true,
             post_process: None,
