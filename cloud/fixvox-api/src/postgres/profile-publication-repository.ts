@@ -86,7 +86,7 @@ export class PostgresProfilePublicationRepository {
         input.profileId,
         profile.active_published_version,
         draft.version,
-        JSON.stringify({ authorityRevision: revision }),
+        { authorityRevision: revision },
       ]);
         return { profileId: profile.profile_id, version: draft.version, revision };
       });

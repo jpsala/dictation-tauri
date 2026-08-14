@@ -15,6 +15,11 @@ function deps(overrides: Record<string, unknown> = {}) {
       async roleForPrincipal() { return "publisher" as const; },
       async linkedPrincipals() { return { principals: [], bindings: [] }; },
     },
+    sessions: {
+      async authorizeBearer() {
+        return { capability: "publish" as const, recentGoogle: true, principalKey, role: "publisher" as const };
+      },
+    },
     profileCommands: {},
     engineCatalog: {
       async list() { return [entry]; },
@@ -30,7 +35,7 @@ function request(action: "publish" | "retire", expectedRevision = 0) {
   return new Request(`https://control-room.test/product/v1/control-room/engine-catalog/${encodeURIComponent(engineId)}/${action}`, {
     method: "POST",
     headers: {
-      authorization: "Bearer publish-key",
+      authorization: "Bearer desktop-session",
       "x-fixvox-principal-key": principalKey,
       "x-fixvox-recent-google-at": new Date().toISOString(),
       "content-type": "application/json",

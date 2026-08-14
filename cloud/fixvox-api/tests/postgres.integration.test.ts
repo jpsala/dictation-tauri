@@ -107,6 +107,41 @@ describe("PostgreSQL migration integration", () => {
         costMicrousd: 100,
       })));
       expect(reservations.filter(Boolean)).toHaveLength(12);
+      const audits = await sql.unsafe<{
+        action: string;
+        metadata: Record<string, unknown>;
+        metadata_type: string;
+      }>(
+        `SELECT action, safe_metadata AS metadata, jsonb_typeof(safe_metadata) AS metadata_type
+         FROM audit_records
+         WHERE actor_ref_hash = $1 AND action IN ('laboratory.grant.issue', 'laboratory.grant.consume')
+         ORDER BY sequence_id`,
+        [principalKey],
+      );
+      expect(audits).toEqual([
+        {
+          action: "laboratory.grant.issue",
+          metadata: {
+            schemaVersion: 1,
+            kind: "gate-a",
+            definitionHash: "a".repeat(64),
+            estimateHash: "b".repeat(64),
+            maxRequests: 12,
+            maxCostMicrousd: 5000,
+          },
+          metadata_type: "object",
+        },
+        {
+          action: "laboratory.grant.consume",
+          metadata: {
+            schemaVersion: 1,
+            kind: "gate-a",
+            definitionHash: "a".repeat(64),
+            estimateHash: "b".repeat(64),
+          },
+          metadata_type: "object",
+        },
+      ]);
     } finally {
       await sql.unsafe("DELETE FROM laboratory_executions WHERE principal_key = $1", [principalKey]);
       await sql.unsafe("DELETE FROM laboratory_execution_grants WHERE principal_key = $1", [principalKey]);

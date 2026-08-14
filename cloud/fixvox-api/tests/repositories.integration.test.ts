@@ -15,6 +15,7 @@ import {
   StaleProfileRevisionError,
 } from "../src/postgres/profile-publication-repository";
 import { PostgresProfileCommandRepository } from "../src/postgres/profile-command-repository";
+import { PostgresEngineCatalogRepository } from "../src/postgres/engine-catalog-repository";
 import { composeApi } from "../src/composition";
 import { PostgresUsageQuotaRepository } from "../src/postgres/usage-quota-repository";
 import { PostgresAdminRepository } from "../src/postgres/admin-repository";
@@ -89,6 +90,11 @@ describe("PostgreSQL control-plane repositories", () => {
     expect((unlistedPrincipalError as Error).message).toContain("listed_linked_principal_required");
     expect((await admin.setRoleBinding({ actorPrincipalKey: ownerKey, subjectPrincipalKey: candidateKey, role: "publisher" })).role).toBe("publisher");
     expect(await admin.roleForPrincipal(candidateKey)).toBe("publisher");
+    expect((await admin.setRoleBinding({ actorPrincipalKey: ownerKey, subjectPrincipalKey: candidateKey, role: "owner" })).role).toBe("owner");
+    const roleAudits = await sql.unsafe<{ metadata: Record<string, unknown>; metadata_type: string }>(
+      "SELECT safe_metadata AS metadata, jsonb_typeof(safe_metadata) AS metadata_type FROM audit_records WHERE action = 'role.set' ORDER BY sequence_id",
+    );
+    expect(roleAudits.at(-1)).toEqual({ metadata: { role: "owner" }, metadata_type: "object" });
     const audit = await admin.audit(10);
     expect(audit.some((record) => record.action === "role.set" && record.targetType === "principal")).toBe(true);
     expect(JSON.stringify(audit)).not.toContain(ownerHash);
@@ -134,6 +140,20 @@ describe("PostgreSQL control-plane repositories", () => {
     const audit = await admin.audit(10);
     expect(audit.some((record) => record.action === "account.identity.link")).toBe(true);
     expect(JSON.stringify(audit)).not.toContain(targetHash);
+    const identityAudits = await sql.unsafe<{ metadata: Record<string, unknown>; metadata_type: string }>(
+      "SELECT safe_metadata AS metadata, jsonb_typeof(safe_metadata) AS metadata_type FROM audit_records WHERE action = 'account.identity.link'",
+    );
+    expect(identityAudits).toEqual([{
+      metadata: {
+        schemaVersion: 1,
+        sourceAccountHandle: sourceHandle,
+        targetAccountHandle: targetHandle,
+        devicesUpdated: 2,
+        policyId: "pro",
+        completedAt: linked.completedAt,
+      },
+      metadata_type: "object",
+    }]);
   });
 
   test("binds installs once and rejects device rebinding", async () => {
@@ -173,6 +193,18 @@ describe("PostgreSQL control-plane repositories", () => {
       account: { accountHandle: "acct", policyId: "pro", policyLabel: "Pro" },
     });
     expect((await admin.assignAccountPolicy({ accountHandle: "acct", policyId: "pro", actorRefHash: "actor-redacted" })).idempotentReplay).toBe(true);
+    const assignmentAudits = await sql.unsafe<{ metadata: Record<string, unknown>; metadata_type: string }>(
+      "SELECT safe_metadata AS metadata, jsonb_typeof(safe_metadata) AS metadata_type FROM audit_records WHERE action = 'account.profile.assign'",
+    );
+    expect(assignmentAudits).toEqual([{
+      metadata: {
+        schemaVersion: 1,
+        profileId: "pro",
+        previousProfileId: null,
+        devicesUpdated: 1,
+      },
+      metadata_type: "object",
+    }]);
 
     expect(await repository.resolveEffectiveProfile({ deviceId: "device", fallbackProfileId: "starter" })).toEqual({
       profileId: "pro",
@@ -186,7 +218,7 @@ describe("PostgreSQL control-plane repositories", () => {
   test("materializes product profile engine and prompt routing server-side", async () => {
     const repository = new PostgresControlPlaneRepository(sql);
     const device = await repository.bindDevice({ installIdHash: "product-install", generatedDeviceId: "product-device" });
-    await sql.unsafe(`INSERT INTO engines (engine_id, kind, provider, model) VALUES ('product-stt', 'transcription', 'mock-stt', 'stt-model'), ('product-chat', 'postprocess', 'mock-chat', 'chat-model'), ('product-selection', 'selectionTransform', 'mock-selection', 'selection-model')`);
+    await sql.unsafe(`INSERT INTO engines (engine_id, kind, provider, model, provider_label, model_label) VALUES ('product-stt', 'transcription', 'mock-stt', 'stt-model', 'Mock STT', 'STT model'), ('product-chat', 'postprocess', 'mock-chat', 'chat-model', 'Mock chat', 'Chat model'), ('product-selection', 'selectionTransform', 'mock-selection', 'selection-model', 'Mock selection', 'Selection model')`);
     await sql.unsafe(`INSERT INTO prompts (prompt_id, kind, body) VALUES ('product-stt-prompt', 'transcription', 'fixture'), ('product-chat-prompt', 'postprocess', 'fixture'), ('product-selection-prompt', 'selectionTransform', 'fixture')`);
     const definition = {
       schemaVersion: 1,
@@ -225,7 +257,7 @@ describe("PostgreSQL control-plane repositories", () => {
   });
 
   test("applies and rolls back immutable product profiles with idempotent redacted receipts", async () => {
-    await sql.unsafe(`INSERT INTO engines (engine_id, kind, provider, model) VALUES ('command-stt', 'transcription', 'mock', 'stt'), ('command-chat', 'postprocess', 'mock', 'chat'), ('command-selection', 'selectionTransform', 'mock', 'selection')`);
+    await sql.unsafe(`INSERT INTO engines (engine_id, kind, provider, model, provider_label, model_label) VALUES ('command-stt', 'transcription', 'mock', 'stt', 'Mock', 'STT'), ('command-chat', 'postprocess', 'mock', 'chat', 'Mock', 'Chat'), ('command-selection', 'selectionTransform', 'mock', 'selection', 'Mock', 'Selection')`);
     const definition = {
       schemaVersion: 1, label: "Command profile",
       access: { capabilities: ["dictation", "postprocess", "selection_transform", "assistant_actions"] },
@@ -257,7 +289,7 @@ describe("PostgreSQL control-plane repositories", () => {
   });
 
   test("serves canonical profile apply and rollback through the local HTTP contract", async () => {
-    await sql.unsafe(`INSERT INTO engines (engine_id, kind, provider, model) VALUES ('http-stt', 'transcription', 'mock', 'stt'), ('http-chat', 'postprocess', 'mock', 'chat'), ('http-selection', 'selectionTransform', 'mock', 'selection')`);
+    await sql.unsafe(`INSERT INTO engines (engine_id, kind, provider, model, provider_label, model_label) VALUES ('http-stt', 'transcription', 'mock', 'stt', 'Mock', 'STT'), ('http-chat', 'postprocess', 'mock', 'chat', 'Mock', 'Chat'), ('http-selection', 'selectionTransform', 'mock', 'selection', 'Mock', 'Selection')`);
     const definition = { schemaVersion: 1, label: "HTTP profile", access: { capabilities: ["dictation", "postprocess", "selection_transform", "assistant_actions"] }, runtime: { transcription: { engineId: "http-stt" }, postprocess: { engineId: "http-chat" }, selectionTransform: { engineId: "http-selection" } }, limits: { mode: "block", quotaProfile: "pro-unlimited" }, userControls: {}, defaults: {} };
     await createPublishedProfile("http-profile", "HTTP profile", definition);
     const control = new PostgresControlPlaneRepository(sql);
@@ -266,16 +298,19 @@ describe("PostgreSQL control-plane repositories", () => {
     const accounts = await sql.unsafe<{ id: string }>(`INSERT INTO accounts (provider, provider_subject_hash, handle) VALUES ('google', $1, 'http-owner') RETURNING id::text`, [subjectHash]);
     await sql.unsafe(`UPDATE devices SET account_id = $2::uuid WHERE id = $1::uuid`, [device.id, accounts[0].id]);
     await sql.unsafe(`INSERT INTO role_bindings (account_id, role, granted_by) VALUES ($1::uuid, 'owner', 'bootstrap')`, [accounts[0].id]);
-    const principalKey = `arp_${subjectHash}`;
+    await sql.unsafe(
+      "INSERT INTO admin_sessions (session_hash, account_id, recent_auth_at, expires_at) VALUES (encode(digest('http-session', 'sha256'), 'hex'), $1::uuid, now(), now() + interval '10 minutes')",
+      [accounts[0].id],
+    );
     const api = composeApi({ FIXVOX_API_DATABASE_URL: databaseUrl, FIXVOX_API_PUBLIC_BASE_URL: "http://127.0.0.1:8790", FIXVOX_API_MOCK_PROVIDERS: "true", ADMIN_VIEW_API_KEY: "http-view", ADMIN_EDIT_API_KEY: "http-edit", ADMIN_PUBLISH_API_KEY: "http-publish" }, { logger: { info() {} } });
-    const headers = { authorization: "Bearer http-publish", "content-type": "application/json", "x-fixvox-principal-key": principalKey, "x-fixvox-recent-google-at": new Date().toISOString() };
+    const headers = { authorization: "Bearer http-session", "content-type": "application/json" };
     try {
       const profiles = await api.handler(new Request("http://127.0.0.1:8790/product/v1/control-room/profiles", { headers }));
       expect(profiles.status).toBe(200);
       const detail = await api.handler(new Request("http://127.0.0.1:8790/product/v1/control-room/profiles/http-profile", { headers }));
       expect(detail.status).toBe(200);
       expect((await detail.json()).data).toMatchObject({ profileId: "http-profile", revision: 0, activePublishedVersion: 1, versions: [{ version: 1, status: "published", authorityRevision: 0 }] });
-      const candidate = { ...definition, label: "HTTP profile v2", runtime: { transcription: { engineKey: "http-stt" }, postprocess: { engineKey: "http-chat" }, selectionTransform: { engineKey: "http-selection" } } };
+      const candidate = { ...definition, label: "HTTP profile v2" };
       const beforePreview = await sql.unsafe<{ versions: string; audits: string }>("SELECT (SELECT count(*)::text FROM profile_versions) AS versions, (SELECT count(*)::text FROM audit_records) AS audits");
       const validated = await api.handler(new Request("http://127.0.0.1:8790/product/v1/control-room/profiles/http-profile/validate", { method: "POST", headers, body: JSON.stringify({ expectedRevision: 0, definition: candidate }) }));
       expect(validated.status).toBe(200);
@@ -314,10 +349,39 @@ describe("PostgreSQL control-plane repositories", () => {
       SELECT version, status FROM profile_versions WHERE profile_id = $1::uuid ORDER BY version
     `, [profileId]);
     expect(versions).toEqual([{ version: 1, status: "historical" }, { version: 2, status: "published" }]);
-    const audits = await sql.unsafe<{ count: string }>("SELECT COUNT(*)::text AS count FROM audit_records");
-    expect(audits[0].count).toBe("1");
+    const audits = await sql.unsafe<{ metadata: Record<string, unknown>; metadata_type: string }>(
+      "SELECT safe_metadata AS metadata, jsonb_typeof(safe_metadata) AS metadata_type FROM audit_records WHERE action = 'profile.publish'",
+    );
+    expect(audits).toEqual([{ metadata: { authorityRevision: 1 }, metadata_type: "object" }]);
     await expect(repository.publish({ profileId: "custom", expectedRevision: 0, actorRefHash: "actor-hash" }))
       .rejects.toThrow(StaleProfileRevisionError);
+  });
+
+  test("stores engine catalog audit metadata as a JSONB object", async () => {
+    const repository = new PostgresEngineCatalogRepository(sql);
+    const engineId = "test:transcription:audit-metadata";
+    const occurredAt = "2026-08-14T12:00:00.000Z";
+    await repository.upsertDiscovered({
+      adapterId: "test",
+      observedAt: occurredAt,
+      engine: {
+        engineId,
+        provider: "test",
+        model: "audit-metadata",
+        providerLabel: "Test",
+        modelLabel: "Audit metadata",
+        kind: "transcription",
+        tier: "balanced",
+        supportedEfforts: [],
+        defaultEffortId: null,
+      },
+    });
+    await repository.publish({ engineId, actorRef: "actor-redacted", expectedRevision: 0, occurredAt });
+    const audits = await sql.unsafe<{ metadata: Record<string, unknown>; metadata_type: string }>(
+      "SELECT safe_metadata AS metadata, jsonb_typeof(safe_metadata) AS metadata_type FROM engine_catalog_audits WHERE engine_id = $1",
+      [engineId],
+    );
+    expect(audits).toEqual([{ metadata: { schemaVersion: 1 }, metadata_type: "object" }]);
   });
 
   test("enforces immutable profile history and append-only audit in PostgreSQL", async () => {

@@ -91,14 +91,14 @@ export class PostgresLaboratoryExecutionGrantRepository {
         [
           input.principalKey,
           rows[0]?.id ?? input.definitionHash,
-          JSON.stringify({
+          {
             schemaVersion: 1,
             kind: input.request.kind,
             definitionHash: input.definitionHash,
             estimateHash: input.estimateHash,
             maxRequests: input.maxRequests,
             maxCostMicrousd: input.maxCostMicrousd,
-          }),
+          },
         ],
       );
     });
@@ -179,12 +179,12 @@ export class PostgresLaboratoryExecutionGrantRepository {
         [
           input.principalKey,
           executions[0].id,
-          JSON.stringify({
+          {
             schemaVersion: 1,
             kind: grant.kind,
             definitionHash: grant.definition_hash,
             estimateHash: grant.estimate_hash,
-          }),
+          },
         ],
       );
       return {

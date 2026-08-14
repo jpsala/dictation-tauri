@@ -392,7 +392,7 @@ export class PostgresAdminRepository {
         await tx.unsafe(`
           INSERT INTO audit_records (actor_ref_hash, action, target_type, target_ref_hash, result, safe_metadata)
           VALUES ($1, 'account.profile.assign', 'account', encode(digest($2, 'sha256'), 'hex'), 'success', $3::jsonb)
-        `, [input.actorRefHash, accountHandle, JSON.stringify({ schemaVersion: 1, profileId: policyId, previousProfileId: current[0]?.profile_id ?? null, devicesUpdated: devices.length })]);
+        `, [input.actorRefHash, accountHandle, { schemaVersion: 1, profileId: policyId, previousProfileId: current[0]?.profile_id ?? null, devicesUpdated: devices.length }]);
       }
       return {
         ok: true as const,
@@ -457,7 +457,7 @@ export class PostgresAdminRepository {
       await tx.unsafe(`
         INSERT INTO audit_records (actor_ref_hash, action, target_type, target_ref_hash, result, safe_metadata)
         VALUES ($1, 'account.identity.link', 'account', encode(digest($2, 'sha256'), 'hex'), 'success', $3::jsonb)
-      `, [actorRefHash, targetAccountHandle, JSON.stringify(receipt)]);
+      `, [actorRefHash, targetAccountHandle, receipt]);
       return { ok: true as const, sourceAccountHandle, targetAccountHandle, devicesUpdated, policyId, completedAt, idempotentReplay: false };
     });
   }
@@ -532,7 +532,7 @@ export class PostgresAdminRepository {
       }
       await tx.unsafe(`DELETE FROM role_bindings WHERE account_id = $1::uuid`, [subjects[0].id]);
       if (input.role) await tx.unsafe(`INSERT INTO role_bindings (account_id, role, granted_by) VALUES ($1::uuid, $2, $3)`, [subjects[0].id, input.role, input.actorPrincipalKey]);
-      await tx.unsafe(`INSERT INTO audit_records (actor_ref_hash, action, target_type, target_ref_hash, result, safe_metadata) VALUES ($1, $2, 'principal', $3, 'success', $4::jsonb)`, [input.actorPrincipalKey, input.role ? "role.set" : "role.remove", input.subjectPrincipalKey, JSON.stringify({ role: input.role })]);
+      await tx.unsafe(`INSERT INTO audit_records (actor_ref_hash, action, target_type, target_ref_hash, result, safe_metadata) VALUES ($1, $2, 'principal', $3, 'success', $4::jsonb)`, [input.actorPrincipalKey, input.role ? "role.set" : "role.remove", input.subjectPrincipalKey, { role: input.role }]);
       return { ok: true, principalKey: input.subjectPrincipalKey, role: input.role, audit: { action: input.role ? "role.set" : "role.remove", result: "success" } };
     });
   }
