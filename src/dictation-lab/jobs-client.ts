@@ -39,7 +39,7 @@ export function createDictationLabJobsClient(): DictationLabJobsClient {
     },
     startJob(definition, grant) {
       requireTauri();
-      if (definition.mode === "provider-real" && !grant) {
+      if (definition.mode !== "provider-free-replay" && !grant) {
         return Promise.reject(new DictationLabJobsUnavailableError(
           "laboratory_execution_unauthorized",
           "Provider execution requires a server-owned one-shot grant.",

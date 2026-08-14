@@ -524,7 +524,7 @@ describe("PostgreSQL control-plane repositories", () => {
       role: "owner",
       recentGoogle: true,
     });
-    expect(await auth.authorizeBearer("desktop-state-hash", new Date(), "another-device")).toBeNull();
+    expect(await auth.authorizeBearer("desktop-state-hash", new Date(), "another-device")).toBe(null);
 
     const proId = await createPublishedProfile("pro", "Pro");
     await sql.unsafe("INSERT INTO policy_assignments (target_type, target_id, profile_id, priority, source) VALUES ('account', $1::uuid, $2::uuid, 30, 'test')", [accounts[0].id, proId]);

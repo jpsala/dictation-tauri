@@ -26,6 +26,7 @@ const definition: LabExperimentDefinition = {
   prosodyModes: ["off"],
   vocabularyModes: ["off"],
   baselineCandidateId: null,
+  sourceGateARunId: null,
 };
 
 const artifacts: LabArtifactIndex = {
@@ -88,6 +89,8 @@ describe("Dictation Laboratory workspace contracts", () => {
       <ExperimentWorkspace
         artifacts={{ index: artifacts, loading: false, error: "" }}
         definition={definition}
+        localReplayDefinition={definition}
+        catalogState={{ status: "available", code: null }}
         estimate={null}
         estimateLoading={false}
         estimateError=""
@@ -117,6 +120,8 @@ describe("Dictation Laboratory workspace contracts", () => {
       <ExperimentWorkspace
         artifacts={{ index: null, loading: false, error: "" }}
         definition={{ ...definition, mode: "provider-real" }}
+        localReplayDefinition={definition}
+        catalogState={{ status: "unavailable", code: "authoritative_one_shot_grant_unavailable" }}
         estimate={null}
         estimateLoading={false}
         estimateError="authoritative_one_shot_grant_unavailable"

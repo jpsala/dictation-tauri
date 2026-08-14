@@ -162,14 +162,46 @@ describe("dictation laboratory profile responses", () => {
     expect(request.request.definition).not.toHaveProperty("authorityRevision");
   });
 
-  it("rejects a session with an unknown role before loading other resources", async () => {
+  it("keeps the host-owned provider-free plan available while signed out", async () => {
     invokeMock.mockReset();
-    invokeMock.mockResolvedValueOnce({ ok: true, role: "admin", principalKey: "redacted", recentGoogle: true });
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_dictation_lab_local_plan") {
+        return Promise.resolve({
+          schemaVersion: 1,
+          mode: "provider-free-replay",
+          corpusId: "synthetic-audio-stt",
+          sampleIds: ["en-clean-note", "es-short-reminder"],
+          sttRecipes: ["provider-free-manifest-replay"],
+          materializations: ["identity"],
+          postprocessRecipes: [],
+          prosodyModes: ["off"],
+          vocabularyModes: ["off"],
+          baselineCandidateId: null,
+          sourceGateARunId: null,
+        });
+      }
+      if (command === "list_dictation_lab_gate_sources") return Promise.resolve([]);
+      return Promise.reject({ code: "SIGNED_OUT" });
+    });
+
+    const loaded = await createDictationLabClient().load();
+    expect(loaded.session).toBeNull();
+    expect(loaded.localReplay.mode).toBe("provider-free-replay");
+    expect(loaded.resources.localReplay.status).toBe("available");
+    expect(loaded.resources.catalog).toEqual({ status: "unavailable", code: "SIGNED_OUT" });
+    expect(loaded.resources.grantAuthority.status).toBe("unavailable");
+    expect(loaded.resources.publishCapability.status).toBe("unavailable");
+  });
+
+  it("rejects an unknown cloud role without suppressing independent local resource loading", async () => {
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue({ ok: true, role: "admin", principalKey: "redacted", recentGoogle: true });
 
     await expect(createDictationLabClient().load()).rejects.toMatchObject({
       code: "DICTATION_LAB_SESSION_INVALID",
     });
-    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledWith("get_dictation_lab_local_plan");
+    expect(invokeMock).toHaveBeenCalledWith("list_dictation_lab_gate_sources");
   });
 
   it("rejects responses without the canonical profiles collection", () => {

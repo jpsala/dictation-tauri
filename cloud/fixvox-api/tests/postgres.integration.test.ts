@@ -103,9 +103,37 @@ describe("PostgreSQL migration integration", () => {
         executionId: execution.execution.executionId,
         deviceId,
         definitionHash: execution.execution.definitionHash,
+        expectedKind: "gate-a",
         requests: 1,
         costMicrousd: 100,
       })));
+      const completion = {
+        schemaVersion: 1 as const,
+        kind: "gate-a" as const,
+        definitionHash: "a".repeat(64),
+        estimateHash: "b".repeat(64),
+        completedRequestCount: 12 as const,
+        rawEvidence: [
+          { sampleId: "jp-quality-bilingual-technical-20260812", candidateId: "transcription-quality-v1-short-auto" as const, sha256: "c".repeat(64), byteLength: 10 },
+          { sampleId: "jp-quality-punctuation-list-20260812", candidateId: "transcription-quality-v1-short-auto" as const, sha256: "d".repeat(64), byteLength: 20 },
+          { sampleId: "jp-quality-model-comparison-20260812", candidateId: "transcription-quality-v1-short-auto" as const, sha256: "e".repeat(64), byteLength: 30 },
+        ] as const,
+      };
+      const completed = await repository.complete({ executionId: execution.execution.executionId, principalKey, deviceId, request: completion });
+      expect(completed.ok).toBe(true);
+      const replay = await repository.complete({ executionId: execution.execution.executionId, principalKey, deviceId, request: completion });
+      expect(replay.ok && replay.data.idempotentReplay).toBe(true);
+      const completionAudits = await sql.unsafe<{ action: string; metadata: Record<string, unknown>; metadata_type: string }>(
+        `SELECT action, safe_metadata AS metadata, jsonb_typeof(safe_metadata) AS metadata_type
+         FROM audit_records WHERE actor_ref_hash = $1 AND action = 'laboratory.execution.complete'`,
+        [principalKey],
+      );
+      expect(completionAudits).toHaveLength(1);
+      expect(Object.keys(completionAudits[0].metadata).sort()).toEqual(["counts", "hashes", "kind", "refCount", "refSetHash", "reservedCost", "schemaVersion"]);
+      expect(completionAudits[0].metadata.hashes).toEqual({
+        definitionHash: "a".repeat(64),
+        estimateHash: "b".repeat(64),
+      });
       expect(reservations.filter(Boolean)).toHaveLength(12);
       const audits = await sql.unsafe<{
         action: string;
@@ -142,6 +170,27 @@ describe("PostgreSQL migration integration", () => {
           metadata_type: "object",
         },
       ]);
+      const gateBGrant = await repository.issue({
+        principalKey,
+        deviceId,
+        request: { schemaVersion: 1, kind: "gate-b", sourceGateARunId: execution.execution.executionId },
+        definitionHash: "f".repeat(64),
+        estimateHash: "e".repeat(64),
+        maxRequests: 6,
+        maxCostMicrousd: 5000,
+        expiresAt: new Date(Date.now() + 60_000),
+        sourceRunId: execution.execution.executionId,
+      });
+      const gateBExecution = await repository.consume({ grantToken: gateBGrant.grantToken, principalKey, deviceId, now: new Date() });
+      if (!gateBExecution.ok) throw new Error("gate_b_execution_missing");
+      expect(await repository.reserve({
+        executionId: gateBExecution.execution.executionId,
+        deviceId,
+        definitionHash: "f".repeat(64),
+        expectedKind: "gate-a",
+        requests: 1,
+        costMicrousd: 1,
+      })).toBe(false);
     } finally {
       await sql.unsafe("DELETE FROM laboratory_executions WHERE principal_key = $1", [principalKey]);
       await sql.unsafe("DELETE FROM laboratory_execution_grants WHERE principal_key = $1", [principalKey]);

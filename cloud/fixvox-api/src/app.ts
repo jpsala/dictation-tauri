@@ -5,6 +5,7 @@ import { buildBoundedSttMetadata, resolveEvaluationRecipe, resolvePostprocessEva
 import { evaluatePostprocessSemanticSafety } from "../../fixvox-core/src/execution/postprocess-semantic-safety.ts";
 import type { FixvoxApiConfig } from "./config.ts";
 import type { BudgetPricingPort } from "./postgres/budget-pricing-repository.ts";
+import type { BudgetLedgerPort, BudgetReserveDecision } from "../../fixvox-core/src/ports/budget-ledger.ts";
 import { createAllowlistLogger, requestId, type Logger } from "./observability.ts";
 import { limitResponseBody, type ProviderProxy } from "./providers.ts";
 import { handleAdminRoute, type AdminRouteDependencies } from "./routes/admin.ts";
@@ -500,7 +501,7 @@ async function dispatch(
       metadata.language = evaluationRecipe.language;
     }
     if (evaluationRecipe) {
-      await reserveLaboratoryEvaluation(request, deps, identity.deviceId, 416);
+      await reserveLaboratoryEvaluation(request, deps, identity.deviceId, 416, "gate-a");
     }
     const providerForm = new FormData();
     const providerMetadata = evaluationRecipe
@@ -562,7 +563,7 @@ async function dispatch(
         ? { selectedText: content, instruction, ...(text(input.presetKey) ? { presetKey: text(input.presetKey) } : {}) }
         : { utterance: content, ...(text(input.conversationSummary) ? { conversationSummary: text(input.conversationSummary) } : {}) };
     if (evaluationRecipe) {
-      await reserveLaboratoryEvaluation(request, deps, identity.deviceId, 833);
+      await reserveLaboratoryEvaluation(request, deps, identity.deviceId, 833, "gate-b");
     }
     const providerBody = {
       messages: [{ role: "system", content: `fixvox:${kind}` }, { role: "user", content: JSON.stringify(typedProviderInput) }],
@@ -690,6 +691,7 @@ async function reserveLaboratoryEvaluation(
   deps: ApiDependencies,
   deviceId: string,
   costMicrousd: number,
+  expectedKind: "gate-a" | "gate-b",
 ): Promise<void> {
   const executionId = request.headers.get("x-laboratory-execution-id")?.trim() ?? "";
   const definitionHash = request.headers.get("x-laboratory-definition-hash")?.trim() ?? "";
@@ -704,6 +706,7 @@ async function reserveLaboratoryEvaluation(
     executionId,
     deviceId,
     definitionHash,
+    expectedKind,
     requests: 1,
     costMicrousd,
   });

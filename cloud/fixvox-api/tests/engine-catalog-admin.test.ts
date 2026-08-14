@@ -1,14 +1,14 @@
 /// <reference path="../src/bun-test.d.ts" />
 
 import { describe, expect, test } from "bun:test";
-import { handleAdminRoute } from "../src/routes/admin.ts";
+import { handleAdminRoute, type AdminRouteDependencies } from "../src/routes/admin.ts";
 import { GATE_A_DEFINITION } from "../../fixvox-core/src/control-plane/evaluation-recipes.ts";
 
 const principalKey = `arp_${"a".repeat(64)}`;
 const engineId = "groq:selection:llama-3.3-70b-versatile";
 const entry = { engineId, lifecycleStatus: "candidate", availability: "available", revision: 0 };
 
-function deps(overrides: Record<string, unknown> = {}) {
+function deps(overrides: Record<string, unknown> = {}): AdminRouteDependencies {
   return {
     keys: { publish: "publish-key" },
     repository: {
@@ -28,7 +28,7 @@ function deps(overrides: Record<string, unknown> = {}) {
       async retire() { return { entry: { ...entry, lifecycleStatus: "retired", availability: "retired", revision: 1 }, audit: { action: "retire" }, idempotentReplay: false }; },
       ...overrides,
     },
-  } as never;
+  } as unknown as AdminRouteDependencies;
 }
 
 function request(action: "publish" | "retire", expectedRevision = 0) {
@@ -156,5 +156,134 @@ describe("laboratory execution authority", () => {
         bounds: { maxRequests: 12, maxCostUsd: 0.005 },
       },
     });
+  });
+
+  test("derives an exact Gate B grant from the identity-bound Gate A source", async () => {
+    const sourceExecutionId = "00000000-0000-4000-8000-000000000002";
+    let issued: Record<string, unknown> | null = null;
+    const laboratoryGrants = {
+      async gateBSource(input: Record<string, unknown>) {
+        expect(input).toEqual({
+          runId: sourceExecutionId,
+          principalKey,
+          deviceId: "device-lab",
+        });
+        return {
+          definitionHash: "a".repeat(64),
+          rawRefs: GATE_A_DEFINITION.sampleIds.map((sampleId, index) => ({
+            sampleId,
+            rawRef: `lraw_${String(index + 1).repeat(64)}`,
+          })),
+        };
+      },
+      async issue(input: Record<string, unknown>) {
+        issued = input;
+        return { grantToken: "d".repeat(64) };
+      },
+    };
+    const request = new Request(
+      "https://control-room.test/product/v1/control-room/laboratory/execution-grants",
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer desktop-session",
+          "x-device-id": "device-lab",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          schemaVersion: 1,
+          kind: "gate-b",
+          sourceGateARunId: sourceExecutionId,
+        }),
+      },
+    );
+
+    const response = await handleAdminRoute(
+      request,
+      new URL(request.url),
+      { ...deps(), sessions, laboratoryGrants } as never,
+    );
+    expect(response?.status).toBe(201);
+    expect(issued).toMatchObject({
+      principalKey,
+      deviceId: "device-lab",
+      request: {
+        schemaVersion: 1,
+        kind: "gate-b",
+        sourceGateARunId: sourceExecutionId,
+      },
+      sourceRunId: sourceExecutionId,
+      maxRequests: 6,
+      maxCostMicrousd: 5000,
+    });
+  });
+});
+
+describe("laboratory execution terminal routes", () => {
+  const sessions = {
+    async authorizeBearer() {
+      return { capability: "edit" as const, recentGoogle: false, principalKey, role: "editor" as const };
+    },
+  };
+  const executionId = "00000000-0000-4000-8000-000000000001";
+  const evidence = GATE_A_DEFINITION.sampleIds.map((sampleId, index) => ({
+    sampleId,
+    candidateId: "transcription-quality-v1-short-auto",
+    sha256: `${String.fromCharCode(97 + index)}${"a".repeat(63)}`,
+    byteLength: index + 1,
+  }));
+  function routeDeps(overrides: Record<string, unknown> = {}) {
+    return {
+      ...deps(),
+      sessions,
+      laboratoryGrants: {
+        async complete(input: Record<string, unknown>) {
+          return { ok: true, data: { executionId: input.executionId, status: "completed", completedRequestCount: 12, canonicalRawRefs: [], completedAt: "2026-08-14T00:00:00.000Z", idempotentReplay: false } };
+        },
+        async abort(input: Record<string, unknown>) {
+          return { ok: true, data: { executionId: input.executionId, status: "aborted", reason: "runner-failed", abortedAt: "2026-08-14T00:00:00.000Z", idempotentReplay: false } };
+        },
+        ...overrides,
+      },
+    } as never;
+  }
+  function terminalRequest(path: string, payload: unknown) {
+    return new Request(`https://control-room.test${path}`, {
+      method: "POST",
+      headers: { authorization: "Bearer desktop-session", "x-device-id": "device-lab", "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  test("accepts strict Gate A completion and rejects reordered evidence", async () => {
+    const payload = {
+      schemaVersion: 1,
+      kind: "gate-a",
+      definitionHash: "b".repeat(64),
+      estimateHash: "c".repeat(64),
+      completedRequestCount: 12,
+      rawEvidence: evidence,
+    };
+    const request = terminalRequest(`/product/v1/control-room/laboratory/executions/${executionId}/completion`, payload);
+    const response = await handleAdminRoute(request, new URL(request.url), routeDeps());
+    expect(response?.status).toBe(200);
+    const reordered = { ...payload, rawEvidence: [...evidence].reverse() };
+    const invalid = terminalRequest(`/product/v1/control-room/laboratory/executions/${executionId}/completion`, reordered);
+    expect((await handleAdminRoute(invalid, new URL(invalid.url), routeDeps()))?.status).toBe(400);
+  });
+
+  test("accepts strict Gate B completion and bounded abort body", async () => {
+    const complete = terminalRequest(`/product/v1/control-room/laboratory/executions/${executionId}/completion`, {
+      schemaVersion: 1,
+      kind: "gate-b",
+      definitionHash: "b".repeat(64),
+      estimateHash: "c".repeat(64),
+      completedRequestCount: 6,
+    });
+    expect((await handleAdminRoute(complete, new URL(complete.url), routeDeps()))?.status).toBe(200);
+    const abort = terminalRequest(`/product/v1/control-room/laboratory/executions/${executionId}/abort`, { schemaVersion: 1, reason: "runner-failed" });
+    expect((await handleAdminRoute(abort, new URL(abort.url), routeDeps()))?.status).toBe(200);
+    const extra = terminalRequest(`/product/v1/control-room/laboratory/executions/${executionId}/abort`, { schemaVersion: 1, reason: "runner-failed", retry: true });
+    expect((await handleAdminRoute(extra, new URL(extra.url), routeDeps()))?.status).toBe(400);
   });
 });

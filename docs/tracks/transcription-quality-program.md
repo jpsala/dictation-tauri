@@ -2301,3 +2301,46 @@ Estado: `gate_a_complete_gate_b_server_completion_blocked`.
   WebView pero obtiene `about:blank` para Settings; la fuente limpia d9 tampoco
   compila Tauri por drift Rust previo. No se afirma cierre UI end-to-end ni se
   publicó installer desktop.
+
+### Dictation Laboratory Cerrado End-to-End — 2026-08-14
+
+Estado: `closed`.
+
+- La implementación limpia quedó en
+  `b5e9265fc9e9eb1c71711e0cf32dc67d3db3fbb3`; integra lifecycle
+  completion/abort identity-bound, reserva cross-kind, Gate B derivado, binding
+  privado, UI truth-first y smoke Tauri hermético. El baseline operativo quedó
+  en `981f233`; el cierre fija además la política EOL que reproduce byte a byte
+  el archive productivo.
+- Verificación local: cloud contract/routes `42/42`, PostgreSQL descartable
+  `5/5`, Rust library `157 passed`/`1 ignored`, frontend/harness `20/20`,
+  `npm run check`, `npm run build`, `cargo check`, provider-free `6/6` y smoke
+  Tauri real final `11/11`. La app ejercitó Settings→Laboratory, cinco
+  workspaces, `720x620`, `900x700`, 200% zoom y cero bootstrap/device/cloud/
+  provider.
+- El candidate inicial `8fe5e28e…` falló antes de install/promoción por bytes
+  incompatibles en migrations `0001..0006`; producción siguió en
+  `bc1a3e5cadba1903`, active y `NRestarts=0`. No hubo retry silencioso.
+- El archive byte-compatible aprobado desplegó release
+  `0434f2cf3d0a6607`, SHA-256
+  `0434f2cf3d0a66075e21fb1732db4cd0b3492d51918b052dbeb51e42783831d5`,
+  con `bc1a3e5cadba1903` como rollback automático. Schema siguió `9`, checksums
+  `0001..0009` exactos; service/listener/health/readiness/authority quedaron
+  verdes y `NRestarts=0`. No hubo migration, backfill, SQL manual, env, DNS ni
+  tunnel.
+- El packet separado Gate A completó por API la única ejecución ya consumida:
+  `12/12`, `4992/5000` microusd, tres refs `lraw_…`, audit `sequence=14`
+  JSONB `object`, cero provider calls o retries durante completion.
+- El primer setup Gate B fue abortado antes de spawn por una divergencia local
+  de proyección (`candidateId` extra): `0/6`, costo `0`, cero provider calls.
+  Un packet sustituto explícito autorizó una ejecución nueva; no se reutilizó el
+  grant terminal.
+- Gate B final ejecutó exactamente `3 × 2 = 6` llamadas postprocess
+  secuenciales con Groq `openai/gpt-oss-120b`, cero retries, STT, audio,
+  delivery, vocabulary o mutación de profile. Completó `6/6`,
+  `4998/5000` microusd y audit `sequence=20` JSONB `object`; no quedan
+  ejecuciones activas.
+- El smoke offline de outputs Gate B reportó seis decisiones semánticas
+  `accepted`, cero omissions y cero additions. Configured/resolved/observed
+  siguen separados; ninguna recipe fue promovida automáticamente. No se publicó
+  installer desktop.

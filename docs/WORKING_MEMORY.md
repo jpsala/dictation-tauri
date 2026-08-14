@@ -7,10 +7,9 @@ decisiones.
 
 ## Foco Único De Ejecución
 
-- **Estado:** `blocked`.
-- **Referencia:** `docs/tracks/transcription-quality-program.md`.
-- **Bloqueo:** Gate B no es emitible porque Gate A sigue `active` sin completion receipt ni raw refs canónicos; la UI no carga recipes mientras exige reautenticación.
-- **Siguiente acción:** implementar el cierre server-owned de Gate A y resolver la carga segura del catálogo UI; no mutar PostgreSQL manualmente ni emitir Gate B.
+- **Estado:** `ready`.
+- **Plan:** `docs/tracks/transcription-quality-program.md`.
+- **Próximo batch:** **Batch de revisión privada Gate B y decisión de promoción**.
 
 ## Contrato Congelado
 
@@ -23,12 +22,13 @@ decisiones.
   artifacts no son autoridad seleccionable.
 - Runtime sólo conserva `engineId`/`promptId`; el idioma es
   `defaults["transcript.language"]`.
-- Grants server-owned están desplegados y disponibles en producción. Gate A
-  emitió y consumió exactamente un grant; el ledger reservó `12/12` requests y
-  `4992/5000` microusd de forma atómica. Quedaron `0` grants open y `1`
-  consumed; issue/consume persistieron `safe_metadata` como JSONB `object`.
+- El lifecycle server-owned está completo en producción: issue opaco, consume
+  único, reserva atómica por request, completion/abort terminal e idempotencia.
+  Gate A completó `12/12` con `4992/5000` microusd y tres refs canónicos; Gate B
+  completó `6/6` con `4998/5000` microusd. No quedan ejecuciones activas.
 - Gate A exige igualdad exacta con `GATE_A_DEFINITION`; Gate B deriva sólo de
-  un Gate A completo `12/12`; vocabulary requiere snapshot inmutable por ID.
+  ese Gate A completo e identity-bound; vocabulary requiere snapshot inmutable
+  por ID.
 - `configured`, `resolved` y `observed` son independientes y muestran
   `null`/`unavailable` honestamente.
 - Preview usa `add`/`remove`/`change` y `candidateFingerprint`; un diff stale no
@@ -37,49 +37,50 @@ decisiones.
 - Roles, sesión y recursos no disponibles bloquean de forma honesta. Audio,
   gold, raw, final, paths, secretos y payloads de provider nunca aparecen en
   proyecciones públicas.
-- La ventana desktop mantiene default/mínimo `720x620` mediante resize nativo;
-  el smoke Tauri real confirmó `Responding=true`, cinco workspaces, cero
-  overflow a `720x620`/`900x700` y 200% zoom, sin Win/Super, menú de sistema o
-  snap.
+- La ventana desktop mantiene default/mínimo `720x620` mediante resize nativo.
+  El smoke Tauri real final pasó `11/11`: Settings→Laboratory, cinco workspaces,
+  `720x620`, `900x700`, 200% zoom, provider-free y cero
+  bootstrap/device/cloud/provider.
 
-## Gates Ejecutados Y Bloqueos Actuales
+## Gates Ejecutados Y Cierre Actual
 
-- El fix audit de `d9aa52006cb5ea09fd58439e62b493d2a6ec7f42` corre en el
-  release inmutable `bc1a3e5cadba1903`; archive SHA-256
-  `bc1a3e5cadba190307b8f04e4d530e0c0e337e1ed9d5d55d2e67e4a838a94b01`.
-  `650b4c8f6ed00a2a` quedó preservado como rollback schema-9. No hubo schema,
-  migración, backfill, env, DNS ni tunnel.
+- Producción corre el release inmutable `0434f2cf3d0a6607`, archive SHA-256
+  `0434f2cf3d0a66075e21fb1732db4cd0b3492d51918b052dbeb51e42783831d5`.
+  `bc1a3e5cadba1903` es el rollback inmediato schema-9;
+  `650b4c8f6ed00a2a` sigue preservado como rollback schema-9 secundario y
+  `11bf651ce5d983b6` no es ejecutable directamente contra schema 9.
 - Producción permanece schema `9`, migrations `0001..0009` y marker
   `laboratory_execution_grants`; service active/enabled, `NRestarts=0`,
   listener único `127.0.0.1:8790`, health/readiness local+público verdes y
-  `cloudflare-authority`.
+  `cloudflare-authority`. No hubo migración, backfill, SQL manual, env, DNS ni
+  tunnel.
 - La mutación aprobada owner→owner creó audit `sequence=11` con
-  `safe_metadata` JSONB `object` y contenido lógico exacto `{role:"owner"}`.
-  Owner count sigue `1`; los audits históricos `sequence=9/10` permanecen
-  intactos como JSONB `string`.
-- Gate A aprobado terminó `12/12`, sin retries, postprocess ni delivery. El
-  artifact privado/ignored `lab-gate-a-20260814-bc1a3e5c` contiene 3 samples ×
-  4 recipes, 12 resultados sin errores y costo local estimado USD `0.003724`.
-  El ledger productivo registró `4992/5000` microusd.
-- Gate B no fue emitido ni ejecutado. El servidor conserva la ejecución Gate A
-  como `active`, `completed_request_count=null` y `canonical_raw_refs=[]`; su
-  contrato exige `completed`, `12` y tres raw refs canónicos. No existe ruta de
-  completion en el runtime desplegado.
-- El replay final provider-free produjo 2 resultados sin errores, provider
-  disabled y `maxRequests=0`. La app Tauri real mostró el Gate A como
-  `completed/available` con cuatro candidatos y mantuvo `configured`
-  disponible, `resolved`/`observed` honestamente `Not observed`.
-- Limitaciones UI: con la sesión real en estado `Reauthentication required`,
-  Experiments carga corpus pero no las recipes del catálogo y no habilita el
-  job provider-free. El smoke automatizado llega al WebView pero selecciona un
-  target Settings `about:blank`; la fuente limpia pinneada a `d9aa520` tampoco
-  compila Tauri por drift Rust preexistente. No se publicó installer desktop.
+  `safe_metadata` JSONB `object`; owner count siguió `1` y los audits históricos
+  `sequence=9/10` permanecieron intactos como JSONB `string`.
+- Gate A completó `12/12`, sin retries, postprocess ni delivery. El ledger
+  productivo quedó en `4992/5000` microusd; completion acuñó tres refs canónicos
+  y audit `sequence=14` como JSONB `object`.
+- Un primer setup Gate B fue abortado antes de spawn por un verifier local que
+  incluyó `candidateId` donde el servidor proyecta `{sampleId, rawRef}`:
+  `0/6` requests, costo `0/5000`, cero provider calls. El packet sustituto
+  aprobado corrigió sólo esa proyección.
+- Gate B completó exactamente `6/6` requests secuenciales, sin retries, STT,
+  audio, delivery, vocabulary ni mutación de profile. El ledger quedó en
+  `4998/5000` microusd y audit `sequence=20` como JSONB `object`; no quedan
+  ejecuciones Gate B activas.
+- El smoke offline de los seis outputs persistidos reportó `6/6` decisiones
+  semánticas `accepted`, cero omissions y cero additions. Eso verifica seguridad
+  semántica del artifact; no promueve automáticamente una recipe.
+- La UI separa recursos y razones de indisponibilidad; owner stale conserva
+  catálogo/preview/grants bajo sus gates y provider-free local no depende de
+  recent-auth. Los planes Gate A/B son matrices bloqueadas. No se publicó
+  installer desktop.
 
 ## Frentes Retomables
 
 | Frente | Estado | Abrir primero |
 | --- | --- | --- |
-| Calidad de transcripción | deploy cloud y Gate A `12/12` cerrados; Gate B bloqueado por completion server-owned ausente y catálogo UI gated por reauth | `docs/tracks/transcription-quality-program.md` |
+| Calidad de transcripción | Dictation Laboratory cerrado: cloud lifecycle, Gate A `12/12`, Gate B `6/6`, UI y smoke Tauri verdes; próxima promoción requiere adjudicación nueva | `docs/tracks/transcription-quality-program.md` |
 | Reliability/truthfulness | local complete; Phase 4 gated | `docs/tracks/fixvox-minimal-reliability-and-truthfulness.md` |
 | Dock/Wispr | listo para retomar | `docs/tracks/dock-skins-visual-refinement.md` |
 | Cloud/runtime | referencia cerrada | Spec 019 y `docs/topics/fixvox-cloud-runtime-port.md` |

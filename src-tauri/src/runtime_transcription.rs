@@ -183,11 +183,11 @@ pub struct HostPostProcessEvidence {
     #[serde(skip_serializing_if = "Option::is_none")]
     policy_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    voice_routing_profile_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     experiment_recipe_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     experiment_recipe_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    voice_routing_profile_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sanitized_changed: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -3060,6 +3060,7 @@ async fn transcribe_fixvox_managed_audio(
                 };
             }
         };
+    let legacy_cloudflare_transport = preview.endpoint.ends_with("/v1/audio/transcriptions");
 
     let file_part = match reqwest::multipart::Part::bytes(upload_payload.bytes)
         .file_name(file_name)
@@ -3078,17 +3079,38 @@ async fn transcribe_fixvox_managed_audio(
             };
         }
     };
-    let mut metadata = serde_json::json!({
-        "operationId": request.run_id.trim(),
-        "durationMs": upload_payload.audio_duration_ms,
-        "language": config.language.clone().filter(|value| !value.eq_ignore_ascii_case("auto"))
-    });
-    if let Some(evaluation_recipe_id) = request.evaluation_recipe_id.as_ref() {
-        metadata["evaluationRecipeId"] = serde_json::Value::String(evaluation_recipe_id.clone());
-    }
-    let form = reqwest::multipart::Form::new()
-        .text("metadata", metadata.to_string())
-        .part("audio", file_part);
+    let form = if legacy_cloudflare_transport {
+        let mut form = reqwest::multipart::Form::new()
+            .text("model", config.model.clone())
+            .part("file", file_part);
+        if let Some(language) = config
+            .language
+            .clone()
+            .filter(|value| !value.eq_ignore_ascii_case("auto"))
+        {
+            form = form.text("language", language);
+        }
+        if let Some(prompt) = config.stt_prompt.clone() {
+            form = form.text("prompt", prompt);
+        }
+        form.text("response_format", "verbose_json")
+            .text("timestamp_granularities[]", "word")
+            .text("timestamp_granularities[]", "segment")
+            .text("temperature", "0")
+    } else {
+        let mut metadata = serde_json::json!({
+            "operationId": request.run_id.trim(),
+            "durationMs": upload_payload.audio_duration_ms,
+            "language": config.language.clone().filter(|value| !value.eq_ignore_ascii_case("auto"))
+        });
+        if let Some(evaluation_recipe_id) = request.evaluation_recipe_id.as_ref() {
+            metadata["evaluationRecipeId"] =
+                serde_json::Value::String(evaluation_recipe_id.clone());
+        }
+        reqwest::multipart::Form::new()
+            .text("metadata", metadata.to_string())
+            .part("audio", file_part)
+    };
 
     let client = match fixvox_cloud::fixvox_http_client() {
         Ok(client) => client,
@@ -3220,7 +3242,13 @@ async fn transcribe_fixvox_managed_audio(
     let no_speech_probability =
         average_segment_number(parsed_segments.as_deref(), "no_speech_prob");
     let average_log_probability = average_segment_number(parsed_segments.as_deref(), "avg_logprob");
-    let resolved_model = parsed.model.unwrap_or_else(|| "server-owned".to_string());
+    let resolved_model = parsed.model.unwrap_or_else(|| {
+        if legacy_cloudflare_transport {
+            config.model.clone()
+        } else {
+            "server-owned".to_string()
+        }
+    });
     if let Some(reason) = should_discard_provider_no_speech(
         &parsed.text,
         no_speech_probability,

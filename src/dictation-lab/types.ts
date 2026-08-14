@@ -96,7 +96,14 @@ export type EngineOption = {
   revision?: number;
 };
 
-export type PromptOption = { id: string; kind: string; version: string; source?: string; lifecycleStatus?: string; availability?: string };
+export type PromptOption = {
+  id: string;
+  kind: string;
+  version: string;
+  source?: string;
+  lifecycleStatus?: string;
+  availability?: string;
+};
 export type ConfigurationResponse = {
   ok: true;
   engineOptions: EngineOption[];
@@ -126,12 +133,16 @@ export type LaboratoryVocabularySelection = Readonly<{
   availability: CatalogEntryAvailability;
 }>;
 
-export function isCatalogEntryAvailable(entry: { availability: CatalogEntryAvailability } | null | undefined): boolean {
+export function isCatalogEntryAvailable(
+  entry: { availability: CatalogEntryAvailability } | null | undefined,
+): boolean {
   return entry?.availability.status === "available";
 }
 
 export type CatalogCompatibility = {
-  profileRuntimeKinds: Array<"transcription" | "postprocess" | "selectionTransform">;
+  profileRuntimeKinds: Array<
+    "transcription" | "postprocess" | "selectionTransform"
+  >;
   prosodyModes: Array<"off" | "advisory">;
   requiresVocabularySnapshot: boolean;
 };
@@ -159,12 +170,19 @@ export type LaboratoryCatalog = {
   sttRecipes: LaboratoryCatalogEntry[];
   postprocessRecipes: LaboratoryCatalogEntry[];
   prosodyModes: LaboratoryCatalogEntry[];
-  vocabularyModes: Array<LaboratoryCatalogEntry & {
-    snapshotPrerequisite: {
-      required: boolean;
-      immutableIdentityFields: readonly ["snapshotId", "revision", "sha256", "source"];
-    };
-  }>;
+  vocabularyModes: Array<
+    LaboratoryCatalogEntry & {
+      snapshotPrerequisite: {
+        required: boolean;
+        immutableIdentityFields: readonly [
+          "snapshotId",
+          "revision",
+          "sha256",
+          "source",
+        ];
+      };
+    }
+  >;
   materializations: LaboratoryCatalogEntry[];
   providerAuthorization: {
     status: "available" | "unavailable";
@@ -180,7 +198,11 @@ export type AccountSummary = {
   status: string;
   lastSeenAt: string;
 };
-export type AccountsResponse = { ok: true; accounts: AccountSummary[]; nextCursor: string | null };
+export type AccountsResponse = {
+  ok: true;
+  accounts: AccountSummary[];
+  nextCursor: string | null;
+};
 
 export type AuditRecord = {
   action: string;
@@ -194,7 +216,12 @@ export type AuditResponse = { schemaVersion: 1; records: AuditRecord[] };
 export type ProfileMutationReceipt = {
   ok: true;
   data: {
-    profile: { key: string; label: string; publishedVersion: number; revision: number };
+    profile: {
+      key: string;
+      label: string;
+      publishedVersion: number;
+      revision: number;
+    };
     publication: { previousVersion: number | null; resultingVersion: number };
     audit: { id: string; action: "apply" | "rollback"; result: "success" };
     idempotentReplay: boolean;
@@ -242,12 +269,18 @@ export type EvidenceIdentity = {
 };
 
 export type LaboratoryResourceName =
+  | "session"
   | "profiles"
   | "configuration"
   | "catalog"
   | "accounts"
   | "audit"
   | "history"
+  | "localReplay"
+  | "grantAuthority"
+  | "gateASource"
+  | "gateBSource"
+  | "publishCapability"
   | "vocabularySnapshots";
 
 export type LaboratoryResourceState = {
@@ -255,11 +288,21 @@ export type LaboratoryResourceState = {
   code: string | null;
 };
 
+export type LabGateSource = {
+  executionId: string;
+  kind: "gate-a" | "gate-b";
+  status: "active" | "completed" | "aborted" | "completion-pending";
+  completedRequestCount: number;
+  canonicalRawRefCount: number;
+};
+
 export type LaboratoryLoad = {
-  session: LaboratorySession;
+  session: LaboratorySession | null;
   profiles: ProfilesResponse;
   configuration: ConfigurationResponse;
   catalog: LaboratoryCatalog | null;
+  localReplay: LabExperimentDefinition;
+  gateSources: readonly LabGateSource[];
   accounts: AccountsResponse;
   audit: AuditResponse;
   runs: readonly LabRunEvidence[];
@@ -308,7 +351,11 @@ export type LabRunSummary = {
   sampleCount: number;
   candidateCount: number;
   resultCount: number;
-  providerCalls: { enabled: boolean; maxRequests: number; observedRequests: number | null };
+  providerCalls: {
+    enabled: boolean;
+    maxRequests: number;
+    observedRequests: number | null;
+  };
   estimatedCostUsd: number | null;
   observedCostUsd: number | null;
   candidates: LabCandidateSummary[];
@@ -368,7 +415,7 @@ export type LabSampleSummary = {
 
 export type LabExperimentDefinition = {
   schemaVersion: 1;
-  mode: "provider-free-replay" | "provider-real";
+  mode: "provider-free-replay" | "provider-real" | "provider-real-gate-b";
   corpusId: string;
   sampleIds: string[];
   sttRecipes: string[];
@@ -377,6 +424,7 @@ export type LabExperimentDefinition = {
   prosodyModes: Array<"off" | "advisory">;
   vocabularyModes: Array<"off" | "automatic" | "ask">;
   baselineCandidateId: string | null;
+  sourceGateARunId: string | null;
 };
 
 export type LabExperimentEstimate = {
@@ -400,7 +448,13 @@ export type LaboratoryOpaqueGrant = {
 
 export type LabJobSnapshot = {
   jobId: string;
-  state: "queued" | "running" | "completed" | "failed" | "cancelled";
+  state:
+    | "queued"
+    | "running"
+    | "completion-pending"
+    | "completed"
+    | "failed"
+    | "cancelled";
   mode: LabExperimentDefinition["mode"];
   estimate: LabExperimentEstimate;
   completedUnits: number;
@@ -415,7 +469,14 @@ export type LabHumanVerdictMutation = {
   runId: string;
   sampleId: string;
   candidateId: string;
-  verdict: "better" | "same" | "lost-content" | "added-content" | "changed-intent" | "improved-structure" | "improved-terms";
+  verdict:
+    | "better"
+    | "same"
+    | "lost-content"
+    | "added-content"
+    | "changed-intent"
+    | "improved-structure"
+    | "improved-terms";
   expectedRevision: number | null;
 };
 

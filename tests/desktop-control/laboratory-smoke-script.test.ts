@@ -3,8 +3,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 describe("real Tauri Dictation Laboratory smoke", () => {
-  it("uses native resize and keeps the replay provider-free, redacted, and hotkey-safe", () => {
+  it("uses native resize, live CDP surface discovery, and hermetic replay controls", () => {
     const smoke = readFileSync("scripts/tauri-laboratory-smoke.ps1", "utf8");
+    const cdp = readFileSync("scripts/cdp-evaluate.mjs", "utf8");
 
     expect(smoke).toContain("SetWindowPos");
     expect(smoke).toContain("FindVisibleWindow('Dictation Laboratory')");
@@ -14,10 +15,19 @@ describe("real Tauri Dictation Laboratory smoke", () => {
     expect(smoke).toMatch(/document\.documentElement\.style\.zoom\s*=\s*'2'/);
     expect(smoke).toContain("Settings command opens Dictation Laboratory");
     expect(smoke).toContain("Laboratory responds at 200 percent zoom");
-    expect(smoke).toContain("providerFree = $true");
-    expect(smoke).toContain("Real Tauri provider-free replay completes with zero provider calls");
-    expect(smoke).toContain("providerCalls.maxRequests -eq 0");
-    expect(smoke).toContain("noProviderActions");
+    expect(smoke).toContain("[switch]$Offline");
+    expect(smoke).toContain("[switch]$AutoShow");
+    expect(smoke).toContain("[switch]$Replay");
+    expect(smoke).toContain("DICTATION_LAB_SMOKE_OFFLINE");
+    expect(smoke).toContain("FIXVOX_BACKEND_URL = $offlineAuthorityEndpoint");
+    expect(smoke).toContain("Offline smoke records no cloud, bootstrap, device, provider, or mutation activity");
+    expect(smoke).not.toContain("DICTATION_LAB_SMOKE_CDP_WS");
     expect(smoke).not.toMatch(/SendKeys|keybd_event|Win\+|Super|Snap/);
+
+    expect(cdp).toContain("data-app-surface");
+    expect(cdp).toContain("Page.getFrameTree");
+    expect(cdp).toContain("discoverTargets");
+    expect(cdp).not.toContain("targets[0]");
+    expect(cdp).not.toContain("webSocketDebuggerUrl =");
   });
 });

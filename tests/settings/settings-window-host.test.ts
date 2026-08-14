@@ -29,7 +29,17 @@ describe("Settings host window", () => {
     expect(settingsFunction).toContain("show_existing_settings_window(window)");
     expect(settingsFunction).not.toContain(".eval(");
     expect(settingsFunction).not.toContain("window.location.replace");
-    expect(settingsFunction).not.toContain("settings navigation failed");
+    const laboratoryFunction = settingsSource.slice(
+      settingsSource.indexOf("pub fn show_dictation_lab_window_for_app"),
+      settingsSource.indexOf("pub fn show_account_setup_window_for_app"),
+    );
+    expect(laboratoryFunction).toContain("create_fresh_dictation_lab_window");
+    expect(laboratoryFunction).toContain("show_existing_settings_window(window)");
+    expect(laboratoryFunction).not.toContain(".eval(");
+    expect(laboratoryFunction).not.toContain("location.replace");
+    expect(libSource).toContain("DICTATION_LAB_SMOKE_OFFLINE");
+    expect(libSource).toContain("DICTATION_LAB_SMOKE_AUTO_SHOW");
+    expect(libSource).toContain("DICTATION_LAB_SMOKE_REPLAY");
     expect(settingsSource).toContain('ACCOUNT_SETUP_WINDOW_LABEL: &str = "account-setup"');
     expect(settingsSource).toContain("create_fresh_account_setup_window");
     expect(settingsSource).not.toContain("destroying stale window before open");
