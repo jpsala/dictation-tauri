@@ -5,7 +5,7 @@ phase: phase-1-corpus-runner
 kind: implementation-track
 priority: critical
 started: 2026-08-12
-updated: 2026-08-13
+updated: 2026-08-14
 triggers:
   - mejorar transcripcion
   - calidad STT
@@ -1750,3 +1750,554 @@ El plan queda completo cuando:
 - Siguen no observados y gated por separado: deploy cloud/database, mutación
   auth contra PostgreSQL destino, Gate A provider-real, mutación vocabulary,
   Gate B provider-real, promoción de perfil y release.
+
+### Preflight Deploy Cloud/Database — 2026-08-13
+
+Estado: `blocked_before_gate`. No hubo mutación remota, deploy, migración,
+restart, provider call, mutación auth/vocabulary/profile, release, publicación,
+instalación, stage, commit ni push.
+
+- `origin/main` remoto, `HEAD` y el target abreviado resolvieron exactamente a
+  `59a3dfe2f0b9c95e568e4006e1b4bb7f7be52ad4`. El working tree con `33`
+  modificados y `2` untracked ajenos quedó intacto; el bundle se construyó dos
+  veces desde un checkout aislado y limpio.
+- Ambos builds produjeron release candidata `bd8ba60e0e32b604`, archive SHA-256
+  `bd8ba60e0e32b6040a5feacd5a5216eae1483bac5be2fbb3e5ce0996652ccfcf`
+  y manifest SHA-256
+  `cc1523e34c6b227ea194bb67455785e4200ca22d24a2d075ecfabac98c775138`.
+- Destino observado: host `srv1761438`, user service
+  `fixvox-api.service`, loopback único `127.0.0.1:8790` y dominio
+  `auth-fixvox.jpsala.dev`. Release activa `11bf651ce5d983b6`; candidate aún
+  ausente del VPS. Servicio `enabled/active/running`, `NRestarts=0`; health y
+  readiness locales/públicos verdes con database/schema/jobs true y
+  `cloudflare-authority`.
+- PostgreSQL destino conserva schema `8`, migraciones `0001..0008` con nombres
+  y checksums coincidentes. El único delta es `0009_laboratory_execution_grants`,
+  SHA-256
+  `82dbdf93a23aca25d8a1df6abb32546f82dcf33dea0a20a1523fbcd6d168a5a5`;
+  es aditivo y no tiene down migration.
+- Último backup observado:
+  `fixvox-20260813T044146036982909Z.dump.zst.age`, schema `8`, encrypted
+  SHA-256
+  `9136cb4027e9a361145bc231b51f8ce8c0bb87962d6f7c0ab6107194cba79eb9`,
+  coincidente con su manifest. Timer enabled/waiting y último service
+  `Result=success`; env/pg service `0600`, backup dir `0700`, migrator
+  read-only usable y clave age off-host presente, sin revelar valores.
+
+Bloqueo: no existe release de rollback probada y compatible con schema `9`.
+La release activa `11bf651ce5d983b6` exige igualdad exacta con su schema local
+`8`; después de aplicar `0009`, volver ese symlink deja `/ready` rojo. El flujo
+canónico tampoco implementa upgrade incremental con handoff protegido del
+migrator, promoción-only ni rollback automático. Por eso no se abrió un gate
+humano de deploy: aprobar los valores observados no produciría todavía una
+operación end-to-end reversible. El próximo corte mínimo es cerrar ese contrato
+operativo, producir/probar un rollback schema-9-compatible y repetir este
+preflight exacto.
+
+### Upgrade/Rollback Local Y Segundo Preflight — 2026-08-13
+
+Estado: `blocked_before_gate`. No hubo upload, backup nuevo, migración,
+movimiento de symlink, restart, provider call, mutación auth/vocabulary/profile,
+release, publicación, instalación, commit ni push.
+
+- En el checkout aislado exacto
+  `59a3dfe2f0b9c95e568e4006e1b4bb7f7be52ad4` se agregaron, sin commit,
+  `ops/fixvox-api/migration-helper.sh`, `upgrade.sh` y
+  `tests/upgrade-smoke.sh`. El helper usa el service protegido
+  `fixvox_migrator` sin credenciales en argv/stdout; el orchestrator encadena
+  lock, backup F4 nuevo/verificado, install-only, migración `0009`, promoción,
+  restart único, health/readiness local+público y un rollback lógico acotado
+  `9→8` sin restore.
+- PostgreSQL descartable probó `8→9`, expiración sólo de grants `open`, aborto
+  sólo de executions `active`, preservación de tablas/datos, marker de vuelta a
+  `8` y segundo `8→9` idempotente. Tests focales de migraciones: `7/7`.
+  El smoke provider-free cubrió éxito y failpoints before-backup,
+  after-install, during-migration, after-migration, after-promotion y
+  red-health, con receipts `0600` redacted y sin retry.
+- Dos builds volvieron a producir candidate `bd8ba60e0e32b604`, archive
+  SHA-256
+  `bd8ba60e0e32b6040a5feacd5a5216eae1483bac5be2fbb3e5ce0996652ccfcf`
+  y manifest SHA-256
+  `cc1523e34c6b227ea194bb67455785e4200ca22d24a2d075ecfabac98c775138`;
+  archive y manifest fueron idénticos entre builds.
+- El segundo preflight read-only reconfirmó host `srv1761438`, current y
+  rollback `11bf651ce5d983b6`, candidate ausente, service
+  enabled/active/running con `NRestarts=0`, listener único
+  `127.0.0.1:8790`, health/readiness local+público verdes y
+  `cloudflare-authority`. Schema sigue `8`; backup actual sigue siendo
+  `fixvox-20260813T044146036982909Z.dump.zst.age`, SHA-256 encrypted
+  `9136cb4027e9a361145bc231b51f8ce8c0bb87962d6f7c0ab6107194cba79eb9`,
+  manifest schema `8`, timer activo y último result success.
+- El preflight corrigió una afirmación demasiado amplia del corte anterior:
+  `schema_migrations` coincide con los bytes de la release activa, pero no con
+  todos los bytes de la candidate Windows. `0001..0006` en producción tienen
+  checksums LF
+  `8e2a8120…`, `143264c2…`, `5e312efb…`, `2772d250…`, `aa625e1a…`,
+  `8ada0856…`; el archive candidato contiene sus variantes CRLF
+  `bbaec1fc…`, `07611aea…`, `12134305…`, `b5f5dc55…`, `33139d73…`,
+  `839aeea8…`. Una reproducción descartable del baseline productivo hizo que
+  el `migrate.ts` exacto de la candidate fallara cerrado en
+  `migration_checksum_mismatch:1`.
+
+Bloqueo: el rollback ya es reversible, pero la candidate no es migrable contra
+el schema productivo exacto. No existe packet de aprobación seguro. El próximo
+corte debe fijar un contrato de bundle byte-compatible con los checksums
+históricos, reconstruir una candidate distinta y repetir toda la prueba y el
+preflight antes de abrir un gate humano.
+
+### Bundle Byte-Compatible Y Tercer Preflight — 2026-08-13
+
+Estado: `awaiting_human_deploy_gate`. No hubo upload, backup nuevo, migración,
+movimiento de symlink, restart, provider call, mutación auth/vocabulary/profile,
+release, publicación, instalación, commit ni push.
+
+- El source runtime quedó fijado a
+  `origin/main@59a3dfe2f0b9c95e568e4006e1b4bb7f7be52ad4`. `bundle.sh`
+  materializa sólo blobs Git de ese commit, exige sus hashes exactos y
+  canonicaliza únicamente `0007..0009` de LF a CRLF. El checkout ya no puede
+  cambiar los bytes empaquetados.
+- Dos builds independientes produjeron candidate `650b4c8f6ed00a2a`, archive
+  SHA-256
+  `650b4c8f6ed00a2a64f6c8fa63143fe0b32607317a4ecec59f448633305f4924`
+  y manifest SHA-256
+  `e0b4e21388a6ffcb08a207f6aaa7ea66c86a40b5f6da1b0c0039d91662c0a997`;
+  ambos archivos fueron byte-identical entre builds.
+- El archive contiene `0001..0009` con hashes exactos
+  `8e2a8120…`, `143264c2…`, `5e312efb…`, `2772d250…`, `aa625e1a…`,
+  `8ada0856…`, `c607b830…`, `0b841d30…`, `82dbdf93…`. Los primeros ocho
+  coinciden exactamente con `schema_migrations` y la release activa; `0009`
+  conserva
+  `82dbdf93a23aca25d8a1df6abb32546f82dcf33dea0a20a1523fbcd6d168a5a5`.
+- El smoke de bundle cubrió checkouts LF/CRLF, determinismo, manifest/archive,
+  allowlist, privacidad y rechazo de source drift. Migraciones existentes:
+  `7/7`. El smoke completo de upgrade cubrió éxito y seis failpoints; el boot
+  provider-free del archive respondió health `200`, sin provider calls.
+- Una fixture PostgreSQL descartable creó el baseline productivo exacto
+  `0001..0008`. El `migrate.ts` del archive aplicó sólo `0009`; el rollback
+  lógico dejó marker `8`, tablas y datos preservados, expiró sólo grants `open`,
+  abortó sólo executions `active`, y el segundo `8→9` volvió a pasar.
+- El tercer preflight read-only reobservó host `srv1761438`, servicio
+  `fixvox-api.service`, dominio `auth-fixvox.jpsala.dev`, current/rollback
+  `11bf651ce5d983b6` y candidate aún ausente. El servicio sigue
+  enabled/active/running con `NRestarts=0`, listener único
+  `127.0.0.1:8790`, health/readiness local+público verdes, database/schema/jobs
+  true y `cloudflare-authority`.
+- Producción sigue en schema `8` con los ocho nombres/checksums exactos. El
+  backup observado sigue siendo
+  `fixvox-20260813T044146036982909Z.dump.zst.age`, SHA-256
+  `9136cb4027e9a361145bc231b51f8ce8c0bb87962d6f7c0ab6107194cba79eb9`,
+  coincidente con manifest schema `8`; timer enabled/active y último
+  `Result=success`. Config runtime/PG permanece `0600` y backups `0700`.
+
+El blocker de byte compatibility está cerrado. El siguiente paso es sólo el
+gate humano exacto; después de aprobación, el flujo debe crear y verificar un
+backup F4 fresco antes de install/migrate/promote/restart. El rollback autorizado
+es lógico `9→8` con la candidate, vuelta atómica de `current` a
+`11bf651ce5d983b6` y un restart, nunca reescritura de checksums ni restore
+implícito.
+
+### Deploy Aprobado, Stop Pre-Backup Y Corrección — 2026-08-13
+
+Estado: `waiting_gate`. JP aprobó candidate `650b4c8f6ed00a2a`. El preflight
+inmediato reconfirmó baseline productivo, recursos, servicio, listener,
+health/readiness, checksums y backup. Se creó staging privado y se subieron
+archive, manifest y tooling; todos los SHA-256 remotos coincidieron.
+
+Antes de ejecutar el orchestrator se detectó que `migration-helper.sh` exigía
+`0009` incluso para inspeccionar la release baseline `11bf651ce5d983b6`, que
+correctamente contiene sólo `0001..0008`. La ejecución se detuvo antes de
+backup, instalación, migración, symlink o restart; producción permanece
+intacta en schema `8`.
+
+La corrección local admite exactamente ocho migraciones sólo para `inspect`,
+mantiene nueve obligatorias para `migrate`/`rollback` y fija los nueve hashes
+canónicos en el helper. El smoke de seis failpoints y la fixture PostgreSQL con
+baseline de ocho archivos volvieron a pasar. Nuevo helper SHA-256:
+`4b459d1a2c57d117fbb3a9ef1cffd2d78af58c786326de2b70d88334902d1bd1`;
+nuevo upgrade-smoke SHA-256:
+`829e0031d1bf646d29b3b4a410f0dcefdb0d21d1d9d108a7c702b9581fd80379`.
+Reemplazar el helper ya subido cambia el packet exacto aprobado, por lo que
+requiere un gate humano revisado antes de continuar.
+
+### Upgrade Ejecutado Y Rollback Automático — 2026-08-13
+
+Estado: `blocked_after_safe_rollback`. Con la aprobación revisada se reemplazó
+únicamente el helper staged; SHA-256 remoto
+`4b459d1a2c57d117fbb3a9ef1cffd2d78af58c786326de2b70d88334902d1bd1`
+y modo `0700` coincidieron. El helper inspeccionó exitosamente la baseline
+productiva exacta antes de ejecutar.
+
+El orchestrator creó y verificó backup F4 fresco
+`fixvox-20260814T032217402611748Z.dump.zst.age`, encrypted SHA-256
+`96e0903dd06bf73b32a3b87c8194a23d86fc571b4e5a1088995b34166cabeacd`;
+instaló immutable candidate `650b4c8f6ed00a2a`, aplicó `0009`, promovió y
+reinició. La etapa `verify` falló y activó el rollback automático previsto:
+servicio detenido, rollback lógico `9→8`, `current` devuelto a
+`11bf651ce5d983b6` y restart. No hubo retry.
+
+Receipt `0600`: outcome `rolled_back`, failedStage `verify`, backup verificado,
+rollback attempted/succeeded, grants expirados `0`, executions abortadas `0`;
+SHA-256 del receipt
+`e60fd34ac462de5abb77a5355237ed050695f4e3e5ce8a10fc5db0e6fcec0815`.
+La candidate quedó instalada e inactiva; su manifest conserva SHA-256
+`e0b4e21388a6ffcb08a207f6aaa7ea66c86a40b5f6da1b0c0039d91662c0a997`.
+
+La verificación independiente posterior dejó schema `8` y los ocho checksums
+exactos, current `11bf651ce5d983b6`, servicio enabled/active/running,
+`NRestarts=0`, listener único `127.0.0.1:8790`, health/readiness local+público
+verdes, database/schema/jobs true y `cloudflare-authority`. Logs allowlisted
+mostraron health/readiness `200` y no expusieron secretos.
+
+Bloqueo nuevo: el receipt reusa los campos de verificación durante el rollback,
+por lo que registra la superficie final verde pero no cuál check del primer
+`verify` falló. No reintentar. El próximo corte debe preservar la primera causa
+de verificación y probar un contrato explícito de readiness post-restart antes
+de otro gate.
+
+### Receipt/Readiness Corregidos Y Gate Bloqueado — 2026-08-14
+
+Estado: `blocked_before_gate`. No hubo reemplazo de tooling remoto, backup
+nuevo, migración, promoción, symlink, restart, provider call, mutación de datos,
+upload, commit ni push.
+
+- `upgrade.sh` local usa receipt schema `2`: `verification` y
+  `verificationFailures` conservan el primer intento; `rollbackVerification`
+  conserva separadamente la superficie final. El barrier espera como máximo
+  `30 × 1 s` sólo por service active y un único listener exacto
+  `127.0.0.1:8790`; después ejecuta una sola vez health/readiness local y
+  público, sin retry HTTP ni de migración, promoción o restart.
+- El smoke final cubrió éxito, seis failpoints, listener demorado, las ocho
+  dimensiones de verificación, schema/privacidad exactos y rollback verde sin
+  sobrescribir la causa inicial. La fixture PostgreSQL descartable confirmó
+  baseline productiva `8→9→8→9`, checksums exactos y transiciones acotadas.
+  El archive real arrancó provider-free con health `200`, cero provider calls y
+  aislamiento.
+- Tooling local: helper
+  `4b459d1a2c57d117fbb3a9ef1cffd2d78af58c786326de2b70d88334902d1bd1`
+  sin cambios; upgrade
+  `1e9d99357fee822c7ea0db522d6f648b1c5ac12c456604d19f57edfe16e0e25c`;
+  smoke
+  `00d1a9e71f22da79a7b7b86643eadd5fb0f84ed12e164c047c588814e1dbad28`.
+  El staged remoto conserva upgrade anterior
+  `79bde1351035c11d89fe027e2e3f23b2d227bb045edc84b93659ee64a6d8d209`.
+- Archive y manifest permanecen byte-identical y sin cambios:
+  `650b4c8f6ed00a2a64f6c8fa63143fe0b32607317a4ecec59f448633305f4924`
+  y `e0b4e21388a6ffcb08a207f6aaa7ea66c86a40b5f6da1b0c0039d91662c0a997`.
+- El preflight read-only reconfirmó current/rollback `11bf651ce5d983b6`,
+  candidate `650b4c8f6ed00a2a` instalada e inactiva, schema `8` y checksums
+  exactos, service enabled/active con `NRestarts=0`, listener único loopback,
+  health/readiness local+público verdes y `cloudflare-authority`. El backup
+  fresco sigue siendo `fixvox-20260814T032217402611748Z.dump.zst.age`, SHA-256
+  `96e0903dd06bf73b32a3b87c8194a23d86fc571b4e5a1088995b34166cabeacd`,
+  manifest schema `8`; timer y último result verdes, permisos `0600`/`0700`,
+  recursos sobre mínimos e identidad age off-host presente.
+
+No existe packet seguro todavía: `upgrade.sh` llama siempre
+`deploy.sh --install-only`, mientras `deploy.sh` rechaza por contrato toda
+release ya existente. Como la candidate quedó instalada por el intento anterior,
+el orchestrator fallaría en `install` antes de migrar. No borrar ni mutar la
+release inmutable, no fabricar otro release ID y no reintentar. El próximo corte
+debe diseñar y probar explícitamente el handoff de una candidate preinstalada
+con validación byte-exacta antes de abrir otro gate.
+
+### Candidate Preinstalada Validada Y Gate Revisado — 2026-08-14
+
+Estado: `awaiting_human_deploy_gate`. No hubo reemplazo de tooling remoto,
+upload, backup, migración, promoción, movimiento de symlink, restart, provider
+call, mutación auth/vocabulary/profile, commit ni push.
+
+- `upgrade.sh` decide internamente: una candidate ausente conserva exactamente
+  `deploy.sh --install-only`; una candidate existente debe ser directorio real,
+  no symlink, y valida archive/manifest aprobados, igualdad exacta entre los
+  runtime files regulares del archive y el manifest, hashes streamed de cada
+  entry, `release-manifest.json` byte-identical y árbol instalado exacto sin
+  missing/extra, symlink ni path no regular. Sólo entonces reutiliza sin
+  overwrite, delete, extracción, reinstalación ni llamada a `deploy.sh`.
+  Cualquier divergencia falla cerrado en stage `install`/exit `23`. No existe
+  flag caller-controlled para omitir instalación.
+- El smoke provider-free aceptó reuse válido sin llamar deploy y rechazó drift,
+  missing, extra, mismatch manifest/archive, symlink y non-regular. También
+  conservaron verde syntax, fresh install-only, seis failpoints, barrier de
+  readiness, ocho dimensiones one-shot, receipt schema `2`, rollback y
+  privacidad. PostgreSQL descartable probó el baseline productivo exacto
+  `8→9→8→9`; el archive real arrancó con health `200`, cero provider calls y
+  aislamiento.
+- Archive y manifest permanecen byte-identical entre los dos builds, con hashes
+  `650b4c8f6ed00a2a64f6c8fa63143fe0b32607317a4ecec59f448633305f4924`
+  y `e0b4e21388a6ffcb08a207f6aaa7ea66c86a40b5f6da1b0c0039d91662c0a997`.
+- Tooling local exacto: helper
+  `4b459d1a2c57d117fbb3a9ef1cffd2d78af58c786326de2b70d88334902d1bd1`,
+  upgrade
+  `90aaa41354e673a3cadaaff5b628cae378a08c43bfc5842b3900916e407ef6f5`
+  y smoke
+  `123bf26b7ca6b3b300f341b920a636d722814dcf92ebcb154ca049339ea3b2c1`.
+  Staging conserva helper idéntico y upgrade anterior
+  `79bde1351035c11d89fe027e2e3f23b2d227bb045edc84b93659ee64a6d8d209`;
+  el diff upgrade staged→local es exactamente nueve hunks, `+200/-28`, limitado
+  al receipt/readiness ya endurecido y la nueva validación/reuse.
+- El preflight read-only validó los 71 runtime files de la candidate instalada
+  contra manifest, current/rollback `11bf651ce5d983b6`, candidate
+  `650b4c8f6ed00a2a` inactiva, schema `8`, service enabled/active,
+  `NRestarts=0`, listener único `127.0.0.1:8790`, health/readiness
+  local+público verdes con database/schema/jobs true y
+  `cloudflare-authority`. El backup sigue siendo
+  `fixvox-20260814T032217402611748Z.dump.zst.age`, SHA-256
+  `96e0903dd06bf73b32a3b87c8194a23d86fc571b4e5a1088995b34166cabeacd`,
+  manifest schema `8`, modos `0600`/`0700`, timer enabled/active, último result
+  success y recursos sobre mínimos.
+
+Packet propuesto después de aprobación explícita: (1) reemplazar sólo
+`upgrade.sh` en staging privado y verificar hash/mode; helper, deploy, backup,
+archive y manifest quedan sin cambios; (2) repetir preflight read-only inmediato;
+(3) ejecutar una vez el orchestrator con baseline/rollback
+`11bf651ce5d983b6`, candidate `650b4c8f6ed00a2a`, schema `8→9`, migración
+`0009` checksum
+`82dbdf93a23aca25d8a1df6abb32546f82dcf33dea0a20a1523fbcd6d168a5a5`
+y receipt `0600`; internamente crea/verifica backup F4 fresco, valida y reutiliza
+la candidate, migra, promueve, reinicia una vez, espera service/listener y hace
+health/readiness one-shot; (4) verificar independientemente current, schema,
+checksums, service/listener, health/readiness, receipt y ausencia de provider
+calls. Ante fallo posterior a `0009`, rollback lógico: stop, `9→8` con la
+candidate, expiración sólo de grants `open`, aborto sólo de executions `active`,
+vuelta atómica de `current` a `11bf651ce5d983b6`, un restart y verificación en
+`rollbackVerification`; sin restore implícito, retry ni reescritura de
+checksums.
+
+### Upgrade Productivo 8→9 Ejecutado Y Verificado — 2026-08-14
+
+Estado: `production_green`. El packet revisado se ejecutó exactamente una vez;
+no hubo retry, restore, checksum rewrite, provider call ni mutación
+auth/account/vocabulary/profile.
+
+- Se reemplazó únicamente el `upgrade.sh` staged, conservando modo `0700` y
+  SHA-256
+  `90aaa41354e673a3cadaaff5b628cae378a08c43bfc5842b3900916e407ef6f5`.
+  Helper, deploy, backup, lib, archive y manifest conservaron sus bytes
+  aprobados.
+- El preflight inmediato reconfirmó host `srv1761438`, current/rollback
+  `11bf651ce5d983b6`, schema `8` y markers exactos, candidate inactiva
+  `650b4c8f6ed00a2a` con sus `71` runtime files byte-exactos, service/listener
+  y HTTP verdes, backup previo verificado, timer/permisos/recursos e identidad
+  age off-host verdes.
+- El orchestrator reutilizó la candidate preinstalada sin deploy/reinstall,
+  creó y verificó el backup F4
+  `fixvox-20260814T083217968689472Z.dump.zst.age` SHA-256
+  `099992ff344f188585f4afc1e640e9d184e427c41d5f03305be8ba915322ce55`,
+  aplicó `0009`, promovió atómicamente y reinició una vez.
+- Receipt privado modo `0600`, schema `2`: `outcome=succeeded`,
+  `schemaBefore=8`, `schemaAfter=9`, migración
+  `laboratory_execution_grants`
+  `82dbdf93a23aca25d8a1df6abb32546f82dcf33dea0a20a1523fbcd6d168a5a5`
+  aplicada y no revertida; `verification` primaria verde,
+  `verificationFailures=[]`, `rollbackVerification=null` y rollback no
+  intentado.
+- La verificación independiente dejó `current=650b4c8f6ed00a2a`, los nueve
+  markers/nombres/checksums exactos, service enabled/active con `NRestarts=0`,
+  listener único `127.0.0.1:8790`, health/readiness local+público `200` con
+  database/schema/jobs true y `cloudflare-authority`. Archive, manifest,
+  helper, candidate y sus `71` files permanecen byte-exactos. El journal
+  allowlisted desde la activación mostró cero rutas provider-capable.
+
+`11bf651ce5d983b6` queda preservada como rollback de código, pero este
+orchestrator ya fue consumido: no reejecutarlo como retry. Cualquier mutación o
+rollback productivo posterior requiere un gate nuevo y su contrato explícito.
+
+### Preflight Post-Deploy Read-Only Del Laboratorio — 2026-08-14
+
+Estado: `destination_read_only_green`. Observación provider-free entre
+`2026-08-14T09:07:11Z` y `2026-08-14T09:07:46Z`; sólo se ejecutaron `GET` y
+`SELECT`. No se emitió ni consumió grant, no se reservó request y no hubo
+mutación, provider call, Gate A/B, restart, deploy, rollback ni retry del
+orchestrator consumido.
+
+- **Configured:** destino canónico y runtime protegidos por el runbook; baseline
+  esperado `current=650b4c8f6ed00a2a`, schema `9`, catálogo `4+2` y grants
+  server-owned. Las credenciales permanecieron server-side o en el store host;
+  no se imprimieron.
+- **Resolved:** alias SSH canónico `vps`, listener loopback
+  `127.0.0.1:8790` y origen público canónico. El wrapper F4 informó service
+  active/enabled y listener exacto.
+- **Observed:** `current=650b4c8f6ed00a2a`; marker `9`
+  `laboratory_execution_grants` con checksum
+  `82dbdf93a23aca25d8a1df6abb32546f82dcf33dea0a20a1523fbcd6d168a5a5`.
+  Health y readiness local/público devolvieron `200`; readiness declaró
+  `ok/database/schema/jobs=true` y `authorityMode=cloudflare-authority`.
+- La sesión desktop existente autorizó `GET .../control-room/session` con
+  `200`, rol `owner`, principal `arp_352b…eb1e` y `recentGoogle=false`. La
+  comprobación server-owned independiente también devolvió `200`; PostgreSQL
+  observó dos sesiones desktop vigentes, cero admin sessions y cero sesiones
+  desktop con recent-auth. Esto habilita lectura, no la primera mutación RBAC.
+- `GET .../control-room/roles` devolvió exactamente un principal vinculado y un
+  binding: principal `arp_352b…eb1e`, account `acc_352b…2ac8`, rol `owner`;
+  emails, subjects e IDs completos no se proyectaron.
+- `GET .../laboratory/catalog` devolvió `200`, schema `1`, revision
+  `laboratory-v1`, exactamente `4` recipes STT y `2` postprocess.
+  `providerAuthorization={status:"available",reasonCode:null}` confirma la
+  capability sin invocar `POST .../execution-grants`.
+- PostgreSQL confirmó que `laboratory_execution_grants` existe y contiene cero
+  grants. Esta lectura no prueba nuevamente atomicidad/concurrencia en
+  producción; esas propiedades siguen cubiertas por la prueba PostgreSQL local
+  hasta un gate de mutación autorizado.
+
+Próximo gate exacto: preparar, sin ejecutar, la primera mutación auth PostgreSQL
+de Lane A. En el punto de riesgo debe mostrar entorno/DB, actor y subject
+redactados, account handle, rol anterior/nuevo, scope, recent-auth, audit
+esperado y rollback exacto; requiere una aprobación interactiva nueva con esos
+valores.
+
+### Packet De Primera Mutación Auth Preparado Y Bloqueado — 2026-08-14
+
+Estado: `blocked_recent_auth`. Preflight provider-free observado a
+`2026-08-14T09:21:36Z`; sólo usó `GET`, `SELECT` y lecturas operativas. No hubo
+write, grant, reserva, provider call, deploy, migration, restart, rollback ni
+retry del orchestrator consumido.
+
+- **Entorno/DB:** producción, host canónico `srv1761438`, PostgreSQL de
+  `fixvox-api`; `current=650b4c8f6ed00a2a`, schema `9`, marker
+  `laboratory_execution_grants`, checksum
+  `82dbdf93a23aca25d8a1df6abb32546f82dcf33dea0a20a1523fbcd6d168a5a5`.
+- **Runtime:** `fixvox-api.service` loaded/enabled/active/running,
+  `NRestarts=0`; listener único `127.0.0.1:8790`; health/readiness
+  local+público `200`, `ok/database/schema/jobs=true` y
+  `authorityMode=cloudflare-authority`.
+- **Actor/subject/account:** actor `arp_352b…eb1e`; subject
+  `arp_352b…eb1e`; account `acc_352b…2ac8`. HTTP y PostgreSQL coinciden en un
+  único principal vinculado, un único binding y un único owner.
+- **Role anterior/nuevo:** `owner→owner`. No degrada ni elimina al último
+  owner; es un write idempotente con audit, no un cambio de privilegios.
+- **Scope/ruta/request:** exactamente un
+  `PUT /product/v1/control-room/roles/{subjectPrincipalKey}` por la ruta
+  canónica, con `{subjectPrincipalKey}` ligado al subject redactado anterior y
+  body exacto `{"role":"owner"}`; actor autenticado por la sesión desktop
+  server-owned existente. Sin retry ni SQL out-of-band.
+- **Recent-auth:** HTTP local/público y PostgreSQL observaron
+  `recentGoogle=false`; dos sesiones desktop vigentes, cero desktop
+  recent-auth y cero admin sessions. La ruta real respondería `403`, por lo que
+  no se solicitó aprobación interactiva ni se emitió el `PUT`.
+- **Audit esperado:** una fila nueva `role.set`, target `principal` ligado al
+  subject redactado, `result=success`, metadata bounded
+  `{"role":"owner"}`. Baseline PostgreSQL: `max_sequence=8`, `total=8`,
+  `role_events=0`.
+- **Verificación posterior preparada:** releer directamente en PostgreSQL el
+  binding `owner` del subject, owner count `1` y exactamente un nuevo audit
+  `role.set/success` posterior al baseline, con target y metadata coincidentes.
+- **Rollback exacto preparado:** si el `PUT` o la verificación fallan, emitir
+  una sola vez por la misma ruta un `PUT` al mismo subject con body
+  `{"role":"owner"}` para restaurar el role previo; después verificar
+  directamente binding `owner`, owner count `1` y el audit adicional
+  `role.set/success`. No existe restore implícito.
+
+Único prerequisito humano: renovar recent-auth Google de esa sesión owner por
+el flujo existente. Después se debe repetir todo el preflight, exigir
+precondiciones idénticas y recién entonces mostrar este packet actualizado en
+`request_user_intervention` para una aprobación nueva ligada a sus valores.
+
+### Primera Mutación Auth Ejecutada, Verificación Fallida Y Rollback — 2026-08-14
+
+Estado: `rolled_back_audit_metadata_mismatch`.
+
+- JP completó recent-auth por el flujo Google existente. El preflight repetido
+  a `2026-08-14T09:46:50Z` y la revalidación inmediata a
+  `2026-08-14T09:48:39Z` observaron HTTP local/público `200`, actor/subject
+  `arp_352b…eb1e`, account `acc_352b…2ac8`, role `owner`,
+  `recentGoogle=true`, un único principal/binding/owner, cero grants y baseline
+  audit `max_sequence=8`, `total=8`, `role_events=0`. Release, schema, marker,
+  checksum, service, listener y readiness permanecieron idénticos.
+- JP revisó el packet completo y autorizó exactamente un
+  `PUT owner→owner`, su verificación PostgreSQL y sólo el rollback exacto ante
+  fallo. No autorizó retry ni otras mutaciones.
+- La mutación canónica se emitió una sola vez a
+  `PUT /product/v1/control-room/roles/{subjectPrincipalKey}` con body
+  `{"role":"owner"}`. Respondió `200`, `ok=true`, role `owner` y
+  `audit={action:"role.set",result:"success"}`. PostgreSQL creó
+  `sequence=9`, target type `principal`, target coincidente y role/owner count
+  correctos.
+- La verificación falló porque `jsonb_typeof(safe_metadata)` fue `string`;
+  `safe_metadata #>> '{}'` contiene el texto bounded `{"role":"owner"}`, pero
+  el contrato esperaba metadata JSONB objeto. No fue una diferencia de role,
+  target, result ni owner count.
+- El fallo activó únicamente el rollback previamente aprobado: un segundo y
+  único `PUT owner→owner` por la misma ruta/body. Respondió `200` y creó
+  `sequence=10`, también `role.set/principal/success`.
+- La verificación PostgreSQL final a `2026-08-14T09:50:42Z` observó exactamente
+  un binding `owner`, owner count `1`, `max_sequence=10`, `total=10`,
+  `role_events=2`, cero grants y ambos audits con target coincidente. Los dos
+  audits conservan `metadataType=string` y
+  `metadataText={"role":"owner"}`.
+No hubo provider STT/LLM call, grant, reserva, Gate A/B, account/profile mutation,
+deploy, migration, restart, retry del orchestrator, release, commit ni push.
+Antes de cualquier nuevo gate productivo debe corregirse y probarse localmente
+la serialización JSONB de `safe_metadata`; este lote no autoriza deploy ni otra
+mutación.
+
+### Serialización De Audit Metadata Corregida Sólo Localmente — 2026-08-14
+
+Estado: `local_verified_external_effects_blocked`.
+
+- Los writers de `account.profile.assign`, `account.identity.link`,
+  `role.set`/`role.remove`, `laboratory.grant.issue`,
+  `laboratory.grant.consume`, `profile.publish` y
+  `engine_catalog_audits.safe_metadata` conservan `::jsonb` y ahora entregan
+  objetos plain al driver, sin `JSON.stringify`.
+- Las regresiones PostgreSQL consultan directamente
+  `jsonb_typeof(safe_metadata)=object` y contenido exacto: `role.set` comprueba
+  `{role:"owner"}`; account/profile, identity link, grants issue/consume,
+  profile publication y engine catalog comprueban sus shapes bounded completos.
+  Idempotencia y redacción permanecen ejercidas.
+- Evidencia local: regresiones focales `5/5` y `1/1`; `bun run test:unit`
+  `62/62`; `bun run test:postgres` `20/20`. Una consulta bounded posterior
+  confirmó `object` y sólo las claves esperadas en los últimos audits locales
+  de grant issue/consume.
+- No hubo schema, migración, backfill, provider call, deploy, release, restart,
+  SSH ni mutación productiva. Los audits históricos productivos `sequence=9/10`
+  permanecen sin tocar como JSONB `string`. Este cierre local no autoriza un
+  deploy ni un nuevo gate o write productivo.
+
+### Audit Fix Desplegado, Gate A Completo Y Gate B Bloqueado — 2026-08-14
+
+Estado: `gate_a_complete_gate_b_server_completion_blocked`.
+
+- Fuente congelada:
+  `d9aa52006cb5ea09fd58439e62b493d2a6ec7f42`; release inmutable
+  `bc1a3e5cadba1903`; archive SHA-256
+  `bc1a3e5cadba190307b8f04e4d530e0c0e337e1ed9d5d55d2e67e4a838a94b01`.
+  El manifest contiene 71 files allowlisted y sólo cambia los cuatro writers
+  esperados frente a `650b4c8f6ed00a2a`.
+- El deploy aprobado promovió una vez y reinició una vez. Verificación
+  independiente: current `bc1a3e5cadba1903`, rollback schema-9
+  `650b4c8f6ed00a2a`, schema/migrations `9`/`0001..0009`, marker exacto,
+  service active/enabled, `NRestarts=0`, listener único `127.0.0.1:8790`,
+  health/readiness local+público verdes y `cloudflare-authority`. No hubo
+  migración, backfill, env, DNS, tunnel ni rollback.
+- El gate RBAC aprobado ejecutó owner→owner una vez. Owner count terminó `1`;
+  audit nuevo `sequence=11`, `role.set/principal/success`,
+  `jsonb_typeof(safe_metadata)=object` y contenido lógico exacto
+  `{role:"owner"}`. Los audits históricos `sequence=9/10` siguen intactos como
+  JSONB `string`.
+- Gate A recibió packet separado y aprobación explícita: tres samples humanos
+  aprobados × cuatro recipes STT, Groq `whisper-large-v3-turbo`, exactamente 12
+  llamadas secuenciales, cero retries, postprocess y delivery, estimate público
+  USD `0.003848`, hard bounds `12` y `5000` microusd. El run privado/ignored
+  `lab-gate-a-20260814-bc1a3e5c` cerró `12/12`, cuatro candidatos, cero errores
+  y costo local estimado USD `0.003724`.
+- El ledger productivo confirma grant `consumed`, ejecución `active`,
+  `requests_used=12/12`, `cost_microusd=4992/5000`, cero grants open y uno
+  consumed. Audits `laboratory.grant.issue`/`consume` son JSONB `object` con
+  sólo las claves bounded esperadas.
+- Gate B no fue emitido ni ejecutado. `gateBSource` exige ejecución
+  `completed`, `completed_request_count=12` y tres raw refs canónicos; producción
+  conserva `status=active`, completion count `null` y raw refs `[]`. El código
+  desplegado reserva budget pero no expone una transición server-owned de
+  completion. Reparar esto requiere nuevo cambio, tests, deploy y packet; nunca
+  completar la fila manualmente.
+- Provider-free final: `lab-provider-free-postdeploy-bc1a3e5c`, dos samples,
+  dos resultados sin errores, provider disabled y `maxRequests=0`. Gate B
+  también permanece fail-closed con cero requests sin un source completo.
+- Superficie Tauri real sobre el checkout de trabajo: owner reconocido; Gate A
+  visible como `completed/available`, 12 resultados y cuatro candidatos.
+  Recipes separa `configured=Available` de `resolved/observed=Not observed`.
+  Con `Reauthentication required`, Experiments muestra corpus pero no carga
+  recipes allowlisted y no habilita el replay. El smoke automatizado encuentra
+  WebView pero obtiene `about:blank` para Settings; la fuente limpia d9 tampoco
+  compila Tauri por drift Rust previo. No se afirma cierre UI end-to-end ni se
+  publicó installer desktop.

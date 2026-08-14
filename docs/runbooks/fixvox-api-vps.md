@@ -1,12 +1,12 @@
 ---
 status: active
-updated: 2026-07-24
+updated: 2026-08-14
 track: docs/tracks/fixvox-self-hosted-checkpoint-f-vps-loopback-plan.md
 ---
 
 # Runbook — Fixvox API VPS Loopback
 
-The permanent direct-runtime cutover now routes `auth-fixvox.jpsala.dev` through the dedicated Cloudflare Tunnel to the loopback-only VPS service. Runtime release `89750e99f55f7d01` restores Fixvox-compatible STT and postprocess prompts; `e835f7f678b528c8` is the immediate rollback. PostgreSQL remains schema 6 and the logical `authorityMode` stays `cloudflare-authority` for compatibility; the Worker Custom Domain is absent and is no longer the hot path.
+The permanent direct-runtime cutover routes `auth-fixvox.jpsala.dev` through the dedicated Cloudflare Tunnel to the loopback-only VPS service. Live verification on 2026-08-14 observed runtime release `bc1a3e5cadba1903`, PostgreSQL schema 9 with exact migrations `0001..0009`, and logical `authorityMode=cloudflare-authority`. Release `650b4c8f6ed00a2a` is the immediate schema-9 code rollback. Release `11bf651ce5d983b6` remains preserved but expects schema 8 and is not a direct code rollback while PostgreSQL remains at schema 9. The Worker Custom Domain is absent and it is not the hot path.
 
 The operational mirror is `C:/dev/infra/docs/runbooks/fixvox-api-vps.md`. If either runbook disagrees with the other or with the selected track, stop before execution.
 
@@ -18,15 +18,15 @@ The operational mirror is `C:/dev/infra/docs/runbooks/fixvox-api-vps.md`. If eit
 | API bind | `127.0.0.1:8790` only; `8787` remains Admin BFF |
 | Runtime | `/home/jpsal/.bun/bin/bun` |
 | Releases | `/home/jpsal/opt/fixvox-api/releases/<release-id>` + atomic `current` symlink |
-| Current / immediate rollback | `89750e99f55f7d01` / `e835f7f678b528c8` |
-| Earlier schema 6 rollbacks | `90ca26a7e3bd6f50`, then `c0deb60ab0f39b3a` |
+| Current / immediate schema-9 rollback | `bc1a3e5cadba1903` / `650b4c8f6ed00a2a` |
+| Preserved schema-8 code release | `11bf651ce5d983b6`; not directly runnable against schema 9 |
 | Staging | `/home/jpsal/staging/fixvox-api` |
 | Protected config | `/home/jpsal/.config/dictation-tauri/fixvox-api.env`, mode `0600` |
 | Protected libpq config | `/home/jpsal/.config/dictation-tauri/fixvox-api.pg_service.conf`, mode `0600` |
 | User unit | `/home/jpsal/.config/systemd/user/fixvox-api.service` |
 | Wrappers | `/home/jpsal/.local/bin/fixvox-api-*` |
 | Backups | `/home/jpsal/backups/fixvox-api`, mode `0700` |
-| PostgreSQL | Ubuntu host-managed PostgreSQL 16; DB `fixvox`; schema 6; roles `fixvox_migrator` and `fixvox_api` |
+| PostgreSQL | Ubuntu host-managed PostgreSQL 16; DB `fixvox`; schema 9 with exact migrations `0001..0009`; roles `fixvox_migrator` and `fixvox_api` |
 | Routing / authority / providers | Dedicated Tunnel → VPS; logical `cloudflare-authority`; providers real; Groq and Google OAuth credentials protected in env `0600` |
 
 Never inspect, reuse, mutate, or depend on PostgreSQL containers or volumes belonging to Coolify or Zulip. Never deploy from or mutate `/home/jpsal/dev/dictation-tauri`.
@@ -41,6 +41,8 @@ All scripts default to dry-run. Mutating execution fails closed unless it receiv
 | `ops/fixvox-api/preflight.sh` | F2 | Read-only OS/runtime/resources/port/path/package checks |
 | `ops/fixvox-api/provision.sh` | F2 | Dedicated PostgreSQL, roles/grants, protected config and migrations |
 | `ops/fixvox-api/deploy.sh` | F3 | Staging validation, hash verification, immutable release and `current` switch |
+| `ops/fixvox-api/code-release.sh` | F3 | Code-only immutable install, atomic promotion, one restart, one-shot verification and exact automatic rollback |
+| `ops/fixvox-api/tests/code-release-smoke.sh` | F3 | Provider-free success/failure/rollback/privacy contract for `code-release.sh` |
 | `ops/fixvox-api/service.sh` | F3 | Unit/wrapper install, systemd verification and loopback start |
 | `ops/fixvox-api/health.sh` | F3 | Status, listener, health/readiness and allowlisted structured logs |
 | `ops/fixvox-api/health-f4.sh`, `readiness.sh`, `status.sh`, `logs.sh` | F4 | Read-only health, readiness, status and allowlisted journal projections |
@@ -278,6 +280,172 @@ Persistent provider/canary work now lives in `docs/tracks/vps-persistent-provide
   `e835f7f678b528c8`.
 - Receipt redacted local:
   `artifacts/fixvox-api-prompt-parity/20260724T195642Z-prompt-fallback/production-receipt.json`.
+
+## Upgrade Schema 8→9 — Blocked After Safe Rollback 2026-08-13
+
+El tooling local no commiteado en el checkout aislado `59a3dfe…` conserva
+backup F4 fresco/verificado, install-only, migración protegida, promoción,
+restart único, verificación y rollback lógico `9→8`. Candidate
+`650b4c8f6ed00a2a` quedó byte-compatible con producción:
+
+- archive SHA-256
+  `650b4c8f6ed00a2a64f6c8fa63143fe0b32607317a4ecec59f448633305f4924`;
+- manifest SHA-256
+  `e0b4e21388a6ffcb08a207f6aaa7ea66c86a40b5f6da1b0c0039d91662c0a997`;
+- `0001..0008` coinciden exactamente con release activa y
+  `schema_migrations`; `0009` conserva
+  `82dbdf93a23aca25d8a1df6abb32546f82dcf33dea0a20a1523fbcd6d168a5a5`.
+
+La prueba descartable confirmó sólo `0009` pendiente, rollback a marker `8`
+preservando tablas/datos y segundo `8→9`. JP aprobó el primer packet; preflight
+y upload a staging pasaron con hashes exactos. Antes del backup se detectó que
+el helper aprobado exigía nueve archivos también al inspeccionar la release
+baseline de ocho. No se ejecutó backup, install, migration, symlink ni restart.
+
+La corrección probada acepta ocho archivos exclusivamente para `inspect` y
+mantiene nueve más hashes canónicos exactos para `migrate`/`rollback`. Helper
+corregido SHA-256:
+`4b459d1a2c57d117fbb3a9ef1cffd2d78af58c786326de2b70d88334902d1bd1`.
+El gate revisado autorizó reemplazar el helper y continuar. El upgrade creó
+backup fresco verificado
+`fixvox-20260814T032217402611748Z.dump.zst.age` SHA-256
+`96e0903dd06bf73b32a3b87c8194a23d86fc571b4e5a1088995b34166cabeacd`,
+instaló candidate, aplicó `0009`, promovió y reinició. `verify` falló; el
+rollback automático volvió lógicamente a schema `8`, restauró `current`
+`11bf651ce5d983b6` y dejó servicio/listener/health/readiness verdes.
+
+No reintentar. El receipt `0600` no conserva la dimensión del primer verify
+porque sus campos fueron reemplazados por la verificación final del rollback.
+Antes de otro gate, preservar esa primera causa y probar explícitamente el
+contrato readiness post-restart. No corregir checksums productivos, mutar
+releases inmutables, sustituir el migrator protegido ni fabricar otra release
+de rollback.
+
+## Receipt/Readiness Hardened — Gate Still Blocked 2026-08-14
+
+El orchestrator local revisado usa receipt schema `2`, preserva
+`verification`/`verificationFailures` del primer intento y guarda la superficie
+posterior en `rollbackVerification`. Antes de cualquier HTTP aplica un barrier
+acotado `30 × 1 s` que espera sólo service active más un único listener
+`127.0.0.1:8790`; luego cada health/readiness local/público se ejecuta una vez.
+No hay retry de HTTP, migración, promoción ni restart.
+
+La prueba provider-free cubrió seis failpoints, listener demorado, ocho
+dimensiones, schema/privacidad exactos, PostgreSQL descartable `8→9→8→9` y boot
+del archive real. Tooling local: helper
+`4b459d1a2c57d117fbb3a9ef1cffd2d78af58c786326de2b70d88334902d1bd1`,
+upgrade `1e9d99357fee822c7ea0db522d6f648b1c5ac12c456604d19f57edfe16e0e25c`,
+smoke `00d1a9e71f22da79a7b7b86643eadd5fb0f84ed12e164c047c588814e1dbad28`.
+Archive/manifest siguen sin cambios.
+
+El preflight read-only dejó producción verde en current/rollback
+`11bf651ce5d983b6`, schema `8`, candidate `650b4c8f6ed00a2a` instalada e
+inactiva, backup
+`fixvox-20260814T032217402611748Z.dump.zst.age`
+`96e0903dd06bf73b32a3b87c8194a23d86fc571b4e5a1088995b34166cabeacd`,
+service/listener/health/readiness/authority y safeguards verdes.
+
+Stop antes de gate: `upgrade.sh` siempre llama `deploy.sh --install-only`, pero
+`deploy.sh` rechaza cualquier release existente para preservar inmutabilidad.
+Reintentar con la candidate preinstalada fallaría en `install`. No reemplazar
+tooling remoto, borrar/mutar candidate, fabricar otro release ID ni reintentar
+producción. Un corte separado debe probar un handoff byte-exacto para candidate
+preinstalada.
+
+## Preinstalled Candidate Reuse — Revised Gate 2026-08-14
+
+El tooling local del checkout aislado valida byte-exactamente una candidate ya
+instalada antes de reutilizarla y conserva install-only para candidates nuevas.
+La validación exige archive/manifest aprobados, todos los runtime entries y
+hashes, manifest instalado byte-identical y árbol exacto sin drift,
+missing/extra, symlink ni path no regular; no extrae, reinstala, borra, muta ni
+llama deploy. Falla cerrado en `install`/`23`. Receipt schema `2` y readiness
+`30 × 1 s` por service/listener seguido de HTTP one-shot no cambiaron.
+
+Proof provider-free verde: reuse válido y seis rechazos exactos, fresh install,
+seis failpoints, ocho dimensiones, privacidad, PostgreSQL product-baseline
+`8→9→8→9` y boot real health `200` sin provider calls. Hashes locales: helper
+`4b459d1a2c57d117fbb3a9ef1cffd2d78af58c786326de2b70d88334902d1bd1`,
+upgrade `90aaa41354e673a3cadaaff5b628cae378a08c43bfc5842b3900916e407ef6f5`,
+smoke `123bf26b7ca6b3b300f341b920a636d722814dcf92ebcb154ca049339ea3b2c1`.
+Staging conserva helper idéntico y upgrade
+`79bde1351035c11d89fe027e2e3f23b2d227bb045edc84b93659ee64a6d8d209`;
+diff upgrade exacto: nueve hunks, `+200/-28`. Archive/manifest permanecen
+`650b4c8f6ed00a2a64f6c8fa63143fe0b32607317a4ecec59f448633305f4924` /
+`e0b4e21388a6ffcb08a207f6aaa7ea66c86a40b5f6da1b0c0039d91662c0a997`.
+
+Preflight read-only: current/rollback `11bf651ce5d983b6`, candidate
+`650b4c8f6ed00a2a` instalada/inactiva y sus 71 files exactos, schema `8`,
+service/listener/health/readiness/authority verdes, backup
+`fixvox-20260814T032217402611748Z.dump.zst.age`
+`96e0903dd06bf73b32a3b87c8194a23d86fc571b4e5a1088995b34166cabeacd`,
+timer/result/permisos/recursos verdes. No reemplazar tooling ni reintentar antes
+de aprobación explícita. Después del gate: reemplazar sólo upgrade staged,
+verificar hash/mode; repetir preflight; ejecutar una vez backup F4 fresco,
+reuse validado, `8→9`, promoción, restart, barrier y HTTP one-shot; verificar
+independientemente. Rollback: lógico `9→8`, current a `11bf651ce5d983b6`, un
+restart y `rollbackVerification`; nunca restore implícito, retry o checksum
+rewrite.
+
+## Upgrade 8→9 Completed — 2026-08-14
+
+El packet revisado terminó exactamente una vez con `upgrade=succeeded`. Estado
+operativo verificado:
+
+- `current=650b4c8f6ed00a2a`; rollback de código preservado
+  `11bf651ce5d983b6`;
+- PostgreSQL schema `9`, markers `1..9`, nombres y checksums exactos; `0009`
+  `laboratory_execution_grants`
+  `82dbdf93a23aca25d8a1df6abb32546f82dcf33dea0a20a1523fbcd6d168a5a5`;
+- receipt staged privado modo `0600`, schema `2`, `outcome=succeeded`,
+  verificación primaria verde, `rollbackVerification=null` y rollback no
+  intentado;
+- backup F4 pre-migración
+  `fixvox-20260814T083217968689472Z.dump.zst.age`
+  `099992ff344f188585f4afc1e640e9d184e427c41d5f03305be8ba915322ce55`,
+  manifest schema `8`, archivos `0600`, directorio `0700`;
+- service enabled/active, `NRestarts=0`, listener único
+  `127.0.0.1:8790`, health/readiness local+público `200`, database/schema/jobs
+  true y `cloudflare-authority`;
+- archive/manifest/candidate conservan los `71` runtime files byte-exactos; la
+  candidate preinstalada se reutilizó sin deploy/reinstall y la evidencia
+  allowlisted desde activación mostró cero rutas provider-capable.
+
+No reejecutar este orchestrator como retry. No restore, checksum rewrite,
+reinstall, delete ni rollback fuera de un gate productivo nuevo y explícito.
+
+## Audit Serialization Code Release And Gate A — 2026-08-14
+
+Approved code-only release:
+
+- source commit `d9aa52006cb5ea09fd58439e62b493d2a6ec7f42`;
+- release `bc1a3e5cadba1903`;
+- archive SHA-256
+  `bc1a3e5cadba190307b8f04e4d530e0c0e337e1ed9d5d55d2e67e4a838a94b01`;
+- 71 allowlisted runtime files; no schema, migration, backfill, env, DNS or
+  tunnel change;
+- prior current `650b4c8f6ed00a2a` preserved as the exact schema-9 rollback.
+
+The approved orchestrator installed the immutable release, promoted `current`
+atomically and restarted once. Its private receipt is schema `1`, mode `0600`,
+`outcome=succeeded`, `phase=verified`, `rollbackAttempted=false`. Independent
+checks observed current `bc1a3e5cadba1903`, schema `9`, exact migrations and
+marker, service active/enabled, `NRestarts=0`, one listener at
+`127.0.0.1:8790`, local/public health and readiness green, and
+`cloudflare-authority`.
+
+The separately approved owner→owner audit gate created `sequence=11` with
+`jsonb_typeof(safe_metadata)=object` and exact logical content
+`{role:"owner"}`. Owner count remains one. Historical `sequence=9/10` remain
+unchanged JSONB strings.
+
+The separately approved Gate A consumed one opaque grant and used the atomic
+ledger to `12/12` requests and `4992/5000` microusd. Grant issue/consume audits
+are JSONB objects. Current grant counts are zero open and one consumed. Gate B
+must not be issued: the Gate A execution remains `active` with
+`completed_request_count=null` and `canonical_raw_refs=[]`; the deployed
+runtime has no server-owned completion transition. Never repair this state with
+manual SQL.
 
 ## Stop Conditions
 
