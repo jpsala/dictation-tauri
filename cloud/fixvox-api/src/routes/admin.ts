@@ -5,6 +5,9 @@ import type { PostgresEngineCatalogRepository } from "../postgres/engine-catalog
 import type { PostgresLaboratoryExecutionGrantRepository } from "../postgres/laboratory-execution-grant-repository.ts";
 import {
   buildLaboratoryCatalog,
+  type LaboratoryExecutionAbortRequest,
+  type LaboratoryExecutionAbortResult,
+  type LaboratoryExecutionCompletionRequest,
   type LaboratoryExecutionGrantRequest,
   type LaboratoryExecutionGrantResult,
   type LaboratoryExecutionStartRequest,
@@ -86,11 +89,90 @@ async function hashJson(value: unknown): Promise<string> {
 function executionFailure(code: string): Response {
   if (code === "laboratory_execution_unauthorized") return error(code, 401);
   if (code === "laboratory_execution_grant_mismatch") return error(code, 403);
-  if (code === "laboratory_execution_grant_expired" || code === "laboratory_execution_grant_reused") return error(code, 409);
+  if (code === "laboratory_execution_grant_expired" || code === "laboratory_execution_grant_reused" || code === "laboratory_execution_conflict") return error(code, 409);
   if (code === "laboratory_execution_definition_mismatch" || code === "laboratory_execution_source_incomplete") return error(code, 422);
   return error("service_unavailable", 503);
 }
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
+type LaboratoryRouteCompletionRequest = LaboratoryExecutionCompletionRequest | Readonly<{
+  schemaVersion: 1;
+  kind: "gate-b";
+  definitionHash: string;
+  estimateHash: string;
+  completedRequestCount: 6;
+}>;
+function parseLaboratoryCompletion(command: Record<string, unknown>): LaboratoryRouteCompletionRequest | null {
+  const commonKeys = ["schemaVersion", "kind", "definitionHash", "estimateHash", "completedRequestCount"];
+  if (
+    command.kind === "gate-b"
+    && Object.keys(command).every((key) => commonKeys.includes(key))
+    && command.schemaVersion === 1
+    && typeof command.definitionHash === "string"
+    && /^[a-f0-9]{64}$/.test(command.definitionHash)
+    && typeof command.estimateHash === "string"
+    && /^[a-f0-9]{64}$/.test(command.estimateHash)
+    && command.completedRequestCount === 6
+  ) {
+    return {
+      schemaVersion: 1,
+      kind: "gate-b",
+      definitionHash: command.definitionHash,
+      estimateHash: command.estimateHash,
+      completedRequestCount: 6,
+    };
+  }
+  const allowed = [...commonKeys, "rawEvidence"];
+  if (
+    Object.keys(command).some((key) => !allowed.includes(key))
+    || command.schemaVersion !== 1
+    || command.kind !== "gate-a"
+    || typeof command.definitionHash !== "string"
+    || !/^[a-f0-9]{64}$/.test(command.definitionHash)
+    || typeof command.estimateHash !== "string"
+    || !/^[a-f0-9]{64}$/.test(command.estimateHash)
+    || command.completedRequestCount !== 12
+    || !Array.isArray(command.rawEvidence)
+    || command.rawEvidence.length !== 3
+  ) return null;
+  const rawEvidence = command.rawEvidence.map((raw, index) => {
+    const evidence = record(raw);
+    if (
+      Object.keys(evidence).some((key) => !["sampleId", "candidateId", "sha256", "byteLength"].includes(key))
+      || evidence.sampleId !== GATE_A_DEFINITION.sampleIds[index]
+      || evidence.candidateId !== "transcription-quality-v1-short-auto"
+      || typeof evidence.sha256 !== "string"
+      || !/^[a-f0-9]{64}$/.test(evidence.sha256)
+      || typeof evidence.byteLength !== "number"
+      || !Number.isInteger(evidence.byteLength)
+      || evidence.byteLength < 1
+      || evidence.byteLength > 16_777_216
+    ) return null;
+    return {
+      sampleId: String(evidence.sampleId),
+      candidateId: "transcription-quality-v1-short-auto" as const,
+      sha256: evidence.sha256,
+      byteLength: evidence.byteLength,
+    };
+  });
+  if (!rawEvidence[0] || !rawEvidence[1] || !rawEvidence[2]) return null;
+  return {
+    schemaVersion: 1,
+    kind: "gate-a",
+    definitionHash: command.definitionHash,
+    estimateHash: command.estimateHash,
+    completedRequestCount: 12,
+    rawEvidence: [rawEvidence[0], rawEvidence[1], rawEvidence[2]],
+  };
+}
+
+function parseLaboratoryAbort(command: Record<string, unknown>): LaboratoryExecutionAbortRequest | null {
+  if (
+    Object.keys(command).some((key) => !["schemaVersion", "reason"].includes(key))
+    || command.schemaVersion !== 1
+    || !["spawn-failed", "runner-failed", "cancelled", "source-invalid"].includes(String(command.reason))
+  ) return null;
+  return { schemaVersion: 1, reason: command.reason as LaboratoryExecutionAbortRequest["reason"] };
+}
 function profileCommandResponse(result: ProfileCommandResult, action: "apply" | "rollback"): Response {
   return json({ ok: true, data: { profile: { key: result.profileId, label: result.label, publishedVersion: result.resultingVersion, revision: result.revision }, publication: { previousVersion: result.previousVersion, resultingVersion: result.resultingVersion }, audit: { id: result.auditId, action, result: "success" }, idempotentReplay: result.idempotentReplay } });
 }
@@ -164,12 +246,16 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
           && Object.keys(command).every((key) => ["schemaVersion", "kind", "sourceGateARunId"].includes(key))
         ) {
           sourceRunId = command.sourceGateARunId;
-          const source = await deps.laboratoryGrants.gateBSource(sourceRunId);
+          const source = await deps.laboratoryGrants.gateBSource({
+            runId: sourceRunId,
+            principalKey: operator.principalKey,
+            deviceId,
+          });
           const rawRefs = source?.rawRefs ?? [];
           const exactRawSource = rawRefs.length === GATE_A_DEFINITION.sampleIds.length
             && GATE_A_DEFINITION.sampleIds.every((sampleId, index) =>
               rawRefs[index]?.sampleId === sampleId
-              && /^[a-z0-9][a-z0-9._:-]{0,127}$/.test(rawRefs[index]?.rawRef ?? ""));
+              && /^lraw_[a-f0-9]{64}$/.test(rawRefs[index]?.rawRef ?? ""));
           if (!source || !exactRawSource) return cors(request, executionFailure("laboratory_execution_source_incomplete"));
           definition = {
             ...GATE_B_FIXED_DEFINITION,
@@ -177,7 +263,7 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
             sourceGateADefinitionHash: source.definitionHash,
             rawRefs,
           };
-          requestValue = { schemaVersion: 1, kind: "gate-b", sourceGateARunId };
+          requestValue = { schemaVersion: 1, kind: "gate-b", sourceGateARunId: sourceRunId };
           maxRequests = GATE_B_FIXED_DEFINITION.maxRequests;
           maxCostUsd = GATE_B_FIXED_DEFINITION.maxCostUsd;
         } else {
@@ -243,6 +329,46 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
           },
         };
         return cors(request, json(result, 201));
+      }
+      const completionMatch = url.pathname.match(/^\/product\/v1\/control-room\/laboratory\/executions\/([a-f0-9-]{36})\/completion$/);
+      if (completionMatch && request.method === "POST") {
+        if (!permitted(operator, "edit") || !["editor", "publisher", "owner"].includes(operator.role) || !deps.laboratoryGrants) return cors(request, error("forbidden", 403));
+        const deviceId = request.headers.get("x-device-id")?.trim() ?? "";
+        if (!/^[a-zA-Z0-9._:-]{1,128}$/.test(deviceId)) return cors(request, error("invalid_request", 400));
+        const command = await body(request);
+        const completion = parseLaboratoryCompletion(command);
+        if (!completion) return cors(request, error("invalid_request", 400));
+        try {
+          const result = await deps.laboratoryGrants.complete({
+            executionId: completionMatch[1],
+            principalKey: operator.principalKey,
+            deviceId,
+            request: completion,
+          });
+          return cors(request, json(result));
+        } catch (cause) {
+          return cors(request, executionFailure(cause instanceof Error ? cause.message : "service_unavailable"));
+        }
+      }
+      const abortMatch = url.pathname.match(/^\/product\/v1\/control-room\/laboratory\/executions\/([a-f0-9-]{36})\/abort$/);
+      if (abortMatch && request.method === "POST") {
+        if (!permitted(operator, "edit") || !["editor", "publisher", "owner"].includes(operator.role) || !deps.laboratoryGrants) return cors(request, error("forbidden", 403));
+        const deviceId = request.headers.get("x-device-id")?.trim() ?? "";
+        if (!/^[a-zA-Z0-9._:-]{1,128}$/.test(deviceId)) return cors(request, error("invalid_request", 400));
+        const command = await body(request);
+        const abort = parseLaboratoryAbort(command);
+        if (!abort) return cors(request, error("invalid_request", 400));
+        try {
+          const result: LaboratoryExecutionAbortResult = await deps.laboratoryGrants.abort({
+            executionId: abortMatch[1],
+            principalKey: operator.principalKey,
+            deviceId,
+            request: abort,
+          });
+          return cors(request, json(result));
+        } catch (cause) {
+          return cors(request, executionFailure(cause instanceof Error ? cause.message : "service_unavailable"));
+        }
       }
       if (request.method === "GET" && url.pathname === `${prefix}/roles`) return cors(request, json(await deps.repository.linkedPrincipals()));
       const roleMatch = url.pathname.match(/^\/product\/v1\/control-room\/roles\/(arp_[a-f0-9]{64})$/);

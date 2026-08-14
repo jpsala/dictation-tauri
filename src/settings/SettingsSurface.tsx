@@ -1056,7 +1056,7 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
 
 
   return (
-    <main className="settings-window-shell" aria-label="Ajustes de Dictation">
+    <main className="settings-window-shell" data-app-surface="settings" aria-label="Ajustes de Dictation">
       <aside className="settings-sidebar" aria-label="Secciones de ajustes">
         <div className="settings-brand-row">
           <div className="settings-brand-mark" aria-hidden="true">⚡</div>

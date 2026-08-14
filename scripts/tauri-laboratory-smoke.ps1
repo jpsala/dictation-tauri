@@ -1,5 +1,8 @@
 param(
   [switch]$AllowDesktopSideEffects,
+  [switch]$Offline,
+  [switch]$AutoShow,
+  [switch]$Replay,
   [string]$RunId = (Get-Date -Format 'yyyyMMdd-HHmmss'),
   [int]$StartupTimeoutSeconds = 90,
   [int]$RemoteDebugPort = 9347,
@@ -11,6 +14,9 @@ $ErrorActionPreference = 'Stop'
 if (-not $AllowDesktopSideEffects) {
   throw 'This smoke starts a real Tauri window and resizes it natively. Re-run with -AllowDesktopSideEffects after local approval.'
 }
+if (-not $Offline) {
+  throw 'This smoke is hermetic by default. Re-run with -Offline to select the unused local authority endpoint.'
+}
 
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $runRoot = Join-Path $repo "artifacts/tauri-laboratory-smoke/$RunId"
@@ -20,13 +26,13 @@ $screenshotPath = Join-Path $runRoot 'laboratory-720x620.png'
 $zoomScreenshotPath = Join-Path $runRoot 'laboratory-200-percent.png'
 $tauriOutLog = Join-Path $runRoot 'tauri-dev.out.log'
 $tauriErrLog = Join-Path $runRoot 'tauri-dev.err.log'
-$envKeys = @('APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'GROQ_API_KEY', 'GROQ-API-KEY', 'FIXVOX_DEVICE_ID', 'FIXVOX_INSTALL_ID', 'DICTATION_LAB_SMOKE_SHOW_WINDOW', 'DICTATION_LAB_SMOKE_RUN_REPLAY', 'DICTATION_LAB_SMOKE_SCREENSHOT', 'DICTATION_LAB_SMOKE_ZOOM_SCREENSHOT', 'DICTATION_LAB_SMOKE_CDP_WS')
 $tauriProc = $null
 $previousEnv = @{}
 $replayRoot = Join-Path $repo 'artifacts/transcription-quality'
 $existingReplayRuns = @(Get-ChildItem -LiteralPath $replayRoot -Directory -Filter 'lab-lab-*' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 New-Item -ItemType Directory -Force -Path $profileRoot | Out-Null
-
+$offlineAuthorityEndpoint = 'http://127.0.0.1:9'
+$envKeys = @('APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'GROQ_API_KEY', 'GROQ-API-KEY', 'FIXVOX_DEVICE_ID', 'FIXVOX_INSTALL_ID', 'FIXVOX_BACKEND_URL', 'FIXVOX_API_BASE_URL', 'PROXY_BASE_URL', 'DICTATION_LAB_SMOKE_OFFLINE', 'DICTATION_LAB_SMOKE_AUTO_SHOW', 'DICTATION_LAB_SMOKE_REPLAY', 'DICTATION_LAB_SMOKE_SCREENSHOT', 'DICTATION_LAB_SMOKE_ZOOM_SCREENSHOT', 'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS')
 Add-Type @"
 using System;
 using System.Collections.Generic;
@@ -92,10 +98,10 @@ function Wait-ForCdpPage([int]$Port, [string]$UrlPart, [int]$TimeoutSeconds) {
   throw "Tauri WebView2 CDP page containing '$UrlPart' was not available before timeout."
 }
 
-function Invoke-CdpExpression([object]$Page, [string]$Expression) {
+function Invoke-CdpExpression([int]$Port, [string]$Surface, [string]$Expression) {
   $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Expression))
-  $result = node (Join-Path $repo 'scripts/cdp-evaluate.mjs') $Page.webSocketDebuggerUrl "base64:$encoded"
-  if ($LASTEXITCODE -ne 0) { throw 'Tauri CDP expression failed.' }
+  $result = node (Join-Path $repo 'scripts/cdp-evaluate.mjs') $Port $Surface "base64:$encoded"
+  if ($LASTEXITCODE -ne 0) { throw "Tauri CDP expression failed for data-app-surface=$Surface." }
   return [string]$result
 }
 
@@ -140,8 +146,12 @@ try {
   $env:LOCALAPPDATA = Join-Path $profileRoot 'localappdata'
   $env:TEMP = Join-Path $profileRoot 'temp'
   $env:TMP = $env:TEMP
-  $env:DICTATION_LAB_SMOKE_SHOW_WINDOW = '1'
-  $env:DICTATION_LAB_SMOKE_RUN_REPLAY = '1'
+  $env:DICTATION_LAB_SMOKE_OFFLINE = '1'
+  if ($AutoShow) { $env:DICTATION_LAB_SMOKE_AUTO_SHOW = '1' }
+  if ($Replay) { $env:DICTATION_LAB_SMOKE_REPLAY = '1' }
+  $env:FIXVOX_BACKEND_URL = $offlineAuthorityEndpoint
+  $env:FIXVOX_API_BASE_URL = $offlineAuthorityEndpoint
+  $env:PROXY_BASE_URL = $offlineAuthorityEndpoint
   $env:DICTATION_LAB_SMOKE_SCREENSHOT = $screenshotPath
   $env:DICTATION_LAB_SMOKE_ZOOM_SCREENSHOT = $zoomScreenshotPath
   Remove-Item Env:GROQ_API_KEY, 'Env:GROQ-API-KEY', Env:FIXVOX_DEVICE_ID, Env:FIXVOX_INSTALL_ID -ErrorAction SilentlyContinue
@@ -153,46 +163,41 @@ try {
 
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$RemoteDebugPort"
   $tauriProc = Start-Process -FilePath 'npm.cmd' -ArgumentList @('run', 'tauri:dev') -WorkingDirectory $repo -RedirectStandardOutput $tauriOutLog -RedirectStandardError $tauriErrLog -PassThru
-  $mainPageInfo = $null
+  $settingsPage = $null
   $startupDeadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
-  while (-not $mainPageInfo -and (Get-Date) -lt $startupDeadline) {
-    $mainPageInfo = Get-CdpPages $RemoteDebugPort | Where-Object { $_.webSocketDebuggerUrl } | Select-Object -First 1
-    if (-not $mainPageInfo) { Start-Sleep -Milliseconds 500 }
+  while (-not $settingsPage -and (Get-Date) -lt $startupDeadline) {
+    try { $settingsPage = Wait-ForCdpPage $RemoteDebugPort '#settings' 2 } catch { }
+    if (-not $settingsPage) { Start-Sleep -Milliseconds 500 }
   }
-  if (-not $mainPageInfo) { throw 'No Tauri WebView2 CDP page was available before timeout.' }
-  $env:DICTATION_LAB_SMOKE_CDP_WS = [string]$mainPageInfo.webSocketDebuggerUrl
-  Add-Check 'Tauri WebView2 page is available' ([bool]$mainPageInfo.webSocketDebuggerUrl) @{ port = $RemoteDebugPort }
+  if (-not $settingsPage) { throw 'Settings WebView2 CDP page was not available before timeout.' }
+  Add-Check 'Tauri WebView2 settings surface is available' ([bool]$settingsPage.webSocketDebuggerUrl) @{ port = $RemoteDebugPort; surface = 'settings' }
 
-  $settingsPage = @(Wait-ForCdpPage $RemoteDebugPort '#settings' 20)[0]
   Start-Sleep -Seconds 2
-  $settingsProbe = Invoke-CdpExpression $settingsPage "JSON.stringify({url:location.href,ready:document.readyState,hasDictation:[...document.querySelectorAll('button')].some((item)=>item.textContent?.includes('Dictado')&&item.textContent?.includes('Audio y entrega'))})" | ConvertFrom-Json
-  Add-Check 'Settings WebView host is configured' ([bool]$settingsPage.webSocketDebuggerUrl -and $settingsProbe.url -like '*#settings' -and $settingsProbe.hasDictation) @{ url = $settingsProbe.url; ready = $settingsProbe.ready }
-  $laboratoryPageBefore = @(Wait-ForCdpPage $RemoteDebugPort 'surface=dictation-lab' 20)[0]
-  $laboratoryNavigationBefore = [double](Invoke-CdpExpression $laboratoryPageBefore "performance.timeOrigin")
-  $settingsSectionResult = Invoke-CdpExpression $settingsPage "(()=>{const section=[...document.querySelectorAll('button')].find((item)=>item.textContent?.includes('Dictado')&&item.textContent?.includes('Audio y entrega'));if(!section)throw new Error('dictation-settings-section-unavailable');section.click();return 'selected';})()"
+  $settingsProbe = Invoke-CdpExpression $RemoteDebugPort 'settings' "JSON.stringify({url:location.href,ready:document.readyState,hasDictation:[...document.querySelectorAll('button')].some((item)=>item.textContent?.includes('Dictado')&&item.textContent?.includes('Audio y entrega'))})" | ConvertFrom-Json
+  Add-Check 'Settings WebView host is configured' ($settingsProbe.url -like '*#settings' -and $settingsProbe.hasDictation) @{ url = $settingsProbe.url; ready = $settingsProbe.ready }
+
+  $settingsSectionResult = Invoke-CdpExpression $RemoteDebugPort 'settings' "(()=>{const section=[...document.querySelectorAll('button')].find((item)=>item.textContent?.includes('Dictado')&&item.textContent?.includes('Audio y entrega'));if(!section)throw new Error('dictation-settings-section-unavailable');section.click();return 'selected';})()"
   if ($settingsSectionResult -ne 'selected') { throw 'Settings Dictation section did not activate.' }
   Start-Sleep -Milliseconds 500
-  $settingsEntryResult = Invoke-CdpExpression $settingsPage "(()=>{const open=[...document.querySelectorAll('button')].find((item)=>item.textContent?.trim()==='Abrir laboratorio');if(!open||open.disabled)throw new Error('laboratory-entry-unavailable');open.click();return 'clicked';})()"
+  $settingsEntryResult = Invoke-CdpExpression $RemoteDebugPort 'settings' "(()=>{const open=[...document.querySelectorAll('button')].find((item)=>item.textContent?.trim()==='Abrir laboratorio');if(!open||open.disabled)throw new Error('laboratory-entry-unavailable');open.click();return 'clicked';})()"
   if ($settingsEntryResult -ne 'clicked') { throw 'Settings Laboratory entry did not execute.' }
-  $settingsOpenResult = $false
-  $settingsOpenDeadline = (Get-Date).AddSeconds(20)
-  while (-not $settingsOpenResult -and (Get-Date) -lt $settingsOpenDeadline) {
-    Start-Sleep -Milliseconds 250
-    try {
-      $laboratoryPageAfter = @(Wait-ForCdpPage $RemoteDebugPort 'surface=dictation-lab' 2)[0]
-      $laboratoryNavigationAfter = [double](Invoke-CdpExpression $laboratoryPageAfter "performance.timeOrigin")
-      $settingsOpenResult = $laboratoryNavigationAfter -gt $laboratoryNavigationBefore
-    } catch { }
-  }
-  Add-Check 'Settings command opens Dictation Laboratory' $settingsOpenResult @{ navigationBefore = $laboratoryNavigationBefore; navigationAfter = $laboratoryNavigationAfter }
 
-  $laboratoryPage = @(Wait-ForCdpPage $RemoteDebugPort 'surface=dictation-lab' 20)[0]
+  $laboratoryPage = $null
+  $settingsOpenDeadline = (Get-Date).AddSeconds(20)
+  while (-not $laboratoryPage -and (Get-Date) -lt $settingsOpenDeadline) {
+    try { $laboratoryPage = Wait-ForCdpPage $RemoteDebugPort 'surface=dictation-lab' 2 } catch { }
+    if (-not $laboratoryPage) { Start-Sleep -Milliseconds 250 }
+  }
+  $settingsOpenResult = [bool]$laboratoryPage
+  Add-Check 'Settings command opens Dictation Laboratory' $settingsOpenResult @{ surface = 'dictation-lab'; autoShow = [bool]$AutoShow }
+  if (-not $settingsOpenResult) { throw 'Dictation Laboratory surface did not become available.' }
+
   Start-Sleep -Seconds 2
   $initialExpression = "JSON.stringify({title:document.querySelector('h1')?.textContent||document.title,workspaceCount:document.querySelectorAll('[data-workspace-id]').length,noProviderActions:[...document.querySelectorAll('button')].filter((item)=>/Transcribe with provider|Start provider|Run provider|Deliver/i.test(item.textContent||'')).length,ready:document.readyState,responding:Boolean(document.querySelector('.lab-shell')),pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth})"
-  $capture = Invoke-CdpExpression $laboratoryPage $initialExpression | ConvertFrom-Json
+  $capture = Invoke-CdpExpression $RemoteDebugPort 'dictation-lab' $initialExpression | ConvertFrom-Json
   $report.capture = $capture
   Add-Check 'Dictation Laboratory renders all five workspaces' ($capture.workspaceCount -eq 5 -and $capture.title -eq 'Dictation Laboratory') @{ workspaceCount = $capture.workspaceCount }
-  Add-Check 'Laboratory starts provider-free and read-only' ($capture.noProviderActions -eq 0) @{}
+  Add-Check 'Laboratory starts without provider actions' ($capture.noProviderActions -eq 0) @{}
 
   $laboratoryHwnd = [LaboratorySmokeWin32]::FindVisibleWindow('Dictation Laboratory')
   Add-Check 'Native Laboratory window is visible' ($laboratoryHwnd -ne [IntPtr]::Zero) @{}
@@ -200,29 +205,35 @@ try {
     if (-not [LaboratorySmokeWin32]::Resize($laboratoryHwnd, $size[0], $size[1])) { throw "Native resize failed for $($size[0])x$($size[1])." }
     Start-Sleep -Milliseconds 500
     $bounds = [LaboratorySmokeWin32]::Bounds($laboratoryHwnd)
-    $probe = Invoke-CdpExpression $laboratoryPage "JSON.stringify({ready:document.readyState,responding:Boolean(document.querySelector('.lab-shell')),width:innerWidth,height:innerHeight,pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth})" | ConvertFrom-Json
+    $probe = Invoke-CdpExpression $RemoteDebugPort 'dictation-lab' "JSON.stringify({ready:document.readyState,responding:Boolean(document.querySelector('.lab-shell')),width:innerWidth,height:innerHeight,pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth})" | ConvertFrom-Json
     $windowsResponding = [LaboratorySmokeWin32]::IsResponding($laboratoryHwnd)
     Add-Check "Laboratory responds after native resize to $($size[0])x$($size[1])" ($windowsResponding -and $probe.ready -eq 'complete' -and $probe.responding -and -not $probe.pageOverflow) @{ nativeBounds = $bounds; windowsResponding = $windowsResponding; viewport = @{ width = $probe.width; height = $probe.height } }
     if ($size[0] -eq 720) { Save-WindowScreenshot $laboratoryHwnd $screenshotPath }
   }
 
-  $zoomProbe = Invoke-CdpExpression $laboratoryPage "document.documentElement.style.zoom='2';JSON.stringify({ready:document.readyState,responding:Boolean(document.querySelector('.lab-shell')),pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,workspaceCount:document.querySelectorAll('[data-workspace-id]').length})" | ConvertFrom-Json
+  $zoomProbe = Invoke-CdpExpression $RemoteDebugPort 'dictation-lab' "document.documentElement.style.zoom='2';JSON.stringify({ready:document.readyState,responding:Boolean(document.querySelector('.lab-shell')),pageOverflow:document.documentElement.scrollWidth>document.documentElement.clientWidth,workspaceCount:document.querySelectorAll('[data-workspace-id]').length})" | ConvertFrom-Json
   Save-WindowScreenshot $laboratoryHwnd $zoomScreenshotPath
   Add-Check 'Laboratory responds at 200 percent zoom' ($zoomProbe.ready -eq 'complete' -and $zoomProbe.responding -and -not $zoomProbe.pageOverflow -and $zoomProbe.workspaceCount -eq 5) @{ workspaceCount = $zoomProbe.workspaceCount }
 
-  $replayDeadline = (Get-Date).AddSeconds(30)
-  $newReplay = $null
-  while (-not $newReplay -and (Get-Date) -lt $replayDeadline) {
-    $newReplay = Get-ChildItem -LiteralPath $replayRoot -Directory -Filter 'lab-lab-*' -ErrorAction SilentlyContinue |
-      Where-Object { $existingReplayRuns -notcontains $_.FullName -and (Test-Path (Join-Path $_.FullName 'run.json')) } |
-      Select-Object -First 1
-    if (-not $newReplay) { Start-Sleep -Milliseconds 250 }
+  $networkLog = @((Get-Content -LiteralPath $tauriOutLog -ErrorAction SilentlyContinue) + (Get-Content -LiteralPath $tauriErrLog -ErrorAction SilentlyContinue)) -join "`n"
+  $forbiddenActivity = $networkLog -match '(?i)(product/v1/desktop/bootstrap|v2/device/register|v2/execution|groq|provider[_ -]?call|mutation)'
+  Add-Check 'Offline smoke records no cloud, bootstrap, device, provider, or mutation activity' (-not $forbiddenActivity) @{ authorityEndpoint = $offlineAuthorityEndpoint; offline = $true }
+
+  if ($Replay) {
+    $replayDeadline = (Get-Date).AddSeconds(30)
+    $newReplay = $null
+    while (-not $newReplay -and (Get-Date) -lt $replayDeadline) {
+      $newReplay = Get-ChildItem -LiteralPath $replayRoot -Directory -Filter 'lab-lab-*' -ErrorAction SilentlyContinue |
+        Where-Object { $existingReplayRuns -notcontains $_.FullName -and (Test-Path (Join-Path $_.FullName 'run.json')) } |
+        Select-Object -First 1
+      if (-not $newReplay) { Start-Sleep -Milliseconds 250 }
+    }
+    if (-not $newReplay) { throw 'Provider-free replay did not complete through the real Tauri host.' }
+    $replayRunPath = Join-Path $newReplay.FullName 'run.json'
+    $replayRun = Get-Content -Raw -LiteralPath $replayRunPath | ConvertFrom-Json
+    $report.artifacts.replay = $replayRunPath
+    Add-Check 'Real Tauri provider-free replay completes with zero provider calls' (-not $replayRun.providerCalls.enabled -and $replayRun.providerCalls.maxRequests -eq 0 -and @($replayRun.sampleIds).Count -eq 2) @{ runId = $replayRun.runId; sampleCount = @($replayRun.sampleIds).Count; maxRequests = $replayRun.providerCalls.maxRequests }
   }
-  if (-not $newReplay) { throw 'Provider-free replay did not complete through the real Tauri host.' }
-  $replayRunPath = Join-Path $newReplay.FullName 'run.json'
-  $replayRun = Get-Content -Raw -LiteralPath $replayRunPath | ConvertFrom-Json
-  $report.artifacts.replay = $replayRunPath
-  Add-Check 'Real Tauri provider-free replay completes with zero provider calls' (-not $replayRun.providerCalls.enabled -and $replayRun.providerCalls.maxRequests -eq 0 -and @($replayRun.sampleIds).Count -eq 2) @{ runId = $replayRun.runId; sampleCount = @($replayRun.sampleIds).Count; maxRequests = $replayRun.providerCalls.maxRequests }
   $report.status = 'passed'
 } catch {
   $report.status = 'failed'

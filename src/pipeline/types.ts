@@ -95,6 +95,9 @@ export type RuntimeTelemetryStage = {
   promptId?: string;
   model?: string;
   provider?: string;
+  recipeId?: string;
+  recipeVersion?: string;
+  source?: string;
   audio?: {
     durationMs?: number;
     originalBytes?: number;
@@ -102,6 +105,11 @@ export type RuntimeTelemetryStage = {
     mimeType?: string;
     source?: string;
     compressionRatio?: string;
+    levelNormalization?: {
+      status: string;
+      reason: string;
+      gainDb?: string;
+    };
     voiceActivity?: {
       durationMs: number;
       voicedMs: number;

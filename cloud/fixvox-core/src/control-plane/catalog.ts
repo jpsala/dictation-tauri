@@ -180,6 +180,72 @@ export type LaboratoryExecutionStartResult = Readonly<{
     expiresAt: string;
   }>;
 }>;
+export const LABORATORY_CANONICAL_RAW_REF_PATTERN = /^lraw_[a-f0-9]{64}$/;
+
+export type LaboratoryRawEvidenceInput = Readonly<{
+  sampleId: string;
+  candidateId: "transcription-quality-v1-short-auto";
+  sha256: string;
+  byteLength: number;
+}>;
+
+export type LaboratoryExecutionCompletionRequest = Readonly<{
+  schemaVersion: 1;
+  kind: "gate-a";
+  definitionHash: string;
+  estimateHash: string;
+  completedRequestCount: 12;
+  rawEvidence: readonly [
+    LaboratoryRawEvidenceInput,
+    LaboratoryRawEvidenceInput,
+    LaboratoryRawEvidenceInput,
+  ];
+}>;
+
+export type LaboratoryCanonicalRawRef = Readonly<{
+  sampleId: string;
+  candidateId: "transcription-quality-v1-short-auto";
+  rawRef: string;
+}>;
+
+export type LaboratoryExecutionCompletionResult = Readonly<{
+  ok: true;
+  data: Readonly<{
+    executionId: string;
+    status: "completed";
+    completedRequestCount: 12;
+    canonicalRawRefs: readonly [
+      LaboratoryCanonicalRawRef,
+      LaboratoryCanonicalRawRef,
+      LaboratoryCanonicalRawRef,
+    ];
+    completedAt: string;
+    idempotentReplay: boolean;
+  }>;
+}>;
+
+export type LaboratoryExecutionAbortReason =
+  | "spawn-failed"
+  | "runner-failed"
+  | "cancelled"
+  | "source-invalid";
+
+export type LaboratoryExecutionAbortRequest = Readonly<{
+  schemaVersion: 1;
+  reason: LaboratoryExecutionAbortReason;
+}>;
+
+export type LaboratoryExecutionAbortResult = Readonly<{
+  ok: true;
+  data: Readonly<{
+    executionId: string;
+    status: "aborted";
+    reason: LaboratoryExecutionAbortReason;
+    abortedAt: string;
+    idempotentReplay: boolean;
+  }>;
+}>;
+
 
 export const LABORATORY_EXECUTION_WIRE_EXAMPLES = Object.freeze({
   issueGateA: Object.freeze({
@@ -199,6 +265,37 @@ export const LABORATORY_EXECUTION_WIRE_EXAMPLES = Object.freeze({
   consume: Object.freeze({
     schemaVersion: 1 as const,
     grantToken: "opaque-token" as const,
+  }),
+  completeGateA: Object.freeze({
+    schemaVersion: 1 as const,
+    kind: "gate-a" as const,
+    definitionHash: "a".repeat(64),
+    estimateHash: "b".repeat(64),
+    completedRequestCount: 12 as const,
+    rawEvidence: Object.freeze([
+      Object.freeze({
+        sampleId: GATE_A_DEFINITION.sampleIds[0],
+        candidateId: "transcription-quality-v1-short-auto" as const,
+        sha256: "c".repeat(64),
+        byteLength: 1,
+      }),
+      Object.freeze({
+        sampleId: GATE_A_DEFINITION.sampleIds[1],
+        candidateId: "transcription-quality-v1-short-auto" as const,
+        sha256: "d".repeat(64),
+        byteLength: 1,
+      }),
+      Object.freeze({
+        sampleId: GATE_A_DEFINITION.sampleIds[2],
+        candidateId: "transcription-quality-v1-short-auto" as const,
+        sha256: "e".repeat(64),
+        byteLength: 1,
+      }),
+    ] as const),
+  }),
+  abort: Object.freeze({
+    schemaVersion: 1 as const,
+    reason: "runner-failed" as const,
   }),
 });
 
@@ -378,7 +475,7 @@ export function buildLaboratoryCatalog(
       requiresVocabularySnapshot: false,
     },
   }));
-  const unavailableGateB = { status: "unavailable" as const, reasonCode: "gate_b_unavailable" };
+  const unavailableGateB: LaboratoryAvailability = { status: "unavailable", reasonCode: "gate_b_unavailable" };
   const sttRecipes = EVALUATION_RECIPES.map((recipe) => laboratoryEntry({
     id: recipe.id,
     label: `${recipe.promptMode === "short" ? "Short" : "Rich"} · ${recipe.language.toUpperCase()}`,
@@ -411,7 +508,7 @@ export function buildLaboratoryCatalog(
       promptId: "postProcessBase",
     },
   })) as LaboratoryCatalog["postprocessRecipes"];
-  const unavailableVocabulary = { status: "unavailable" as const, reasonCode: "vocabulary_snapshot_unavailable" };
+  const unavailableVocabulary: LaboratoryAvailability = { status: "unavailable", reasonCode: "vocabulary_snapshot_unavailable" };
   const prosodyModes = [
     laboratoryEntry({ id: "off", label: "Off", executionModes: ["provider-free-replay", "provider-real"], compatibility: { profileRuntimeKinds: Object.freeze(["transcription", "postprocess"]), prosodyModes: Object.freeze(["off"]), requiresVocabularySnapshot: false } }),
     laboratoryEntry({ id: "advisory", label: "Advisory", availability: unavailableGateB, compatibility: { profileRuntimeKinds: Object.freeze(["postprocess"]), prosodyModes: Object.freeze(["advisory"]), requiresVocabularySnapshot: false } }),

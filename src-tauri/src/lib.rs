@@ -1,9 +1,9 @@
 mod companion_window;
 mod desktop_control;
 mod desktop_delivery;
+mod dictation_experiments;
 mod dictation_lab;
 mod dictation_lab_jobs;
-mod dictation_experiments;
 mod dock_shell;
 mod fixvox_cloud;
 mod native_capture;
@@ -38,11 +38,15 @@ pub fn run() {
                 dock_shell::configure_dock_window(app.handle())?;
                 companion_window::configure_companion_window(app.handle());
                 settings_window::configure_settings_window(app.handle());
-                settings_window::configure_dictation_lab_window(app.handle());
-                if std::env::var_os("DICTATION_LAB_SMOKE_SHOW_WINDOW").is_some() {
+                if std::env::var_os("DICTATION_LAB_SMOKE_OFFLINE").is_some() {
+                    eprintln!(
+                        "[dictation-tauri][laboratory-smoke] offline mode selected; cloud/provider effects remain disabled"
+                    );
+                }
+                if std::env::var_os("DICTATION_LAB_SMOKE_AUTO_SHOW").is_some() {
                     settings_window::show_dictation_lab_window_for_app(app.handle())?;
                 }
-                if std::env::var_os("DICTATION_LAB_SMOKE_RUN_REPLAY").is_some() {
+                if std::env::var_os("DICTATION_LAB_SMOKE_REPLAY").is_some() {
                     tauri::async_runtime::spawn(async {
                         match dictation_lab_jobs::start_provider_free_smoke_job().await {
                             Ok(snapshot) => eprintln!(
@@ -82,6 +86,10 @@ pub fn run() {
             dictation_experiments::get_dictation_experiment_state,
             dictation_experiments::set_dictation_experiment_selection,
             dictation_lab_jobs::estimate_dictation_lab_experiment,
+            dictation_lab_jobs::get_dictation_lab_local_plan,
+            dictation_lab_jobs::list_dictation_lab_gate_sources,
+            dictation_lab_jobs::recover_dictation_lab_gate_a_completion,
+            dictation_lab_jobs::abort_dictation_lab_execution,
             dictation_lab_jobs::start_dictation_lab_job,
             dictation_lab_jobs::get_dictation_lab_job,
             dictation_lab_jobs::cancel_dictation_lab_job,

@@ -60,15 +60,16 @@ pub struct HostRuntimeReadiness {
 
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct HostTranscriptionRequest {
-    run_id: String,
-    audio_path: String,
-    provider: Option<String>,
-    model: Option<String>,
-    language: Option<String>,
-    mode: String,
-    allow_provider_call: bool,
-    post_process: Option<HostPostProcessPolicy>,
+pub(crate) struct HostTranscriptionRequest {
+    pub(crate) run_id: String,
+    pub(crate) audio_path: String,
+    pub(crate) provider: Option<String>,
+    pub(crate) model: Option<String>,
+    pub(crate) language: Option<String>,
+    pub(crate) evaluation_recipe_id: Option<String>,
+    pub(crate) mode: String,
+    pub(crate) allow_provider_call: bool,
+    pub(crate) post_process: Option<HostPostProcessPolicy>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -130,14 +131,16 @@ pub type HostAssistantChatResponse = HostSelectionTransformResponse;
 
 #[derive(Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-struct HostPostProcessPolicy {
-    enabled: bool,
-    prompt: Option<String>,
-    provider: Option<String>,
-    model: Option<String>,
-    source: Option<String>,
-    policy_id: Option<String>,
-    voice_routing_profile_id: Option<String>,
+pub(crate) struct HostPostProcessPolicy {
+    pub(crate) enabled: bool,
+    pub(crate) prompt: Option<String>,
+    pub(crate) provider: Option<String>,
+    pub(crate) model: Option<String>,
+    pub(crate) source: Option<String>,
+    pub(crate) policy_id: Option<String>,
+    pub(crate) voice_routing_profile_id: Option<String>,
+    pub(crate) experiment_recipe_id: Option<String>,
+    pub(crate) experiment_recipe_version: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -174,6 +177,10 @@ pub struct HostPostProcessEvidence {
     source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     policy_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    experiment_recipe_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    experiment_recipe_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     voice_routing_profile_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1061,6 +1068,7 @@ fn prewarm_transcription_request() -> HostTranscriptionRequest {
         provider: None,
         model: None,
         language: None,
+        evaluation_recipe_id: None,
         mode: "real".to_string(),
         allow_provider_call: true,
         post_process: None,
@@ -1758,6 +1766,8 @@ fn resolve_dictation_runtime_plan_from_policy_json(
             }),
             policy_id,
             voice_routing_profile_id,
+            experiment_recipe_id: None,
+            experiment_recipe_version: None,
         },
     }
 }
@@ -1787,6 +1797,8 @@ fn fallback_dictation_runtime_plan(policy_id: Option<String>) -> DictationRuntim
             source: Some("disabled".to_string()),
             policy_id,
             voice_routing_profile_id,
+            experiment_recipe_id: None,
+            experiment_recipe_version: None,
         },
     }
 }
@@ -2889,31 +2901,24 @@ async fn transcribe_fixvox_managed_audio(
 ) -> ProviderTranscriptionOutcome {
     let started_at = Instant::now();
     let file_name = upload_payload.file_name.clone();
-    let preview = match fixvox_cloud::build_managed_stt_request_preview(
-        fixvox_cloud::FixvoxCloudConfig {
+    let preview =
+        match fixvox_cloud::build_managed_stt_request_preview(fixvox_cloud::FixvoxCloudConfig {
             backend_base_url: config.backend_base_url.clone(),
             device_id: Some(config.device_id.clone()),
-        },
-        fixvox_cloud::ManagedSttInput {
-            audio_file_name: file_name.clone(),
-            model: config.model.clone(),
-            language: config.language.clone(),
-            prompt: config.stt_prompt.clone(),
-        },
-    ) {
-        Ok(preview) => preview,
-        Err(reason) => {
-            return ProviderTranscriptionOutcome::ProviderError {
-                code: reason.code,
-                message: reason.message,
-                provider: Some(config.provider),
-                model: Some(config.model),
-                latency_ms: Some(elapsed_ms(started_at)),
-                request_id: None,
-                fixvox_metadata: None,
-            };
-        }
-    };
+        }) {
+            Ok(preview) => preview,
+            Err(reason) => {
+                return ProviderTranscriptionOutcome::ProviderError {
+                    code: reason.code,
+                    message: reason.message,
+                    provider: Some(config.provider),
+                    model: Some(config.model),
+                    latency_ms: Some(elapsed_ms(started_at)),
+                    request_id: None,
+                    fixvox_metadata: None,
+                };
+            }
+        };
 
     let legacy_cloudflare_transport = preview.endpoint.ends_with("/v1/audio/transcriptions");
     let file_part = match reqwest::multipart::Part::bytes(upload_payload.bytes)
@@ -2952,11 +2957,15 @@ async fn transcribe_fixvox_managed_audio(
             .text("timestamp_granularities[]", "segment")
             .text("temperature", "0")
     } else {
-        let metadata = serde_json::json!({
+        let mut metadata = serde_json::json!({
             "operationId": request.run_id.trim(),
             "durationMs": 0,
             "language": config.language.clone().filter(|value| !value.eq_ignore_ascii_case("auto"))
         });
+        if let Some(evaluation_recipe_id) = request.evaluation_recipe_id.as_ref() {
+            metadata["evaluationRecipeId"] =
+                serde_json::Value::String(evaluation_recipe_id.clone());
+        }
         reqwest::multipart::Form::new()
             .text("metadata", metadata.to_string())
             .part("audio", file_part)
@@ -3162,6 +3171,14 @@ async fn apply_fixvox_managed_postprocess(
                 .map(|value| redact_host_text(&value)),
             voice_routing_profile_id: policy
                 .voice_routing_profile_id
+                .clone()
+                .map(|value| redact_host_text(&value)),
+            experiment_recipe_id: policy
+                .experiment_recipe_id
+                .clone()
+                .map(|value| redact_host_text(&value)),
+            experiment_recipe_version: policy
+                .experiment_recipe_version
                 .clone()
                 .map(|value| redact_host_text(&value)),
             sanitized_changed,
@@ -4484,6 +4501,8 @@ mod tests {
             source: Some("test".to_string()),
             policy_id: Some("dictation-basic-without-llm".to_string()),
             voice_routing_profile_id: None,
+            experiment_recipe_id: None,
+            experiment_recipe_version: None,
         });
         let state = fixvox_cloud::FixvoxDeviceState {
             install_id: "install_postprocess_denied".to_string(),
@@ -4614,6 +4633,7 @@ mod tests {
                 provider: None,
                 model: None,
                 language: None,
+                evaluation_recipe_id: None,
                 mode: "real".to_string(),
                 allow_provider_call: false,
                 post_process: None,
@@ -5193,6 +5213,7 @@ mod tests {
             provider: None,
             model: None,
             language: None,
+            evaluation_recipe_id: None,
             mode: "real".to_string(),
             allow_provider_call: true,
             post_process: None,
@@ -5259,6 +5280,7 @@ mod tests {
             provider: None,
             model: None,
             language: None,
+            evaluation_recipe_id: None,
             mode: "real".to_string(),
             allow_provider_call: true,
             post_process: None,

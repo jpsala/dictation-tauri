@@ -11,7 +11,6 @@ pub const DICTATION_LAB_WINDOW_LABEL: &str = "dictation-lab";
 const DICTATION_LAB_WINDOW_TITLE: &str = "Dictation Laboratory";
 const DICTATION_LAB_WINDOW_URL: &str = "index.html?surface=dictation-lab";
 
-
 pub fn configure_settings_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(window) = app.get_webview_window(SETTINGS_WINDOW_LABEL) {
         eprintln!("[dictation-tauri][settings] attaching close lifecycle to configured window");
@@ -25,7 +24,6 @@ pub fn configure_dictation_lab_window<R: Runtime>(app: &AppHandle<R>) {
         attach_close_lifecycle(window);
     }
 }
-
 
 fn show_existing_settings_window<R: Runtime>(window: WebviewWindow<R>) -> Result<(), String> {
     window
@@ -62,15 +60,11 @@ pub fn show_dictation_lab_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Resu
         create_fresh_dictation_lab_window(app)
             .map_err(|error| format!("dictation laboratory window unavailable: {error}"))?
     };
-    window
-        .eval("window.location.replace('index.html?surface=dictation-lab')")
-        .map_err(|error| format!("dictation laboratory navigation failed: {error}"))?;
     show_existing_settings_window(window)
 }
 
-
 pub fn show_account_setup_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    if std::env::var_os("DICTATION_LAB_SMOKE_SHOW_WINDOW").is_some() {
+    if std::env::var_os("DICTATION_LAB_SMOKE_OFFLINE").is_some() {
         return Ok(());
     }
     eprintln!("[dictation-tauri][settings] account setup show requested");
@@ -155,7 +149,6 @@ fn create_fresh_dictation_lab_window<R: Runtime>(
     Ok(window)
 }
 
-
 fn create_fresh_account_setup_window<R: Runtime>(
     app: &AppHandle<R>,
 ) -> tauri::Result<WebviewWindow<R>> {
@@ -196,7 +189,6 @@ pub fn show_settings_window(app: AppHandle) -> Result<(), String> {
 pub fn show_dictation_lab_window(app: AppHandle) -> Result<(), String> {
     show_dictation_lab_window_for_app(&app)
 }
-
 
 #[tauri::command]
 pub async fn show_account_setup_window(app: AppHandle) -> Result<(), String> {

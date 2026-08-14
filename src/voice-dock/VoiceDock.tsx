@@ -8,6 +8,7 @@ export type VoiceDockProps = {
   skinId?: DockSkinId;
   hotkeyLabel?: string;
   transcriptPreview?: string;
+  audioEnhancementNotice?: string;
   onCommand: (command: DockCommand) => void;
   onContextMenuRequest?: () => void;
   onDockDragStart?: (event: DockDragEvent) => void | Promise<void>;
@@ -28,6 +29,7 @@ export function VoiceDock({
   skinId = defaultDockSkinId,
   hotkeyLabel = "Ctrl+Shift+F9",
   transcriptPreview,
+  audioEnhancementNotice,
   onCommand,
   onContextMenuRequest,
   onDockDragStart,
@@ -179,6 +181,17 @@ export function VoiceDock({
           aria-label="Assistant mode available"
         >
           ✦
+        </div>
+      ) : null}
+
+      {audioEnhancementNotice ? (
+        <div
+          className="voice-dock__audio-enhancement"
+          data-testid="voice-dock-audio-enhancement"
+          role="status"
+          aria-live="polite"
+        >
+          {audioEnhancementNotice}
         </div>
       ) : null}
 

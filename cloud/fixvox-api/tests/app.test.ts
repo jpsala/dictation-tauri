@@ -173,6 +173,7 @@ describe("Bun API adapter", () => {
 
   test("returns bounded private STT metadata only for an allowlisted evaluation recipe", async () => {
     const deps = createDependencies();
+    let laboratoryKind: unknown;
     deps.providers = {
       async proxy() {
         return Response.json({
@@ -186,7 +187,7 @@ describe("Bun API adapter", () => {
         });
       },
     };
-    deps.laboratoryGrants = { async reserve() { return true; } } as never;
+    deps.laboratoryGrants = { async reserve(input: { expectedKind?: string }) { laboratoryKind = input.expectedKind; return true; } } as never;
     const form = new FormData();
     form.set("metadata", JSON.stringify({
       operationId: "evaluation-operation",
@@ -199,6 +200,7 @@ describe("Bun API adapter", () => {
       headers: { "x-device-id": "fixture-device-001", "x-laboratory-execution-id": "00000000-0000-4000-8000-000000000001", "x-laboratory-definition-hash": "a".repeat(64) },
       body: form,
     }));
+    expect(laboratoryKind).toBe("gate-a");
     expect(response.status).toBe(200);
     const body = await response.json() as {
       data: {
@@ -375,9 +377,10 @@ describe("Bun API adapter", () => {
       { id: "transcription-quality-v1-postprocess-120b-prosody", variant: "with-prosody", input: { transcript: "private raw", prosodyHints: "advisory pause" } },
     ] as const) {
       let policy: unknown;
+      let laboratoryKind: unknown;
       let forwarded: Record<string, unknown> = {};
       const deps = createDependencies();
-      deps.laboratoryGrants = { async reserve() { return true; } } as never;
+      deps.laboratoryGrants = { async reserve(input: { expectedKind?: string }) { laboratoryKind = input.expectedKind; return true; } } as never;
       deps.providers = {
         async proxy(providerInput) {
           policy = providerInput.policy;
@@ -391,6 +394,7 @@ describe("Bun API adapter", () => {
         body: JSON.stringify({ operationId: `gate-b-${fixture.variant}`, kind: "postprocess", evaluationRecipeId: fixture.id, input: fixture.input }),
       }));
       expect(response.status).toBe(200);
+      expect(laboratoryKind).toBe("gate-b");
       expect(policy).toEqual({ profileId: "basic", capability: "postprocess", engine: { provider: "groq", model: "openai/gpt-oss-120b", prompt: "" } });
       expect(forwarded).toMatchObject({ temperature: 0, max_completion_tokens: 512 });
       const userMessage = JSON.parse(String((forwarded.messages as Array<{ content: string }>)[1].content)) as Record<string, unknown>;
