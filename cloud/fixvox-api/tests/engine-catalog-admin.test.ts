@@ -127,7 +127,11 @@ describe("laboratory execution authority", () => {
     expect(await catalogResponse?.json()).toMatchObject({
       data: {
         sttRecipes: [{}, {}, {}, {}],
-        postprocessRecipes: [{}, {}, {}],
+        postprocessRecipes: [
+          { availability: { status: "available", reasonCode: null } },
+          { availability: { status: "available", reasonCode: null } },
+          { availability: { status: "available", reasonCode: null } },
+        ],
         providerAuthorization: { status: "available", reasonCode: null },
       },
     });

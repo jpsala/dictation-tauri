@@ -505,7 +505,6 @@ export function buildLaboratoryCatalog(
         ? "120B · conservative timing"
         : "120B · plain",
     version: recipe.version,
-    availability: unavailableGateB,
     executionModes: ["provider-real"],
     compatibility: {
       profileRuntimeKinds: Object.freeze(["postprocess"]),
