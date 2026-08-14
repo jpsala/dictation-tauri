@@ -144,14 +144,14 @@ describe("SettingsSurface", () => {
       deviceRegistered: true,
       deviceIdRedacted: "dev…cdef",
       lastRegisterOk: true,
-      policyLabel: "Pro",
+      policyLabel: "Dictado completo",
       capabilities: {
         canUseManagedTranscription: true,
         canSeeAdvancedSettings: true,
         canUseDebugTools: false,
       },
       policySnapshot: {
-        policyLabel: "Pro",
+        policyLabel: "Dictado completo",
         capabilities: {
           canUseManagedTranscription: true,
           canSeeAdvancedSettings: true,
@@ -190,9 +190,11 @@ describe("SettingsSurface", () => {
     );
 
     expect(html).toContain("Cuenta conectada");
-    expect(html).toContain("Pro");
+    expect(html).toContain("Perfil de dictado");
     expect(html).toContain("Tu cuenta y esta computadora están listas para dictar.");
     expect(html).toContain("Plan Pro");
+    expect(html).toContain("Dictado completo");
+    expect(html).toContain("Define el comportamiento de transcripción y postproceso administrado.");
     expect(html).not.toContain("No elevated limits");
     expect(html).not.toContain("Founders");
     expect(html).not.toContain("managed dictation");

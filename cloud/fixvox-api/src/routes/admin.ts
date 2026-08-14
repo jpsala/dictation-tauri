@@ -383,6 +383,47 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
         const result = await deps.repository.setRoleBinding({ actorPrincipalKey: operator.principalKey, subjectPrincipalKey: roleMatch[1], role: request.method === "PUT" ? command.role as AdminRole : null });
         return cors(request, json(result));
       }
+      const accountProfileMatch = url.pathname.match(/^\/product\/v1\/control-room\/accounts\/([a-z0-9][a-z0-9_-]{0,63})\/profile$/);
+      if (accountProfileMatch && request.method === "POST") {
+        if (!permitted(operator, "publish") || operator.role !== "owner" || !operator.recentGoogle) return cors(request, error("forbidden", 403));
+        try {
+          const command = await body(request);
+          const accountHandle = accountProfileMatch[1];
+          const confirmation = record(command.confirmation);
+          const expectedCurrentProfileId = command.expectedCurrentProfileId;
+          const profileId = command.profileId;
+          if (
+            Object.keys(command).some((key) => !["schemaVersion", "profileId", "expectedCurrentProfileId", "confirmation"].includes(key))
+            || command.schemaVersion !== 1
+            || typeof profileId !== "string"
+            || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(profileId)
+            || typeof expectedCurrentProfileId !== "string"
+            || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(expectedCurrentProfileId)
+            || Object.keys(confirmation).some((key) => !["action", "accountHandle", "profileId", "expectedCurrentProfileId", "phrase"].includes(key))
+            || confirmation.action !== "assign"
+            || confirmation.accountHandle !== accountHandle
+            || confirmation.profileId !== profileId
+            || confirmation.expectedCurrentProfileId !== expectedCurrentProfileId
+            || typeof confirmation.phrase !== "string"
+            || confirmation.phrase !== `ASSIGN ${profileId} TO ${accountHandle} FROM ${expectedCurrentProfileId}`
+          ) throw new Error("invalid_confirmation");
+          const result = await deps.repository.assignAccountPolicy({ accountHandle, policyId: profileId, expectedCurrentProfileId, actorRefHash: operator.principalKey });
+          return cors(request, json({
+            ok: true,
+            data: {
+              account: { accountHandle, profileId: result.account.policyId, profileLabel: result.account.policyLabel },
+              devicesUpdated: result.devicesUpdated,
+              idempotentReplay: result.idempotentReplay,
+            },
+          }));
+        } catch (cause) {
+          const message = cause instanceof Error ? cause.message : "";
+          if (message === "account_not_found" || message === "profile_not_found") return cors(request, error("not_found", 404));
+          if (message === "account_ambiguous" || message === "account_profile_conflict") return cors(request, error("conflict", 409));
+          if (["invalid_account_policy", "invalid_confirmation", "invalid_body"].includes(message)) return cors(request, error("invalid_request", 400));
+          return cors(request, error("service_unavailable", 503));
+        }
+      }
       const profileDetailMatch = url.pathname.match(/^\/product\/v1\/control-room\/profiles\/([a-z0-9][a-z0-9-]{0,63})$/);
       if (profileDetailMatch && request.method === "GET") {
         try { return cors(request, json({ ok: true, data: await deps.profileCommands.detail(profileDetailMatch[1]) })); }

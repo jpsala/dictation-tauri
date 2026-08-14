@@ -42,12 +42,19 @@ function engine(profile: EffectiveProfileProjectionInput, kind: string) {
 export function buildDeviceRegisterProjection(input: { deviceId: string; profile: EffectiveProfileProjectionInput; accountId?: string | null }) {
   const runtimePolicy = policy(input.profile);
   const defaults = buildRegisterDefaultsFromRuntimePolicy(runtimePolicy as never, [input.profile.profileId]) as RecordValue;
+  const plan = record(input.profile.definition.plan);
+  const planTemplateId = typeof plan.templateId === "string" && plan.templateId
+    ? plan.templateId
+    : input.profile.profileId;
+  const planTemplateLabel = typeof plan.label === "string" && plan.label
+    ? plan.label
+    : input.profile.label;
   defaults.recipePolicy = buildDefaultRecipePolicy() as RecordValue;
   defaults.profileUserControls = { "appearance.dockSkin": "default", "appearance.themeId": "default", "general.onboardingDone": "default", "general.preferredSurface": "default", "general.showDockOnStartup": "default", "general.startWithWindows": "default", "general.uiLanguage": "default", "hotkeys.pasteLast": "default", "hotkeys.picker": "default", "hotkeys.pushToTalk": "default", "hotkeys.quickChat": "default", "hotkeys.resultHistory": "default", "hotkeys.stopAndSubmit": "default", "hotkeys.toggleAssistantMode": "default", "hotkeys.togglePressEnterAfterPaste": "default", "hotkeys.voiceRecord": "default", "transcript.language": "default", "voice.assistantModeToggleWords": "default", "voice.assistantWakeWords": "default", "voice.commandWakeWords": "default", "voice.muteOutputDuringRecording": "default", "voice.pressEnterAfterPaste": "default", "voice.showPresetReasoning": "default", "voice.showQuickChatReasoning": "default", ...record(input.profile.definition.userControls) };
   return {
     ok: true, deviceId: input.deviceId, activated: true, policyId: input.profile.profileId, policyLabel: input.profile.label,
     accountId: null, minVersion: null,
-    auth: input.accountId ? { required: false, providers: ["google"], accessMode: "signed_in", provider: "google", userId: "user redacted", userRedacted: "user redacted", groupLabel: input.profile.label, policyTemplateId: input.profile.profileId, policyTemplateLabel: input.profile.label, capabilities: input.profile.definition.capabilities ?? [], redacted: true } : { required: false, providers: ["google"], accessMode: "anonymous", redacted: true },
+    auth: input.accountId ? { required: false, providers: ["google"], accessMode: "signed_in", provider: "google", userId: "user redacted", userRedacted: "user redacted", groupLabel: planTemplateLabel, policyTemplateId: planTemplateId, policyTemplateLabel: planTemplateLabel, capabilities: input.profile.definition.capabilities ?? [], redacted: true } : { required: false, providers: ["google"], accessMode: "anonymous", redacted: true },
     features: buildFeatureFlagsFromRuntimePolicy(runtimePolicy as never), defaults, cohorts: [input.profile.profileId], experiments: null,
     feedback: { enabled: true, sampleRate: 1, postErrorPrompt: true, postExperimentPrompt: true }, limits: limits(input.profile),
     telemetry: { enabled: true, intervalMs: 60_000, batchSize: 20 }, transportPolicy: buildTransportPolicyFromRuntimePolicy(runtimePolicy as never),

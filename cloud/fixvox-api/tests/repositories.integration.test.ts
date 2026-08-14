@@ -214,6 +214,91 @@ describe("PostgreSQL control-plane repositories", () => {
       source: "account",
     });
   });
+  test("assigns account profiles with CAS, idempotent replay, device fanout, and bounded audit", async () => {
+    const control = new PostgresControlPlaneRepository(sql);
+    const device = await control.bindDevice({ installIdHash: "cas-install", generatedDeviceId: "cas-device" });
+    const accounts = await sql.unsafe<{ id: string }>(`
+      INSERT INTO accounts (provider, provider_subject_hash, handle)
+      VALUES ('google', 'cas-subject-hash', 'cas-account') RETURNING id::text
+    `);
+    await sql.unsafe("UPDATE devices SET account_id = $2::uuid WHERE id = $1::uuid", [device.id, accounts[0].id]);
+    await createPublishedProfile("starter", "Starter");
+    await createPublishedProfile("pro", "Pro");
+    const admin = new PostgresAdminRepository(sql);
+
+    await admin.assignAccountPolicy({ accountHandle: "cas-account", policyId: "starter", actorRefHash: "actor-redacted" });
+    const assigned = await admin.assignAccountPolicy({
+      accountHandle: "cas-account",
+      policyId: "pro",
+      expectedCurrentProfileId: "starter",
+      actorRefHash: "actor-redacted",
+    });
+    expect(assigned).toEqual({
+      ok: true,
+      devicesUpdated: 1,
+      idempotentReplay: false,
+      account: { accountHandle: "cas-account", policyId: "pro", policyLabel: "Pro" },
+    });
+    await expect(admin.assignAccountPolicy({
+      accountHandle: "cas-account",
+      policyId: "starter",
+      expectedCurrentProfileId: "starter",
+      actorRefHash: "actor-redacted",
+    })).rejects.toThrow("account_profile_conflict");
+    const replay = await admin.assignAccountPolicy({
+      accountHandle: "cas-account",
+      policyId: "pro",
+      expectedCurrentProfileId: "starter",
+      actorRefHash: "actor-redacted",
+    });
+    expect(replay.idempotentReplay).toBe(true);
+
+    const active = await sql.unsafe<{ profile_id: string }>(`
+      SELECT p.profile_id FROM policy_assignments pa
+      JOIN profiles p ON p.id = pa.profile_id
+      WHERE pa.target_type = 'account' AND pa.target_id = $1::uuid AND pa.active
+    `, [accounts[0].id]);
+    expect(active).toEqual([{ profile_id: "pro" }]);
+    const assignmentAudits = await sql.unsafe<{ metadata: Record<string, unknown>; metadata_type: string }>(
+      "SELECT safe_metadata AS metadata, jsonb_typeof(safe_metadata) AS metadata_type FROM audit_records WHERE action = 'account.profile.assign' ORDER BY sequence_id",
+    );
+    expect(assignmentAudits).toHaveLength(2);
+    expect(assignmentAudits[1]).toEqual({
+      metadata: { schemaVersion: 1, profileId: "pro", previousProfileId: "starter", devicesUpdated: 1 },
+      metadata_type: "object",
+    });
+    expect(JSON.stringify(assignmentAudits)).not.toContain("cas-account");
+  });
+
+  test("rejects an account assignment to a profile without a published version", async () => {
+    await sql.unsafe(`
+      INSERT INTO accounts (provider, provider_subject_hash, handle)
+      VALUES ('google', 'draft-account-subject', 'draft-account')
+    `);
+    const unpublished = await sql.unsafe<{ id: string }>(
+      "INSERT INTO profiles (profile_id, label) VALUES ('draft-only', 'Draft only') RETURNING id::text",
+    );
+    await sql.unsafe(`
+      INSERT INTO profile_versions (profile_id, version, status, definition, authority_revision, created_by)
+      VALUES ($1::uuid, 1, 'draft', '{"capabilities":["draft-only"]}'::jsonb, 0, 'test')
+    `, [unpublished[0].id]);
+
+    const admin = new PostgresAdminRepository(sql);
+    let assignmentError: unknown;
+    try {
+      await admin.assignAccountPolicy({
+        accountHandle: "draft-account",
+        policyId: "draft-only",
+        actorRefHash: "actor-redacted",
+      });
+    } catch (cause) {
+      assignmentError = cause;
+    }
+    expect(assignmentError).toBeInstanceOf(Error);
+    expect((assignmentError as Error).message).toBe("profile_not_found");
+    expect(await sql.unsafe("SELECT id FROM policy_assignments WHERE active")).toHaveLength(0);
+  });
+
 
   test("materializes product profile engine and prompt routing server-side", async () => {
     const repository = new PostgresControlPlaneRepository(sql);
@@ -287,6 +372,46 @@ describe("PostgreSQL control-plane repositories", () => {
     expect(JSON.stringify(rows)).not.toContain("Command profile v2");
     expect(JSON.stringify(rows)).not.toContain("APPLY command");
   });
+  test("validates and atomically publishes a missing profile at revision zero", async () => {
+    await sql.unsafe(`INSERT INTO engines (engine_id, kind, provider, model, provider_label, model_label) VALUES ('create-stt', 'transcription', 'mock', 'stt', 'Mock', 'STT'), ('create-chat', 'postprocess', 'mock', 'chat', 'Mock', 'Chat'), ('create-selection', 'selectionTransform', 'mock', 'selection', 'Mock', 'Selection')`);
+    const definition = {
+      schemaVersion: 1, label: "Created profile", plan: { templateId: "pro", label: "Plan Pro" },
+      access: { capabilities: ["dictation", "postprocess", "selection_transform", "assistant_actions"] },
+      runtime: { transcription: { engineId: "create-stt" }, postprocess: { engineId: "create-chat" }, selectionTransform: { engineId: "create-selection" } },
+      limits: { mode: "block", quotaProfile: "pro-unlimited" }, userControls: {}, defaults: {},
+    };
+
+    const commands = new PostgresProfileCommandRepository(databaseUrl);
+    const invalidPlanDefinition = { ...definition, plan: { templateId: "invalid/template", label: "Plan Pro" } };
+    await expect(commands.apply({ profileId: "created", expectedRevision: 0, definition: invalidPlanDefinition, actorRefHash: "create-actor", confirmation: "APPLY created REV 0" })).rejects.toThrow("profile_definition_invalid");
+    await expect(commands.detail("absent")).rejects.toThrow("profile_not_found");
+    await expect(commands.rollback({ profileId: "absent", targetVersion: 1, expectedRevision: 0, actorRefHash: "create-actor", confirmation: "ROLLBACK absent TO 1 REV 0" })).rejects.toThrow("profile_not_found");
+    const invalidDefinition = { ...definition, runtime: { ...definition.runtime, transcription: { engineId: "missing-create-stt" } } };
+    await expect(commands.apply({ profileId: "created", expectedRevision: 0, definition: invalidDefinition, actorRefHash: "create-actor", confirmation: "APPLY created REV 0" })).rejects.toThrow("profile_reference_invalid");
+    expect(await sql.unsafe("SELECT id FROM profiles WHERE profile_id = 'created'")).toHaveLength(0);
+    await expect(commands.validate({ profileId: "created", definition })).rejects.toThrow(StaleProfileRevisionError);
+    await expect(commands.preview({ profileId: "created", definition })).rejects.toThrow(StaleProfileRevisionError);
+
+    expect(await commands.validate({ profileId: "created", expectedRevision: 0, definition })).toEqual({ profileId: "created", revision: 0, valid: true });
+    const preview = await commands.preview({ profileId: "created", expectedRevision: 0, definition });
+    expect(preview).toMatchObject({ profileId: "created", revision: 0, baseVersion: null, candidateLabel: "Created profile", changed: true });
+
+    const applied = await commands.apply({ profileId: "created", expectedRevision: 0, definition, actorRefHash: "create-actor", confirmation: "APPLY created REV 0" });
+    expect(applied).toEqual({ profileId: "created", label: "Created profile", previousVersion: null, resultingVersion: 1, revision: 1, auditId: applied.auditId, idempotentReplay: false });
+    const auditRows = await sql.unsafe<{ action: string; source_version: number | null; target_version: number | null; resulting_version: number | null; metadata_type: string }>(`
+      SELECT action, source_version, target_version, resulting_version, jsonb_typeof(safe_metadata) AS metadata_type
+      FROM audit_records WHERE action = 'profile.apply'
+    `);
+    expect(auditRows).toEqual([{ action: "profile.apply", source_version: null, target_version: 1, resulting_version: 1, metadata_type: "object" }]);
+
+    const beforeReplay = await sql.unsafe<{ versions: string; audits: string }>("SELECT (SELECT count(*)::text FROM profile_versions) AS versions, (SELECT count(*)::text FROM audit_records) AS audits");
+    expect((await commands.apply({ profileId: "created", expectedRevision: 0, definition, actorRefHash: "create-actor", confirmation: "APPLY created REV 0" })).idempotentReplay).toBe(true);
+    expect(await sql.unsafe<{ versions: string; audits: string }>("SELECT (SELECT count(*)::text FROM profile_versions) AS versions, (SELECT count(*)::text FROM audit_records) AS audits")).toEqual(beforeReplay);
+
+    const conflictingDefinition = { ...definition, label: "Conflicting profile" };
+    await expect(commands.apply({ profileId: "created", expectedRevision: 0, definition: conflictingDefinition, actorRefHash: "create-actor", confirmation: "APPLY created REV 0" })).rejects.toThrow(StaleProfileRevisionError);
+  });
+
 
   test("serves canonical profile apply and rollback through the local HTTP contract", async () => {
     await sql.unsafe(`INSERT INTO engines (engine_id, kind, provider, model, provider_label, model_label) VALUES ('http-stt', 'transcription', 'mock', 'stt', 'Mock', 'STT'), ('http-chat', 'postprocess', 'mock', 'chat', 'Mock', 'Chat'), ('http-selection', 'selectionTransform', 'mock', 'selection', 'Mock', 'Selection')`);

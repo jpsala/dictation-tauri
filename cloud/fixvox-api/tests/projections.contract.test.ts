@@ -130,6 +130,43 @@ describe("F3R1 API projection contract freeze", () => {
     });
   });
 
+  test("projects plan identity separately from the assigned runtime profile", () => {
+    const profile = fixtureProfile();
+    profile.profileId = "dictation-complete-v1";
+    profile.label = "Dictado completo";
+    profile.definition.plan = { templateId: "pro", label: "Pro" };
+
+    const projection = buildDeviceRegisterProjection({
+      deviceId: "device-contract",
+      profile,
+      accountId: "account-contract",
+    });
+
+    expect({
+      policyId: projection.policyId,
+      policyLabel: projection.policyLabel,
+      auth: projection.auth,
+      cohorts: projection.cohorts,
+    }).toEqual({
+      policyId: "dictation-complete-v1",
+      policyLabel: "Dictado completo",
+      auth: {
+        required: false,
+        providers: ["google"],
+        accessMode: "signed_in",
+        provider: "google",
+        userId: "user redacted",
+        userRedacted: "user redacted",
+        groupLabel: "Pro",
+        policyTemplateId: "pro",
+        policyTemplateLabel: "Pro",
+        capabilities: ["dictation", "postprocess", "selection_transform", "assistant"],
+        redacted: true,
+      },
+      cohorts: ["dictation-complete-v1"],
+    });
+  });
+
   test("freezes the execution preflight payload and selected engine", () => {
     const projection = buildExecutionPreflightProjection({
       allowed: false,

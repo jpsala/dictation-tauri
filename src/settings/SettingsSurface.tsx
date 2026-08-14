@@ -224,6 +224,9 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
       : userPreferences.dictationMode === "complete"
         ? "Dictado completo"
         : cloudStatus?.policyLabel ?? "Según mi perfil";
+  const runtimeProfileLabel = cloudStatus?.policyLabel
+    ?? cloudStatus?.policySnapshot?.policyLabel
+    ?? "Pendiente";
   const presetDraftChanged = Boolean(
     selectedPreset && (
       presetDraft !== selectedPreset.body ||
@@ -1461,6 +1464,10 @@ export function SettingsSurface({ initialSection = "general", initialCloudStatus
                 <div className="settings-hotkey-row">
                   <div className="settings-hotkey-copy"><strong>Plan {authPolicyView.templateLabel}</strong><span>Los límites y funciones disponibles se aplican automáticamente.</span></div>
                   <div className="settings-hotkey-value"><kbd>{authPolicyView.limitsLabel}</kbd><small>actual</small></div>
+                </div>
+                <div className="settings-hotkey-row">
+                  <div className="settings-hotkey-copy"><strong>Perfil de dictado</strong><span>Define el comportamiento de transcripción y postproceso administrado.</span></div>
+                  <div className="settings-hotkey-value"><kbd>{runtimeProfileLabel}</kbd><small>asignado</small></div>
                 </div>
               </>
             ) : (

@@ -67,6 +67,118 @@ describe("Bun API adapter", () => {
     expect(assigned.policyId).toBe("pro");
     expect(assigned.actorRefHash).toMatch(/^[a-f0-9]{64}$/);
   });
+  test("assigns an account profile through the canonical owner route with exact confirmation", async () => {
+    const deps = createDependencies();
+    const principalKey = `arp_${"a".repeat(64)}`;
+    let command: unknown;
+    deps.admin = {
+      keys: {},
+      sessions: { async authorizeBearer() { return { capability: "publish", recentGoogle: true, principalKey, role: "owner" }; } } as never,
+      repository: {
+        async assignAccountPolicy(input: unknown) {
+          command = input;
+          return { ok: true, devicesUpdated: 2, idempotentReplay: false, account: { accountHandle: "acc_aaaaaaaaaaaaaaaa", policyId: "pro", policyLabel: "Pro" } };
+        },
+      } as never,
+      profileCommands: {} as never,
+    };
+    const response = await createApiHandler(deps)(new Request("https://fixture.test/product/v1/control-room/accounts/acc_aaaaaaaaaaaaaaaa/profile", {
+      method: "POST",
+      headers: { authorization: "Bearer canonical-session", "content-type": "application/json" },
+      body: JSON.stringify({
+        schemaVersion: 1,
+        profileId: "pro",
+        expectedCurrentProfileId: "alpha-basic",
+        confirmation: {
+          action: "assign",
+          accountHandle: "acc_aaaaaaaaaaaaaaaa",
+          profileId: "pro",
+          expectedCurrentProfileId: "alpha-basic",
+          phrase: "ASSIGN pro TO acc_aaaaaaaaaaaaaaaa FROM alpha-basic",
+        },
+      }),
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      data: {
+        account: { accountHandle: "acc_aaaaaaaaaaaaaaaa", profileId: "pro", profileLabel: "Pro" },
+        devicesUpdated: 2,
+        idempotentReplay: false,
+      },
+    });
+    expect(command).toEqual({ accountHandle: "acc_aaaaaaaaaaaaaaaa", policyId: "pro", expectedCurrentProfileId: "alpha-basic", actorRefHash: principalKey });
+  });
+
+  test("denies canonical assignment for stale Google authentication", async () => {
+    const deps = createDependencies();
+    let calls = 0;
+    deps.admin = {
+      keys: {},
+      sessions: { async authorizeBearer() { return { capability: "publish", recentGoogle: false, principalKey: `arp_${"a".repeat(64)}`, role: "owner" }; } } as never,
+      repository: { async assignAccountPolicy() { calls += 1; throw new Error("must not assign"); } } as never,
+      profileCommands: {} as never,
+    };
+    const response = await createApiHandler(deps)(new Request("https://fixture.test/product/v1/control-room/accounts/acc_aaaaaaaaaaaaaaaa/profile", { method: "POST", headers: { authorization: "Bearer stale-session" } }));
+    expect(response.status).toBe(403);
+    expect(calls).toBe(0);
+  });
+
+  test("denies canonical assignment for non-owner principals and rejects non-strict confirmations", async () => {
+    const deps = createDependencies();
+    let calls = 0;
+    const principalKey = `arp_${"a".repeat(64)}`;
+    deps.admin = {
+      keys: {},
+      sessions: { async authorizeBearer() { return { capability: "publish", recentGoogle: true, principalKey, role: "publisher" }; } } as never,
+      repository: { async assignAccountPolicy() { calls += 1; throw new Error("must not assign"); } } as never,
+      profileCommands: {} as never,
+    };
+    const denied = await createApiHandler(deps)(new Request("https://fixture.test/product/v1/control-room/accounts/acc_aaaaaaaaaaaaaaaa/profile", {
+      method: "POST", headers: { authorization: "Bearer publisher-session", "content-type": "application/json" }, body: "{}",
+    }));
+    expect(denied.status).toBe(403);
+    deps.admin.sessions = { async authorizeBearer() { return { capability: "publish", recentGoogle: true, principalKey, role: "owner" }; } } as never;
+    const rejected = await createApiHandler(deps)(new Request("https://fixture.test/product/v1/control-room/accounts/acc_aaaaaaaaaaaaaaaa/profile", {
+      method: "POST",
+      headers: { authorization: "Bearer owner-session", "content-type": "application/json" },
+      body: JSON.stringify({
+        schemaVersion: 1,
+        profileId: "pro",
+        expectedCurrentProfileId: "alpha-basic",
+        extra: true,
+        confirmation: {
+          action: "assign",
+          accountHandle: "acc_aaaaaaaaaaaaaaaa",
+          profileId: "pro",
+          expectedCurrentProfileId: "alpha-basic",
+          phrase: "ASSIGN pro TO acc_aaaaaaaaaaaaaaaa FROM alpha-basic",
+        },
+      }),
+    }));
+    expect(rejected.status).toBe(400);
+    expect(calls).toBe(0);
+    const nestedRejected = await createApiHandler(deps)(new Request("https://fixture.test/product/v1/control-room/accounts/acc_aaaaaaaaaaaaaaaa/profile", {
+      method: "POST",
+      headers: { authorization: "Bearer owner-session", "content-type": "application/json" },
+      body: JSON.stringify({
+        schemaVersion: 1,
+        profileId: "pro",
+        expectedCurrentProfileId: "alpha-basic",
+        confirmation: {
+          action: "assign",
+          accountHandle: "acc_aaaaaaaaaaaaaaaa",
+          profileId: "pro",
+          expectedCurrentProfileId: "alpha-basic",
+          phrase: "ASSIGN pro TO acc_aaaaaaaaaaaaaaaa FROM alpha-basic",
+          extra: true,
+        },
+      }),
+    }));
+    expect(nestedRejected.status).toBe(400);
+    expect(calls).toBe(0);
+  });
+
 
   test("binds a device and routes provider calls without persisting or logging content", async () => {
     const lines: string[] = [];

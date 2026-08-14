@@ -3,7 +3,8 @@
 import { StaleProfileRevisionError } from "./profile-publication-repository.ts";
 
 const CAPABILITIES = new Set(["translate", "dictation", "postprocess", "selection_transform", "assistant_actions", "custom_prompts", "advanced_settings", "debug_tools", "managed_stt", "managed_llm", "admin_settings", "vocabulary", "personal_vocabulary"]);
-const PROFILE_KEYS = new Set(["schemaVersion", "label", "access", "runtime", "limits", "userControls", "defaults"]);
+const PROFILE_KEYS = new Set(["schemaVersion", "label", "plan", "access", "runtime", "limits", "userControls", "defaults"]);
+const PROFILE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const RUNTIME_KEYS = ["transcription", "postprocess", "selectionTransform"] as const;
 
 type SqlExecutor = Bun.SQL;
@@ -21,6 +22,7 @@ export type ProfileCommandResult = {
 export type ProfileDefinition = Readonly<{
   schemaVersion: 1;
   label: string;
+  plan?: Readonly<{ templateId: string; label: string }>;
   access: Readonly<{ capabilities: readonly string[] }>;
   runtime: Readonly<Record<"transcription" | "postprocess" | "selectionTransform", Readonly<{
     engineId: string;
@@ -93,6 +95,17 @@ function commandResult(profileId: string, row: ReceiptRow, idempotentReplay: boo
 }
 async function validateDefinition(sql: SqlExecutor, value: Record<string, unknown>): Promise<void> {
   if (Object.keys(value).some((key) => !PROFILE_KEYS.has(key)) || value.schemaVersion !== 1) throw new Error("profile_definition_invalid");
+  if (value.plan !== undefined) {
+    const plan = record(value.plan);
+    if (
+      Object.keys(plan).some((key) => !["templateId", "label"].includes(key))
+      || typeof plan.templateId !== "string"
+      || !PROFILE_ID_PATTERN.test(plan.templateId)
+      || typeof plan.label !== "string"
+      || plan.label.trim().length < 1
+      || plan.label.trim().length > 80
+    ) throw new Error("profile_definition_invalid");
+  }
   if (typeof value.label !== "string" || value.label.trim().length < 1 || value.label.trim().length > 80) throw new Error("profile_definition_invalid");
   const access = record(value.access);
   if (Object.keys(access).some((key) => key !== "capabilities") || !Array.isArray(access.capabilities) || access.capabilities.some((item) => typeof item !== "string" || !CAPABILITIES.has(item))) throw new Error("profile_definition_invalid");
@@ -192,6 +205,14 @@ export class PostgresProfileCommandRepository {
     `, [profile.id]);
     return this.profileDetail(profile, rows);
   }
+  private async readProfileIfPresent(sql: SqlExecutor, profileId: string): Promise<ProfileDetail | null> {
+    try { return await this.readProfile(sql, profileId); }
+    catch (cause) {
+      if (cause instanceof Error && cause.message === "profile_not_found") return null;
+      throw cause;
+    }
+  }
+
 
   async detail(profileId: string): Promise<ProfileDetail> {
     const sql = new Bun.SQL(this.databaseUrl);
@@ -219,31 +240,40 @@ export class PostgresProfileCommandRepository {
   async validate(input: { profileId: string; definition: Record<string, unknown>; expectedRevision?: number }): Promise<ProfileValidationResult> {
     const sql = new Bun.SQL(this.databaseUrl);
     try {
-      const detail = await this.readProfile(sql, input.profileId);
-      if (input.expectedRevision !== undefined && detail.revision !== input.expectedRevision) throw new StaleProfileRevisionError();
+      const detail = await this.readProfileIfPresent(sql, input.profileId);
+      if (!detail) {
+        if (input.expectedRevision !== 0) throw new StaleProfileRevisionError();
+      } else if (input.expectedRevision !== undefined && detail.revision !== input.expectedRevision) {
+        throw new StaleProfileRevisionError();
+      }
       await validateDefinition(sql, input.definition);
-      return { profileId: input.profileId, revision: detail.revision, valid: true };
+      return { profileId: input.profileId, revision: detail?.revision ?? 0, valid: true };
     } finally { await sql.close(); }
   }
 
   async preview(input: { profileId: string; definition: Record<string, unknown>; expectedRevision?: number; baseVersion?: number }): Promise<ProfilePreviewResult> {
     const sql = new Bun.SQL(this.databaseUrl);
     try {
-      const detail = await this.readProfile(sql, input.profileId);
-      if (input.expectedRevision !== undefined && detail.revision !== input.expectedRevision) throw new StaleProfileRevisionError();
+      const detail = await this.readProfileIfPresent(sql, input.profileId);
+      if (!detail) {
+        if (input.expectedRevision !== 0) throw new StaleProfileRevisionError();
+        if (input.baseVersion !== undefined) throw new Error("profile_version_not_found");
+      } else if (input.expectedRevision !== undefined && detail.revision !== input.expectedRevision) {
+        throw new StaleProfileRevisionError();
+      }
       await validateDefinition(sql, input.definition);
-      const baseVersion = input.baseVersion ?? detail.activePublishedVersion;
-      const baseDefinition: Record<string, unknown> = baseVersion === null
-        ? {}
-        : detail.versions.find((version) => version.version === baseVersion && version.status !== "draft")?.definition
-          ?? {};
-      if (baseVersion !== null && !detail.versions.some((version) => version.version === baseVersion && version.status !== "draft")) throw new Error("profile_version_not_found");
+      const baseVersion = detail ? input.baseVersion ?? detail.activePublishedVersion : null;
+      const baseDefinition: Record<string, unknown> = detail && baseVersion !== null
+        ? detail.versions.find((version) => version.version === baseVersion && version.status !== "draft")?.definition
+          ?? {}
+        : {};
+      if (detail && baseVersion !== null && !detail.versions.some((version) => version.version === baseVersion && version.status !== "draft")) throw new Error("profile_version_not_found");
       const { changes, truncated } = diffDefinitions(baseDefinition, input.definition);
       return {
         profileId: input.profileId,
-        revision: detail.revision,
+        revision: detail?.revision ?? 0,
         baseVersion,
-        candidateLabel: String(input.definition.label ?? detail.label),
+        candidateLabel: String(input.definition.label ?? detail?.label ?? input.profileId),
         candidateFingerprint: fingerprint(input.definition),
         changed: changes.length > 0,
         changes,
@@ -254,7 +284,7 @@ export class PostgresProfileCommandRepository {
 
   async apply(input: { profileId: string; expectedRevision: number; definition: Record<string, unknown>; actorRefHash: string; confirmation: string }): Promise<ProfileCommandResult> {
     const commandFingerprint = fingerprint({ action: "apply", ...input });
-    return this.execute(input.profileId, input.expectedRevision, input.actorRefHash, commandFingerprint, async (tx) => {
+    return this.execute(input.profileId, input.expectedRevision, input.actorRefHash, commandFingerprint, true, async (tx) => {
       await validateDefinition(tx, input.definition);
       return { action: "profile.apply", targetVersion: null, definition: input.definition, label: String(input.definition.label) };
     });
@@ -262,7 +292,8 @@ export class PostgresProfileCommandRepository {
 
   async rollback(input: { profileId: string; targetVersion: number; expectedRevision: number; actorRefHash: string; confirmation: string }): Promise<ProfileCommandResult> {
     const commandFingerprint = fingerprint({ action: "rollback", ...input });
-    return this.execute(input.profileId, input.expectedRevision, input.actorRefHash, commandFingerprint, async (tx, profile) => {
+    return this.execute(input.profileId, input.expectedRevision, input.actorRefHash, commandFingerprint, false, async (tx, profile) => {
+      if (!profile) throw new Error("profile_not_found");
       const targets = await tx.unsafe<{ definition: Record<string, unknown> | string }>(`SELECT definition FROM profile_versions WHERE profile_id = $1::uuid AND version = $2 AND status <> 'draft'`, [profile.id, input.targetVersion]);
       if (!targets[0]) throw new Error("profile_version_not_found");
       const target = definition(targets[0].definition);
@@ -271,23 +302,40 @@ export class PostgresProfileCommandRepository {
     });
   }
 
-  private async execute(profileId: string, expectedRevision: number, actorRefHash: string, commandFingerprint: string, build: (tx: SqlExecutor, profile: LockedProfile) => Promise<{ action: string; targetVersion: number | null; definition: Record<string, unknown>; label: string }>): Promise<ProfileCommandResult> {
+  private async execute(profileId: string, expectedRevision: number, actorRefHash: string, commandFingerprint: string, allowCreate: boolean, build: (tx: SqlExecutor, profile: LockedProfile | undefined) => Promise<{ action: string; targetVersion: number | null; definition: Record<string, unknown>; label: string }>): Promise<ProfileCommandResult> {
     const sql = new Bun.SQL(this.databaseUrl);
     try {
       return await sql.begin(async (tx) => {
-        const profiles = await tx.unsafe<LockedProfile>(`SELECT id::text, profile_id, label, revision::text, active_published_version FROM profiles WHERE profile_id = $1 FOR UPDATE`, [profileId]);
-        const profile = profiles[0];
-        if (!profile) throw new Error("profile_not_found");
-        const receipts = await tx.unsafe<ReceiptRow>(`
+        const loadProfile = async (): Promise<LockedProfile | undefined> => (await tx.unsafe<LockedProfile>(`SELECT id::text, profile_id, label, revision::text, active_published_version FROM profiles WHERE profile_id = $1 FOR UPDATE`, [profileId]))[0];
+        const findReceipt = async (profile: LockedProfile): Promise<ReceiptRow | undefined> => (await tx.unsafe<ReceiptRow>(`
           SELECT a.audit_id::text, a.source_version, a.resulting_version, (a.safe_metadata->>'authorityRevision') AS revision, pv.definition
           FROM audit_records a JOIN profile_versions pv ON pv.profile_id = $1::uuid AND pv.version = a.resulting_version
           WHERE a.actor_ref_hash = $2 AND a.target_ref_hash = $3
             AND a.safe_metadata->>'commandFingerprint' = $4
           ORDER BY a.sequence_id DESC LIMIT 1
-        `, [profile.id, actorRefHash, profileId, commandFingerprint]);
-        if (receipts[0]) return commandResult(profileId, receipts[0], true);
-        if (!Number.isInteger(expectedRevision) || Number(profile.revision) !== expectedRevision) throw new StaleProfileRevisionError();
+        `, [profile.id, actorRefHash, profileId, commandFingerprint]))[0];
+        let profile = await loadProfile();
+        if (!profile) {
+          if (!allowCreate) throw new Error("profile_not_found");
+          if (!Number.isInteger(expectedRevision) || expectedRevision !== 0) throw new StaleProfileRevisionError();
+        }
+        let receipt = profile ? await findReceipt(profile) : undefined;
+        if (receipt) return commandResult(profileId, receipt, true);
+        if (profile && (!Number.isInteger(expectedRevision) || Number(profile.revision) !== expectedRevision)) throw new StaleProfileRevisionError();
         const command = await build(tx, profile);
+        if (!profile) {
+          const inserted = await tx.unsafe<LockedProfile>(`
+            INSERT INTO profiles (profile_id, label)
+            VALUES ($1, $2)
+            ON CONFLICT (profile_id) DO NOTHING
+            RETURNING id::text, profile_id, label, revision::text, active_published_version
+          `, [profileId, command.label]);
+          profile = inserted[0] ?? await loadProfile();
+          if (!profile) throw new Error("profile_not_found");
+          receipt = await findReceipt(profile);
+          if (receipt) return commandResult(profileId, receipt, true);
+        }
+        if (!Number.isInteger(expectedRevision) || Number(profile.revision) !== expectedRevision) throw new StaleProfileRevisionError();
         const versions = await tx.unsafe<{ version: number }>(`SELECT coalesce(max(version), 0)::integer AS version FROM profile_versions WHERE profile_id = $1::uuid`, [profile.id]);
         const resultingVersion = Number(versions[0]?.version ?? 0) + 1;
         if (profile.active_published_version !== null) await tx.unsafe(`UPDATE profile_versions SET status = 'historical' WHERE profile_id = $1::uuid AND version = $2 AND status = 'published'`, [profile.id, profile.active_published_version]);
