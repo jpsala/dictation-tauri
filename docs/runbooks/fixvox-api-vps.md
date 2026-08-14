@@ -513,6 +513,38 @@ automatic promotion: the candidate had one `material_omission` fallback, nine
 omissions and semantic safety `2/3`, versus baseline `3/3`; WER was unchanged,
 while CER and latency were slightly worse.
 
+## Canonical Dictation Postprocess Restoration — 2026-08-14
+
+Source commit `379b941` restores the active Fixvox dictation path without
+changing the product profile: desktop now reads `runtimePolicy.profile.key` and
+`capabilities.postprocess`, and the server derives private pause guidance from
+word timestamps before the policy-owned postprocess request. The guidance is
+returned only to the authenticated desktop runtime and is never serialized in
+host receipts or UI state.
+
+The first archive `ac72b6591acee0d0` failed closed before install, promotion or
+restart because a Windows checkout materialized immutable migration `0009`
+with different EOL bytes. Production remained on `c1154baf25dbe005` with
+`NRestarts=0`. A clean checkout reproduced all migration checksums exactly.
+
+The corrected code-only release deployed once:
+
+- release `6ac7ed0a2a88f0d0`;
+- archive SHA-256
+  `6ac7ed0a2a88f0d07f7cf7604d885ea8e81edd1ca854e450c67575f3ba064990`;
+- exact schema `9` migrations `0001..0009`, with no migration, backfill, SQL,
+  env, DNS or tunnel change;
+- prior current `c1154baf25dbe005` as automatic rollback;
+- one promotion restart and no rollback attempt.
+
+Independent verification observed service active/enabled, `NRestarts=0`, one
+listener at `127.0.0.1:8790`, health/readiness green, database/schema/jobs true
+and `cloudflare-authority`. One separately approved synthetic real dictation
+then exercised `fixvox-cloud` STT plus policy-owned
+`openai/gpt-oss-120b` postprocess exactly once, without retry or fallback; the
+final output materialized the spoken sequence as a numbered list. Synthetic
+text/audio remain local and are not part of the operational receipt.
+
 ## Stop Conditions
 
 Stop without repair beyond one bounded local correction if the port is occupied, bind is not exact loopback, memory or disk falls below 1 GiB, schema/checksum/authority diverges, a secret or sensitive body appears, the off-host age identity is unavailable, the dirty VPS checkout would need mutation, or any provider/import/DNS/Tunnel/canary/cutover/public traffic/dependency becomes necessary.
