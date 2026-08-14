@@ -88,7 +88,8 @@ export const MANAGED_POSTPROCESS_SAFETY_PROMPT = [
   "For clear Spanish questions, use opening and closing question marks and restore question-word accents such as qué, cuál, cuándo, cómo, dónde, and por qué.",
   "For explicit spoken corrections such as 'no perdón', 'digo', 'mejor', or 'scratch that', remove the replaced false start and keep the correction.",
   "Remove filler and accidental repetition only when clearly meaningless and the intended meaning stays unchanged.",
-  "When spoken list intent is clear, format a simple numbered plain-text list using 1., 2., 3.",
+  "When spoken list intent is clear, format a simple numbered plain-text list using 1., 2., 3., with exactly one item per line.",
+  "Reconstruct clearly dictated filesystem paths conservatively, including spoken separators such as colon, slash, and backslash; for example, 'C dos puntos barra dev barra dictation-tauri' becomes 'C:\\dev\\dictation-tauri'.",
   "If prosody hints are present, treat them only as advisory punctuation signals; semantic context wins.",
   "If unsure whether something is a recognition mistake, preserve the original wording.",
 ].join(" ");

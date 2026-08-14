@@ -18,6 +18,7 @@ const ARTIFACT_ROOT: &str = "artifacts/microphone-capture";
 const AUDIO_ROOT: &str = "artifacts/microphone-capture/audio/";
 const TRANSCRIPT_ROOT: &str = "artifacts/microphone-capture/transcripts/";
 const REPORT_ROOT: &str = "artifacts/microphone-capture/reports/";
+const PRIVATE_PIPELINE_ROOT: &str = "artifacts/microphone-capture/private/";
 const DEFAULT_PROVIDER: &str = "groq";
 const DEFAULT_MODEL: &str = "whisper-large-v3";
 const DEFAULT_PRO_STT_MODEL: &str = "whisper-large-v3-turbo";
@@ -3465,6 +3466,10 @@ async fn apply_fixvox_managed_postprocess(
             base_evidence(false, true, raw_text.len(), None, None, None),
         );
     }
+    capture_private_pipeline_stage(&request.run_id, "stt-raw", &raw_text);
+    if let Some(hints) = prosody_hints.as_deref() {
+        capture_private_pipeline_stage(&request.run_id, "prosody-hints", hints);
+    }
 
     let Some(config) = config else {
         return with_post_process_evidence(
@@ -3573,6 +3578,7 @@ async fn apply_fixvox_managed_postprocess(
             );
         }
     };
+    capture_private_pipeline_stage(&request.run_id, "postprocess-raw", &parsed.output);
 
     let sanitized = sanitize_raw_voice_postprocess_output(&parsed.output, &raw_text);
     let final_text = if sanitized.text.trim().is_empty() {
@@ -3693,12 +3699,12 @@ fn sanitize_raw_voice_postprocess_output(
         };
     }
 
-    let normalized = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    let normalized = normalize_postprocess_layout(raw);
     if normalized != raw {
         return SanitizedPostProcessOutput {
             text: normalized,
             changed: true,
-            reason: Some("whitespace_normalized".to_string()),
+            reason: Some("layout_normalized".to_string()),
         };
     }
 
@@ -3707,6 +3713,27 @@ fn sanitize_raw_voice_postprocess_output(
         changed: false,
         reason: Some("provider_text_kept".to_string()),
     }
+}
+
+fn normalize_postprocess_layout(raw: &str) -> String {
+    let mut lines = Vec::new();
+    let mut previous_was_blank = false;
+    for line in raw.lines() {
+        let normalized = line.split_whitespace().collect::<Vec<_>>().join(" ");
+        if normalized.is_empty() {
+            if !lines.is_empty() && !previous_was_blank {
+                lines.push(String::new());
+            }
+            previous_was_blank = true;
+        } else {
+            lines.push(normalized);
+            previous_was_blank = false;
+        }
+    }
+    while lines.last().is_some_and(String::is_empty) {
+        lines.pop();
+    }
+    lines.join("\n")
 }
 
 fn find_final_marker_index(raw: &str) -> Option<usize> {
@@ -3976,6 +4003,7 @@ fn redact_fixvox_response_metadata(
         proxy_prompt_resolution_ms: metadata.proxy_prompt_resolution_ms,
         proxy_budget_config_ms: metadata.proxy_budget_config_ms,
         proxy_budget_events_ms: metadata.proxy_budget_events_ms,
+
         proxy_multipart_ms: metadata.proxy_multipart_ms,
         proxy_budget_ms: metadata.proxy_budget_ms,
         proxy_init_ms: metadata.proxy_init_ms,
@@ -3986,6 +4014,47 @@ fn redact_fixvox_response_metadata(
             .map(|value| redact_host_text(&value)),
         redacted: true,
     }
+}
+fn private_pipeline_capture_enabled() -> bool {
+    env::var("DICTATION_TAURI_CAPTURE_PRIVATE_PIPELINE")
+        .ok()
+        .is_some_and(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+}
+
+fn capture_private_pipeline_stage(run_id: &str, stage: &str, content: &str) {
+    if !private_pipeline_capture_enabled() {
+        return;
+    }
+    let stage = match stage {
+        "stt-raw" => "stt-raw",
+        "prosody-hints" => "prosody-hints",
+        "postprocess-raw" => "postprocess-raw",
+        _ => return,
+    };
+    let artifact_path = format!(
+        "{PRIVATE_PIPELINE_ROOT}{}.{}.txt",
+        sanitize_run_id(run_id),
+        stage
+    );
+    let file_path = writable_artifact_file_path(&artifact_path);
+    let write_result = Path::new(&file_path)
+        .parent()
+        .ok_or(())
+        .and_then(|parent| fs::create_dir_all(parent).map_err(|_| ()))
+        .and_then(|_| fs::write(&file_path, content).map_err(|_| ()));
+    eprintln!(
+        "[dictation-tauri][private-pipeline] stage={stage} status={}",
+        if write_result.is_ok() {
+            "captured"
+        } else {
+            "failed"
+        }
+    );
 }
 
 fn is_usable_transcript(text: &str) -> bool {
@@ -5660,6 +5729,29 @@ mod tests {
             normalize_path(&summary_path)
         );
         assert!(matches!(response, HostTranscriptionResponse::Ok { .. }));
+    }
+
+    #[test]
+    fn postprocess_layout_preserves_numbered_list_lines() {
+        let sanitized = sanitize_raw_voice_postprocess_output(
+            "Lista:\n1. Lechuga.  \n2. Tomate.\n3. Huevos.\n",
+            "Lista. Uno, lechuga. Dos, tomate. Tres, huevos.",
+        );
+
+        assert_eq!(
+            sanitized.text,
+            "Lista:\n1. Lechuga.\n2. Tomate.\n3. Huevos."
+        );
+        assert!(sanitized.changed);
+        assert_eq!(sanitized.reason.as_deref(), Some("layout_normalized"));
+    }
+
+    #[test]
+    fn postprocess_layout_collapses_horizontal_and_excess_blank_whitespace_only() {
+        assert_eq!(
+            normalize_postprocess_layout("Primero.   \n\n\nSegundo.\tAhora."),
+            "Primero.\n\nSegundo. Ahora."
+        );
     }
 
     #[test]

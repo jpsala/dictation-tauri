@@ -19,7 +19,8 @@ function providerUrl(value: string): URL { try { return new URL(value); } catch 
 const MANAGED_TRANSCRIPTION_PROMPT = [
   "Transcribí en español rioplatense.",
   "Puede incluir términos técnicos, comandos y nombres de modelos.",
-  "Conservá exactamente comandos, paquetes, modelos, archivos, URLs, emails, números, guiones, puntos y mayúsculas cuando formen parte del término.",
+  "Conservá exactamente comandos, paquetes, modelos, archivos, URLs, emails, números, versiones, guiones, puntos y mayúsculas cuando formen parte del término.",
+  "Cuando el hablante dicte explícitamente un path, reconstruí separadores y signos hablados como dos puntos, barra y barra invertida; por ejemplo, C dos puntos barra dev barra dictation-tauri se transcribe C:\\dev\\dictation-tauri.",
   "Si el hablante dice palabras de puntuación o lista como punto y aparte, coma, dos puntos, primero, segundo o tercero, transcribilas literalmente para que otro paso las formatee.",
   "Devolvé solo la transcripción final.",
 ].join(" ");

@@ -54,6 +54,8 @@ describe("HTTP provider adapter", () => {
     expect(chatPayload.messages[0].content).toContain("transcription post-processor");
     expect(chatPayload.messages[0].content).toContain("Spanish questions");
     expect(chatPayload.messages[0].content).toContain("explicit spoken corrections");
+    expect(chatPayload.messages[0].content).toContain("with exactly one item per line");
+    expect(chatPayload.messages[0].content).toContain("C:\\dev\\dictation-tauri");
     expect(chatPayload.messages[0].content).not.toContain("caller prompt");
 
     const source = new FormData();
@@ -76,6 +78,7 @@ describe("HTTP provider adapter", () => {
     expect(upstream.get("language")).toBe("es");
     expect(String(upstream.get("prompt"))).toContain("Transcribí en español rioplatense");
     expect(String(upstream.get("prompt"))).toContain("comandos, paquetes, modelos, archivos, URLs");
+    expect(String(upstream.get("prompt"))).toContain("C:\\dev\\dictation-tauri");
     expect(upstream.get("response_format")).toBe("verbose_json");
     expect(upstream.getAll("timestamp_granularities[]")).toEqual(["word", "segment"]);
     expect(upstream.get("temperature")).toBe("0");
