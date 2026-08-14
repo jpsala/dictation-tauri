@@ -7,9 +7,9 @@ decisiones.
 
 ## Foco Único De Ejecución
 
-- **Estado:** `ready`.
-- **Plan:** `docs/tracks/transcription-quality-program.md`.
-- **Próximo batch:** **Batch de deploy Gate B v2 y ejecución separadamente aprobada**.
+- **Estado:** `complete`.
+- **Referencia:** `docs/tracks/transcription-quality-program.md`.
+- **Siguiente acción:** Seleccionar el próximo frente desde Frentes Retomables.
 
 ## Contrato Congelado
 
@@ -45,11 +45,12 @@ decisiones.
 
 ## Gates Ejecutados Y Cierre Actual
 
-- Producción corre el release inmutable `0434f2cf3d0a6607`, archive SHA-256
-  `0434f2cf3d0a66075e21fb1732db4cd0b3492d51918b052dbeb51e42783831d5`.
-  `bc1a3e5cadba1903` es el rollback inmediato schema-9;
-  `650b4c8f6ed00a2a` sigue preservado como rollback schema-9 secundario y
-  `11bf651ce5d983b6` no es ejecutable directamente contra schema 9.
+- Producción corre el release inmutable `c1154baf25dbe005`, archive SHA-256
+  `c1154baf25dbe005d1f4700201c74709999c909d74d813d97d47aec678f37492`.
+  `2a49be9eccf4ce17` es el rollback inmediato schema-9;
+  `0434f2cf3d0a6607`, `bc1a3e5cadba1903` y `650b4c8f6ed00a2a`
+  siguen preservados; `11bf651ce5d983b6` no es ejecutable directamente
+  contra schema 9.
 - Producción permanece schema `9`, migrations `0001..0009` y marker
   `laboratory_execution_grants`; service active/enabled, `NRestarts=0`,
   listener único `127.0.0.1:8790`, health/readiness local+público verdes y
@@ -65,17 +66,18 @@ decisiones.
   incluyó `candidateId` donde el servidor proyecta `{sampleId, rawRef}`:
   `0/6` requests, costo `0/5000`, cero provider calls. El packet sustituto
   aprobado corrigió sólo esa proyección.
-- Gate B completó exactamente `6/6` requests secuenciales, sin retries, STT,
+- Gate B v1 completó exactamente `6/6` requests secuenciales, sin retries, STT,
   audio, delivery, vocabulary ni mutación de profile. El ledger quedó en
-  `4998/5000` microusd y audit `sequence=20` como JSONB `object`; no quedan
-  ejecuciones Gate B activas.
-- El smoke offline de los seis outputs Gate B v1 persistidos reportó `6/6`
-  decisiones semánticas `accepted`, cero omissions y cero additions. La
-  revisión privada no promovió recipe: aisló metadata temporal demasiado
-  prescriptiva. El candidato local `conservative-timing` reduce `18` señales
-  legacy a `8`, máximo `4` por muestra, sin sugerir puntuación ni estructura.
-  Gate B v2 está implementado y verificado localmente, pero aún no desplegado ni
-  ejecutado.
+  `4998/5000` microusd y audit `sequence=20` como JSONB `object`.
+- Gate B v2 también completó una única matriz `3×2`: `6/6`, `4998/5000`
+  microusd, audit `sequence=23` JSONB `object`, cero retries y cero requests STT.
+  Baseline `plain` quedó `3/3 accepted`, safety `3/3`, WER `0.2206`, CER
+  `0.1295`, latencia media `1114 ms`. `conservative-timing` quedó `2/3
+  accepted`, un fallback por `material_omission`, `9` omissions, safety `2/3`,
+  mismo WER, CER `0.1299` y latencia `1149 ms`.
+- Decisión: no promover `conservative-timing`. No mejora WER y degrada safety,
+  CER y latencia. El fallback preservó el raw privado; no quedan ejecuciones
+  Gate B activas.
 - La UI separa recursos y razones de indisponibilidad; owner stale conserva
   catálogo/preview/grants bajo sus gates y provider-free local no depende de
   recent-auth. Los planes Gate A/B son matrices bloqueadas. No se publicó
@@ -85,7 +87,7 @@ decisiones.
 
 | Frente | Estado | Abrir primero |
 | --- | --- | --- |
-| Calidad de transcripción | Gate B v1 cerrado; experimento metadata v2 listo localmente, bloqueado por packet de deploy y luego packet provider separado | `docs/tracks/transcription-quality-program.md` |
+| Calidad de transcripción | Gate B v1 y v2 cerrados; candidato metadata v2 no promovido por regresión semántica | `docs/tracks/transcription-quality-program.md` |
 | Reliability/truthfulness | local complete; Phase 4 gated | `docs/tracks/fixvox-minimal-reliability-and-truthfulness.md` |
 | Dock/Wispr | listo para retomar | `docs/tracks/dock-skins-visual-refinement.md` |
 | Cloud/runtime | referencia cerrada | Spec 019 y `docs/topics/fixvox-cloud-runtime-port.md` |

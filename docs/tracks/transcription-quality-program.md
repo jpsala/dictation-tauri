@@ -2376,3 +2376,32 @@ Estado: `closed`.
 - Producción todavía corre `0434f2cf3d0a6607`; no se hizo deploy ni provider
   call. El próximo paso requiere primero packet de deploy exacto y, después,
   un packet provider separado para una única ejecución Gate B v2.
+
+### Gate B v2 Ejecutado Y Candidato No Promovido — 2026-08-14
+
+**Estado:** `completed_no_promotion`
+
+- El deploy code-only versionado dejó producción en `c1154baf25dbe005`,
+  archive SHA-256
+  `c1154baf25dbe005d1f4700201c74709999c909d74d813d97d47aec678f37492`,
+  con `2a49be9eccf4ce17` como rollback inmediato schema-9. La corrección
+  separó availability de recipe y availability del source Gate A; no hubo
+  migration, env, DNS ni provider call durante los dos deploys.
+- El packet provider separado ejecutó Gate B v2 exactamente una vez: `3 × 2`,
+  seis requests secuenciales, cero retries, STT, audio, delivery, vocabulary o
+  mutación de profile. La ejecución `447eeb1b…` completó `6/6`,
+  `4998/5000` microusd; audit `sequence=23` conserva `safe_metadata` como
+  JSONB `object`. No quedan ejecuciones Gate B activas.
+- Baseline `plain`: `3/3 accepted`, cero omissions/additions, semantic safety
+  `3/3`, WER medio `0.2206`, CER medio `0.1295`, latencia media `1114 ms`.
+- Candidato `conservative-timing`: `2/3 accepted`, un fallback
+  `material_omission`, `9` omissions, cero additions, semantic safety `2/3`,
+  WER medio `0.2206`, CER medio `0.1299`, latencia media `1149 ms`.
+- Decisión: **no promover**. No mejora WER, empeora levemente CER y latencia, y
+  falla el guard en la muestra de comparación de modelos. El fallback devolvió
+  el raw sin exponer contenido privado, por lo que el guard fail-closed funcionó.
+- La UI aceptaba todavía sólo dos recipes y ordenaba el menor score agregado
+  como rank `1`. Ambos defectos se corrigieron: catálogo versionado de tres
+  recipes y ranking descendente por score, con semantic safety `100%` antes de
+  `66.7%`. Tests focales y build quedaron verdes; la ventana Tauri real cargó el
+  run canónico y la comparación sin fabricar métricas.

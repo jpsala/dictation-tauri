@@ -2,18 +2,28 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { ExperimentWorkspace } from "../../src/dictation-lab/ExperimentWorkspace";
-import { EvidenceOverviewWorkspace } from "../../src/dictation-lab/EvidenceWorkspaces";
+import { EvidenceOverviewWorkspace, EvidenceResultsWorkspace } from "../../src/dictation-lab/EvidenceWorkspaces";
 import { OverviewWorkspace } from "../../src/dictation-lab/LabWorkspaces";
 import type {
   LabArtifactIndex,
   LabExperimentDefinition,
   LabMetricValue,
+  LabCandidateSummary,
 } from "../../src/dictation-lab/types";
 
 const unavailableMetric = (unit: LabMetricValue["unit"]): LabMetricValue => ({
   value: null,
   unit,
   availability: { status: "unavailable", missing: [unit] },
+});
+
+const availableMetric = (
+  value: number,
+  unit: LabMetricValue["unit"],
+): LabMetricValue => ({
+  value,
+  unit,
+  availability: { status: "available", missing: [] },
 });
 
 const definition: LabExperimentDefinition = {
@@ -186,6 +196,47 @@ describe("Dictation Laboratory workspace contracts", () => {
     expect(html).not.toContain("Start experiment");
     expect(html).toContain("authoritative_one_shot_grant_unavailable");
     expect(html).toContain("no cloud recipe is inferred");
+  });
+
+  it("ranks the higher semantic-safety candidate first", () => {
+    const base = artifacts.runs[0].candidates[0] as LabCandidateSummary;
+    const candidate = (candidateId: string, semanticSafety: number) => ({
+      ...base,
+      candidateId,
+      label: candidateId,
+      coverage: availableMetric(1, "ratio"),
+      wer: availableMetric(0.2, "ratio"),
+      cer: availableMetric(0.1, "ratio"),
+      entityAccuracy: availableMetric(1, "ratio"),
+      structureAccuracy: availableMetric(1, "ratio"),
+      semanticSafety: availableMetric(semanticSafety, "ratio"),
+      latency: availableMetric(1000, "milliseconds"),
+      fallbackCount: availableMetric(0, "count"),
+    });
+    const run = {
+      ...artifacts.runs[0],
+      candidateCount: 2,
+      candidates: [
+        candidate("unsafe-candidate", 0.66),
+        candidate("safe-baseline", 1),
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <EvidenceResultsWorkspace
+        artifacts={{
+          index: { ...artifacts, runs: [run] },
+          loading: false,
+          error: "",
+        }}
+        client={{} as never}
+        selectedRun={run}
+      />,
+    );
+    const table = html.slice(html.indexOf("<tbody"), html.indexOf("</tbody>"));
+
+    expect(table.indexOf("safe-baseline")).toBeLessThan(
+      table.indexOf("unsafe-candidate"),
+    );
   });
 
   it("renders empty canonical states without substituting example runs", () => {

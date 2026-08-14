@@ -6,7 +6,7 @@ track: docs/tracks/fixvox-self-hosted-checkpoint-f-vps-loopback-plan.md
 
 # Runbook — Fixvox API VPS Loopback
 
-The permanent direct-runtime cutover routes `auth-fixvox.jpsala.dev` through the dedicated Cloudflare Tunnel to the loopback-only VPS service. Live verification on 2026-08-14 observed runtime release `0434f2cf3d0a6607`, PostgreSQL schema 9 with exact migrations `0001..0009`, and logical `authorityMode=cloudflare-authority`. Release `bc1a3e5cadba1903` is the immediate schema-9 code rollback; `650b4c8f6ed00a2a` remains a preserved secondary schema-9 release. Release `11bf651ce5d983b6` remains preserved but expects schema 8 and is not a direct code rollback while PostgreSQL remains at schema 9. The Worker Custom Domain is absent and it is not the hot path.
+The permanent direct-runtime cutover routes `auth-fixvox.jpsala.dev` through the dedicated Cloudflare Tunnel to the loopback-only VPS service. Live verification on 2026-08-14 observed runtime release `c1154baf25dbe005`, PostgreSQL schema 9 with exact migrations `0001..0009`, and logical `authorityMode=cloudflare-authority`. Release `2a49be9eccf4ce17` is the immediate schema-9 code rollback; `0434f2cf3d0a6607`, `bc1a3e5cadba1903` and `650b4c8f6ed00a2a` remain preserved schema-9 releases. Release `11bf651ce5d983b6` remains preserved but expects schema 8 and is not a direct code rollback while production remains on schema 9.
 
 The operational mirror is `C:/dev/infra/docs/runbooks/fixvox-api-vps.md`. If either runbook disagrees with the other or with the selected track, stop before execution.
 
@@ -18,7 +18,7 @@ The operational mirror is `C:/dev/infra/docs/runbooks/fixvox-api-vps.md`. If eit
 | API bind | `127.0.0.1:8790` only; `8787` remains Admin BFF |
 | Runtime | `/home/jpsal/.bun/bin/bun` |
 | Releases | `/home/jpsal/opt/fixvox-api/releases/<release-id>` + atomic `current` symlink |
-| Current / immediate schema-9 rollback | `0434f2cf3d0a6607` / `bc1a3e5cadba1903`; secondary preserved `650b4c8f6ed00a2a` |
+| Current / immediate schema-9 rollback | `c1154baf25dbe005` / `2a49be9eccf4ce17`; preserved `0434f2cf3d0a6607`, `bc1a3e5cadba1903`, `650b4c8f6ed00a2a` |
 | Preserved schema-8 code release | `11bf651ce5d983b6`; not directly runnable against schema 9 |
 | Staging | `/home/jpsal/staging/fixvox-api` |
 | Protected config | `/home/jpsal/.config/dictation-tauri/fixvox-api.env`, mode `0600` |
@@ -486,6 +486,32 @@ delivery or vocabulary; ledger `4998/5000`, audit `sequence=20` as JSONB object,
 and no active Gate B execution. Provider-free stored-output verification
 reported six accepted semantic-safety decisions, zero omissions and zero
 additions. This is evidence, not an automatic profile promotion.
+
+## Versioned Metadata Catalog And Gate B v2 — 2026-08-14
+
+Two separately approved code-only releases followed the laboratory closure.
+`2a49be9eccf4ce17` installed the bounded `conservative-timing` v2 recipe and
+versioned Gate B definition. Live verification then found the catalog still
+projected every postprocess recipe as unavailable when only the source Gate A
+was unavailable. No grant or provider request occurred. Release
+`c1154baf25dbe005`, archive SHA-256
+`c1154baf25dbe005d1f4700201c74709999c909d74d813d97d47aec678f37492`,
+separated recipe availability from source availability and became current with
+`2a49be9eccf4ce17` as exact rollback.
+
+Both promotions were code-only with one restart each and no migration, env,
+DNS, tunnel or data mutation. Independent verification left service
+active/enabled, `NRestarts=0`, one listener at `127.0.0.1:8790`, local health
+and readiness `200`, schema `9` and `cloudflare-authority`.
+
+The separately approved Gate B v2 packet then issued and consumed exactly one
+new execution. It completed six sequential Groq `openai/gpt-oss-120b`
+postprocess requests: `6/6`, `4998/5000` microusd, zero retries, STT, audio,
+delivery, vocabulary or profile mutation. Audit `sequence=23` stores bounded
+JSONB-object metadata. No Gate B execution remains active. Evaluation rejected
+automatic promotion: the candidate had one `material_omission` fallback, nine
+omissions and semantic safety `2/3`, versus baseline `3/3`; WER was unchanged,
+while CER and latency were slightly worse.
 
 ## Stop Conditions
 

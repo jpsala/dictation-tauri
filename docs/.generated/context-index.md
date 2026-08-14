@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-08-14T19:19:03.726Z
+Generated: 2026-08-14T20:11:28.617Z
 
 ## Topics
 
@@ -32,8 +32,7 @@ Generated: 2026-08-14T19:19:03.726Z
 
 ## Tracks
 
-- active: [Transcription Quality Program](../tracks/transcription-quality-program.md)
-- Other tracks are omitted from the hot index; search `docs/tracks/` on demand.
+- No focused track. Search `docs/tracks/` on demand.
 
 ## Specs
 

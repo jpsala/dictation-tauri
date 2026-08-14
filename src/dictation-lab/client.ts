@@ -228,7 +228,7 @@ function laboratoryCatalog(value: unknown): LaboratoryCatalog {
   if (
     candidate.schemaVersion !== 1 ||
     (candidate.sttRecipes as unknown[]).length !== 4 ||
-    (candidate.postprocessRecipes as unknown[]).length !== 2
+    (candidate.postprocessRecipes as unknown[]).length !== 3
   ) {
     throw new DictationLabUnavailableError(
       "DICTATION_LAB_CATALOG_INVALID",

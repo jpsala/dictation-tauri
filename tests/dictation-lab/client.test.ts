@@ -193,6 +193,50 @@ describe("dictation laboratory profile responses", () => {
     expect(loaded.resources.publishCapability.status).toBe("unavailable");
   });
 
+  it("accepts the versioned catalog with three postprocess recipes", async () => {
+    invokeMock.mockReset();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === "get_dictation_lab_catalog") {
+        return Promise.resolve({
+          schemaVersion: 1,
+          engines: [],
+          prompts: [],
+          sttRecipes: [{}, {}, {}, {}],
+          postprocessRecipes: [{}, {}, {}],
+          prosodyModes: [],
+          vocabularyModes: [],
+          materializations: [],
+          providerAuthorization: { status: "available", reasonCode: null },
+        });
+      }
+      if (command === "get_dictation_lab_local_plan") {
+        return Promise.resolve({
+          schemaVersion: 1,
+          mode: "provider-free-replay",
+          corpusId: "synthetic-audio-stt",
+          sampleIds: ["en-clean-note", "es-short-reminder"],
+          sttRecipes: ["provider-free-manifest-replay"],
+          materializations: ["identity"],
+          postprocessRecipes: [],
+          prosodyModes: ["off"],
+          vocabularyModes: ["off"],
+          baselineCandidateId: null,
+          sourceGateARunId: null,
+        });
+      }
+      if (command === "list_dictation_lab_gate_sources")
+        return Promise.resolve([]);
+      return Promise.reject({ code: "SIGNED_OUT" });
+    });
+
+    const loaded = await createDictationLabClient().load();
+    expect(loaded.catalog?.postprocessRecipes).toHaveLength(3);
+    expect(loaded.resources.catalog).toEqual({
+      status: "available",
+      code: null,
+    });
+  });
+
   it("rejects an unknown cloud role without suppressing independent local resource loading", async () => {
     invokeMock.mockReset();
     invokeMock.mockResolvedValue({ ok: true, role: "admin", principalKey: "redacted", recentGoogle: true });

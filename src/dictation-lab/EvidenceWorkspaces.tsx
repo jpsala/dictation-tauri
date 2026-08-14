@@ -246,7 +246,7 @@ export function EvidenceResultsWorkspace({ artifacts, client, selectedRun: contr
   const scores = useMemo(() => rankCandidates(candidates), [candidates]);
   const sortedCandidates = useMemo(() => candidates.slice().sort((a, b) => {
     let result = 0;
-    if (sortKey === "rank") result = (scores.get(a.candidateId) ?? Number.NEGATIVE_INFINITY) - (scores.get(b.candidateId) ?? Number.NEGATIVE_INFINITY);
+    if (sortKey === "rank") result = (scores.get(b.candidateId) ?? Number.NEGATIVE_INFINITY) - (scores.get(a.candidateId) ?? Number.NEGATIVE_INFINITY);
     else if (sortKey === "label") result = a.label.localeCompare(b.label) || a.candidateId.localeCompare(b.candidateId);
     else result = (valueAt(a, sortKey) ?? Number.POSITIVE_INFINITY) - (valueAt(b, sortKey) ?? Number.POSITIVE_INFINITY);
     return (descending ? -result : result) || a.candidateId.localeCompare(b.candidateId);
