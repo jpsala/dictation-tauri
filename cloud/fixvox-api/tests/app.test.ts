@@ -155,7 +155,16 @@ describe("Bun API adapter", () => {
   test("runs canonical transcription through one reserve and one provider call", async () => {
     let calls = 0; let reserves = 0; let consumes = 0;
     const deps = createDependencies();
-    deps.providers = { async proxy() { calls++; return Response.json({ text: "safe transcript" }); } };
+    deps.providers = { async proxy() {
+      calls++;
+      return Response.json({
+        text: "safe transcript",
+        words: [
+          { word: "safe", start: 0, end: 0.2 },
+          { word: "transcript", start: 0.2, end: 1.8 },
+        ],
+      });
+    } };
     deps.quota = { async reserve() { reserves++; return { allowed: true, reservationId: "stt-reservation", idempotent: false }; }, async consume() { consumes++; }, async release() { return true; } };
     const form = new FormData();
     form.set("metadata", JSON.stringify({ operationId: "stt-operation", durationMs: 100, language: "es" }));
@@ -167,6 +176,7 @@ describe("Bun API adapter", () => {
     expect({ calls, reserves, consumes }).toEqual({ calls: 1, reserves: 1, consumes: 1 });
     const body = await response.json() as { data: Record<string, unknown> };
     expect(JSON.stringify(body)).toContain("safe transcript");
+    expect(body.data.prosodyHints).toContain('After "transcript"');
     expect("sttMetadata" in body.data).toBe(false);
     expect("sttMetadataPrivate" in body.data).toBe(false);
   });

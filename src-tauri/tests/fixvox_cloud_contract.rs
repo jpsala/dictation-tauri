@@ -880,6 +880,7 @@ fn cloudflare_managed_chat_uses_temporary_alias_without_vendor_bearer() {
         },
         ManagedChatInput {
             transcript: "hola mundo".to_string(),
+            prosody_hints: None,
             instruction: Some("correct spelling".to_string()),
             preset_key: Some("corregir-texto".to_string()),
             conversation_summary: None,
@@ -922,6 +923,7 @@ fn self_hosted_managed_chat_uses_canonical_typed_action() {
         },
         ManagedChatInput {
             transcript: "hola mundo".to_string(),
+            prosody_hints: None,
             instruction: Some("correct spelling".to_string()),
             preset_key: Some("corregir-texto".to_string()),
             conversation_summary: None,
@@ -939,6 +941,32 @@ fn self_hosted_managed_chat_uses_canonical_typed_action() {
     assert_eq!(preview.body["input"]["instruction"], "correct spelling");
     assert!(preview.body.get("provider").is_none());
     assert!(preview.body.get("model").is_none());
+}
+
+#[test]
+fn self_hosted_managed_postprocess_carries_private_prosody_context() {
+    let preview = build_managed_chat_completion_request_preview(
+        FixvoxCloudConfig {
+            backend_base_url: "http://127.0.0.1:8788".to_string(),
+            device_id: Some("dev_test_1234567890abcdef".to_string()),
+        },
+        ManagedChatInput {
+            transcript: "hola mundo".to_string(),
+            prosody_hints: Some("private pause guidance".to_string()),
+            instruction: None,
+            preset_key: None,
+            conversation_summary: None,
+            engine_kind: Some(ManagedChatEngineKind::Postprocess),
+        },
+    )
+    .expect("self-hosted postprocess preview should be constructable without network");
+
+    assert_eq!(preview.body["kind"], "postprocess");
+    assert_eq!(preview.body["input"]["transcript"], "hola mundo");
+    assert_eq!(
+        preview.body["input"]["prosodyHints"],
+        "private pause guidance"
+    );
 }
 
 #[test]
@@ -966,11 +994,15 @@ fn managed_mode_fails_closed_instead_of_silent_direct_groq_fallback() {
 #[test]
 fn parses_managed_stt_response_body_without_network() {
     let parsed = parse_managed_stt_json_response(
-        r#"{"ok":true,"data":{"operationId":"fixture","text":"fixture managed transcript","usage":{"kind":"stt","charged":true}}}"#,
+        r#"{"ok":true,"data":{"operationId":"fixture","text":"fixture managed transcript","prosodyHints":"private pause guidance","usage":{"kind":"stt","charged":true}}}"#,
     )
     .expect("canonical managed STT response should parse from fixture JSON");
 
     assert_eq!(parsed.text, "fixture managed transcript");
+    assert_eq!(
+        parsed.prosody_hints.as_deref(),
+        Some("private pause guidance")
+    );
     assert_eq!(parsed.model, None);
 
     let missing_text = parse_managed_stt_json_response("{\"ok\":true,\"data\":{}}")

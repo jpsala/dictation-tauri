@@ -353,6 +353,8 @@ pub enum HostTranscriptionResponse {
     #[serde(rename_all = "camelCase")]
     Ok {
         text: String,
+        #[serde(skip)]
+        prosody_hints: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         transcript_path: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -502,6 +504,7 @@ enum PreflightInFlightAction {
 enum ProviderTranscriptionOutcome {
     Ok {
         text: String,
+        prosody_hints: Option<String>,
         provider: String,
         model: String,
         latency_ms: u64,
@@ -534,12 +537,20 @@ enum ProviderTranscriptionOutcome {
 struct GroqTranscriptionResponseBody {
     text: Option<String>,
     segments: Option<Vec<WhisperSegmentBody>>,
+    words: Option<Vec<WhisperWordBody>>,
 }
 
 #[derive(Deserialize)]
 struct WhisperSegmentBody {
     avg_logprob: Option<f64>,
     no_speech_prob: Option<f64>,
+}
+
+#[derive(Clone, Deserialize)]
+struct WhisperWordBody {
+    word: String,
+    start: f64,
+    end: f64,
 }
 
 struct ManagedCloudReadiness {
@@ -713,6 +724,7 @@ async fn run_assistant_chat_with_managed_chat(
         },
         fixvox_cloud::ManagedChatInput {
             transcript: prompt.to_string(),
+            prosody_hints: None,
             instruction: None,
             preset_key: None,
             conversation_summary: Some(build_assistant_chat_history_block(&request.history)),
@@ -893,6 +905,7 @@ async fn transform_selected_text_with_managed_chat(
         },
         fixvox_cloud::ManagedChatInput {
             transcript: selected_text.to_string(),
+            prosody_hints: None,
             instruction: Some(instruction.to_string()),
             preset_key: Some(preset.to_string()),
             conversation_summary: None,
@@ -1689,7 +1702,10 @@ fn read_dictation_policy_json(
 fn resolve_dictation_runtime_plan_from_policy_json(
     policy: &serde_json::Value,
 ) -> DictationRuntimePlan {
-    let policy_id = first_json_string(policy, &[&["policyId"], &["policy_id"]]);
+    let policy_id = first_json_string(
+        policy,
+        &[&["policyId"], &["policy_id"], &["profile", "key"]],
+    );
     let voice_runtime_stt_prompt_enabled = first_json_bool(
         policy,
         &[
@@ -1707,6 +1723,7 @@ fn resolve_dictation_runtime_plan_from_policy_json(
             &["voice_routing", "runtime", "post_process_enabled"],
             &["voicePolicy", "enableRawPostProcess"],
             &["voice_policy", "enable_raw_post_process"],
+            &["capabilities", "postprocess"],
         ],
     )
     .unwrap_or(false);
@@ -2400,6 +2417,95 @@ fn should_discard_provider_no_speech(
     None
 }
 
+fn estimate_word_syllables(word: &str) -> usize {
+    let mut count = 0usize;
+    let mut previous_was_vowel = false;
+    for character in word.chars().flat_map(char::to_lowercase) {
+        let is_vowel = matches!(
+            character,
+            'a' | 'e' | 'i' | 'o' | 'u' | 'á' | 'é' | 'í' | 'ó' | 'ú' | 'ü'
+        );
+        if is_vowel && !previous_was_vowel {
+            count += 1;
+        }
+        previous_was_vowel = is_vowel;
+    }
+    count.max(1)
+}
+
+fn expected_word_duration_ms(word: &str) -> f64 {
+    (estimate_word_syllables(word) as f64 * 200.0).clamp(150.0, 500.0)
+}
+
+fn format_prosody_hints(words: Option<&[WhisperWordBody]>) -> Option<String> {
+    let words = words?;
+    let valid_words: Vec<&WhisperWordBody> = words
+        .iter()
+        .filter(|word| {
+            !word.word.trim().is_empty()
+                && word.start.is_finite()
+                && word.end.is_finite()
+                && word.end >= word.start
+        })
+        .collect();
+    if valid_words.is_empty() {
+        return None;
+    }
+
+    let mut pauses = Vec::new();
+    let mut estimated_speech_seconds = 0.0;
+    for word in &valid_words {
+        let expected_ms = expected_word_duration_ms(&word.word);
+        estimated_speech_seconds += expected_ms / 1000.0;
+        let duration_ms = (word.end - word.start) * 1000.0;
+        if duration_ms <= expected_ms * 2.5 {
+            continue;
+        }
+        let pause_ms = (duration_ms - expected_ms).round().max(0.0) as u64;
+        let suggestion = if pause_ms >= 1500 {
+            "might indicate new paragraph/topic"
+        } else if pause_ms >= 800 {
+            "might indicate sentence break"
+        } else if pause_ms >= 400 {
+            "might indicate comma or brief pause"
+        } else {
+            continue;
+        };
+        pauses.push(format!(
+            "- After \"{}\": ~{}ms pause → {}",
+            word.word.trim(),
+            pause_ms,
+            suggestion
+        ));
+    }
+    if pauses.is_empty() {
+        return None;
+    }
+
+    let raw_duration_seconds = valid_words
+        .last()
+        .zip(valid_words.first())
+        .map(|(last, first)| (last.end - first.start).max(0.0))
+        .unwrap_or(0.0);
+    let estimated_silence_ms =
+        ((raw_duration_seconds - estimated_speech_seconds).max(0.0) * 1000.0).round() as u64;
+    let pause_count = pauses.len();
+    let mut lines = vec![
+        "\n---".to_string(),
+        "Prosody signals (use as guidance, not rules):".to_string(),
+        "The speaker paused at these points. Consider them as hints for punctuation,".to_string(),
+        "but prioritize semantic context and natural flow over strict duration thresholds."
+            .to_string(),
+        String::new(),
+    ];
+    lines.extend(pauses);
+    lines.push(format!(
+        "\n({pause_count} pause(s) detected, ~{estimated_silence_ms}ms total silence)"
+    ));
+    lines.push("Use these signals alongside context to place punctuation naturally.".to_string());
+    Some(lines.join("\n"))
+}
+
 fn average_segment_number(segments: Option<&[WhisperSegmentBody]>, key: &str) -> Option<f64> {
     let values: Vec<f64> = segments
         .unwrap_or(&[])
@@ -2523,7 +2629,7 @@ async fn transcribe_groq_audio(
         };
     }
 
-    let text = if content_type.contains("application/json") {
+    let (text, prosody_hints) = if content_type.contains("application/json") {
         match response.json::<GroqTranscriptionResponseBody>().await {
             Ok(body) => {
                 let text = body.text.unwrap_or_default();
@@ -2549,7 +2655,12 @@ async fn transcribe_groq_audio(
                         fixvox_metadata: None,
                     };
                 }
-                text
+                let prosody_hints = request
+                    .post_process
+                    .as_ref()
+                    .filter(|policy| policy.enabled)
+                    .and_then(|_| format_prosody_hints(body.words.as_deref()));
+                (text, prosody_hints)
             }
             Err(error) => {
                 return ProviderTranscriptionOutcome::ProviderError {
@@ -2565,7 +2676,7 @@ async fn transcribe_groq_audio(
         }
     } else {
         match response.text().await {
-            Ok(text) => text,
+            Ok(text) => (text, None),
             Err(error) => {
                 return ProviderTranscriptionOutcome::ProviderError {
                     code: "GROQ_RESPONSE_READ_FAILED".to_string(),
@@ -2582,6 +2693,7 @@ async fn transcribe_groq_audio(
 
     ProviderTranscriptionOutcome::Ok {
         text,
+        prosody_hints,
         provider: config.provider,
         model,
         latency_ms,
@@ -3228,20 +3340,21 @@ async fn transcribe_fixvox_managed_audio(
     } else {
         fixvox_cloud::ManagedSttParsedResponse {
             text: text_body.clone(),
+            prosody_hints: None,
             model: None,
         }
     };
 
-    let parsed_segments = if content_type.contains("application/json") {
-        serde_json::from_str::<GroqTranscriptionResponseBody>(&text_body)
-            .ok()
-            .and_then(|body| body.segments)
+    let verbose_body = if content_type.contains("application/json") {
+        serde_json::from_str::<GroqTranscriptionResponseBody>(&text_body).ok()
     } else {
         None
     };
-    let no_speech_probability =
-        average_segment_number(parsed_segments.as_deref(), "no_speech_prob");
-    let average_log_probability = average_segment_number(parsed_segments.as_deref(), "avg_logprob");
+    let parsed_segments = verbose_body
+        .as_ref()
+        .and_then(|body| body.segments.as_deref());
+    let no_speech_probability = average_segment_number(parsed_segments, "no_speech_prob");
+    let average_log_probability = average_segment_number(parsed_segments, "avg_logprob");
     let resolved_model = parsed.model.unwrap_or_else(|| {
         if legacy_cloudflare_transport {
             config.model.clone()
@@ -3265,9 +3378,21 @@ async fn transcribe_fixvox_managed_audio(
             fixvox_metadata: Some(metadata),
         };
     }
+    let prosody_hints = if request
+        .post_process
+        .as_ref()
+        .is_some_and(|policy| policy.enabled)
+    {
+        parsed.prosody_hints.or_else(|| {
+            format_prosody_hints(verbose_body.as_ref().and_then(|body| body.words.as_deref()))
+        })
+    } else {
+        None
+    };
 
     ProviderTranscriptionOutcome::Ok {
         text: parsed.text,
+        prosody_hints,
         provider: config.provider,
         model: resolved_model,
         latency_ms,
@@ -3286,11 +3411,14 @@ async fn apply_fixvox_managed_postprocess(
         return response;
     };
 
-    let HostTranscriptionResponse::Ok { text, .. } = &response else {
-        return response;
+    let (raw_text, prosody_hints) = match &response {
+        HostTranscriptionResponse::Ok {
+            text,
+            prosody_hints,
+            ..
+        } => (text.clone(), prosody_hints.clone()),
+        _ => return response,
     };
-
-    let raw_text = text.clone();
     let base_evidence =
         |ran: bool,
          fallback_to_raw: bool,
@@ -3353,6 +3481,7 @@ async fn apply_fixvox_managed_postprocess(
         },
         fixvox_cloud::ManagedChatInput {
             transcript: raw_text.clone(),
+            prosody_hints: prosody_hints.clone(),
             instruction: None,
             preset_key: None,
             conversation_summary: None,
@@ -3480,6 +3609,7 @@ fn with_ok_text_and_post_process_evidence(
     match response {
         HostTranscriptionResponse::Ok {
             text,
+            prosody_hints,
             transcript_path,
             report_path,
             provider,
@@ -3496,6 +3626,7 @@ fn with_ok_text_and_post_process_evidence(
             } else {
                 replacement_text
             },
+            prosody_hints,
             transcript_path,
             report_path,
             provider,
@@ -3596,6 +3727,7 @@ fn map_provider_outcome_to_host_response(
     match outcome {
         ProviderTranscriptionOutcome::Ok {
             text,
+            prosody_hints,
             provider,
             model,
             latency_ms,
@@ -3624,6 +3756,7 @@ fn map_provider_outcome_to_host_response(
 
             HostTranscriptionResponse::Ok {
                 text: normalized_text,
+                prosody_hints,
                 transcript_path: Some(create_transcript_path(&request.run_id)),
                 report_path: Some(create_report_path(&request.run_id)),
                 provider: redact_host_text(&provider),
@@ -4828,6 +4961,7 @@ mod tests {
         let empty = map_provider_outcome_to_host_response(
             ProviderTranscriptionOutcome::Ok {
                 text: "[BLANK_AUDIO]".to_string(),
+                prosody_hints: None,
                 provider: "groq".to_string(),
                 model: "whisper-large-v3".to_string(),
                 latency_ms: 7,
@@ -5036,6 +5170,7 @@ mod tests {
         let response = map_provider_outcome_to_host_response(
             ProviderTranscriptionOutcome::Ok {
                 text: " host transcript ".to_string(),
+                prosody_hints: None,
                 provider: "fixvox-cloud".to_string(),
                 model: "whisper-large-v3".to_string(),
                 latency_ms: 42,
@@ -5525,6 +5660,80 @@ mod tests {
             normalize_path(&summary_path)
         );
         assert!(matches!(response, HostTranscriptionResponse::Ok { .. }));
+    }
+
+    #[test]
+    fn prosody_hints_preserve_canonical_pause_semantics() {
+        let hints = format_prosody_hints(Some(&[
+            WhisperWordBody {
+                word: "Bueno".to_string(),
+                start: 0.0,
+                end: 0.2,
+            },
+            WhisperWordBody {
+                word: "esto".to_string(),
+                start: 0.2,
+                end: 1.8,
+            },
+            WhisperWordBody {
+                word: "funciona".to_string(),
+                start: 1.8,
+                end: 4.0,
+            },
+        ]))
+        .expect("long word-level gaps should produce private prosody guidance");
+
+        assert!(hints.contains("After \"esto\": ~1200ms pause → might indicate sentence break"));
+        assert!(hints
+            .contains("After \"funciona\": ~1700ms pause → might indicate new paragraph/topic"));
+        assert!(hints.contains("(2 pause(s) detected, ~2700ms total silence)"));
+        assert!(hints.contains("prioritize semantic context and natural flow"));
+    }
+
+    #[test]
+    fn prosody_hints_are_private_and_never_serialized_to_host_response() {
+        let response = HostTranscriptionResponse::Ok {
+            text: "Texto final".to_string(),
+            prosody_hints: Some("private timing signal".to_string()),
+            transcript_path: None,
+            report_path: None,
+            provider: "groq".to_string(),
+            model: "whisper-large-v3-turbo".to_string(),
+            latency_ms: 1,
+            request_id: None,
+            fixvox_metadata: None,
+            audio_prep: None,
+            preflight: None,
+            post_process: None,
+            redacted: true,
+        };
+
+        let serialized = serde_json::to_value(response).expect("response should serialize");
+        assert_eq!(
+            serialized.get("text").and_then(serde_json::Value::as_str),
+            Some("Texto final")
+        );
+        assert!(serialized.get("prosodyHints").is_none());
+        assert!(!serialized.to_string().contains("private timing signal"));
+    }
+
+    #[test]
+    fn product_profile_shape_enables_canonical_postprocess_runtime() {
+        let plan = resolve_dictation_runtime_plan_from_policy_json(&serde_json::json!({
+            "profile": { "key": "pro" },
+            "capabilities": { "postprocess": true },
+            "defaults": {
+                "sttModel": "whisper-large-v3-turbo",
+                "postprocessModel": "openai/gpt-oss-120b"
+            }
+        }));
+
+        assert_eq!(plan.policy_id.as_deref(), Some("pro"));
+        assert!(plan.post_process.enabled);
+        assert_eq!(
+            plan.post_process.model.as_deref(),
+            Some("openai/gpt-oss-120b")
+        );
     }
 
     fn test_request(run_id: &str) -> HostTranscriptionRequest {

@@ -3,6 +3,7 @@ import type { BudgetShadowEvidence, LegacyBudgetDecision } from "../../fixvox-co
 import { compareBudgetLedgerShadow } from "../../fixvox-core/src/execution/budget-shadow.ts";
 import { buildBoundedSttMetadata, resolveEvaluationRecipe, resolvePostprocessEvaluationRecipe } from "../../fixvox-core/src/control-plane/evaluation-recipes.ts";
 import { evaluatePostprocessSemanticSafety } from "../../fixvox-core/src/execution/postprocess-semantic-safety.ts";
+import { buildProsodyHints } from "../../fixvox-core/src/execution/audio-prosody.ts";
 import type { FixvoxApiConfig } from "./config.ts";
 import type { BudgetPricingPort } from "./postgres/budget-pricing-repository.ts";
 import type { BudgetLedgerPort, BudgetReserveDecision } from "../../fixvox-core/src/ports/budget-ledger.ts";
@@ -522,12 +523,14 @@ async function dispatch(
     const payload = await safeProviderJson(result.response);
     const output = text(payload.text);
     const boundedSttMetadata = evaluationRecipe ? buildBoundedSttMetadata(payload, operationId) : undefined;
+    const prosodyHints = buildProsodyHints(Array.isArray(payload.words) ? payload.words.slice(0, 500) : undefined);
     const sttMetadata = boundedSttMetadata?.public;
     if (!output) throw productError(502, "upstream_rejected", "upstream", false);
     return productJson({
       operationId,
       text: output,
       ...(text(metadata.language) ? { language: text(metadata.language) } : {}),
+      ...(prosodyHints ? { prosodyHints } : {}),
       ...(evaluationRecipe && boundedSttMetadata ? { evaluationRecipeId: evaluationRecipe.id, sttMetadata, sttMetadataPrivate: boundedSttMetadata.private } : {}),
       usage: { kind: "stt", charged: result.charged },
       policy: { profileVersion: identity.profile.version, postprocessEligible: capabilityEnabled(identity.profile, "postprocess") },
