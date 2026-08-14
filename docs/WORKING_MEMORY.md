@@ -45,12 +45,12 @@ decisiones.
 
 ## Gates Ejecutados Y Cierre Actual
 
-- Producción corre el release inmutable `6ac7ed0a2a88f0d0`, archive SHA-256
-  `6ac7ed0a2a88f0d07f7cf7604d885ea8e81edd1ca854e450c67575f3ba064990`.
-  `c1154baf25dbe005` es el rollback inmediato schema-9;
-  `2a49be9eccf4ce17`, `0434f2cf3d0a6607`, `bc1a3e5cadba1903` y
-  `650b4c8f6ed00a2a` siguen preservados; `11bf651ce5d983b6` no es ejecutable
-  directamente contra schema 9.
+- Producción corre el release inmutable `bb1de673e1c36c50`, archive SHA-256
+  `bb1de673e1c36c50c54e34ac90cac26c2cff09c79117e01eb4b80db240ba50f6`.
+  `6ac7ed0a2a88f0d0` es el rollback inmediato schema-9;
+  `c1154baf25dbe005`, `2a49be9eccf4ce17`, `0434f2cf3d0a6607`,
+  `bc1a3e5cadba1903` y `650b4c8f6ed00a2a` siguen preservados;
+  `11bf651ce5d983b6` no es ejecutable directamente contra schema 9.
 - Producción permanece schema `9`, migrations `0001..0009` y marker
   `laboratory_execution_grants`; service active/enabled, `NRestarts=0`,
   listener único `127.0.0.1:8790`, health/readiness local+público verdes y
@@ -62,6 +62,14 @@ decisiones.
   postprocess `openai/gpt-oss-120b`; no se serializan en receipts ni UI. Un
   dictado sintético real único confirmó `fixvox-cloud` + postprocess
   policy-owned, sin fallback, y materializó una lista numerada.
+- Un replay separado y aprobado del dictado complejo de `59.3 s` ejecutó una
+  sola llamada STT y una postprocess, sin retries. El raw STT conservó la lista
+  hablada y el path fonético; `openai/gpt-oss-120b` los convirtió en una lista
+  numerada multilínea y `C:\dev\dictation-tauri`. El sanitizer preservó el
+  layout byte por byte (`sanitizedChanged=false`). En este replay no se observó
+  guidance de prosodia; la mejora provino del contrato semántico del prompt.
+  Raw STT, output pre-sanitizer y final quedaron sólo en artifacts privados
+  ignorados.
 - La mutación aprobada owner→owner creó audit `sequence=11` con
   `safe_metadata` JSONB `object`; owner count siguió `1` y los audits históricos
   `sequence=9/10` permanecieron intactos como JSONB `string`.

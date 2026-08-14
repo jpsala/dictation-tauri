@@ -545,6 +545,25 @@ then exercised `fixvox-cloud` STT plus policy-owned
 final output materialized the spoken sequence as a numbered list. Synthetic
 text/audio remain local and are not part of the operational receipt.
 
+## Structured Dictation Output Repair — 2026-08-14
+
+Source commit `89eed5c` adds explicit server-owned list/path guidance and keeps
+multiline postprocess layout intact. A clean checkout produced immutable release
+`bb1de673e1c36c50`, archive SHA-256
+`bb1de673e1c36c50c54e34ac90cac26c2cff09c79117e01eb4b80db240ba50f6`.
+The code-only deployment promoted once with one restart and exact rollback
+`6ac7ed0a2a88f0d0`. Schema remained `9` with exact migrations `0001..0009`;
+there was no migration, backfill, manual SQL, env, DNS or tunnel change.
+
+Independent verification observed service active/enabled, `NRestarts=0`, one
+listener at `127.0.0.1:8790`, green local/public health and readiness, and
+`cloudflare-authority`. One separately approved replay of the same complex
+local WAV issued exactly one managed STT request and one
+`openai/gpt-oss-120b` postprocess request, without retry. The raw postprocess
+output contained the numbered multiline list and reconstructed filesystem path;
+the native sanitizer preserved it unchanged. Private raw and final artifacts
+remain local and are not operational receipts.
+
 ## Stop Conditions
 
 Stop without repair beyond one bounded local correction if the port is occupied, bind is not exact loopback, memory or disk falls below 1 GiB, schema/checksum/authority diverges, a secret or sensitive body appears, the off-host age identity is unavailable, the dirty VPS checkout would need mutation, or any provider/import/DNS/Tunnel/canary/cutover/public traffic/dependency becomes necessary.

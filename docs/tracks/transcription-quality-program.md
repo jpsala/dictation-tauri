@@ -2405,3 +2405,35 @@ Estado: `closed`.
   recipes y ranking descendente por score, con semantic safety `100%` antes de
   `66.7%`. Tests focales y build quedaron verdes; la ventana Tauri real cargó el
   run canónico y la comparación sin fabricar métricas.
+
+### Restauración De Salida Estructurada En Dictado Real — 2026-08-14
+
+**Estado:** `completed_with_observed_stt_residual`
+
+- El source commit `89eed5c` preserva saltos de línea del postprocess, agrega
+  instrucciones server-owned explícitas para listas y paths hablados, y permite
+  captura diagnóstica local opt-in de raw STT y output pre-sanitizer. Los
+  artifacts siguen privados e ignorados.
+- Tests focales quedaron verdes: sanitizer Rust `2/2`, cloud API `28/28`, core
+  prompt/prosody `6/6`, `cargo check` limpio salvo warnings existentes y
+  frontend build completo. Un checkout limpio reprodujo Tauri después de
+  provisionar el resource binario canónico no versionado.
+- El archive limpio exacto promovió una vez release
+  `bb1de673e1c36c50`, SHA-256
+  `bb1de673e1c36c50c54e34ac90cac26c2cff09c79117e01eb4b80db240ba50f6`,
+  con `6ac7ed0a2a88f0d0` como rollback code-only exacto. Schema permaneció
+  `9`, migrations `0001..0009`; no hubo migration, backfill, SQL manual, env,
+  DNS ni tunnel.
+- Verificación independiente: servicio active/enabled, `NRestarts=0`, listener
+  único `127.0.0.1:8790`, health/readiness local+público verdes y
+  `cloudflare-authority`.
+- Un packet provider separado aprobó un único replay del mismo WAV complejo:
+  una request STT managed y una request postprocess
+  `openai/gpt-oss-120b`, secuenciales y sin retry. El postprocess raw ya produjo
+  la lista `1./2./3.` en líneas separadas y reconstruyó el path; el sanitizer no
+  alteró ningún byte y la entrega final conservó ambos.
+- El replay no materializó hints de prosodia, aunque el contrato los soporta si
+  el upstream entrega words. El cierre observado para lista y path provino de
+  la semántica del prompt, no de timestamps. Queda además un residual STT en la
+  última frase: el raw reconoció wording distinto del audio y el postprocess lo
+  preservó por su guard conservador. No se repitió la llamada para ocultarlo.
