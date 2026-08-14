@@ -56,8 +56,13 @@ export type ExperimentWorkspaceProps = {
 };
 
 function unique(values: readonly string[]): string[] {
+
   return Array.from(new Set(values.filter((value) => value.trim().length > 0)));
 }
+const GATE_B_V1_RECIPE_IDS = [
+  "transcription-quality-v1-postprocess-120b-plain",
+  "transcription-quality-v1-postprocess-120b-prosody",
+] as const;
 
 export function ExperimentWorkspace({
   artifacts,
@@ -262,8 +267,9 @@ export function ExperimentWorkspace({
                 checked={definition.mode === "provider-real-gate-b"}
                 disabled={
                   !gateASourceExecutionId ||
-                  catalogState.status !== "available" ||
-                  options.postprocess.length !== 2
+                  !GATE_B_V1_RECIPE_IDS.every((recipeId) =>
+                    options.postprocess.includes(recipeId),
+                  )
                 }
                 onChange={() => {
                   if (!gateASourceExecutionId) return;
@@ -279,7 +285,7 @@ export function ExperimentWorkspace({
                     ],
                     sttRecipes: [],
                     materializations: ["response-text-kept"],
-                    postprocessRecipes: [...options.postprocess],
+                    postprocessRecipes: [...GATE_B_V1_RECIPE_IDS],
                     prosodyModes: ["off"],
                     vocabularyModes: ["off"],
                     baselineCandidateId: "transcription-quality-v1-short-auto",

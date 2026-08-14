@@ -603,6 +603,7 @@ const LABORATORY_STT_RECIPE_IDS: &[&str] = &[
 const LABORATORY_POSTPROCESS_RECIPE_IDS: &[&str] = &[
     "transcription-quality-v1-postprocess-120b-plain",
     "transcription-quality-v1-postprocess-120b-prosody",
+    "transcription-quality-v2-postprocess-120b-conservative-timing",
 ];
 
 fn laboratory_catalog_payload(value: Value) -> Result<LaboratoryCatalog, FixvoxCloudError> {

@@ -133,7 +133,11 @@ describe("Dictation Laboratory workspace contracts", () => {
         orchestrationAvailable
         availableRecipeIds={{
           stt: ["transcription-quality-v1-short-auto", "transcription-quality-v1-rich-auto", "transcription-quality-v1-short-es", "transcription-quality-v1-rich-es"],
-          postprocess: ["transcription-quality-v1-postprocess-120b-plain", "transcription-quality-v1-postprocess-120b-prosody"],
+          postprocess: [
+            "transcription-quality-v1-postprocess-120b-plain",
+            "transcription-quality-v1-postprocess-120b-prosody",
+            "transcription-quality-v2-postprocess-120b-conservative-timing",
+          ],
           materialization: ["identity"],
         }}
         onChange={() => undefined}
