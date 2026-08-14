@@ -1,4 +1,11 @@
-import { EVALUATION_RECIPES, POSTPROCESS_EVALUATION_RECIPES, type EvaluationRecipeId, type PostprocessEvaluationRecipeId } from "./evaluation-recipes.ts";
+import {
+  EVALUATION_RECIPES,
+  GATE_A_DEFINITION,
+  POSTPROCESS_EVALUATION_RECIPES,
+  type EvaluationRecipeId,
+  type GateADefinition,
+  type PostprocessEvaluationRecipeId,
+} from "./evaluation-recipes.ts";
 
 export const BUILTIN_CATALOG_VERSION = "1" as const;
 
@@ -41,11 +48,37 @@ export type BuiltinEngine = Readonly<{
   source: "built-in";
 }>;
 
+export type LaboratoryAvailabilityReasonCode =
+  | "authoritative_one_shot_grant_unavailable"
+  | "laboratory_execution_unauthorized"
+  | "laboratory_execution_definition_mismatch"
+  | "laboratory_execution_source_incomplete"
+  | "laboratory_execution_grant_expired"
+  | "laboratory_execution_grant_mismatch"
+  | "laboratory_execution_grant_reused"
+  | "laboratory_execution_budget_exhausted"
+  | "gate_b_unavailable"
+  | "vocabulary_snapshot_unavailable"
+  | "snapshot_prerequisite_unavailable"
+  | "snapshot_not_found"
+  | "snapshot_stale"
+  | "snapshot_kind_not_allowlisted"
+  | "snapshot_read_out_of_bounds";
+
+export const LABORATORY_EXECUTION_ERROR_CODES = Object.freeze([
+  "laboratory_execution_unauthorized",
+  "laboratory_execution_definition_mismatch",
+  "laboratory_execution_source_incomplete",
+  "laboratory_execution_grant_expired",
+  "laboratory_execution_grant_mismatch",
+  "laboratory_execution_grant_reused",
+  "laboratory_execution_budget_exhausted",
+] as const);
+
 export type LaboratoryAvailability = Readonly<{
   status: "available" | "partial" | "unavailable";
-  reasonCode: string | null;
+  reasonCode: LaboratoryAvailabilityReasonCode | null;
 }>;
-
 export type LaboratoryCompatibility = Readonly<{
   profileRuntimeKinds: readonly BuiltinEngineKind[];
   prosodyModes: readonly ("off" | "advisory")[];
@@ -78,13 +111,13 @@ export type LaboratoryCatalog = Readonly<{
   vocabularyModes: readonly (LaboratoryCatalogEntry & {
     snapshotPrerequisite: Readonly<{
       required: boolean;
-      immutableIdentityFields: readonly ["snapshotId", "revision", "source"];
+      immutableIdentityFields: readonly ["snapshotId", "revision", "sha256", "source"];
     }>;
   })[];
   materializations: readonly LaboratoryCatalogEntry[];
   providerAuthorization: Readonly<{
-    status: "unavailable";
-    reasonCode: "authoritative_one_shot_grant_unavailable";
+    status: "available" | "unavailable";
+    reasonCode: LaboratoryAvailabilityReasonCode | null;
   }>;
 }>;
 
@@ -107,21 +140,67 @@ export type LaboratoryEffectiveIdentity = Readonly<{
   observed: Readonly<{ availability: LaboratoryAvailability; value: unknown | null; source: string | null }>;
 }>;
 
-export type LaboratoryExecutionGrantRequest = Readonly<{
+export type LaboratoryExecutionGrantRequest =
+  | Readonly<{
+      schemaVersion: 1;
+      kind: "gate-a";
+      definition: GateADefinition;
+    }>
+  | Readonly<{
+      schemaVersion: 1;
+      kind: "gate-b";
+      sourceGateARunId: string;
+    }>;
+
+export type LaboratoryExecutionGrantResult =
+  | Readonly<{
+      ok: true;
+      data: Readonly<{ grantToken: string }>;
+    }>
+  | Readonly<{
+      ok: false;
+      availability: Readonly<{
+        status: "unavailable";
+        reasonCode: LaboratoryAvailabilityReasonCode;
+      }>;
+    }>;
+
+export type LaboratoryExecutionStartRequest = Readonly<{
   schemaVersion: 1;
-  definitionHash: string;
-  estimateHash: string;
-  bounds: Readonly<{ maxRequests: number; maxCostUsd: number }>;
-  confirmation: Readonly<{ accepted: true }>;
+  grantToken: string;
 }>;
 
-export type LaboratoryExecutionGrantResult = Readonly<{
-  ok: false;
-  availability: Readonly<{
-    status: "unavailable";
-    reasonCode: "authoritative_one_shot_grant_unavailable";
+export type LaboratoryExecutionStartResult = Readonly<{
+  ok: true;
+  data: Readonly<{
+    executionId: string;
+    definitionHash: string;
+    estimateHash: string;
+    bounds: Readonly<{ maxRequests: number; maxCostUsd: number }>;
+    expiresAt: string;
   }>;
 }>;
+
+export const LABORATORY_EXECUTION_WIRE_EXAMPLES = Object.freeze({
+  issueGateA: Object.freeze({
+    schemaVersion: 1 as const,
+    kind: "gate-a" as const,
+    definition: GATE_A_DEFINITION,
+  }),
+  issueGateB: Object.freeze({
+    schemaVersion: 1 as const,
+    kind: "gate-b" as const,
+    sourceGateARunId: "gate-a-run-id" as const,
+  }),
+  grant: Object.freeze({
+    ok: true as const,
+    data: Object.freeze({ grantToken: "opaque-token" as const }),
+  }),
+  consume: Object.freeze({
+    schemaVersion: 1 as const,
+    grantToken: "opaque-token" as const,
+  }),
+});
 
 
 const NO_REASONING_EFFORTS: readonly BuiltinEngineEffort[] = Object.freeze([]);
@@ -266,7 +345,13 @@ function laboratoryEntry(input: {
  * authorities. Only labels, IDs, compatibility, and bounded availability are
  * exposed; recipe prompts and managed prompt bodies never enter this DTO.
  */
-export function buildLaboratoryCatalog(revision = LABORATORY_CATALOG_REVISION): LaboratoryCatalog {
+export function buildLaboratoryCatalog(
+  revision = LABORATORY_CATALOG_REVISION,
+  providerAuthorization: LaboratoryCatalog["providerAuthorization"] = {
+    status: "unavailable",
+    reasonCode: "authoritative_one_shot_grant_unavailable",
+  },
+): LaboratoryCatalog {
   validateBuiltinEngines();
   validateBuiltinPrompts();
   const engines = BUILTIN_ENGINES.map((engine) => laboratoryEntry({
@@ -332,9 +417,9 @@ export function buildLaboratoryCatalog(revision = LABORATORY_CATALOG_REVISION): 
     laboratoryEntry({ id: "advisory", label: "Advisory", availability: unavailableGateB, compatibility: { profileRuntimeKinds: Object.freeze(["postprocess"]), prosodyModes: Object.freeze(["advisory"]), requiresVocabularySnapshot: false } }),
   ];
   const vocabularyModes = [
-    Object.freeze({ ...laboratoryEntry({ id: "off", label: "Off", executionModes: ["provider-free-replay", "provider-real"], compatibility: { profileRuntimeKinds: Object.freeze(["transcription", "postprocess"]), prosodyModes: Object.freeze(["off"]), requiresVocabularySnapshot: false } }), snapshotPrerequisite: Object.freeze({ required: false, immutableIdentityFields: ["snapshotId", "revision", "source"] as const }) }),
-    Object.freeze({ ...laboratoryEntry({ id: "automatic", label: "Automatic", availability: unavailableVocabulary, compatibility: { profileRuntimeKinds: Object.freeze(["transcription", "postprocess"]), prosodyModes: Object.freeze(["off"]), requiresVocabularySnapshot: true } }), snapshotPrerequisite: Object.freeze({ required: true, immutableIdentityFields: ["snapshotId", "revision", "source"] as const }) }),
-    Object.freeze({ ...laboratoryEntry({ id: "ask", label: "Ask", availability: unavailableVocabulary, compatibility: { profileRuntimeKinds: Object.freeze(["transcription", "postprocess"]), prosodyModes: Object.freeze(["off"]), requiresVocabularySnapshot: true } }), snapshotPrerequisite: Object.freeze({ required: true, immutableIdentityFields: ["snapshotId", "revision", "source"] as const }) }),
+    Object.freeze({ ...laboratoryEntry({ id: "off", label: "Off", executionModes: ["provider-free-replay", "provider-real"], compatibility: { profileRuntimeKinds: Object.freeze(["transcription", "postprocess"]), prosodyModes: Object.freeze(["off"]), requiresVocabularySnapshot: false } }), snapshotPrerequisite: Object.freeze({ required: false, immutableIdentityFields: ["snapshotId", "revision", "sha256", "source"] as const }) }),
+    Object.freeze({ ...laboratoryEntry({ id: "automatic", label: "Automatic", availability: unavailableVocabulary, compatibility: { profileRuntimeKinds: Object.freeze(["transcription", "postprocess"]), prosodyModes: Object.freeze(["off"]), requiresVocabularySnapshot: true } }), snapshotPrerequisite: Object.freeze({ required: true, immutableIdentityFields: ["snapshotId", "revision", "sha256", "source"] as const }) }),
+    Object.freeze({ ...laboratoryEntry({ id: "ask", label: "Ask", availability: unavailableVocabulary, compatibility: { profileRuntimeKinds: Object.freeze(["transcription", "postprocess"]), prosodyModes: Object.freeze(["off"]), requiresVocabularySnapshot: true } }), snapshotPrerequisite: Object.freeze({ required: true, immutableIdentityFields: ["snapshotId", "revision", "sha256", "source"] as const }) }),
   ];
   const materializations = [
     laboratoryEntry({
@@ -360,7 +445,7 @@ export function buildLaboratoryCatalog(revision = LABORATORY_CATALOG_REVISION): 
     prosodyModes: Object.freeze(prosodyModes),
     vocabularyModes: Object.freeze(vocabularyModes),
     materializations: Object.freeze(materializations),
-    providerAuthorization: Object.freeze({ status: "unavailable" as const, reasonCode: "authoritative_one_shot_grant_unavailable" as const }),
+    providerAuthorization: Object.freeze(providerAuthorization),
   });
 }
 

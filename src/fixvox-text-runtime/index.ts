@@ -38,6 +38,63 @@ export const DEFAULT_V2_VOICE_POST_PROCESS_PROMPT =
 
 export type RawVoicePostProcessLevel = "light" | "medium" | "strong";
 
+export type WhisperWordTiming = Readonly<{
+  word: string;
+  start: number;
+  end: number;
+}>;
+
+export type ProsodyPauseHint = Readonly<{
+  afterWord: string;
+  afterWordIndex: number;
+  pauseMs: number;
+  suggestedPunctuation: "comma" | "period" | "paragraph";
+  confidence: "medium" | "high";
+}>;
+
+function validWhisperWord(value: unknown): value is WhisperWordTiming {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const word = value as Record<string, unknown>;
+  return typeof word.word === "string"
+    && word.word.trim().length > 0
+    && typeof word.start === "number"
+    && Number.isFinite(word.start)
+    && typeof word.end === "number"
+    && Number.isFinite(word.end)
+    && word.end >= word.start;
+}
+
+function estimateSyllables(word: string): number {
+  const cleaned = word.toLowerCase().replace(/[^a-záéíóúüñ]/g, "");
+  return Math.max(1, cleaned.match(/[aeiouáéíóúü]+/g)?.length ?? 1);
+}
+
+export function detectProsodyPauses(values: readonly unknown[]): readonly ProsodyPauseHint[] {
+  const words = values.filter(validWhisperWord);
+  const pauses: ProsodyPauseHint[] = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    const durationMs = (word.end - word.start) * 1000;
+    const expectedMs = Math.max(150, Math.min(500, estimateSyllables(word.word) * 200));
+    if (durationMs <= expectedMs * 2.5) continue;
+    const pauseMs = Math.round(durationMs - expectedMs);
+    if (pauseMs >= 1500) pauses.push({ afterWord: word.word, afterWordIndex: index, pauseMs, suggestedPunctuation: "paragraph", confidence: "high" });
+    else if (pauseMs >= 800) pauses.push({ afterWord: word.word, afterWordIndex: index, pauseMs, suggestedPunctuation: "period", confidence: pauseMs > 1000 ? "high" : "medium" });
+    else if (pauseMs >= 400) pauses.push({ afterWord: word.word, afterWordIndex: index, pauseMs, suggestedPunctuation: "comma", confidence: "medium" });
+  }
+  return pauses;
+}
+
+export function formatProsodyHints(values: readonly unknown[]): string {
+  const pauses = detectProsodyPauses(values);
+  if (!pauses.length) return "No reliable pause signal was detected; use semantic context only.";
+  const lines = [
+    "Prosody signals (advisory only; semantic context wins):",
+    ...pauses.map((pause) => `- After "${pause.afterWord}": ~${pause.pauseMs}ms; possible ${pause.suggestedPunctuation} (${pause.confidence} confidence).`),
+  ];
+  return lines.join("\n");
+}
+
 export type RawVoicePostProcessSanitizeReason =
   | "final_marker"
   | "explanation_marker"

@@ -13,6 +13,7 @@ import { PostgresProfileCommandRepository } from "./postgres/profile-command-rep
 import { PostgresUsageQuotaRepository } from "./postgres/usage-quota-repository.ts";
 import { PostgresEngineCatalogRepository } from "./postgres/engine-catalog-repository.ts";
 import { PostgresPersonalVocabularyRepository } from "./postgres/personal-vocabulary-repository.ts";
+import { PostgresLaboratoryExecutionGrantRepository } from "./postgres/laboratory-execution-grant-repository.ts";
 import { LOCAL_SCHEMA_VERSION } from "./postgres/migrations.ts";
 
 export type ApiComposition = { config: FixvoxApiConfig; sql: Bun.SQL; handler: (request: Request) => Promise<Response>; close(): Promise<void> };
@@ -37,6 +38,7 @@ export function composeApi(env: Record<string, string | undefined> = Bun.env, op
   const profileCommands = new PostgresProfileCommandRepository(config.databaseUrl);
   const engineCatalog = new PostgresEngineCatalogRepository(sql);
   const vocabulary = new PostgresPersonalVocabularyRepository(sql);
+  const laboratoryGrants = new PostgresLaboratoryExecutionGrantRepository(sql);
   const repository = { resolveDevice: control.resolveDevice.bind(control), resolveEffectiveProfile: control.resolveEffectiveProfile.bind(control), reserve: quota.reserve.bind(quota) };
   const dependencies: ApiDependencies = {
     config,
@@ -50,8 +52,9 @@ export function composeApi(env: Record<string, string | undefined> = Bun.env, op
     feedback: { submit: (input) => admin.appendFeedback(input) },
     auth,
     oauth,
-    admin: { repository: admin, profileCommands, engineCatalog, keys: config.adminKeys, sessions: auth },
+    admin: { repository: admin, profileCommands, engineCatalog, laboratoryGrants, keys: config.adminKeys, sessions: auth },
     vocabulary,
+    laboratoryGrants,
     ...(options.logger ? { logger: options.logger } : {}),
     readiness: {
       async database() { await sql.unsafe("SELECT 1"); return true; },

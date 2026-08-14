@@ -36,6 +36,17 @@ export type PersonalVocabularySnapshot = Readonly<{
   scope?: string;
 }>;
 
+/** Redacted identity used by laboratory replay; rules and text never cross this boundary. */
+export type PersonalVocabularySnapshotIdentity = Readonly<{
+  snapshotId: string;
+  revision: string;
+  sha256: string;
+  source: "personal-vocabulary";
+  scope: "redacted";
+  ruleCount: number;
+  capturedAt: string;
+}>;
+
 // Short aliases keep the contract pleasant at integration boundaries.
 export type VocabularyCandidate = PersonalVocabularyCandidate;
 export type VocabularyRule = PersonalVocabularyRule;

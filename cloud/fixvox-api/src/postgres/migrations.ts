@@ -36,6 +36,7 @@ export const MIGRATION_FILES = [
   "0006_budget_ledger_async_projection.sql",
   "0007_engine_catalog_lifecycle.sql",
   "0008_personal_vocabulary.sql",
+  "0009_laboratory_execution_grants.sql",
 ] as const;
 
 export const LOCAL_SCHEMA_VERSION = Number.parseInt(MIGRATION_FILES.at(-1)?.slice(0, 4) ?? "0", 10);

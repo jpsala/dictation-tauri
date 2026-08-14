@@ -7,10 +7,9 @@ decisiones.
 
 ## Foco Único De Ejecución
 
-- **Estado:** `waiting_gate`.
-- **Referencia:** `docs/tracks/transcription-quality-program.md`.
-- **Gate:** autorización provider-real nueva para `3 × 4`, `12` requests y `USD 0.005`.
-- **Siguiente acción:** presentar el gate exacto a JP antes de cualquier provider call.
+- **Estado:** `ready`.
+- **Plan:** `docs/tracks/transcription-quality-program.md`.
+- **Próximo batch:** **Batch gated de deploy cloud/database**.
 
 ## Contrato Congelado
 
@@ -23,11 +22,11 @@ decisiones.
   artifacts no son autoridad seleccionable.
 - Runtime sólo conserva `engineId`/`promptId`; el idioma es
   `defaults["transcript.language"]`.
-- El endpoint de execution grants responde
-  `authoritative_one_shot_grant_unavailable`; provider-real falla antes de
-  spawn/red sin consumo atómico de grant autorizado.
-- Gate A exige igualdad exacta con `GATE_A_DEFINITION`; Gate B y vocabulary son
-  unavailable sin prerrequisitos exactos.
+- El grant server-owned está implementado y probado sólo en PostgreSQL local:
+  emisión opaca, consumo único y budget atómico por request. Producción sigue
+  `unavailable` hasta deploy/migración y verificación separados.
+- Gate A exige igualdad exacta con `GATE_A_DEFINITION`; Gate B deriva sólo de
+  un Gate A completo `12/12`; vocabulary requiere snapshot inmutable por ID.
 - `configured`, `resolved` y `observed` son independientes y muestran
   `null`/`unavailable` honestamente.
 - Preview usa `add`/`remove`/`change` y `candidateFingerprint`; un diff stale no
@@ -43,16 +42,16 @@ decisiones.
 
 ## Gates No Afirmados
 
-No se registra como completado auth mutation contra PostgreSQL, Gate B,
-provider-real, deploy, release, publicación ni cambio de policy. El cierre
-provider-free quedó validado; provider/OAuth real, cuentas, VPS, DNS,
-instalación y acciones destructivas siguen gated.
+No se registra como completado auth mutation contra PostgreSQL destino, Gate A,
+Gate B, provider-real, deploy, release, publicación ni cambio de policy. La
+integración post-laboratorio provider-free quedó validada localmente; provider,
+cuentas destino, VPS, DNS, instalación y acciones destructivas siguen gated.
 
 ## Frentes Retomables
 
 | Frente | Estado | Abrir primero |
 | --- | --- | --- |
-| Calidad de transcripción | cierre provider-free validado; próximo batch espera gate provider-real | `docs/tracks/transcription-quality-program.md` |
+| Calidad de transcripción | integración post-laboratorio provider-free validada; próximo paso es gate separado de deploy cloud/database | `docs/tracks/transcription-quality-program.md` |
 | Reliability/truthfulness | local complete; Phase 4 gated | `docs/tracks/fixvox-minimal-reliability-and-truthfulness.md` |
 | Dock/Wispr | listo para retomar | `docs/tracks/dock-skins-visual-refinement.md` |
 | Cloud/runtime | referencia cerrada | Spec 019 y `docs/topics/fixvox-cloud-runtime-port.md` |

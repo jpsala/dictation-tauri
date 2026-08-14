@@ -3,6 +3,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import type {
   LabExperimentDefinition,
   LabExperimentEstimate,
+  LaboratoryOpaqueGrant,
   LabJobSnapshot,
 } from "./types";
 
@@ -19,9 +20,9 @@ export class DictationLabJobsUnavailableError extends Error {
   }
 }
 export type DictationLabJobsClient = {
-  requestExecutionGrant(definition: LabExperimentDefinition): Promise<never>;
+  requestExecutionGrant(definition: LabExperimentDefinition): Promise<LaboratoryOpaqueGrant>;
   estimateExperiment(definition: LabExperimentDefinition): Promise<LabExperimentEstimate>;
-  startJob(definition: LabExperimentDefinition): Promise<LabJobSnapshot>;
+  startJob(definition: LabExperimentDefinition, grant?: LaboratoryOpaqueGrant): Promise<LabJobSnapshot>;
   getJob(): Promise<LabJobSnapshot | null>;
   cancelJob(jobId: string): Promise<LabJobSnapshot>;
 };
@@ -36,25 +37,24 @@ export function createDictationLabJobsClient(): DictationLabJobsClient {
       requireTauri();
       return invoke<LabExperimentEstimate>("estimate_dictation_lab_experiment", { definition });
     },
-    startJob(definition) {
+    startJob(definition, grant) {
       requireTauri();
-      if (definition.mode === "provider-real") {
+      if (definition.mode === "provider-real" && !grant) {
         return Promise.reject(new DictationLabJobsUnavailableError(
-          "authoritative_one_shot_grant_unavailable",
-          "Provider execution is unavailable until the server can issue and consume an authoritative one-shot grant.",
+          "laboratory_execution_unauthorized",
+          "Provider execution requires a server-owned one-shot grant.",
         ));
       }
       return invoke<LabJobSnapshot>("start_dictation_lab_job", {
         definition,
-        executionGrant: null,
+        executionGrant: grant ?? null,
       });
     },
-    requestExecutionGrant() {
+    requestExecutionGrant(definition) {
       requireTauri();
-      return Promise.reject(new DictationLabJobsUnavailableError(
-        "authoritative_one_shot_grant_unavailable",
-        "Provider execution is unavailable until the server can issue and consume an authoritative one-shot grant.",
-      ));
+      return invoke<LaboratoryOpaqueGrant>("request_dictation_lab_execution_grant", {
+        definition,
+      });
     },
     getJob() {
       requireTauri();

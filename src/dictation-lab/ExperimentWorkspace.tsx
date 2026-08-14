@@ -31,6 +31,7 @@ export type ExperimentWorkspaceProps = {
   estimateError: string;
   job: LabJobSnapshot | null;
   orchestrationAvailable: boolean;
+  providerAuthorizationAvailable: boolean;
   onChange: (next: LabExperimentDefinition) => void;
   onEstimate: () => void;
   onStart: () => void;
@@ -76,6 +77,7 @@ export function ExperimentWorkspace({
   estimateError,
   job,
   orchestrationAvailable,
+  providerAuthorizationAvailable,
   onChange,
   onEstimate,
   onStart,
@@ -212,7 +214,7 @@ export function ExperimentWorkspace({
             <fieldset className="lab-choice-group"><legend>Vocabulary axis</legend>{options.vocabulary.map((mode) => <label key={mode}><input type="checkbox" checked={definition.vocabularyModes.includes(mode)} onChange={(event) => changeAxis("vocabulary", mode, event.currentTarget.checked)} /><span><strong>{mode === "off" ? "Off" : mode === "automatic" ? "Automatic" : "Ask"}</strong><small>Catalog-authorized vocabulary mode</small></span></label>)}</fieldset>
           </div>
 
-          <div className="lab-form-actions"><button type="submit" className="lab-secondary-button" disabled={!canEstimate || estimateLoading || jobActive}>{estimateLoading ? "Estimating" : "Estimate exact matrix"}</button><button type="button" className="lab-primary-button" disabled={!estimate || estimate.providerRequired || definition.mode === "provider-real" || estimateLoading || jobActive} onClick={onStart}>Start provider-free job</button></div>
+          <div className="lab-form-actions"><button type="submit" className="lab-secondary-button" disabled={!canEstimate || estimateLoading || jobActive}>{estimateLoading ? "Estimating" : "Estimate exact matrix"}</button><button type="button" className="lab-primary-button" disabled={!estimate || estimateLoading || jobActive || (estimate.providerRequired ? !providerAuthorizationAvailable || !providerBoundaryAcknowledged : false)} onClick={onStart}>{estimate?.providerRequired ? "Request grant and run Gate A" : "Start provider-free job"}</button></div>
         </form>
 
         <aside className="lab-panel" aria-label="Experiment estimate and job status">
@@ -220,7 +222,7 @@ export function ExperimentWorkspace({
           {estimateError ? <StatePanel title="Estimate unavailable" detail={estimateError} tone="danger" /> : estimate ? <>
             <dl className="lab-detail-list"><div><dt>Samples</dt><dd>{estimate.sampleCount}</dd></div><div><dt>Candidates</dt><dd>{estimate.candidateCount}</dd></div><div><dt>Combinations</dt><dd>{estimate.combinationCount}</dd></div><div><dt>STT requests</dt><dd>{estimate.sttCalls}</dd></div><div><dt>Post-process requests</dt><dd>{estimate.postprocessCalls}</dd></div><div><dt>Raw reuse plan</dt><dd>{estimate.reusedRawCount} existing artifacts</dd></div><div><dt>Max requests</dt><dd>{estimate.maxRequests}</dd></div><div><dt>Max USD</dt><dd>${estimate.maxCostUsd.toFixed(4)}</dd></div><div><dt>Definition hash</dt><dd className="lab-mono-value">{estimate.definitionHash}</dd></div></dl>
             {estimate.oneVariableWarnings.length ? <div className="lab-inline-notice" data-tone="warning"><strong>One-variable-change warnings</strong><ul>{estimate.oneVariableWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div> : null}
-            {definition.mode === "provider-real" ? <div className="lab-inline-notice" data-tone="warning"><strong>Provider confirmation boundary</strong><p>{estimate.sampleCount} samples · {estimate.candidateCount} candidates · {estimate.maxRequests} max requests · ${estimate.maxCostUsd.toFixed(4)} max USD</p><p>Definition hash: <span className="lab-mono-value">{estimate.definitionHash}</span>. An exact, externally supplied grant with a future expiry timestamp is required. This UI never mints, stores, or extends one.</p><label><input type="checkbox" checked={providerBoundaryAcknowledged} onChange={(event) => setProviderBoundaryAcknowledged(event.currentTarget.checked)} /> I understand this remains unable to start without a valid external grant.</label></div> : null}
+            {definition.mode === "provider-real" ? <div className="lab-inline-notice" data-tone="warning"><strong>Gate A provider confirmation</strong><p>Samples: jp-quality-bilingual-technical-20260812, jp-quality-punctuation-list-20260812, jp-quality-model-comparison-20260812.</p><p>Recipes: short-auto, rich-auto, short-es, rich-es. Provider Groq, model whisper-large-v3-turbo, human audio, {estimate.maxRequests} requests maximum, total cap ${estimate.maxCostUsd.toFixed(3)}. Sequential and stop on first error.</p><p>Private artifacts and redacted receipts are expected. No postprocess, vocabulary, delivery, clipboard, typing, profile mutation or deploy.</p><p>Definition hash: <span className="lab-mono-value">{estimate.definitionHash}</span>.</p><label><input type="checkbox" checked={providerBoundaryAcknowledged} onChange={(event) => setProviderBoundaryAcknowledged(event.currentTarget.checked)} disabled={!providerAuthorizationAvailable} /> I approve this exact Gate A execution and its stated request and cost caps.</label>{!providerAuthorizationAvailable ? <small>Grant issuance is unavailable. No provider process can start.</small> : null}</div> : null}
           </> : <p className="lab-empty">Complete corpus and matrix selections, then request the native estimate.</p>}
           {job ? <div className="lab-job-status" aria-live="polite"><div><strong>{job.jobId}</strong><StatusChip label={job.state} tone={job.state === "completed" ? "success" : job.state === "failed" ? "danger" : job.state === "running" ? "info" : "neutral"} /></div><progress value={job.completedUnits} max={Math.max(job.totalUnits, 1)}>{job.completedUnits} of {job.totalUnits}</progress><span>{job.completedUnits} of {job.totalUnits} units · run {job.runId ?? "not assigned"}</span><div className="lab-form-actions">{jobActive ? <button type="button" className="lab-danger-button" onClick={onCancel}>Cancel job</button> : null}<button type="button" className="lab-secondary-button" onClick={onReload} disabled={!onReload}>Reload snapshot</button>{job.state === "completed" ? <button type="button" className="lab-secondary-button" onClick={onRefreshArtifacts} disabled={!onRefreshArtifacts}>Refresh artifact index</button> : null}</div>{job.errorCode ? <p className="lab-error-text">Error code: {job.errorCode}</p> : null}</div> : null}
         </aside>

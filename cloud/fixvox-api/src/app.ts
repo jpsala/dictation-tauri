@@ -1,4 +1,4 @@
-import type { BudgetLedgerPort, BudgetReserveDecision } from "../../fixvox-core/src/ports/budget-ledger.ts";
+import type { PostgresLaboratoryExecutionGrantRepository } from "./postgres/laboratory-execution-grant-repository.ts";
 import type { BudgetShadowEvidence, LegacyBudgetDecision } from "../../fixvox-core/src/execution/budget-shadow.ts";
 import { compareBudgetLedgerShadow } from "../../fixvox-core/src/execution/budget-shadow.ts";
 import { buildBoundedSttMetadata, resolveEvaluationRecipe, resolvePostprocessEvaluationRecipe } from "../../fixvox-core/src/control-plane/evaluation-recipes.ts";
@@ -56,6 +56,7 @@ export type ApiDependencies = {
   budgetShadowReceipt?: (receipt: BudgetShadowEvidence) => void;
   quota?: RuntimeQuota;
   vocabulary?: PersonalVocabularyRepository;
+  laboratoryGrants?: PostgresLaboratoryExecutionGrantRepository;
   admin?: AdminRouteDependencies;
   preflight?: (input: { deviceId: string; usageKind?: string; estimate?: number; idempotencyKey: string }) => Promise<Record<string, unknown>>;
   feedback?: { submit(input: { classification: string; deviceId?: string | null }): Promise<string> };
@@ -498,6 +499,9 @@ async function dispatch(
     if (evaluationRecipe && evaluationRecipe.language !== "auto") {
       metadata.language = evaluationRecipe.language;
     }
+    if (evaluationRecipe) {
+      await reserveLaboratoryEvaluation(request, deps, identity.deviceId, 416);
+    }
     const providerForm = new FormData();
     const providerMetadata = evaluationRecipe
       ? {
@@ -557,6 +561,9 @@ async function dispatch(
       : kind === "selection_transform"
         ? { selectedText: content, instruction, ...(text(input.presetKey) ? { presetKey: text(input.presetKey) } : {}) }
         : { utterance: content, ...(text(input.conversationSummary) ? { conversationSummary: text(input.conversationSummary) } : {}) };
+    if (evaluationRecipe) {
+      await reserveLaboratoryEvaluation(request, deps, identity.deviceId, 833);
+    }
     const providerBody = {
       messages: [{ role: "system", content: `fixvox:${kind}` }, { role: "user", content: JSON.stringify(typedProviderInput) }],
       ...(evaluationRecipe ? { temperature: evaluationRecipe.temperature, max_completion_tokens: evaluationRecipe.maxCompletionTokens } : {}),
@@ -678,6 +685,32 @@ function rejectSignalEnvelope(value: Record<string, unknown>): void {
   }
 }
 function productJson(data: unknown, status = 200, headers?: HeadersInit): Response { return json({ ok: true, data }, status, headers); }
+async function reserveLaboratoryEvaluation(
+  request: Request,
+  deps: ApiDependencies,
+  deviceId: string,
+  costMicrousd: number,
+): Promise<void> {
+  const executionId = request.headers.get("x-laboratory-execution-id")?.trim() ?? "";
+  const definitionHash = request.headers.get("x-laboratory-definition-hash")?.trim() ?? "";
+  if (
+    !deps.laboratoryGrants
+    || !/^[a-f0-9-]{36}$/.test(executionId)
+    || !/^[a-f0-9]{64}$/.test(definitionHash)
+  ) {
+    throw productError(403, "laboratory_execution_unauthorized", "auth", false);
+  }
+  const reserved = await deps.laboratoryGrants.reserve({
+    executionId,
+    deviceId,
+    definitionHash,
+    requests: 1,
+    costMicrousd,
+  });
+  if (!reserved) {
+    throw productError(409, "laboratory_execution_budget_exhausted", "budget", false);
+  }
+}
 function capabilityEnabled(profile: RuntimeIdentity["profile"], capability: string): boolean {
   const configured = profile.definition.capabilities;
   const aliases: Record<string, string[]> = {

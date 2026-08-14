@@ -109,6 +109,27 @@ export type CatalogEntryAvailability = {
   reasonCode: string | null;
 };
 
+/** Public, replay-safe identity for the host-owned personal vocabulary snapshot. */
+export type LaboratoryVocabularySnapshotIdentity = Readonly<{
+  snapshotId: string;
+  revision: string;
+  sha256: string;
+  source: "personal-vocabulary";
+  scope: "redacted";
+  ruleCount: number;
+  capturedAt: string;
+}>;
+
+export type LaboratoryVocabularySelection = Readonly<{
+  snapshotId: string | null;
+  identity: LaboratoryVocabularySnapshotIdentity | null;
+  availability: CatalogEntryAvailability;
+}>;
+
+export function isCatalogEntryAvailable(entry: { availability: CatalogEntryAvailability } | null | undefined): boolean {
+  return entry?.availability.status === "available";
+}
+
 export type CatalogCompatibility = {
   profileRuntimeKinds: Array<"transcription" | "postprocess" | "selectionTransform">;
   prosodyModes: Array<"off" | "advisory">;
@@ -141,13 +162,13 @@ export type LaboratoryCatalog = {
   vocabularyModes: Array<LaboratoryCatalogEntry & {
     snapshotPrerequisite: {
       required: boolean;
-      immutableIdentityFields: readonly ["snapshotId", "revision", "source"];
+      immutableIdentityFields: readonly ["snapshotId", "revision", "sha256", "source"];
     };
   }>;
   materializations: LaboratoryCatalogEntry[];
   providerAuthorization: {
-    status: "unavailable";
-    reasonCode: "authoritative_one_shot_grant_unavailable";
+    status: "available" | "unavailable";
+    reasonCode: string | null;
   };
 };
 
@@ -226,7 +247,8 @@ export type LaboratoryResourceName =
   | "catalog"
   | "accounts"
   | "audit"
-  | "history";
+  | "history"
+  | "vocabularySnapshots";
 
 export type LaboratoryResourceState = {
   status: "available" | "partial" | "unavailable";
@@ -241,6 +263,7 @@ export type LaboratoryLoad = {
   accounts: AccountsResponse;
   audit: AuditResponse;
   runs: readonly LabRunEvidence[];
+  vocabularySnapshots: readonly LaboratoryVocabularySnapshotIdentity[];
   resources: Record<LaboratoryResourceName, LaboratoryResourceState>;
 };
 
@@ -368,6 +391,11 @@ export type LabExperimentEstimate = {
   maxCostUsd: number;
   providerRequired: boolean;
   oneVariableWarnings: string[];
+};
+
+export type LaboratoryOpaqueGrant = {
+  schemaVersion: 1;
+  grantToken: string;
 };
 
 export type LabJobSnapshot = {

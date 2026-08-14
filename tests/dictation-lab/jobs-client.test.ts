@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({
@@ -26,22 +26,25 @@ const definition: LabExperimentDefinition = {
   vocabularyModes: ["off"],
   baselineCandidateId: null,
 };
+beforeEach(() => invokeMock.mockReset());
 
 describe("dictation laboratory execution grants", () => {
-  it("fails before invoke when an authoritative one-shot grant is unavailable", async () => {
+  it("requests a server-owned opaque one-shot grant", async () => {
+    invokeMock.mockResolvedValueOnce({ schemaVersion: 1, grantToken: "opaque-token" });
     const client = createDictationLabJobsClient();
 
-    await expect(client.requestExecutionGrant(definition)).rejects.toMatchObject({
-      code: "authoritative_one_shot_grant_unavailable",
+    await expect(client.requestExecutionGrant(definition)).resolves.toEqual({
+      schemaVersion: 1,
+      grantToken: "opaque-token",
     });
-    expect(invokeMock).not.toHaveBeenCalled();
+    expect(invokeMock).toHaveBeenCalledWith("request_dictation_lab_execution_grant", { definition });
   });
 
   it("does not treat a local estimate as authority to start provider-real work", async () => {
     const client = createDictationLabJobsClient();
 
     await expect(client.startJob(definition)).rejects.toMatchObject({
-      code: "authoritative_one_shot_grant_unavailable",
+      code: "laboratory_execution_unauthorized",
     });
     expect(invokeMock).not.toHaveBeenCalled();
   });

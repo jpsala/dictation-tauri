@@ -6,6 +6,7 @@ export default defineConfig({
     include: [
       "tests/pipeline/**/*.test.ts",
       "tests/synthetic-audio-stt/**/*.test.ts",
+      "tests/dictation-lab/**/*.test.ts",
       "tests/capture/**/*.test.ts",
       "tests/runtime-transcription/**/*.test.ts",
       "tests/host-runtime/**/*.test.ts",

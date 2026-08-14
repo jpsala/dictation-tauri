@@ -15,6 +15,7 @@ import type {
   LaboratoryResourceName,
   LaboratoryResourceState,
   LaboratorySession,
+  LaboratoryVocabularySnapshotIdentity,
   ProfileMutationReceipt,
   ProfilePreviewChange,
   ProfilePreviewReceipt,
@@ -153,6 +154,26 @@ function laboratoryCatalog(value: unknown): LaboratoryCatalog {
   return candidate as LaboratoryCatalog;
 }
 
+function vocabularySnapshotIdentity(value: unknown): LaboratoryVocabularySnapshotIdentity {
+  const candidate = object(value);
+  if (
+    typeof candidate.snapshotId !== "string"
+    || typeof candidate.revision !== "string"
+    || typeof candidate.sha256 !== "string"
+    || !/^[a-f0-9]{64}$/.test(candidate.sha256)
+    || candidate.source !== "personal-vocabulary"
+    || candidate.scope !== "redacted"
+    || !Number.isInteger(candidate.ruleCount)
+    || typeof candidate.capturedAt !== "string"
+  ) {
+    throw new DictationLabUnavailableError(
+      "snapshot_stale",
+      "La identidad del snapshot de vocabulario no es válida.",
+    );
+  }
+  return candidate as LaboratoryVocabularySnapshotIdentity;
+}
+
 function resource(status: LaboratoryResourceState["status"], code: string | null = null): LaboratoryResourceState {
   return { status, code };
 }
@@ -256,6 +277,9 @@ export type DictationLabClient = {
   readPrivateText(runId: string, sampleId: string, candidateId: string, kind: "raw" | "final" | "gold"): Promise<string>;
   recordVerdict(mutation: LabHumanVerdictMutation): Promise<DictationLabVerdictReceipt>;
   resolveAudio(runId: string, sampleId: string, candidateId?: string): Promise<DictationLabAudioCapability>;
+  captureVocabularySnapshot(): Promise<LaboratoryVocabularySnapshotIdentity>;
+  listVocabularySnapshots(): Promise<readonly LaboratoryVocabularySnapshotIdentity[]>;
+  resolveVocabularySnapshot(snapshotId: string): Promise<LaboratoryVocabularySnapshotIdentity>;
   validateDraft(profileId: string, expectedRevision: number, definition: RecipeDefinition): Promise<ProfileValidationReceipt>;
   previewDraft(profileId: string, expectedRevision: number, baseVersion: number | undefined, definition: RecipeDefinition): Promise<ProfilePreviewReceipt>;
   applyProfile(profileId: string, expectedRevision: number, definition: RecipeDefinition, phrase: string): Promise<ProfileMutationReceipt>;
@@ -275,8 +299,9 @@ export function createDictationLabClient(): DictationLabClient {
         request<unknown>({ kind: "accounts" }),
         request<unknown>({ kind: "audit" }),
         invoke<unknown[]>("list_result_history_entries"),
+        invoke<unknown[]>("list_dictation_lab_vocabulary_snapshots"),
       ]);
-      const [profilesValue, configurationValue, catalogValue, accountsValue, auditValue, historyValue] = settled;
+      const [profilesValue, configurationValue, catalogValue, accountsValue, auditValue, historyValue, vocabularyValue] = settled;
       if (profilesValue.status === "rejected") throw profilesValue.reason;
       if (configurationValue.status === "rejected") throw configurationValue.reason;
       return {
@@ -287,6 +312,9 @@ export function createDictationLabClient(): DictationLabClient {
         accounts: accountsValue.status === "fulfilled" ? accounts(accountsValue.value) : { ok: true, accounts: [], nextCursor: null },
         audit: auditValue.status === "fulfilled" ? audit(auditValue.value) : { schemaVersion: 1, records: [] },
         runs: historyValue.status === "fulfilled" ? resultHistory(historyValue.value) : [],
+        vocabularySnapshots: vocabularyValue.status === "fulfilled"
+          ? vocabularyValue.value.map(vocabularySnapshotIdentity)
+          : [],
         resources: {
           profiles: resource("available"),
           configuration: resource("available"),
@@ -294,6 +322,7 @@ export function createDictationLabClient(): DictationLabClient {
           accounts: resource(accountsValue.status === "fulfilled" ? "available" : "unavailable", unavailableCode(accountsValue)),
           audit: resource(auditValue.status === "fulfilled" ? "available" : "unavailable", unavailableCode(auditValue)),
           history: resource(historyValue.status === "fulfilled" ? "available" : "unavailable", unavailableCode(historyValue)),
+          vocabularySnapshots: resource(vocabularyValue.status === "fulfilled" ? "available" : "unavailable", unavailableCode(vocabularyValue)),
         } satisfies Record<LaboratoryResourceName, LaboratoryResourceState>,
       };
     },
@@ -317,6 +346,20 @@ export function createDictationLabClient(): DictationLabClient {
     },
     async resolveAudio(runId, sampleId, candidateId) {
       return invoke<DictationLabAudioCapability>("resolve_dictation_lab_audio", { runId, sampleId, candidateId });
+    },
+    async captureVocabularySnapshot() {
+      return vocabularySnapshotIdentity(
+        await invoke<unknown>("capture_dictation_lab_vocabulary_snapshot"),
+      );
+    },
+    async listVocabularySnapshots() {
+      const values = await invoke<unknown[]>("list_dictation_lab_vocabulary_snapshots");
+      return values.map(vocabularySnapshotIdentity);
+    },
+    async resolveVocabularySnapshot(snapshotId) {
+      return vocabularySnapshotIdentity(
+        await invoke<unknown>("resolve_dictation_lab_vocabulary_snapshot", { snapshotId }),
+      );
     },
     async recordVerdict(mutation) {
       return invoke<DictationLabVerdictReceipt>("record_dictation_lab_verdict", { mutation });

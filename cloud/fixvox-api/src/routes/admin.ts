@@ -2,10 +2,29 @@ import type { PostgresAdminRepository } from "../postgres/admin-repository.ts";
 import type { PostgresAuthSessionRepository } from "../postgres/auth-session-repository.ts";
 import type { PostgresProfileCommandRepository, ProfileCommandResult } from "../postgres/profile-command-repository.ts";
 import type { PostgresEngineCatalogRepository } from "../postgres/engine-catalog-repository.ts";
-import { buildLaboratoryCatalog, type LaboratoryExecutionGrantResult } from "../../../fixvox-core/src/control-plane/catalog.ts";
+import type { PostgresLaboratoryExecutionGrantRepository } from "../postgres/laboratory-execution-grant-repository.ts";
+import {
+  buildLaboratoryCatalog,
+  type LaboratoryExecutionGrantRequest,
+  type LaboratoryExecutionGrantResult,
+  type LaboratoryExecutionStartRequest,
+  type LaboratoryExecutionStartResult,
+} from "../../../fixvox-core/src/control-plane/catalog.ts";
+import {
+  GATE_A_DEFINITION,
+  GATE_B_FIXED_DEFINITION,
+  isExactGateADefinition,
+} from "../../../fixvox-core/src/control-plane/evaluation-recipes.ts";
 
 export type AdminCapability = "view" | "edit" | "publish";
-export type AdminRouteDependencies = { repository: PostgresAdminRepository; profileCommands: PostgresProfileCommandRepository; keys: Partial<Record<AdminCapability, string>>; sessions?: PostgresAuthSessionRepository; engineCatalog?: PostgresEngineCatalogRepository };
+export type AdminRouteDependencies = {
+  repository: PostgresAdminRepository;
+  profileCommands: PostgresProfileCommandRepository;
+  keys: Partial<Record<AdminCapability, string>>;
+  sessions?: PostgresAuthSessionRepository;
+  engineCatalog?: PostgresEngineCatalogRepository;
+  laboratoryGrants?: PostgresLaboratoryExecutionGrantRepository;
+};
 type AdminRole = "viewer" | "editor" | "publisher" | "owner";
 type BearerPrincipal = { capability: AdminCapability; recentGoogle: boolean; staticCredential: boolean; principalKey?: string; role?: AdminRole };
 type ControlRoomPrincipal = BearerPrincipal & { principalKey: string; role: AdminRole };
@@ -53,6 +72,24 @@ async function body(request: Request): Promise<Record<string, unknown>> {
     return value as Record<string, unknown>;
   } catch { throw new Error("invalid_body"); }
 }
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    return `{${Object.keys(object).sort().map((key) => `${JSON.stringify(key)}:${stableJson(object[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+async function hashJson(value: unknown): Promise<string> {
+  return hash(stableJson(value));
+}
+function executionFailure(code: string): Response {
+  if (code === "laboratory_execution_unauthorized") return error(code, 401);
+  if (code === "laboratory_execution_grant_mismatch") return error(code, 403);
+  if (code === "laboratory_execution_grant_expired" || code === "laboratory_execution_grant_reused") return error(code, 409);
+  if (code === "laboratory_execution_definition_mismatch" || code === "laboratory_execution_source_incomplete") return error(code, 422);
+  return error("service_unavailable", 503);
+}
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function profileCommandResponse(result: ProfileCommandResult, action: "apply" | "rollback"): Response {
   return json({ ok: true, data: { profile: { key: result.profileId, label: result.label, publishedVersion: result.resultingVersion, revision: result.revision }, publication: { previousVersion: result.previousVersion, resultingVersion: result.resultingVersion }, audit: { id: result.auditId, action, result: "success" }, idempotentReplay: result.idempotentReplay } });
@@ -87,15 +124,125 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
       const prefix = "/product/v1/control-room";
       if (request.method === "GET" && url.pathname === `${prefix}/session`) return cors(request, json({ ok: true, role: operator.role, principalKey: operator.principalKey, recentGoogle: operator.recentGoogle }));
       if (request.method === "GET" && url.pathname === `${prefix}/laboratory/catalog`) {
-        return cors(request, json({ ok: true, data: buildLaboratoryCatalog() }));
+        const providerAuthorization = deps.laboratoryGrants
+          ? { status: "available" as const, reasonCode: null }
+          : { status: "unavailable" as const, reasonCode: "authoritative_one_shot_grant_unavailable" as const };
+        return cors(request, json({ ok: true, data: buildLaboratoryCatalog(undefined, providerAuthorization) }));
       }
       if (request.method === "POST" && url.pathname === `${prefix}/laboratory/execution-grants`) {
         if (!permitted(operator, "edit") || !["editor", "publisher", "owner"].includes(operator.role)) return cors(request, error("forbidden", 403));
-        const unavailable: LaboratoryExecutionGrantResult = {
-          ok: false,
-          availability: { status: "unavailable", reasonCode: "authoritative_one_shot_grant_unavailable" },
+        if (!deps.laboratoryGrants) {
+          const unavailable: LaboratoryExecutionGrantResult = {
+            ok: false,
+            availability: { status: "unavailable", reasonCode: "authoritative_one_shot_grant_unavailable" },
+          };
+          return cors(request, json(unavailable, 503));
+        }
+        const deviceId = request.headers.get("x-device-id")?.trim() ?? "";
+        if (!/^[a-zA-Z0-9._:-]{1,128}$/.test(deviceId)) return cors(request, error("invalid_request", 400));
+        const command = await body(request);
+        let definition: unknown;
+        let requestValue: LaboratoryExecutionGrantRequest;
+        let sourceRunId: string | undefined;
+        let maxRequests: number;
+        let maxCostUsd: number;
+        if (
+          command.schemaVersion === 1
+          && command.kind === "gate-a"
+          && Object.keys(command).every((key) => ["schemaVersion", "kind", "definition"].includes(key))
+        ) {
+          if (!isExactGateADefinition(command.definition)) return cors(request, executionFailure("laboratory_execution_definition_mismatch"));
+          definition = GATE_A_DEFINITION;
+          requestValue = { schemaVersion: 1, kind: "gate-a", definition: GATE_A_DEFINITION };
+          maxRequests = GATE_A_DEFINITION.estimate.maxRequests;
+          maxCostUsd = GATE_A_DEFINITION.estimate.maxCostUsd;
+        } else if (
+          command.schemaVersion === 1
+          && command.kind === "gate-b"
+          && typeof command.sourceGateARunId === "string"
+          && /^[a-f0-9-]{36}$/.test(command.sourceGateARunId)
+          && Object.keys(command).every((key) => ["schemaVersion", "kind", "sourceGateARunId"].includes(key))
+        ) {
+          sourceRunId = command.sourceGateARunId;
+          const source = await deps.laboratoryGrants.gateBSource(sourceRunId);
+          const rawRefs = source?.rawRefs ?? [];
+          const exactRawSource = rawRefs.length === GATE_A_DEFINITION.sampleIds.length
+            && GATE_A_DEFINITION.sampleIds.every((sampleId, index) =>
+              rawRefs[index]?.sampleId === sampleId
+              && /^[a-z0-9][a-z0-9._:-]{0,127}$/.test(rawRefs[index]?.rawRef ?? ""));
+          if (!source || !exactRawSource) return cors(request, executionFailure("laboratory_execution_source_incomplete"));
+          definition = {
+            ...GATE_B_FIXED_DEFINITION,
+            sourceGateARunId: sourceRunId,
+            sourceGateADefinitionHash: source.definitionHash,
+            rawRefs,
+          };
+          requestValue = { schemaVersion: 1, kind: "gate-b", sourceGateARunId };
+          maxRequests = GATE_B_FIXED_DEFINITION.maxRequests;
+          maxCostUsd = GATE_B_FIXED_DEFINITION.maxCostUsd;
+        } else {
+          return cors(request, error("invalid_request", 400));
+        }
+        const definitionHash = await hashJson(definition);
+        const estimateHash = await hashJson({
+          maxRequests,
+          maxCostUsd,
+          sttCalls: requestValue.kind === "gate-a" ? 12 : 0,
+          postprocessCalls: requestValue.kind === "gate-a" ? 0 : 6,
+        });
+        try {
+          const issued = await deps.laboratoryGrants.issue({
+            principalKey: operator.principalKey,
+            deviceId,
+            request: requestValue,
+            definitionHash,
+            estimateHash,
+            maxRequests,
+            maxCostMicrousd: Math.round(maxCostUsd * 1_000_000),
+            expiresAt: new Date(Date.now() + 5 * 60_000),
+            ...(sourceRunId ? { sourceRunId } : {}),
+          });
+          const result: LaboratoryExecutionGrantResult = { ok: true, data: issued };
+          return cors(request, json(result, 201));
+        } catch (cause) {
+          return cors(request, executionFailure(cause instanceof Error ? cause.message : "service_unavailable"));
+        }
+      }
+      if (request.method === "POST" && url.pathname === `${prefix}/laboratory/executions`) {
+        if (!permitted(operator, "edit") || !["editor", "publisher", "owner"].includes(operator.role) || !deps.laboratoryGrants) return cors(request, error("forbidden", 403));
+        const deviceId = request.headers.get("x-device-id")?.trim() ?? "";
+        const command = await body(request);
+        if (
+          !/^[a-zA-Z0-9._:-]{1,128}$/.test(deviceId)
+          || command.schemaVersion !== 1
+          || typeof command.grantToken !== "string"
+          || Object.keys(command).some((key) => !["schemaVersion", "grantToken"].includes(key))
+        ) return cors(request, error("invalid_request", 400));
+        const startRequest: LaboratoryExecutionStartRequest = {
+          schemaVersion: 1,
+          grantToken: command.grantToken,
         };
-        return cors(request, json(unavailable, 503));
+        const consumed = await deps.laboratoryGrants.consume({
+          grantToken: startRequest.grantToken,
+          principalKey: operator.principalKey,
+          deviceId,
+          now: new Date(),
+        });
+        if (!consumed.ok) return cors(request, executionFailure(consumed.reason));
+        const result: LaboratoryExecutionStartResult = {
+          ok: true,
+          data: {
+            executionId: consumed.execution.executionId,
+            definitionHash: consumed.execution.definitionHash,
+            estimateHash: consumed.execution.estimateHash,
+            bounds: {
+              maxRequests: consumed.execution.maxRequests,
+              maxCostUsd: consumed.execution.maxCostMicrousd / 1_000_000,
+            },
+            expiresAt: consumed.execution.expiresAt.toISOString(),
+          },
+        };
+        return cors(request, json(result, 201));
       }
       if (request.method === "GET" && url.pathname === `${prefix}/roles`) return cors(request, json(await deps.repository.linkedPrincipals()));
       const roleMatch = url.pathname.match(/^\/product\/v1\/control-room\/roles\/(arp_[a-f0-9]{64})$/);

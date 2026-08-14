@@ -5,12 +5,17 @@ import { afterAll, describe, expect, test } from "bun:test";
 
 import { BunSqlMigrationDatabase } from "../src/postgres/bun-sql-migration-database";
 import { applyMigrations, loadMigrations, LOCAL_SCHEMA_VERSION } from "../src/postgres/migrations";
+import { PostgresLaboratoryExecutionGrantRepository } from "../src/postgres/laboratory-execution-grant-repository";
 
 const databaseUrl = Bun.env.FIXVOX_DATABASE_URL;
 if (!databaseUrl) throw new Error("missing_FIXVOX_DATABASE_URL");
 
 const database = new BunSqlMigrationDatabase(databaseUrl);
-afterAll(async () => database.close());
+const sql = new Bun.SQL(databaseUrl);
+afterAll(async () => {
+  await sql.close();
+  await database.close();
+});
 
 describe("PostgreSQL migration integration", () => {
   test("is idempotent against the isolated local database", async () => {
@@ -48,6 +53,8 @@ describe("PostgreSQL migration integration", () => {
       "engine_catalog_audits",
       "personal_vocabulary_revisions",
       "personal_vocabulary_rules",
+      "laboratory_execution_grants",
+      "laboratory_executions",
     ]) {
       expect(names).toContain(required);
     }
@@ -68,5 +75,41 @@ describe("PostgreSQL migration integration", () => {
         AND column_name ~* '(audio|transcript).*(body|content|payload)|(body|content|payload).*(audio|transcript)'
     `);
     expect(rows).toEqual([]);
+  });
+
+  test("consumes one grant once and reserves request budget atomically", async () => {
+    const repository = new PostgresLaboratoryExecutionGrantRepository(sql);
+    const principalKey = `arp_${crypto.randomUUID().replaceAll("-", "").repeat(2)}`;
+    const deviceId = `laboratory-test-${crypto.randomUUID()}`;
+    try {
+      const issued = await repository.issue({
+        principalKey,
+        deviceId,
+        request: { schemaVersion: 1, kind: "gate-a", definition: {} as never },
+        definitionHash: "a".repeat(64),
+        estimateHash: "b".repeat(64),
+        maxRequests: 12,
+        maxCostMicrousd: 5000,
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+      const consumed = await Promise.all([
+        repository.consume({ grantToken: issued.grantToken, principalKey, deviceId, now: new Date() }),
+        repository.consume({ grantToken: issued.grantToken, principalKey, deviceId, now: new Date() }),
+      ]);
+      expect(consumed.filter(({ ok }) => ok)).toHaveLength(1);
+      const execution = consumed.find(({ ok }) => ok);
+      if (!execution?.ok) throw new Error("execution_missing");
+      const reservations = await Promise.all(Array.from({ length: 13 }, () => repository.reserve({
+        executionId: execution.execution.executionId,
+        deviceId,
+        definitionHash: execution.execution.definitionHash,
+        requests: 1,
+        costMicrousd: 100,
+      })));
+      expect(reservations.filter(Boolean)).toHaveLength(12);
+    } finally {
+      await sql.unsafe("DELETE FROM laboratory_executions WHERE principal_key = $1", [principalKey]);
+      await sql.unsafe("DELETE FROM laboratory_execution_grants WHERE principal_key = $1", [principalKey]);
+    }
   });
 });

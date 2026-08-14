@@ -186,6 +186,7 @@ describe("Bun API adapter", () => {
         });
       },
     };
+    deps.laboratoryGrants = { async reserve() { return true; } } as never;
     const form = new FormData();
     form.set("metadata", JSON.stringify({
       operationId: "evaluation-operation",
@@ -195,7 +196,7 @@ describe("Bun API adapter", () => {
     form.set("audio", new Blob([new Uint8Array([1, 2, 3])], { type: "audio/wav" }), "capture.wav");
     const response = await createApiHandler(deps)(new Request("https://fixture.test/product/v1/runtime/transcriptions", {
       method: "POST",
-      headers: { "x-device-id": "fixture-device-001" },
+      headers: { "x-device-id": "fixture-device-001", "x-laboratory-execution-id": "00000000-0000-4000-8000-000000000001", "x-laboratory-definition-hash": "a".repeat(64) },
       body: form,
     }));
     expect(response.status).toBe(200);
@@ -376,6 +377,7 @@ describe("Bun API adapter", () => {
       let policy: unknown;
       let forwarded: Record<string, unknown> = {};
       const deps = createDependencies();
+      deps.laboratoryGrants = { async reserve() { return true; } } as never;
       deps.providers = {
         async proxy(providerInput) {
           policy = providerInput.policy;
@@ -385,7 +387,7 @@ describe("Bun API adapter", () => {
       };
       const response = await createApiHandler(deps)(new Request("https://fixture.test/product/v1/runtime/actions", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-device-id": "fixture-device-001" },
+        headers: { "content-type": "application/json", "x-device-id": "fixture-device-001", "x-laboratory-execution-id": "00000000-0000-4000-8000-000000000002", "x-laboratory-definition-hash": "b".repeat(64) },
         body: JSON.stringify({ operationId: `gate-b-${fixture.variant}`, kind: "postprocess", evaluationRecipeId: fixture.id, input: fixture.input }),
       }));
       expect(response.status).toBe(200);

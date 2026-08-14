@@ -59,13 +59,13 @@ async function tableNames(database: MigrationDatabase, testSchema: string): Prom
 }
 
 describe("PostgreSQL clean and incremental migrations", () => {
-  test("builds empty→8 and remains idempotent", async () => {
+  test("builds empty→9 and remains idempotent", async () => {
     await sql.begin(async (transaction) => {
       await transaction.unsafe(`SET LOCAL search_path TO ${testSchemas.clean}, public`);
       const database = new SingleTransactionDatabase(transaction);
       const migrations = await loadMigrations();
       expect(await applyMigrations(database, migrations)).toEqual({
-        applied: [1, 2, 3, 4, 5, 6, 7, 8],
+        applied: [1, 2, 3, 4, 5, 6, 7, 8, 9],
         currentVersion: LOCAL_SCHEMA_VERSION,
       });
       expect(await applyMigrations(database, migrations)).toEqual({ applied: [], currentVersion: LOCAL_SCHEMA_VERSION });
@@ -80,10 +80,12 @@ describe("PostgreSQL clean and incremental migrations", () => {
       expect(names).toContain("engine_catalog_audits");
       expect(names).toContain("personal_vocabulary_revisions");
       expect(names).toContain("personal_vocabulary_rules");
+      expect(names).toContain("laboratory_execution_grants");
+      expect(names).toContain("laboratory_executions");
     });
   });
 
-  test("upgrades 6→8 by applying 0007 before 0008", async () => {
+  test("upgrades 6→9 by applying 0007 through 0009", async () => {
     await sql.begin(async (transaction) => {
       await transaction.unsafe(`SET LOCAL search_path TO ${testSchemas.upgrade}, public`);
       const database = new SingleTransactionDatabase(transaction);
@@ -95,9 +97,10 @@ describe("PostgreSQL clean and incremental migrations", () => {
       expect(migrations.slice(6).map(({ version, name }) => ({ version, name }))).toEqual([
         { version: 7, name: "engine_catalog_lifecycle" },
         { version: 8, name: "personal_vocabulary" },
+        { version: 9, name: "laboratory_execution_grants" },
       ]);
       expect(await applyMigrations(database, migrations)).toEqual({
-        applied: [7, 8],
+        applied: [7, 8, 9],
         currentVersion: LOCAL_SCHEMA_VERSION,
       });
       expect(await applyMigrations(database, migrations)).toEqual({
@@ -109,6 +112,8 @@ describe("PostgreSQL clean and incremental migrations", () => {
       expect(names).toContain("engine_catalog_audits");
       expect(names).toContain("personal_vocabulary_revisions");
       expect(names).toContain("personal_vocabulary_rules");
+      expect(names).toContain("laboratory_execution_grants");
+      expect(names).toContain("laboratory_executions");
     });
   });
 });

@@ -31,23 +31,32 @@ export const GATE_A_DEFINITION = Object.freeze({
     "jp-quality-punctuation-list-20260812",
     "jp-quality-model-comparison-20260812",
   ] as const),
-  sttRecipeIds: Object.freeze(EVALUATION_RECIPES.map(({ id }) => id)),
+  sttRecipeIds: Object.freeze([
+    "transcription-quality-v1-short-auto",
+    "transcription-quality-v1-rich-auto",
+    "transcription-quality-v1-short-es",
+    "transcription-quality-v1-rich-es",
+  ] as const),
   responseText: "kept" as const,
   postprocessRecipeIds: Object.freeze([] as const),
   prosodyMode: "off" as const,
   vocabularyMode: "off" as const,
   materializationId: "raw-provider-response-v1" as const,
   estimate: Object.freeze({
-    sampleCount: 3,
-    candidateCount: 4,
-    sttCalls: 12,
-    postprocessCalls: 0,
-    maxRequests: 12,
-    maxCostUsd: 0.005,
+    sampleCount: 3 as const,
+    candidateCount: 4 as const,
+    sttCalls: 12 as const,
+    postprocessCalls: 0 as const,
+    maxRequests: 12 as const,
+    maxCostUsd: 0.005 as const,
   }),
 });
 
 export type GateADefinition = typeof GATE_A_DEFINITION;
+export const GATE_A_DEFINITION_JSON = JSON.stringify(GATE_A_DEFINITION);
+export function isExactGateADefinition(value: unknown): value is GateADefinition {
+  return JSON.stringify(value) === GATE_A_DEFINITION_JSON;
+}
 const byId: Record<string, EvaluationRecipe> = Object.fromEntries(EVALUATION_RECIPES.map((recipe) => [recipe.id, recipe]));
 export function resolveEvaluationRecipe(value: unknown): EvaluationRecipe {
   if (typeof value !== "string" || !byId[value]) throw new Error("evaluation_recipe_unknown");
@@ -87,6 +96,49 @@ export const POSTPROCESS_EVALUATION_RECIPES: readonly PostprocessEvaluationRecip
   Object.freeze({ id: "transcription-quality-v1-postprocess-120b-plain", version: "v1", variant: "without-prosody", provider: "groq", model: "openai/gpt-oss-120b", promptId: "managed-postprocess-v1", temperature: 0, maxCompletionTokens: 512 }),
   Object.freeze({ id: "transcription-quality-v1-postprocess-120b-prosody", version: "v1", variant: "with-prosody", provider: "groq", model: "openai/gpt-oss-120b", promptId: "managed-postprocess-v1", temperature: 0, maxCompletionTokens: 512 }),
 ]);
+
+export const GATE_B_FIXED_DEFINITION = Object.freeze({
+  schemaVersion: 1 as const,
+  id: "transcription-quality-gate-b-v1" as const,
+  sampleIds: GATE_A_DEFINITION.sampleIds,
+  postprocessRecipeIds: Object.freeze([
+    "transcription-quality-v1-postprocess-120b-plain",
+    "transcription-quality-v1-postprocess-120b-prosody",
+  ] as const),
+  provider: "groq" as const,
+  model: "openai/gpt-oss-120b" as const,
+  sttCalls: 0 as const,
+  postprocessCalls: 6 as const,
+  maxRequests: 6 as const,
+  maxCostUsd: 0.005 as const,
+  audio: "off" as const,
+  delivery: "off" as const,
+  vocabularyMode: "off" as const,
+});
+
+export type GateBRawReference = Readonly<{
+  sampleId: GateADefinition["sampleIds"][number];
+  rawRef: string;
+}>;
+
+export type GateBDefinition = Readonly<{
+  schemaVersion: 1;
+  id: "transcription-quality-gate-b-v1";
+  sourceGateARunId: string;
+  sourceGateADefinitionHash: string;
+  rawRefs: readonly GateBRawReference[];
+  sampleIds: typeof GATE_A_DEFINITION.sampleIds;
+  postprocessRecipeIds: typeof GATE_B_FIXED_DEFINITION.postprocessRecipeIds;
+  provider: "groq";
+  model: "openai/gpt-oss-120b";
+  sttCalls: 0;
+  postprocessCalls: 6;
+  maxRequests: 6;
+  maxCostUsd: 0.005;
+  audio: "off";
+  delivery: "off";
+  vocabularyMode: "off";
+}>;
 const postprocessById: Record<string, PostprocessEvaluationRecipe> = Object.fromEntries(POSTPROCESS_EVALUATION_RECIPES.map((recipe) => [recipe.id, recipe]));
 export function resolvePostprocessEvaluationRecipe(value: unknown): PostprocessEvaluationRecipe {
   if (typeof value !== "string" || !postprocessById[value]) throw new Error("postprocess_evaluation_recipe_unknown");

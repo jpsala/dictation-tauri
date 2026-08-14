@@ -1355,10 +1355,398 @@ La validación observada pasó `35` tests frontend focales, `4` tests de recipes
   `providerCalls.enabled=false`, `maxRequests=0`;
 - no ejecutó provider-real, audio, delivery ni mutación productiva.
 
-## Próximo Corte
+## Plan Autoritativo Mínimo Posterior Al Cierre Del Laboratorio — 2026-08-13
 
-**Batch 3A — A/B inicial de prompt STT e idioma**, gated. Antes de ejecutarlo
-se requiere una autorización provider-real nueva para la definición exacta de
-tres samples por cuatro recipes, `12` requests y costo máximo `USD 0.005`.
-Auth mutation contra PostgreSQL, Gate B, deploy, producción y release tampoco
-se afirman en este cierre.
+### Alcance Y Estado De Partida
+
+`main` incluye `f02068a`. El cierre provider-free del Dictation Laboratory ya
+está validado y no se reabre: cinco workspaces, profiles/versiones canónicos,
+catálogo seguro, preview/fingerprint, estados honestos, gateway privado,
+responsive nativo y replay Tauri `2/2` con cero provider calls son baseline.
+`artifacts/dictation-lab-completion-plan.txt` y el historial hasta `f02068a`
+explican ese cierre, pero ya no son el plan de ejecución.
+Los receipts históricos de Gate A/B conservan valor de benchmark, pero no
+satisfacen el flujo post-laboratorio con auth PostgreSQL, grant atómico,
+orquestación nativa y snapshots. Se reutilizan sus raws/schemas cuando el
+contrato lo permita; no se reimplementan ni se presentan como la validación
+end-to-end pendiente confirmada para este corte.
+
+Este plan es la autoridad única para lo que queda. Tiene exactamente tres
+etapas: un freeze serial, una sola wave paralela y una sola integración. No
+incluye llamadas provider, mutaciones reales, deploy, release, commit ni push
+durante su preparación.
+
+Resultado buscado:
+
+1. probar la mutación auth existente contra PostgreSQL sin inventar otra
+   autoridad de roles;
+2. reemplazar el `authoritative_one_shot_grant_unavailable` sólo por una
+   autorización server-owned, acotada y consumible atómicamente;
+3. ejecutar Gate A únicamente con `GATE_A_DEFINITION`;
+4. habilitar Gate B y vocabulary sólo desde raws y snapshots inmutables
+   identificados;
+5. conservar promoción de profiles, deploy y release como operaciones
+   separadas bajo sus gates canónicos.
+
+### Autoridades E Invariantes No Negociables
+
+- `profiles` y `profile_versions` siguen siendo la única autoridad de
+  definición, versión, apply y rollback. Toda mutación envía sólo `definition`.
+- `cloud/fixvox-core/src/control-plane/evaluation-recipes.ts` conserva las
+  cuatro recipes STT, las dos de postprocess y `GATE_A_DEFINITION`. Ningún
+  artifact o input webview agrega IDs seleccionables.
+- `src/test-fixtures/transcription-quality-contract.ts`,
+  `scripts/transcription-quality-artifacts.ts` y
+  `artifacts/transcription-quality/<run-id>/` siguen siendo el contrato de
+  evidencia. No habrá otro schema, fixture store ni lexicon.
+- `configured`, `resolved` y `observed` permanecen separados. Falta de
+  evidencia es `null`/`unavailable`, nunca un valor configurado copiado.
+- Audio humano, gold, raw, final, reglas, paths y payloads provider quedan
+  privados/gitignored. La webview sólo opera IDs estables mediante comandos
+  Tauri allowlisted; nunca recibe paths.
+- Gate A y Gate B son stop-on-first-error. Un fallo no autoriza retry ni un
+  subset. El request ya enviado y el costo incurrido no son reversibles.
+- Ninguna evidencia promueve por sí sola un profile, una recipe o vocabulario
+  de cuenta. Preview/apply/rollback, mutación de cuenta, deploy y release son
+  operaciones distintas.
+
+## Etapa 1 — Freeze Serial De Contratos Y Dependencias
+
+Responsable: Sol. Esta etapa cierra arquitectura y DTOs antes de delegar. No
+ejecuta red ni operaciones externas.
+
+### Contrato Compartido Congelado
+
+1. **Auth/RBAC existente.** Se conserva
+   `PUT|DELETE /product/v1/control-room/roles/:principalKey` sobre
+   `PostgresAdminRepository.setRoleBinding()`: actor `owner`, autenticación
+   Google reciente, subject listado/vinculado, rol exacto
+   `viewer|editor|publisher|owner`, transacción PostgreSQL y audit record. No se
+   agrega bootstrap alternativo, header que suplante identidad ni fixture en
+   producción.
+2. **Grant y ejecución server-owned.** El contrato v1 contiene únicamente un
+   token opaco en cliente. PostgreSQL conserva hash, principal, device,
+   profile/revision cuando corresponda, `definitionHash`, `estimateHash`,
+   request/cost caps, expiración, estado y audit. El grant se consume una sola
+   vez mediante compare-and-set antes de spawn; la ejecución resultante reserva
+   atómicamente cada request contra el mismo presupuesto antes de llamar al
+   provider. Mismatch, expiración, reuso o presupuesto agotado fallan antes de
+   spawn/red. El token, autorización y claims no entran en metadata provider ni
+   artifacts.
+3. **Gate A exacto.** La definición aceptada es igualdad estructural exacta con
+   `GATE_A_DEFINITION`: los tres sample IDs aprobados, las cuatro recipes en
+   orden, `12` STT, `0` postprocess, vocabulario/prosodia off, materialización
+   raw, máximo `12` requests y `USD 0.005`. No existe modo subset.
+4. **Gate B derivado.** Sólo se materializa desde un Gate A completo y válido:
+   exactamente un raw canónico `short-auto` por cada uno de los tres samples,
+   las dos recipes de `POSTPROCESS_EVALUATION_RECIPES`, `6` requests, modelo
+   `openai/gpt-oss-120b`, máximo `USD 0.005`, sin STT, audio, delivery ni
+   vocabulary. Prosodia viene fijada por cada recipe; no es un eje adicional.
+5. **Snapshot de vocabulario inmutable.** Es una captura del
+   `PersonalVocabularySnapshot` existente, no otro store. Identidad pública:
+   `snapshotId`, `revision`, SHA-256 canónico, source/scope redacted, rule count
+   y timestamp. Payload privado: reglas exactas y modos. Una vez referenciado
+   por un run no se sobrescribe; un cambio genera nuevo ID/hash. Replay
+   `off|automatic|ask` usa los mismos tres raws y registra el snapshot exacto,
+   con cero provider/STT calls.
+6. **Estado honesto.** Session, role, grant, Gate A source, Gate B source y
+   vocabulary snapshot tienen availability independiente. El catálogo declara
+   prerequisitos; el host resuelve disponibilidad local. La UI no completa
+   huecos ni transforma `unavailable` en acción habilitada.
+
+### Dependencias Cerradas Antes De La Wave
+
+- El agente principal fija los JSON wire examples y códigos de error en
+  `catalog.ts`, `evaluation-recipes.ts` y los contratos
+  transcription-quality existentes; Rust y frontend sólo los espejan.
+- Se decide una migración PostgreSQL aditiva para grants/ejecuciones y su
+  rollback lógico. No se inventa número de migración antes de inspeccionar el
+  head vigente.
+- Se fija un único owner por archivo para la wave. Los agentes no corren
+  formatters, lint, builds, suites globales, provider calls ni publicación.
+- Con estos contratos cerrados, lanzar exactamente una wave concurrente.
+  Preferencia: tres agentes Luna Low, uno por lane; Sol conserva integración,
+  gates externos y aceptación.
+
+## Etapa 2 — Una Sola Wave Paralela
+
+Las tres lanes empiezan juntas después del freeze. No dependen de cambios de
+otra lane durante la wave; sólo del contrato compartido.
+
+### Lane A — Autoridad Cloud, PostgreSQL Y Auth
+
+**Objetivos y símbolos**
+
+- `cloud/fixvox-api/src/routes/admin.ts`:
+  `controlRoomPrincipal()`, rutas `roles/:principalKey`,
+  `laboratory/execution-grants` y nueva transición server-owned de ejecución.
+- `cloud/fixvox-api/src/postgres/admin-repository.ts`:
+  `linkedPrincipals()`, `roleForPrincipal()`, `setRoleBinding()`.
+- `cloud/fixvox-api/src/postgres/auth-session-repository.ts`:
+  `authorizeBearer()`.
+- Un repository PostgreSQL estrecho para grant/ejecución y una migración
+  aditiva; `cloud/fixvox-api/src/app.ts` sólo para wiring.
+- `cloud/fixvox-core/src/control-plane/catalog.ts`:
+  `LaboratoryExecutionGrantRequest/Result`, provider authorization y
+  availability. `evaluation-recipes.ts` sólo recibe assertions, no recipes
+  nuevas.
+- Tests focales de routes, repositories e integración PostgreSQL.
+
+**Contrato consumido:** RBAC, grant/ejecución y budgets congelados en Etapa 1.
+No lee artifacts privados ni decide recipes.
+
+**Acceptance criteria**
+
+- La mutación de role real usa la transacción/audit existentes; subject no
+  listado, actor no owner o recent-auth falso producen `401/403/400` bounded y
+  cero mutación.
+- Issue/consume/replay/expiry/mismatch son atómicos en PostgreSQL. Dos consumos
+  concurrentes producen exactamente un ganador.
+- Cada reserva de request verifica ejecución, principal/device, definition y
+  caps antes de provider. Request 13 de Gate A y request 7 de Gate B son
+  imposibles.
+- Catálogo público conserva exactamente `4` STT y `2` postprocess, sin prompts,
+  tokens, subject hashes ni payloads privados.
+
+**Pruebas/smokes provider-free**
+
+- Tests de route para roles/grants y códigos fail-closed.
+- Tests de repository contra PostgreSQL descartable/local: commit, stale actor,
+  rollback transaccional, consume race, expiración y budget exhaustion.
+- `npm run cloud:test` focal o su subset explícito; ningún test usa provider.
+- Smoke read-only de session/linked principals sobre el entorno destino sólo en
+  Etapa 3 y sin imprimir principal completo.
+
+**Privacidad:** PostgreSQL guarda hashes/IDs y metadata bounded; audit no guarda
+token, audio, texto, email ni provider payload.
+
+**Rollback:** migración aditiva sin borrar tablas previas; feature permanece
+`unavailable` hasta deploy válido. Ante fallo, deshabilitar issuance, expirar
+grants abiertos y volver al release previo. Una mutación role se revierte
+restaurando el rol previo exacto mediante la misma ruta y deja audit.
+
+**Gate humano exacto:** la primera mutación contra PostgreSQL requiere mostrar
+en el punto de riesgo entorno/DB, actor principal redacted, subject principal
+redacted, account handle, rol anterior, rol nuevo, scope, recent-auth,
+acción/audit esperados y rollback exacto. JP debe aprobar esos valores; una
+aprobación de deploy o provider no la incluye.
+
+### Lane B — Orquestación Nativa Y Runners Exactos
+
+**Objetivos y símbolos**
+
+- `src-tauri/src/dictation_lab_jobs.rs`:
+  `LabExecutionGrant`, `validate_definition()`, `estimate_definition()`,
+  `spawn_runner()` y `start_dictation_lab_job()`.
+- `scripts/transcription-quality-product-baseline.ts`:
+  `GATE_A_*`, `gateAEvaluationRecipeIds`, `runProductBaseline()`.
+- `scripts/transcription-quality-replay.ts`:
+  `planGateBPostprocess()`, `runGateBPostprocess()` y replay local.
+- `src/test-fixtures/transcription-quality-contract.ts` y
+  `scripts/transcription-quality-artifacts.ts` sólo para extender receipts
+  compatibles, nunca reemplazarlos.
+- Tests Rust/Vitest focales de jobs, Gate A, Gate B, artifacts y redaction.
+
+**Contrato consumido:** token opaco y definiciones exactas de Etapa 1. No emite
+roles, grants ni snapshots.
+
+**Acceptance criteria**
+
+- Provider-real no spawnea hasta que el control plane consuma el grant y
+  entregue una ejecución válida. Claims client-authored se ignoran.
+- Gate A accepted/estimated/executed comparten un único hash y son exactamente
+  `GATE_A_DEFINITION`; prepara audio una vez por sample, corre secuencial y
+  detiene al primer error.
+- Gate B selecciona sólo raws de un Gate A `12/12` completo, no vuelve a llamar
+  STT y no multiplica prosodia.
+- Artifacts mantienen run/result schema, raw/final refs separadas,
+  configured/resolved/observed independientes y costo observado `null` si no
+  llega receipt.
+- Cancel/recovery no habilita retry implícito ni reutiliza grant consumido.
+
+**Pruebas/smokes provider-free**
+
+- Rust: igualdad Gate A, grant ausente/mismatch/reused, no-spawn, un solo active
+  job y cancel bounded.
+- Vitest: Gate A exacto `3 × 4 = 12`, Gate B exacto `3 × 2 = 6`, source raw
+  inválido/incompleto, stop-on-first-error, caps y redaction.
+- Ejecutar los comandos Gate A y Gate B sin autorización: ambos deben terminar
+  antes de red con `requestCount: 0`.
+- Smoke Tauri provider-free por el gateway real: replay completo, artifacts
+  válidos y cero provider/STT calls.
+
+**Privacidad:** scripts reciben sólo refs privadas allowlisted; stdout y
+receipts públicos contienen IDs, hashes, counts, estados y métricas, nunca
+audio/gold/raw/final.
+
+**Rollback:** mantener el guard fail-closed como default; ante integración
+fallida volver a `authoritative_one_shot_grant_unavailable`. Provider calls ya
+emitidas no se revierten: se aborta el run, no se promueve nada y se conserva
+receipt redacted.
+
+**Gate humano exacto Gate A:** justo antes de emisión, mostrar los tres IDs de
+`GATE_A_DEFINITION`, las cuatro recipes, provider Groq, modelo
+`whisper-large-v3-turbo`, audio humano sí, `12` requests máximos, cap total
+`USD 0.005`, artifacts privados/redacted esperados, ejecución secuencial
+stop-on-first-error y ausencia de postprocess, vocabulary, delivery, clipboard,
+typing, profile mutation y deploy. Requiere aprobación nueva de JP.
+
+**Gate humano exacto Gate B:** sólo después de aceptar el run Gate A fuente,
+mostrar su run ID/hash, los tres raw refs opacos, las dos recipes, provider
+Groq, modelo `openai/gpt-oss-120b`, `6` requests máximos, cap `USD 0.005`,
+cero STT/audio/delivery/profile mutation y artifacts esperados. Requiere otra
+aprobación; Gate A no la cubre.
+
+### Lane C — Snapshots, Gateway Privado Y Estado De Laboratorio
+
+**Objetivos y símbolos**
+
+- `src/personal-vocabulary/types.ts`: conservar
+  `PersonalVocabularySnapshot`; agregar sólo identidad reproducible en el
+  boundary de evaluación.
+- `src/settings/fixvox-cloud-control.ts`:
+  `getFixvoxPersonalVocabularySnapshot()` como source host-owned.
+- `src-tauri/src/dictation_lab.rs`: comandos Tauri ID-based para crear/listar/
+  resolver snapshots y proyectar availability; sin aceptar paths.
+- `src/dictation-lab/types.ts`, `client.ts`, `jobs-client.ts`,
+  `DictationLabSurface.tsx`, `ExperimentWorkspace.tsx`,
+  `EvidenceWorkspaces.tsx` y tests focales: selección catalog-driven, source
+  Gate A/Gate B, snapshot ID y estados grant/source/snapshot.
+
+**Contrato consumido:** identidad de snapshot, availability y matrices de Etapa
+1. No modifica roles, grants, recipes ni runners provider.
+
+**Acceptance criteria**
+
+- Dos capturas del mismo revision/contenido producen el mismo hash; cualquier
+  cambio produce un nuevo snapshot y nunca sobrescribe el anterior.
+- La proyección pública omite reglas/paths/texto y expone sólo identidad safe.
+  Read privado exige snapshot ID indexado, kind allowlisted y bounds.
+- Vocabulary `automatic|ask` queda `unavailable` sin snapshot exacto; replay
+  registra snapshot ID/revision/hash y `providerCalls=0`, `sttCalls=0`.
+- Gate B queda `unavailable` sin Gate A completo. UI muestra
+  configured/resolved/observed y cada missing prerequisite sin fallback falso.
+- Ninguna acción provider-real aparece habilitada si grant issuance, source o
+  snapshot no están disponibles.
+
+**Pruebas/smokes provider-free**
+
+- Tests de hash/immutability, path traversal, unknown ID, bounds, redaction y
+  snapshot stale.
+- Tests frontend de catálogo-only authority, availability independiente,
+  null/unavailable, grant fail-closed y Gate B/vocabulary prerequisites.
+- Replay local `off|automatic|ask` sobre los raws fixture/approved disponibles;
+  verificar artifact schema, cero network y cero texto en summary/log.
+- Smoke Tauri read-only de crear/listar/resolver por ID; no reproducción de
+  audio, delivery ni mutación de cuenta.
+
+**Privacidad:** payload del snapshot y reglas permanecen bajo
+`artifacts/transcription-quality/<run>/private/`, gitignored. La UI, docs,
+chat, tests públicos y logs reciben sólo proyección redacted.
+
+**Rollback:** abandonar el pointer al snapshot candidato; no mutar ni borrar la
+autoridad de personal vocabulary. Borrar datos privados requiere una operación
+de cleanup separada. Si la feature falla, catalog/host vuelven a
+`snapshot_prerequisite_unavailable`.
+
+**Gate humano exacto para mutar vocabulario de cuenta:** después del replay y
+adjudicación, mostrar cuenta/scope destino, snapshot ID/revision/hash, las
+reglas exactas y modos `automatic|ask`, revision esperada, diff, falsos
+reemplazos observados, rollback al snapshot/revision previo y ausencia de
+provider. JP debe aprobar esos valores; crear/reproducir un snapshot local no
+autoriza la mutación.
+
+## Etapa 3 — Una Sola Integración, Validación Y Salidas Gated
+
+Sol integra una vez. Elimina DTOs duplicados, inputs libres, paths públicos y
+cualquier bypass; no reescribe el laboratorio ya cerrado.
+
+### Integración Provider-Free Inmediata
+
+Ejecutar un solo batch:
+
+1. tests focales cloud route/repositories/PostgreSQL, Rust jobs, runners,
+   snapshot/gateway y UI;
+2. `npm run check`;
+3. `npm run build`;
+4. `cd src-tauri && cargo check`;
+5. comandos Gate A y Gate B sin autorización, ambos con cero spawn/red/requests;
+6. replay vocabulary y Tauri provider-free real por IDs, con cero provider/STT;
+7. `bun scripts/context-index.ts && bun scripts/agent-context-audit.ts`.
+
+Acceptance global provider-free:
+
+- auth mutation queda probada en PostgreSQL descartable/local y lista para el
+  gate real, no afirmada contra producción;
+- grants son single-consume y presupuestos atómicos bajo concurrencia;
+- Gate A/Gate B sólo aceptan sus definiciones exactas;
+- snapshots son inmutables/reproducibles;
+- proyecciones/logs no contienen texto, paths, reglas, secretos ni tokens;
+- ninguna opción unavailable puede spawn ni mutar;
+- artifacts privados siguen ignorados.
+
+### Salidas Externas, Secuenciales Y No Implícitas
+
+No son nuevas waves de implementación. Se ejecutan sólo después de que toda la
+integración provider-free esté verde y cada gate se apruebe por separado:
+
+1. **Deploy cloud/database:** seguir
+   `docs/topics/fixvox-local-to-production-workflow.md`. Antes del punto de
+   riesgo mostrar destino, branch/SHA, bundle+checksum, migraciones, backup,
+   service/release actual, release candidato, health/readiness esperados y
+   rollback exacto. Un deploy no autoriza role mutation, provider ni release.
+2. **Auth mutation PostgreSQL:** aplicar el gate exacto de Lane A, releer role y
+   audit desde PostgreSQL y, si falla, ejecutar sólo el rollback aprobado.
+3. **Gate A provider-real:** aplicar el gate exacto de Lane B; aceptar sólo
+   `12/12` o registrar abortado sin promoción.
+4. **Vocabulary local:** crear snapshot inmutable y ejecutar replay
+   provider-free sobre los raws de Gate A. No necesita provider gate. Mutar la
+   cuenta sólo con el gate exacto de Lane C.
+5. **Gate B provider-real:** sólo con Gate A fuente aceptado y aprobación
+   separada; aceptar sólo `6/6` o registrar abortado sin promoción.
+6. **Profile promotion/apply:** si la evidencia demuestra un winner, mostrar
+   profile ID, expected revision, candidate fingerprint, diff completo,
+   versión resultante y rollback target. Aplicar por `profiles/profile_versions`
+   y tratar receipt success/refresh failure como hechos separados.
+7. **Commit/push:** fuera de este plan de autoría. Antes de una entrega futura,
+   stage estrecho, verificar branch/diff y excluir `.env`, tokens, audio,
+   transcripts, snapshots privados, artifacts y caches.
+8. **Release/publicación/instalación:** no es requisito para Gate A/B. Sólo
+   mediante el skill/flujo canónico `$release` cuando JP lo invoque, con
+   version/tag/canal/asset/checksum/target/rollback verificados. Nunca se agrupa
+   con deploy cloud ni con una mutación de cuenta.
+
+### Criterio De Cierre
+
+El plan queda completo cuando:
+
+- la integración provider-free única pasa;
+- la mutación auth exacta fue observada contra el PostgreSQL destino y auditada;
+- Gate A produjo un run `12/12` bajo `USD 0.005` o quedó abortado honestamente;
+- vocabulary quedó reproducible por snapshot inmutable y cualquier mutación de
+  cuenta tiene receipt/rollback;
+- Gate B produjo un run `6/6` bajo su gate o quedó honestamente no ejecutado;
+- ninguna recipe/profile se promovió sin evidencia y gate separado;
+- deploy/release/publicación conservan receipts y rollback de sus flujos
+  canónicos;
+- el track y Working Memory afirman sólo hechos observados.
+
+### Estado Observado De La Integración Provider-Free - 2026-08-13
+
+- Contratos implementados: catálogo `4 STT + 2 postprocess`, Gate A exacto,
+  Gate B derivado de un Gate A completo, grant opaco server-owned con consumo
+  único y budget atómico, y snapshots inmutables de personal vocabulary por ID.
+- PostgreSQL local descartable: migraciones clean/incremental `6/6`, auth
+  binding focal `1/1` y grant concurrente/budget `5/5`. No se mutó el destino.
+- Tests focales: frontend/runners `44/44`, cloud routes/repositories
+  `32/32` más laboratorio auth/catalog `3/3`, Rust laboratorio/snapshots
+  `12/12`.
+- Checks: `npm run check`, `npm run build` y `cargo check` pasan. Gate A y
+  Gate B sin autorización abortan con `requestCount: 0`; no hubo spawn, red ni
+  provider request.
+- Smoke Tauri provider-free creó
+  `lab-lab-16e250319770-1786670007`: `2/2`, provider deshabilitado,
+  `maxRequests: 0`, costo `0`.
+- Siguen no observados y gated por separado: deploy cloud/database, mutación
+  auth contra PostgreSQL destino, Gate A provider-real, mutación vocabulary,
+  Gate B provider-real, promoción de perfil y release.

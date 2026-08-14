@@ -6,7 +6,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::dictation_lab::{LabExperimentDefinition, LabExperimentEstimate, LabJobSnapshot};
+use crate::{
+    dictation_lab::{LabExperimentDefinition, LabExperimentEstimate, LabJobSnapshot},
+    fixvox_cloud::request_authenticated_product_json,
+};
 
 const PROVIDER_FREE_MODE: &str = "provider-free-replay";
 const PROVIDER_REAL_MODE: &str = "provider-real";
@@ -28,7 +31,7 @@ const STT_SHORT_AUTO: &str = "transcription-quality-v1-short-auto";
 const STT_RICH_AUTO: &str = "transcription-quality-v1-rich-auto";
 const STT_SHORT_ES: &str = "transcription-quality-v1-short-es";
 const STT_RICH_ES: &str = "transcription-quality-v1-rich-es";
-fn now_iso() -> String {
+pub(crate) fn now_iso() -> String {
     let seconds = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
     let days = seconds / 86_400;
     let day_seconds = seconds % 86_400;
@@ -47,11 +50,45 @@ fn now_iso() -> String {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LabExecutionGrant {
-    pub definition_hash: String,
-    pub estimate: LabExperimentEstimate,
-    pub expires_at: String,
+    pub schema_version: u32,
+    pub grant_token: String,
 }
-fn sha256_hex(input: &[u8]) -> String {
+
+impl LabExecutionGrant {
+    fn is_opaque_valid(&self) -> bool {
+        self.schema_version == 1
+            && !self.grant_token.trim().is_empty()
+            && self.grant_token.len() <= 4096
+            && !self.grant_token.chars().any(char::is_whitespace)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LaboratoryExecutionStartData {
+    execution_id: String,
+    definition_hash: String,
+    estimate_hash: String,
+    bounds: LaboratoryExecutionBounds,
+    expires_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LaboratoryExecutionBounds {
+    max_requests: usize,
+    max_cost_usd: f64,
+}
+
+#[derive(Debug, Clone)]
+struct AuthoritativeExecution {
+    execution_id: String,
+    definition_hash: String,
+    estimate_hash: String,
+    max_requests: usize,
+    max_cost_usd: f64,
+}
+pub(crate) fn sha256_hex(input: &[u8]) -> String {
     const K: [u32; 64] = [
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
         0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -128,9 +165,100 @@ fn now_epoch() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
 }
 
+pub(crate) fn stable_json(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Array(values) => {
+            format!("[{}]", values.iter().map(stable_json).collect::<Vec<_>>().join(","))
+        }
+        serde_json::Value::Object(values) => {
+            let mut keys = values.keys().collect::<Vec<_>>();
+            keys.sort_unstable();
+            format!(
+                "{{{}}}",
+                keys.into_iter()
+                    .map(|key| format!("{}:{}", serde_json::to_string(key).unwrap_or_default(), stable_json(&values[key])))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        }
+        _ => serde_json::to_string(value).unwrap_or_default(),
+    }
+}
+
+pub(crate) fn gate_a_wire_definition() -> serde_json::Value {
+    serde_json::json!({
+        "schemaVersion": 1,
+        "id": "transcription-quality-gate-a-v1",
+        "sampleIds": REAL_SAMPLE_IDS,
+        "sttRecipeIds": REAL_STT_RECIPES,
+        "responseText": "kept",
+        "postprocessRecipeIds": [],
+        "prosodyMode": "off",
+        "vocabularyMode": "off",
+        "materializationId": "raw-provider-response-v1",
+        "estimate": {
+            "sampleCount": 3,
+            "candidateCount": 4,
+            "sttCalls": 12,
+            "postprocessCalls": 0,
+            "maxRequests": 12,
+            "maxCostUsd": 0.005
+        }
+    })
+}
+
 fn hash_definition(definition: &LabExperimentDefinition) -> String {
-    let canonical = serde_json::to_string(definition).unwrap_or_default();
-    sha256_hex(canonical.as_bytes())
+    let value = if definition.mode == PROVIDER_REAL_MODE {
+        gate_a_wire_definition()
+    } else {
+        serde_json::to_value(definition).unwrap_or(serde_json::Value::Null)
+    };
+    sha256_hex(stable_json(&value).as_bytes())
+}
+
+fn hash_estimate(estimate: &LabExperimentEstimate) -> String {
+    let value = serde_json::json!({
+        "maxRequests": estimate.max_requests,
+        "maxCostUsd": estimate.max_cost_usd,
+        "sttCalls": estimate.stt_calls,
+        "postprocessCalls": estimate.postprocess_calls
+    });
+    sha256_hex(stable_json(&value).as_bytes())
+}
+
+async fn consume_execution_grant(
+    grant: &LabExecutionGrant,
+    estimate: &LabExperimentEstimate,
+) -> Result<AuthoritativeExecution, DictationLabJobError> {
+    let response = request_authenticated_product_json(
+        reqwest::Method::POST,
+        "/product/v1/control-room/laboratory/executions",
+        Some(serde_json::json!({
+            "schemaVersion": grant.schema_version,
+            "grantToken": grant.grant_token,
+        })),
+    )
+    .await
+    .map_err(|error| DictationLabJobError { code: error.code })?;
+    let data = response.get("data").cloned().unwrap_or(serde_json::Value::Null);
+    let consumed: LaboratoryExecutionStartData = serde_json::from_value(data)
+        .map_err(|_| DictationLabJobError::new("laboratory_execution_grant_mismatch"))?;
+    if consumed.definition_hash != estimate.definition_hash
+        || consumed.estimate_hash != hash_estimate(estimate)
+        || consumed.bounds.max_requests != estimate.max_requests
+        || (consumed.bounds.max_cost_usd - estimate.max_cost_usd).abs() > f64::EPSILON
+        || consumed.execution_id.is_empty()
+        || consumed.expires_at.is_empty()
+    {
+        return Err(DictationLabJobError::new("laboratory_execution_grant_mismatch"));
+    }
+    Ok(AuthoritativeExecution {
+        execution_id: consumed.execution_id,
+        definition_hash: consumed.definition_hash,
+        estimate_hash: consumed.estimate_hash,
+        max_requests: consumed.bounds.max_requests,
+        max_cost_usd: consumed.bounds.max_cost_usd,
+    })
 }
 fn new_job_id(definition_hash: &str) -> String {
     format!("lab-{}-{}", &definition_hash[..12.min(definition_hash.len())], now_epoch())
@@ -212,7 +340,12 @@ pub async fn estimate_dictation_lab_experiment(
 }
 
 
-fn spawn_runner(mode: &str, run_id: &str, _estimate: &LabExperimentEstimate) -> Result<Arc<Mutex<Child>>, DictationLabJobError> {
+fn spawn_runner(
+    mode: &str,
+    run_id: &str,
+    estimate: &LabExperimentEstimate,
+    execution: Option<&AuthoritativeExecution>,
+) -> Result<Arc<Mutex<Child>>, DictationLabJobError> {
     let args = match mode {
         PROVIDER_FREE_MODE => vec![
             "run".to_string(),
@@ -220,13 +353,34 @@ fn spawn_runner(mode: &str, run_id: &str, _estimate: &LabExperimentEstimate) -> 
             "--run-id".to_string(),
             run_id.to_string(),
         ],
-        // Provider-real is intentionally closed until the control plane can
-        // consume an authoritative one-shot grant. Keep this guard directly
-        // beside process creation so no provider runner can be spawned.
         PROVIDER_REAL_MODE => {
-            return Err(DictationLabJobError::new(
-                "authoritative_one_shot_grant_unavailable",
-            ));
+            let execution = execution.ok_or_else(|| {
+                DictationLabJobError::new("laboratory_execution_unauthorized")
+            })?;
+            if execution.max_requests != estimate.max_requests
+                || (execution.max_cost_usd - estimate.max_cost_usd).abs() > f64::EPSILON
+            {
+                return Err(DictationLabJobError::new(
+                    "laboratory_execution_grant_mismatch",
+                ));
+            }
+            vec![
+                "run".to_string(),
+                "scripts/transcription-quality-product-baseline.ts".to_string(),
+                "--allow-provider-call".to_string(),
+                "--max-requests".to_string(),
+                execution.max_requests.to_string(),
+                "--max-cost-usd".to_string(),
+                execution.max_cost_usd.to_string(),
+                "--run-id".to_string(),
+                run_id.to_string(),
+                "--execution-id".to_string(),
+                execution.execution_id.clone(),
+                "--definition-hash".to_string(),
+                execution.definition_hash.clone(),
+                "--estimate-hash".to_string(),
+                execution.estimate_hash.clone(),
+            ]
         }
         _ => return Err(DictationLabJobError::new("runner-mode-not-allowlisted")),
     };
@@ -261,26 +415,44 @@ pub async fn start_provider_free_smoke_job() -> Result<LabJobSnapshot, Dictation
 #[tauri::command]
 pub async fn start_dictation_lab_job(
     definition: LabExperimentDefinition,
-    _execution_grant: Option<LabExecutionGrant>,
+    execution_grant: Option<LabExecutionGrant>,
 ) -> Result<LabJobSnapshot, DictationLabJobError> {
     let estimate = estimate_definition(definition.clone())?;
-    if definition.mode == PROVIDER_REAL_MODE {
-        return Err(DictationLabJobError::new(
-            "authoritative_one_shot_grant_unavailable",
-        ));
-    }
-    let mut guard = active_job().lock().map_err(|_| DictationLabJobError::new("job-state-unavailable"))?;
-    if guard.as_ref().is_some_and(|job| job.snapshot.state == "queued" || job.snapshot.state == "running") {
-        return Err(DictationLabJobError::new("active-job-exists"));
-    }
     let job_id = new_job_id(&estimate.definition_hash);
     let run_id = format!("lab-{job_id}");
     let total_units = estimate.combination_count;
     let queued = LabJobSnapshot { job_id: job_id.clone(), state: "queued".to_string(), mode: definition.mode.clone(), estimate: estimate.clone(), completed_units: 0, total_units, run_id: Some(run_id.clone()), error_code: None, created_at: now_iso(), updated_at: now_iso() };
-    *guard = Some(ActiveJob { snapshot: queued.clone(), child: None });
-    drop(guard);
+    {
+        let mut guard = active_job().lock().map_err(|_| DictationLabJobError::new("job-state-unavailable"))?;
+        if guard.as_ref().is_some_and(|job| job.snapshot.state == "queued" || job.snapshot.state == "running") {
+            return Err(DictationLabJobError::new("active-job-exists"));
+        }
+        *guard = Some(ActiveJob { snapshot: queued.clone(), child: None });
+    }
+    let authoritative_execution = if definition.mode == PROVIDER_REAL_MODE {
+        let grant = execution_grant.as_ref().filter(|grant| grant.is_opaque_valid()).ok_or_else(|| {
+            DictationLabJobError::new("laboratory_execution_unauthorized")
+        });
+        let consumed = match grant {
+            Ok(grant) => consume_execution_grant(grant, &estimate).await,
+            Err(error) => Err(error),
+        };
+        match consumed {
+            Ok(execution) => Some(execution),
+            Err(error) => {
+                if let Ok(mut guard) = active_job().lock() {
+                    if guard.as_ref().is_some_and(|job| job.snapshot.job_id == job_id) {
+                        *guard = None;
+                    }
+                }
+                return Err(error);
+            }
+        }
+    } else {
+        None
+    };
 
-    let child = match spawn_runner(&definition.mode, &run_id, &estimate) {
+    let child = match spawn_runner(&definition.mode, &run_id, &estimate, authoritative_execution.as_ref()) {
         Ok(child) => child,
         Err(error) => {
             let mut guard = active_job().lock().map_err(|_| DictationLabJobError::new("job-state-unavailable"))?;
@@ -386,9 +558,9 @@ mod tests {
     #[test]
     fn provider_real_runner_is_closed_without_spawning() {
         let estimate = estimate_definition(gate_a_definition()).expect("Gate A estimate");
-        let error = spawn_runner(PROVIDER_REAL_MODE, "redacted-run", &estimate)
+        let error = spawn_runner(PROVIDER_REAL_MODE, "redacted-run", &estimate, None)
             .expect_err("provider-real must remain closed");
-        assert_eq!(error.code, "authoritative_one_shot_grant_unavailable");
+        assert_eq!(error.code, "laboratory_execution_unauthorized");
     }
 
 
@@ -423,4 +595,12 @@ mod tests {
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
     }
+    #[test]
+    fn opaque_grants_reject_claims_and_whitespace() {
+        assert!(!LabExecutionGrant { schema_version: 1, grant_token: String::new() }.is_opaque_valid());
+        assert!(!LabExecutionGrant { schema_version: 1, grant_token: "opaque token".to_string() }.is_opaque_valid());
+        assert!(!LabExecutionGrant { schema_version: 2, grant_token: "opaque-token".to_string() }.is_opaque_valid());
+        assert!(LabExecutionGrant { schema_version: 1, grant_token: "opaque-token".to_string() }.is_opaque_valid());
+    }
+
 }

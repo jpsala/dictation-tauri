@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { handleAdminRoute } from "../src/routes/admin.ts";
+import { GATE_A_DEFINITION } from "../../fixvox-core/src/control-plane/evaluation-recipes.ts";
 
 const principalKey = `arp_${"a".repeat(64)}`;
 const engineId = "groq:selection:llama-3.3-70b-versatile";
@@ -81,5 +82,74 @@ describe("desktop laboratory authorization", () => {
     });
     const response = await handleAdminRoute(request, new URL(request.url), { ...deps(), sessions } as never);
     expect(response?.status).toBe(401);
+  });
+});
+
+describe("laboratory execution authority", () => {
+  const sessions = {
+    async authorizeBearer() {
+      return { capability: "edit" as const, recentGoogle: true, principalKey, role: "editor" as const };
+    },
+  };
+
+  test("publishes the exact catalog and issues then consumes an opaque Gate A grant", async () => {
+    let issued: Record<string, unknown> | null = null;
+    const laboratoryGrants = {
+      async issue(input: Record<string, unknown>) {
+        issued = input;
+        return { grantToken: "c".repeat(64) };
+      },
+      async consume() {
+        return {
+          ok: true as const,
+          execution: {
+            executionId: "00000000-0000-4000-8000-000000000001",
+            definitionHash: "a".repeat(64),
+            estimateHash: "b".repeat(64),
+            maxRequests: 12,
+            maxCostMicrousd: 5000,
+            expiresAt: new Date("2026-08-13T23:59:00.000Z"),
+          },
+        };
+      },
+    };
+    const routeDeps = { ...deps(), sessions, laboratoryGrants } as never;
+    const catalogRequest = new Request("https://control-room.test/product/v1/control-room/laboratory/catalog", {
+      headers: { authorization: "Bearer desktop-session", "x-device-id": "device-lab" },
+    });
+    const catalogResponse = await handleAdminRoute(catalogRequest, new URL(catalogRequest.url), routeDeps);
+    expect(catalogResponse?.status).toBe(200);
+    expect(await catalogResponse?.json()).toMatchObject({
+      data: {
+        sttRecipes: [{}, {}, {}, {}],
+        postprocessRecipes: [{}, {}],
+        providerAuthorization: { status: "available", reasonCode: null },
+      },
+    });
+
+    const grantRequest = new Request("https://control-room.test/product/v1/control-room/laboratory/execution-grants", {
+      method: "POST",
+      headers: { authorization: "Bearer desktop-session", "x-device-id": "device-lab", "content-type": "application/json" },
+      body: JSON.stringify({ schemaVersion: 1, kind: "gate-a", definition: GATE_A_DEFINITION }),
+    });
+    const grantResponse = await handleAdminRoute(grantRequest, new URL(grantRequest.url), routeDeps);
+    expect(grantResponse?.status).toBe(201);
+    expect(await grantResponse?.json()).toEqual({ ok: true, data: { grantToken: "c".repeat(64) } });
+    expect(issued).toMatchObject({ principalKey, deviceId: "device-lab", maxRequests: 12, maxCostMicrousd: 5000 });
+
+    const startRequest = new Request("https://control-room.test/product/v1/control-room/laboratory/executions", {
+      method: "POST",
+      headers: { authorization: "Bearer desktop-session", "x-device-id": "device-lab", "content-type": "application/json" },
+      body: JSON.stringify({ schemaVersion: 1, grantToken: "c".repeat(64) }),
+    });
+    const startResponse = await handleAdminRoute(startRequest, new URL(startRequest.url), routeDeps);
+    expect(startResponse?.status).toBe(201);
+    expect(await startResponse?.json()).toMatchObject({
+      ok: true,
+      data: {
+        executionId: "00000000-0000-4000-8000-000000000001",
+        bounds: { maxRequests: 12, maxCostUsd: 0.005 },
+      },
+    });
   });
 });

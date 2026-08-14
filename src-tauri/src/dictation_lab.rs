@@ -2,7 +2,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{collections::{hash_map::DefaultHasher, BTreeSet}, fs, hash::{Hash, Hasher}, path::{Path, PathBuf}, sync::{LazyLock, Mutex}, time::{SystemTime, UNIX_EPOCH}};
 
-use crate::fixvox_cloud::{request_authenticated_product_json, FixvoxCloudError};
+use crate::{
+    dictation_lab_jobs::{
+        estimate_definition, gate_a_wire_definition, now_iso, sha256_hex, stable_json,
+    },
+    fixvox_cloud::{
+        get_fixvox_personal_vocabulary_snapshot, request_authenticated_product_json,
+        FixvoxCloudError,
+    },
+};
 
 const CONTROL_ROOM_PREFIX: &str = "/product/v1/control-room";
 const ARTIFACT_RELATIVE_ROOT: &str = "artifacts/transcription-quality";
@@ -15,6 +23,29 @@ const MAX_PRIVATE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_AUDIO_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_ADJUDICATION_MUTATIONS: usize = 256;
 static ADJUDICATION_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+const VOCABULARY_SNAPSHOT_RELATIVE_ROOT: &str =
+    "artifacts/transcription-quality/vocabulary-snapshots";
+const MAX_VOCABULARY_SNAPSHOT_BYTES: u64 = 1024 * 1024;
+static VOCABULARY_SNAPSHOT_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LaboratoryVocabularySnapshotIdentity {
+    pub snapshot_id: String,
+    pub revision: String,
+    pub sha256: String,
+    pub source: String,
+    pub scope: String,
+    pub rule_count: usize,
+    pub captured_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LaboratoryVocabularySnapshotIndex {
+    schema_version: u8,
+    snapshots: Vec<LaboratoryVocabularySnapshotIdentity>,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -113,7 +144,7 @@ pub struct LaboratorySnapshotPrerequisite {
 #[serde(rename_all = "camelCase")]
 pub struct LaboratoryProviderAuthorization {
     pub status: String,
-    pub reason_code: String,
+    pub reason_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -133,39 +164,9 @@ pub struct LaboratoryCatalog {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LaboratoryExecutionGrantRequest {
+pub struct LaboratoryOpaqueGrant {
     pub schema_version: u8,
-    pub definition_hash: String,
-    pub estimate_hash: String,
-    pub bounds: LaboratoryExecutionGrantBounds,
-    pub confirmation: LaboratoryExecutionGrantConfirmation,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LaboratoryExecutionGrantBounds {
-    pub max_requests: usize,
-    pub max_cost_usd: f64,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LaboratoryExecutionGrantConfirmation {
-    pub accepted: bool,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LaboratoryExecutionGrantAvailability {
-    pub status: String,
-    pub reason_code: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LaboratoryExecutionGrantResult {
-    pub ok: bool,
-    pub availability: LaboratoryExecutionGrantAvailability,
+    pub grant_token: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -266,11 +267,16 @@ fn laboratory_catalog_payload(value: Value) -> Result<LaboratoryCatalog, FixvoxC
         .iter()
         .map(|entry| entry.id.as_str())
         .collect();
+    let provider_authorization_valid = match catalog.provider_authorization.status.as_str() {
+        "available" => catalog.provider_authorization.reason_code.is_none(),
+        "unavailable" => catalog.provider_authorization.reason_code.as_deref()
+            == Some(LABORATORY_PROVIDER_AUTH_UNAVAILABLE),
+        _ => false,
+    };
     if catalog.schema_version != 1
         || stt_ids.as_slice() != LABORATORY_STT_RECIPE_IDS
         || postprocess_ids.as_slice() != LABORATORY_POSTPROCESS_RECIPE_IDS
-        || catalog.provider_authorization.status != "unavailable"
-        || catalog.provider_authorization.reason_code != LABORATORY_PROVIDER_AUTH_UNAVAILABLE
+        || !provider_authorization_valid
     {
         return Err(lab_error(
             "DICTATION_LAB_CATALOG_INVALID",
@@ -293,34 +299,34 @@ pub async fn get_dictation_lab_catalog() -> Result<LaboratoryCatalog, FixvoxClou
 
 #[tauri::command]
 pub async fn request_dictation_lab_execution_grant(
-    request: LaboratoryExecutionGrantRequest,
-) -> Result<LaboratoryExecutionGrantResult, FixvoxCloudError> {
-    let body = serde_json::to_value(request)
-        .map_err(|_| lab_error("DICTATION_LAB_GRANT_INVALID", "The execution grant request is invalid."))?;
-    match request_authenticated_product_json(
+    definition: LabExperimentDefinition,
+) -> Result<LaboratoryOpaqueGrant, FixvoxCloudError> {
+    let estimate = estimate_definition(definition)
+        .map_err(|error| lab_error(&error.code, "The execution definition is unavailable."))?;
+    if !estimate.provider_required || estimate.max_requests != 12 || estimate.max_cost_usd != 0.005 {
+        return Err(lab_error(
+            "laboratory_execution_definition_mismatch",
+            "The execution definition does not match Gate A.",
+        ));
+    }
+    let value = request_authenticated_product_json(
         reqwest::Method::POST,
         "/product/v1/control-room/laboratory/execution-grants",
-        Some(body),
+        Some(serde_json::json!({
+            "schemaVersion": 1,
+            "kind": "gate-a",
+            "definition": gate_a_wire_definition(),
+        })),
     )
-    .await
-    {
-        Ok(value) => serde_json::from_value(value).map_err(|_| {
-            lab_error(
-                "DICTATION_LAB_GRANT_INVALID",
-                "The execution grant response is invalid.",
-            )
-        }),
-        Err(error) if error.code == LABORATORY_PROVIDER_AUTH_UNAVAILABLE => {
-            Ok(LaboratoryExecutionGrantResult {
-                ok: false,
-                availability: LaboratoryExecutionGrantAvailability {
-                    status: "unavailable".to_string(),
-                    reason_code: LABORATORY_PROVIDER_AUTH_UNAVAILABLE.to_string(),
-                },
-            })
-        }
-        Err(error) => Err(error),
-    }
+    .await?;
+    let grant_token = value
+        .get("data")
+        .and_then(|data| data.get("grantToken"))
+        .and_then(Value::as_str)
+        .filter(|token| token.len() == 64 && token.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()))
+        .ok_or_else(|| lab_error("DICTATION_LAB_GRANT_INVALID", "The execution grant response is invalid."))?
+        .to_string();
+    Ok(LaboratoryOpaqueGrant { schema_version: 1, grant_token })
 }
 
 
@@ -331,6 +337,242 @@ fn ensure_under(root: &Path, path: &Path) -> Result<PathBuf, FixvoxCloudError> {
 fn read_bounded(root: &Path, path: &Path, max_bytes: u64) -> Result<String, FixvoxCloudError> { let safe = ensure_under(root, path)?; let meta = fs::metadata(&safe).map_err(|_| lab_error("DICTATION_LAB_UNAVAILABLE", "The requested artifact is unavailable."))?; if !meta.is_file() || meta.len() > max_bytes { return Err(lab_error("DICTATION_LAB_LIMIT", "The requested artifact exceeds the laboratory read limit.")); } fs::read_to_string(safe).map_err(|_| lab_error("DICTATION_LAB_UNAVAILABLE", "The requested artifact is unavailable.")) }
 fn read_json(root: &Path, path: &Path) -> Result<Value, FixvoxCloudError> { serde_json::from_str(&read_bounded(root, path, MAX_JSON_BYTES)?).map_err(|_| lab_error("DICTATION_LAB_INVALID_ARTIFACT", "The laboratory artifact is not valid JSON.")) }
 fn stable_id(value: &str) -> bool { !value.is_empty() && value.len() <= 160 && value.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-')) }
+
+fn vocabulary_snapshot_paths(root: &Path) -> (PathBuf, PathBuf) {
+    let snapshot_root = root.join(VOCABULARY_SNAPSHOT_RELATIVE_ROOT);
+    (snapshot_root.join("index.json"), snapshot_root.join("private"))
+}
+
+fn read_vocabulary_snapshot_index(
+    root: &Path,
+) -> Result<LaboratoryVocabularySnapshotIndex, FixvoxCloudError> {
+    let (index_path, _) = vocabulary_snapshot_paths(root);
+    if !index_path.exists() {
+        return Ok(LaboratoryVocabularySnapshotIndex {
+            schema_version: 1,
+            snapshots: Vec::new(),
+        });
+    }
+    let index: LaboratoryVocabularySnapshotIndex = serde_json::from_str(&read_bounded(
+        root,
+        &index_path,
+        MAX_VOCABULARY_SNAPSHOT_BYTES,
+    )?)
+    .map_err(|_| lab_error("snapshot_stale", "The vocabulary snapshot index is invalid."))?;
+    if index.schema_version != 1 || index.snapshots.len() > MAX_RUNS {
+        return Err(lab_error("snapshot_stale", "The vocabulary snapshot index is invalid."));
+    }
+    Ok(index)
+}
+
+fn write_atomic_json(path: &Path, value: &Value) -> Result<(), FixvoxCloudError> {
+    let parent = path.parent().ok_or_else(|| {
+        lab_error("snapshot_stale", "The vocabulary snapshot destination is invalid.")
+    })?;
+    fs::create_dir_all(parent).map_err(|_| {
+        lab_error("snapshot_stale", "The vocabulary snapshot destination is unavailable.")
+    })?;
+    let temporary = path.with_extension(format!("tmp-{}", std::process::id()));
+    let encoded = serde_json::to_vec_pretty(value).map_err(|_| {
+        lab_error("snapshot_stale", "The vocabulary snapshot payload is invalid.")
+    })?;
+    if encoded.len() as u64 > MAX_VOCABULARY_SNAPSHOT_BYTES {
+        return Err(lab_error(
+            "snapshot_read_out_of_bounds",
+            "The vocabulary snapshot exceeds the private read limit.",
+        ));
+    }
+    fs::write(&temporary, encoded).map_err(|_| {
+        lab_error("snapshot_stale", "The vocabulary snapshot could not be written.")
+    })?;
+    if !path.exists() {
+        return fs::rename(&temporary, path).map_err(|_| {
+            let _ = fs::remove_file(&temporary);
+            lab_error("snapshot_stale", "The vocabulary snapshot could not be committed.")
+        });
+    }
+    let backup = path.with_extension(format!("bak-{}", std::process::id()));
+    let _ = fs::remove_file(&backup);
+    fs::rename(path, &backup).map_err(|_| {
+        let _ = fs::remove_file(&temporary);
+        lab_error("snapshot_stale", "The vocabulary snapshot could not be rotated.")
+    })?;
+    if fs::rename(&temporary, path).is_err() {
+        let _ = fs::rename(&backup, path);
+        let _ = fs::remove_file(&temporary);
+        return Err(lab_error("snapshot_stale", "The vocabulary snapshot could not be committed."));
+    }
+    let _ = fs::remove_file(backup);
+    Ok(())
+}
+
+fn snapshot_identity_from_payload(
+    payload: &Value,
+) -> Result<LaboratoryVocabularySnapshotIdentity, FixvoxCloudError> {
+    let identity: LaboratoryVocabularySnapshotIdentity = serde_json::from_value(
+        payload.get("identity").cloned().unwrap_or(Value::Null),
+    )
+    .map_err(|_| lab_error("snapshot_stale", "The vocabulary snapshot identity is invalid."))?;
+    let snapshot = payload.get("snapshot").ok_or_else(|| {
+        lab_error("snapshot_stale", "The vocabulary snapshot payload is missing.")
+    })?;
+    let actual_hash = sha256_hex(stable_json(snapshot).as_bytes());
+    let revision = snapshot.get("revision").and_then(Value::as_str).unwrap_or("");
+    let rule_count = snapshot
+        .get("rules")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(usize::MAX);
+    if identity.sha256 != actual_hash
+        || identity.snapshot_id != format!("pv-snapshot-{}", &actual_hash[..16])
+        || identity.revision != revision
+        || identity.rule_count != rule_count
+        || identity.source != "personal-vocabulary"
+        || identity.scope != "redacted"
+    {
+        return Err(lab_error("snapshot_stale", "The vocabulary snapshot is stale."));
+    }
+    Ok(identity)
+}
+
+fn read_vocabulary_snapshot_payload(
+    root: &Path,
+    snapshot_id: &str,
+    kind: &str,
+) -> Result<Value, FixvoxCloudError> {
+    if !matches!(kind, "vocabulary-replay") {
+        return Err(lab_error(
+            "snapshot_kind_not_allowlisted",
+            "The vocabulary snapshot read kind is unavailable.",
+        ));
+    }
+    if !snapshot_id.starts_with("pv-snapshot-")
+        || snapshot_id.len() != "pv-snapshot-".len() + 16
+        || !snapshot_id["pv-snapshot-".len()..]
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        return Err(lab_error("snapshot_not_found", "The vocabulary snapshot is not indexed."));
+    }
+    let index = read_vocabulary_snapshot_index(root)?;
+    if !index.snapshots.iter().any(|identity| identity.snapshot_id == snapshot_id) {
+        return Err(lab_error("snapshot_not_found", "The vocabulary snapshot is not indexed."));
+    }
+    let (_, private_root) = vocabulary_snapshot_paths(root);
+    let payload_path = private_root.join(format!("{snapshot_id}.json"));
+    let payload: Value = serde_json::from_str(&read_bounded(
+        root,
+        &payload_path,
+        MAX_VOCABULARY_SNAPSHOT_BYTES,
+    )?)
+    .map_err(|_| lab_error("snapshot_stale", "The vocabulary snapshot payload is invalid."))?;
+    let identity = snapshot_identity_from_payload(&payload)?;
+    if identity.snapshot_id != snapshot_id {
+        return Err(lab_error("snapshot_stale", "The vocabulary snapshot identity changed."));
+    }
+    Ok(payload)
+}
+
+pub(crate) fn read_dictation_lab_vocabulary_snapshot(
+    snapshot_id: &str,
+    kind: &str,
+) -> Result<Value, FixvoxCloudError> {
+    let root = approved_root()?;
+    let payload = read_vocabulary_snapshot_payload(&root, snapshot_id, kind)?;
+    payload.get("snapshot").cloned().ok_or_else(|| {
+        lab_error("snapshot_stale", "The vocabulary snapshot payload is missing.")
+    })
+}
+
+#[tauri::command]
+pub fn capture_dictation_lab_vocabulary_snapshot(
+) -> Result<LaboratoryVocabularySnapshotIdentity, FixvoxCloudError> {
+    let _guard = VOCABULARY_SNAPSHOT_LOCK.lock().map_err(|_| {
+        lab_error("snapshot_stale", "The vocabulary snapshot store is unavailable.")
+    })?;
+    let root = approved_root()?;
+    let snapshot = get_fixvox_personal_vocabulary_snapshot()?;
+    let snapshot_value = serde_json::to_value(snapshot).map_err(|_| {
+        lab_error("snapshot_stale", "The personal vocabulary snapshot is invalid.")
+    })?;
+    let revision = snapshot_value
+        .get("revision")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| lab_error("snapshot_stale", "The vocabulary revision is invalid."))?
+        .to_string();
+    let rules = snapshot_value
+        .get("rules")
+        .and_then(Value::as_array)
+        .ok_or_else(|| lab_error("snapshot_stale", "The vocabulary rules are invalid."))?;
+    let sha256 = sha256_hex(stable_json(&snapshot_value).as_bytes());
+    let snapshot_id = format!("pv-snapshot-{}", &sha256[..16]);
+    let mut index = read_vocabulary_snapshot_index(&root)?;
+    if let Some(existing) = index
+        .snapshots
+        .iter()
+        .find(|identity| identity.snapshot_id == snapshot_id)
+        .cloned()
+    {
+        let payload = read_vocabulary_snapshot_payload(&root, &snapshot_id, "vocabulary-replay")?;
+        let stored = snapshot_identity_from_payload(&payload)?;
+        return if stored == existing {
+            Ok(existing)
+        } else {
+            Err(lab_error("snapshot_stale", "The vocabulary snapshot identity changed."))
+        };
+    }
+    let identity = LaboratoryVocabularySnapshotIdentity {
+        snapshot_id: snapshot_id.clone(),
+        revision,
+        sha256,
+        source: "personal-vocabulary".to_string(),
+        scope: "redacted".to_string(),
+        rule_count: rules.len(),
+        captured_at: now_iso(),
+    };
+    let (index_path, private_root) = vocabulary_snapshot_paths(&root);
+    let private_path = private_root.join(format!("{snapshot_id}.json"));
+    if private_path.exists() {
+        return Err(lab_error(
+            "snapshot_stale",
+            "An unindexed vocabulary snapshot already exists.",
+        ));
+    }
+    write_atomic_json(
+        &private_path,
+        &serde_json::json!({
+            "schemaVersion": 1,
+            "identity": identity,
+            "snapshot": snapshot_value,
+        }),
+    )?;
+    index.snapshots.push(identity.clone());
+    index.snapshots.sort_by(|left, right| left.snapshot_id.cmp(&right.snapshot_id));
+    write_atomic_json(
+        &index_path,
+        &serde_json::to_value(index).map_err(|_| {
+            lab_error("snapshot_stale", "The vocabulary snapshot index is invalid.")
+        })?,
+    )?;
+    Ok(identity)
+}
+
+#[tauri::command]
+pub fn list_dictation_lab_vocabulary_snapshots(
+) -> Result<Vec<LaboratoryVocabularySnapshotIdentity>, FixvoxCloudError> {
+    let root = approved_root()?;
+    Ok(read_vocabulary_snapshot_index(&root)?.snapshots)
+}
+
+#[tauri::command]
+pub fn resolve_dictation_lab_vocabulary_snapshot(
+    snapshot_id: String,
+) -> Result<LaboratoryVocabularySnapshotIdentity, FixvoxCloudError> {
+    let root = approved_root()?;
+    let payload = read_vocabulary_snapshot_payload(&root, &snapshot_id, "vocabulary-replay")?;
+    snapshot_identity_from_payload(&payload)
+}
 fn string_at<'a>(value: &'a Value, path: &[&str]) -> Option<&'a str> { let mut current = value; for key in path { current = current.get(*key)?; } current.as_str() }
 fn number_at(value: &Value, path: &[&str]) -> Option<f64> { let mut current = value; for key in path { current = current.get(*key)?; } current.as_f64().filter(|n| n.is_finite()) }
 fn array_strings(value: &Value, key: &str) -> Vec<String> { value.get(key).and_then(Value::as_array).map(|xs| xs.iter().filter_map(Value::as_str).take(128).map(ToOwned::to_owned).collect()).unwrap_or_default() }
@@ -403,9 +645,9 @@ fn find_result<'a>(run: &'a IndexedRun, sample: &str, candidate: &str) -> Option
 fn corpus_sample(root: &Path, id: &str) -> Option<Value> { corpus_value(root).ok()?.get("samples")?.as_array()?.iter().find(|x| string_at(x, &["id"]) == Some(id)).cloned() }
 fn indexed_private_path(root: &Path, run: &IndexedRun, result: Option<&Value>, sample: &str, candidate: &str, kind: &str) -> Option<PathBuf> { let key = match kind { "raw" => "rawTranscriptRef", "final" => "finalTextRef", "gold" => "goldRef", _ => return None }; if let Some(r) = result.and_then(|x| x.get("text")).and_then(|x| x.get(key)).and_then(Value::as_str) { let p = root.join(r); if ensure_under(root, &p).is_ok() && p.is_file() { return Some(p); } } let base = run.root.join("private").join(sample); let names = match kind { "raw" => ["raw.txt"].as_slice(), "final" => ["final.txt"].as_slice(), "gold" => ["gold.txt"].as_slice(), _ => &[] }; let mut dirs = vec![base.clone(), base.join(candidate)]; if let Ok(xs) = fs::read_dir(&base) { for e in xs.take(MAX_DIRECTORY_ENTRIES).filter_map(Result::ok) { if e.file_type().map(|t| t.is_dir()).unwrap_or(false) { dirs.push(e.path()); } } } for d in dirs { for name in names { let p = d.join(name); if ensure_under(root, &p).is_ok() && p.is_file() { return Some(p); } } } None }
 fn sample_summary(root: &Path, run: &IndexedRun, sample: &str, candidate: &str) -> Result<LabSampleSummary, FixvoxCloudError> { let result = find_result(run, sample, candidate); if result.is_none() && !run.results.is_empty() { return Err(lab_error("DICTATION_LAB_ID_NOT_INDEXED", "The requested sample candidate is not indexed.")); } let corpus = corpus_sample(root, sample).unwrap_or_else(|| serde_json::json!({})); let audio = corpus.get("audioArtifactPath").and_then(Value::as_str).map(|x| root.join(x)).filter(|p| ensure_under(root, p).is_ok() && p.is_file()).or_else(|| { let p = root.join(ARTIFACT_RELATIVE_ROOT).join("corpus/private/audio").join(format!("{sample}.wav")); (ensure_under(root, &p).is_ok() && p.is_file()).then_some(p) }).is_some(); let raw = indexed_private_path(root, run, result, sample, candidate, "raw").is_some(); let final_text = indexed_private_path(root, run, result, sample, candidate, "final").is_some(); let gold = indexed_private_path(root, run, result, sample, candidate, "gold").is_some(); let missing = [("audio",audio),("raw",raw),("final",final_text),("gold",gold)].into_iter().filter_map(|(x,ok)| (!ok).then_some(x.to_string())).collect(); let scores = result.and_then(|r| r.get("scores")); let fallback = result.and_then(|r| string_at(r, &["rawSource", "kind"])); Ok(LabSampleSummary { run_id: run.run_id.clone(), sample_id: sample.to_string(), candidate_id: candidate.to_string(), language: string_at(&corpus, &["language"]).unwrap_or("unknown").to_string(), categories: array_strings(&corpus, "categories"), difficulty: string_at(&corpus, &["difficulty"]).unwrap_or("unknown").to_string(), sensitivity: string_at(&corpus, &["sensitivity"]).unwrap_or("unknown").to_string(), gold_status: string_at(&corpus, &["goldStatus"]).unwrap_or("unknown").to_string(), audio: artifact_ref(format!("audio:{}", sample), "audio", audio, "audio"), raw: artifact_ref(format!("private-text:{}:{}:{}:raw", run.run_id, sample, candidate), "private-text", raw, "raw"), final_text: artifact_ref(format!("private-text:{}:{}:{}:final", run.run_id, sample, candidate), "private-text", final_text, "final"), gold: artifact_ref(format!("private-text:{}:{}:{}:gold", run.run_id, sample, candidate), "private-text", gold, "gold"), scores: SampleScores { wer: scores.and_then(|v| v.get("wer")).and_then(Value::as_f64), cer: scores.and_then(|v| v.get("cer")).and_then(Value::as_f64), entities: scores.and_then(|v| v.get("entities")).and_then(|v| v.get("exactMatchRate")).and_then(Value::as_f64), structure: scores.and_then(|v| v.get("structure")).and_then(|v| v.get("lists")).and_then(Value::as_f64), semantic_safety: scores.and_then(|v| v.get("semanticSafety")).and_then(|v| v.get("instructionFollowing")).and_then(Value::as_f64) }, fallback: FallbackSummary { used: fallback.map(|x| x == "reused"), reasons: result.and_then(|r| r.get("stages")).and_then(|s| s.get("materialization")).map(|m| array_strings(m, "reasons")).unwrap_or_default() }, latency_ms: result.and_then(|r| number_at(r, &["timingsMs", "total"])), cost_usd: result.and_then(|r| number_at(r, &["costUsd", "total"])), availability: availability(missing) }) }
-
 #[tauri::command]
 pub async fn list_dictation_lab_artifacts() -> Result<LabArtifactIndex, FixvoxCloudError> { let root = approved_root()?; let runs = load_runs(&root)?; let corpus = corpus_summary(&root); Ok(LabArtifactIndex { schema_version: 1, root_id: "transcription-quality".to_string(), generated_at: iso_now(), runs: runs.iter().map(run_summary).collect(), corpora: corpus.clone().into_iter().collect(), availability: availability(if corpus.is_some() { Vec::new() } else { vec!["corpus/manifest.json".to_string()] }) }) }
+
 #[tauri::command]
 pub async fn load_dictation_lab_run(run_id: String) -> Result<Value, FixvoxCloudError> {
     if !stable_id(&run_id) { return Err(lab_error("DICTATION_LAB_ID_INVALID", "The laboratory run identifier is invalid.")); }
@@ -575,5 +817,87 @@ mod tests {
             let error = ensure_under(&root, parent).expect_err("must reject parent");
             assert_eq!(error.code, "DICTATION_LAB_PATH_REJECTED");
         }
+    }
+
+    #[test]
+    fn vocabulary_snapshot_identity_is_content_addressed_and_reproducible() {
+        let snapshot = serde_json::json!({"revision":"revision-1","rules":[],"scope":"account"});
+        let sha256 = sha256_hex(stable_json(&snapshot).as_bytes());
+        let payload = serde_json::json!({
+            "schemaVersion": 1,
+            "identity": {
+                "snapshotId": format!("pv-snapshot-{}", &sha256[..16]),
+                "revision": "revision-1",
+                "sha256": sha256,
+                "scope": "redacted",
+                "source": "personal-vocabulary",
+                "ruleCount": 0,
+                "capturedAt": "unix:0"
+            },
+            "snapshot": snapshot
+        });
+        let first = snapshot_identity_from_payload(&payload).expect("valid identity");
+        let second = snapshot_identity_from_payload(&payload).expect("same identity");
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn vocabulary_snapshot_reads_reject_unknown_traversal_kind_and_stale_payloads() {
+        let root = std::env::temp_dir().join(format!(
+            "dictation-lab-snapshot-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).expect("clock").as_nanos()
+        ));
+        fs::create_dir_all(&root).expect("create root");
+        let root = fs::canonicalize(root).expect("canonical root");
+        let snapshot = serde_json::json!({"revision":"revision-1","rules":[]});
+        let sha256 = sha256_hex(stable_json(&snapshot).as_bytes());
+        let identity = LaboratoryVocabularySnapshotIdentity {
+            snapshot_id: format!("pv-snapshot-{}", &sha256[..16]),
+            revision: "revision-1".to_string(),
+            sha256,
+            source: "personal-vocabulary".to_string(),
+            scope: "redacted".to_string(),
+            rule_count: 0,
+            captured_at: "unix:0".to_string(),
+        };
+        let (index_path, private_root) = vocabulary_snapshot_paths(&root);
+        let index = LaboratoryVocabularySnapshotIndex {
+            schema_version: 1,
+            snapshots: vec![identity.clone()],
+        };
+        write_atomic_json(&index_path, &serde_json::to_value(&index).expect("index")).expect("write index");
+        write_atomic_json(
+            &private_root.join(format!("{}.json", identity.snapshot_id)),
+            &serde_json::json!({"schemaVersion":1,"identity":identity,"snapshot":snapshot}),
+        )
+        .expect("write payload");
+
+        assert_eq!(
+            read_vocabulary_snapshot_payload(&root, "../private", "vocabulary-replay")
+                .expect_err("traversal must reject")
+                .code,
+            "snapshot_not_found"
+        );
+        assert_eq!(
+            read_vocabulary_snapshot_payload(&root, &index.snapshots[0].snapshot_id, "audio")
+                .expect_err("kind must reject")
+                .code,
+            "snapshot_kind_not_allowlisted"
+        );
+
+        let private_path = private_root.join(format!("{}.json", index.snapshots[0].snapshot_id));
+        write_atomic_json(
+            &private_path,
+            &serde_json::json!({"schemaVersion":1,"identity":index.snapshots[0],"snapshot":{"revision":"revision-2","rules":[]}}),
+        )
+        .expect("tamper payload");
+        assert_eq!(
+            read_vocabulary_snapshot_payload(&root, &index.snapshots[0].snapshot_id, "vocabulary-replay")
+                .expect_err("stale payload must reject")
+                .code,
+            "snapshot_stale"
+        );
+        let _ = fs::remove_dir_all(root);
     }
 }
