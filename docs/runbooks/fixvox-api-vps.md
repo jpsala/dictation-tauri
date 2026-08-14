@@ -6,7 +6,7 @@ track: docs/tracks/fixvox-self-hosted-checkpoint-f-vps-loopback-plan.md
 
 # Runbook — Fixvox API VPS Loopback
 
-The permanent direct-runtime cutover routes `auth-fixvox.jpsala.dev` through the dedicated Cloudflare Tunnel to the loopback-only VPS service. Live verification on 2026-08-14 observed runtime release `bc1a3e5cadba1903`, PostgreSQL schema 9 with exact migrations `0001..0009`, and logical `authorityMode=cloudflare-authority`. Release `650b4c8f6ed00a2a` is the immediate schema-9 code rollback. Release `11bf651ce5d983b6` remains preserved but expects schema 8 and is not a direct code rollback while PostgreSQL remains at schema 9. The Worker Custom Domain is absent and it is not the hot path.
+The permanent direct-runtime cutover routes `auth-fixvox.jpsala.dev` through the dedicated Cloudflare Tunnel to the loopback-only VPS service. Live verification on 2026-08-14 observed runtime release `0434f2cf3d0a6607`, PostgreSQL schema 9 with exact migrations `0001..0009`, and logical `authorityMode=cloudflare-authority`. Release `bc1a3e5cadba1903` is the immediate schema-9 code rollback; `650b4c8f6ed00a2a` remains a preserved secondary schema-9 release. Release `11bf651ce5d983b6` remains preserved but expects schema 8 and is not a direct code rollback while PostgreSQL remains at schema 9. The Worker Custom Domain is absent and it is not the hot path.
 
 The operational mirror is `C:/dev/infra/docs/runbooks/fixvox-api-vps.md`. If either runbook disagrees with the other or with the selected track, stop before execution.
 
@@ -18,7 +18,7 @@ The operational mirror is `C:/dev/infra/docs/runbooks/fixvox-api-vps.md`. If eit
 | API bind | `127.0.0.1:8790` only; `8787` remains Admin BFF |
 | Runtime | `/home/jpsal/.bun/bin/bun` |
 | Releases | `/home/jpsal/opt/fixvox-api/releases/<release-id>` + atomic `current` symlink |
-| Current / immediate schema-9 rollback | `bc1a3e5cadba1903` / `650b4c8f6ed00a2a` |
+| Current / immediate schema-9 rollback | `0434f2cf3d0a6607` / `bc1a3e5cadba1903`; secondary preserved `650b4c8f6ed00a2a` |
 | Preserved schema-8 code release | `11bf651ce5d983b6`; not directly runnable against schema 9 |
 | Staging | `/home/jpsal/staging/fixvox-api` |
 | Protected config | `/home/jpsal/.config/dictation-tauri/fixvox-api.env`, mode `0600` |
@@ -441,11 +441,51 @@ unchanged JSONB strings.
 
 The separately approved Gate A consumed one opaque grant and used the atomic
 ledger to `12/12` requests and `4992/5000` microusd. Grant issue/consume audits
-are JSONB objects. Current grant counts are zero open and one consumed. Gate B
-must not be issued: the Gate A execution remains `active` with
-`completed_request_count=null` and `canonical_raw_refs=[]`; the deployed
-runtime has no server-owned completion transition. Never repair this state with
-manual SQL.
+are JSONB objects. At that checkpoint Gate A remained `active` because the
+deployed runtime lacked a server-owned completion transition. That historical
+block was not repaired with SQL; it was resolved by the later code release and
+API completion described below.
+
+## Laboratory Lifecycle Code Release And Terminal Gates — 2026-08-14
+
+The closure implementation was committed as
+`b5e9265fc9e9eb1c71711e0cf32dc67d3db3fbb3`; canonical operations followed
+in `981f233`. The final closure pins the EOL policy that reproduces the deployed
+archive byte for byte. The first candidate `8fe5e28e…`
+failed closed before install or promotion because its Windows checkout changed
+immutable migration bytes `0001..0006`. Production remained on
+`bc1a3e5cadba1903`, active with `NRestarts=0`.
+
+The corrected byte-compatible archive deployed once:
+
+- release `0434f2cf3d0a6607`;
+- archive SHA-256
+  `0434f2cf3d0a66075e21fb1732db4cd0b3492d51918b052dbeb51e42783831d5`;
+- 71 allowlisted runtime files and exact production checksums `0001..0009`;
+- prior current `bc1a3e5cadba1903` as the exact automatic rollback;
+- one promotion restart, no rollback attempt.
+
+Independent verification observed current `0434f2cf3d0a6607`, service
+active/enabled, `NRestarts=0`, one listener at `127.0.0.1:8790`, local/public
+health and readiness `200`, schema `9`, exact marker/checksum and
+`cloudflare-authority`. There was no migration, backfill, manual SQL, env, DNS,
+tunnel, role, profile or vocabulary mutation.
+
+The separately approved Gate A completion performed one strict API CAS:
+`active → completed`, `12/12`, `4992/5000` microusd and three server-minted
+canonical refs. Audit `sequence=14` has bounded JSONB-object metadata. No
+provider request, retry, postprocess or delivery occurred during completion.
+
+The first approved Gate B setup consumed then aborted one execution before
+spawn because the local verifier retained `candidateId` while the server
+correctly projects source refs to `{sampleId, rawRef}`. Its terminal ledger is
+`0/6`, `0/5000`, with zero provider calls. A new explicit packet authorized the
+replacement execution. It completed exactly six sequential Groq
+`openai/gpt-oss-120b` postprocess requests, without retry, STT, audio upload,
+delivery or vocabulary; ledger `4998/5000`, audit `sequence=20` as JSONB object,
+and no active Gate B execution. Provider-free stored-output verification
+reported six accepted semantic-safety decisions, zero omissions and zero
+additions. This is evidence, not an automatic profile promotion.
 
 ## Stop Conditions
 

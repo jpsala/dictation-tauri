@@ -1,8 +1,8 @@
 *.sh text eol=lf
-cloud/fixvox-api/package.json text eol=lf
-cloud/fixvox-api/src/** text eol=lf
+cloud/fixvox-api/package.json text eol=crlf
+cloud/fixvox-api/src/** text eol=crlf
 cloud/fixvox-api/migrations/*.sql text eol=lf
-cloud/fixvox-core/src/** text eol=lf
+cloud/fixvox-core/src/** text eol=crlf
 cloud/fixvox-api/migrations/0007_*.sql text eol=crlf
 cloud/fixvox-api/migrations/0008_*.sql text eol=crlf
 cloud/fixvox-api/migrations/0009_*.sql text eol=crlf
