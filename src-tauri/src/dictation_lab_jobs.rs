@@ -16,12 +16,15 @@ use crate::{
 const PROVIDER_FREE_MODE: &str = "provider-free-replay";
 const PROVIDER_REAL_MODE: &str = "provider-real";
 const PROVIDER_REAL_GATE_B_MODE: &str = "provider-real-gate-b";
+const PROVIDER_REAL_GATE_B_V2_MODE: &str = "provider-real-gate-b-v2";
 const PROVIDER_FREE_CORPUS: &str = "synthetic-audio-stt";
 const PROVIDER_FREE_STT_RECIPE: &str = "provider-free-manifest-replay";
 const PROVIDER_FREE_SAMPLE_IDS: &[&str] = &["en-clean-note", "es-short-reminder"];
 const MATERIALIZATION_IDENTITY: &str = "identity";
 const POSTPROCESS_PLAIN: &str = "transcription-quality-v1-postprocess-120b-plain";
 const REAL_CORPUS: &str = "transcription-quality-local-human";
+const POSTPROCESS_CONSERVATIVE_TIMING: &str =
+    "transcription-quality-v2-postprocess-120b-conservative-timing";
 const REAL_SAMPLE_IDS: &[&str] = &[
     "jp-quality-bilingual-technical-20260812",
     "jp-quality-punctuation-list-20260812",
@@ -36,6 +39,7 @@ const STT_SHORT_ES: &str = "transcription-quality-v1-short-es";
 const STT_RICH_ES: &str = "transcription-quality-v1-rich-es";
 const PRIVATE_EXECUTION_ROOT: &str = "artifacts/transcription-quality/laboratory-executions";
 const MAX_PRIVATE_EVIDENCE_BYTES: u64 = 1024 * 1024;
+const MAX_CONSERVATIVE_PROSODY_SIGNALS: usize = 4;
 pub(crate) fn now_iso() -> String {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -156,6 +160,35 @@ pub struct LabGateSource {
     completed_request_count: usize,
     canonical_raw_ref_count: usize,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LabMetadataSignalSummary {
+    sample_id: String,
+    legacy_signal_count: usize,
+    conservative_signal_count: usize,
+    explicit_gap_count: usize,
+    embedded_duration_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LabMetadataExperimentPlan {
+    schema_version: u8,
+    status: String,
+    source_execution_id: String,
+    source_candidate_id: String,
+    sample_count: usize,
+    provider_calls: usize,
+    planned_postprocess_calls: usize,
+    model: String,
+    baseline_prompt_id: String,
+    candidate_prompt_id: String,
+    max_signals_per_sample: usize,
+    legacy_signal_count: usize,
+    conservative_signal_count: usize,
+    samples: Vec<LabMetadataSignalSummary>,
+}
 pub(crate) fn sha256_hex(input: &[u8]) -> String {
     const K: [u32; 64] = [
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
@@ -237,6 +270,13 @@ pub(crate) fn sha256_hex(input: &[u8]) -> String {
 #[serde(rename_all = "camelCase")]
 pub struct DictationLabJobError {
     pub code: String,
+}
+
+fn is_gate_b_mode(mode: &str) -> bool {
+    matches!(
+        mode,
+        PROVIDER_REAL_GATE_B_MODE | PROVIDER_REAL_GATE_B_V2_MODE
+    )
 }
 
 impl DictationLabJobError {
@@ -451,6 +491,165 @@ fn gate_a_evidence(run_id: &str) -> Result<Vec<CanonicalRawMapping>, DictationLa
         ));
     }
     Ok(evidence)
+}
+
+fn estimate_word_syllables(word: &str) -> usize {
+    let mut groups = 0usize;
+    let mut previous_was_vowel = false;
+    for character in word.chars() {
+        let is_vowel = matches!(
+            character,
+            'a' | 'e'
+                | 'i'
+                | 'o'
+                | 'u'
+                | 'á'
+                | 'é'
+                | 'í'
+                | 'ó'
+                | 'ú'
+                | 'ü'
+                | 'A'
+                | 'E'
+                | 'I'
+                | 'O'
+                | 'U'
+                | 'Á'
+                | 'É'
+                | 'Í'
+                | 'Ó'
+                | 'Ú'
+                | 'Ü'
+        );
+        if is_vowel && !previous_was_vowel {
+            groups += 1;
+        }
+        previous_was_vowel = is_vowel;
+    }
+    groups.max(1)
+}
+
+fn metadata_signal_summary(
+    sample_id: &str,
+    words_value: Option<&serde_json::Value>,
+) -> LabMetadataSignalSummary {
+    let words = words_value
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| {
+                    let word = value.get("word")?.as_str()?.trim();
+                    let start = value.get("start")?.as_f64()?;
+                    let end = value.get("end")?.as_f64()?;
+                    if word.is_empty() || !start.is_finite() || !end.is_finite() || end < start {
+                        return None;
+                    }
+                    Some((word, start, end))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let mut legacy_signal_count = 0usize;
+    let mut candidates = Vec::new();
+    for (index, (word, start, end)) in words.iter().enumerate() {
+        let duration_ms = ((end - start) * 1000.0).max(0.0);
+        let expected_ms = (estimate_word_syllables(word) as f64 * 200.0).clamp(150.0, 500.0);
+        if duration_ms > expected_ms * 2.5 && (duration_ms - expected_ms).round() >= 400.0 {
+            legacy_signal_count += 1;
+        }
+        let embedded_ms = if duration_ms > expected_ms * 3.2 {
+            (duration_ms - expected_ms).max(0.0)
+        } else {
+            0.0
+        };
+        let explicit_gap_ms = words
+            .get(index + 1)
+            .map(|(_, next_start, _)| ((next_start - end) * 1000.0).max(0.0))
+            .unwrap_or(0.0);
+        let eligible_explicit_ms = if explicit_gap_ms >= 500.0 {
+            explicit_gap_ms
+        } else {
+            0.0
+        };
+        let eligible_embedded_ms = if embedded_ms >= 900.0 {
+            embedded_ms
+        } else {
+            0.0
+        };
+        let pause_ms = eligible_explicit_ms.max(eligible_embedded_ms).round() as u64;
+        if pause_ms > 0 {
+            candidates.push((
+                index,
+                pause_ms,
+                eligible_explicit_ms >= eligible_embedded_ms,
+            ));
+        }
+    }
+    candidates.sort_by(|left, right| right.1.cmp(&left.1).then(left.0.cmp(&right.0)));
+    candidates.truncate(MAX_CONSERVATIVE_PROSODY_SIGNALS);
+    LabMetadataSignalSummary {
+        sample_id: sample_id.to_string(),
+        legacy_signal_count,
+        conservative_signal_count: candidates.len(),
+        explicit_gap_count: candidates.iter().filter(|candidate| candidate.2).count(),
+        embedded_duration_count: candidates.iter().filter(|candidate| !candidate.2).count(),
+    }
+}
+
+#[tauri::command]
+pub fn plan_dictation_lab_metadata_experiment(
+    execution_id: String,
+) -> Result<LabMetadataExperimentPlan, DictationLabJobError> {
+    let binding = read_binding(&execution_id)?;
+    if binding.kind != "gate-a"
+        || binding.status != "completed"
+        || binding.canonical_raw_mappings.len() != 3
+        || binding
+            .canonical_raw_mappings
+            .iter()
+            .any(|mapping| mapping.candidate_id != STT_SHORT_AUTO)
+    {
+        return Err(DictationLabJobError::new(
+            "laboratory_metadata_source_invalid",
+        ));
+    }
+    let mut samples = Vec::with_capacity(binding.canonical_raw_mappings.len());
+    for mapping in &binding.canonical_raw_mappings {
+        let mut metadata_ref = PathBuf::from(&mapping.local_ref);
+        metadata_ref.set_file_name("stt-metadata.json");
+        let metadata = read_private_evidence(&metadata_ref.to_string_lossy().replace('\\', "/"))?;
+        let value: serde_json::Value = serde_json::from_slice(&metadata)
+            .map_err(|_| DictationLabJobError::new("laboratory_metadata_source_invalid"))?;
+        samples.push(metadata_signal_summary(
+            &mapping.sample_id,
+            value.get("words"),
+        ));
+    }
+    let legacy_signal_count = samples
+        .iter()
+        .map(|sample| sample.legacy_signal_count)
+        .sum();
+    let conservative_signal_count = samples
+        .iter()
+        .map(|sample| sample.conservative_signal_count)
+        .sum();
+    Ok(LabMetadataExperimentPlan {
+        schema_version: 1,
+        status: "provider-free-analysis-complete".to_string(),
+        source_execution_id: execution_id,
+        source_candidate_id: STT_SHORT_AUTO.to_string(),
+        sample_count: samples.len(),
+        provider_calls: 0,
+        planned_postprocess_calls: samples.len() * 2,
+        model: "openai/gpt-oss-120b".to_string(),
+        baseline_prompt_id: "managed-postprocess-v1-plain".to_string(),
+        candidate_prompt_id: "managed-postprocess-v2-conservative-timing".to_string(),
+        max_signals_per_sample: MAX_CONSERVATIVE_PROSODY_SIGNALS,
+        legacy_signal_count,
+        conservative_signal_count,
+        samples,
+    })
 }
 
 async fn complete_gate_a_binding(
@@ -698,7 +897,10 @@ fn validate_definition(definition: &LabExperimentDefinition) -> Result<(), Dicta
     }
     if !matches!(
         definition.mode.as_str(),
-        PROVIDER_FREE_MODE | PROVIDER_REAL_MODE | PROVIDER_REAL_GATE_B_MODE
+        PROVIDER_FREE_MODE
+            | PROVIDER_REAL_MODE
+            | PROVIDER_REAL_GATE_B_MODE
+            | PROVIDER_REAL_GATE_B_V2_MODE
     ) {
         return Err(DictationLabJobError::new("mode-not-allowlisted"));
     }
@@ -708,8 +910,7 @@ fn validate_definition(definition: &LabExperimentDefinition) -> Result<(), Dicta
     if !is_nonempty_unique(&definition.sample_ids) {
         return Err(DictationLabJobError::new("sample-ids-invalid"));
     }
-    if (definition.mode != PROVIDER_REAL_GATE_B_MODE
-        && !is_nonempty_unique(&definition.stt_recipes))
+    if (!is_gate_b_mode(&definition.mode) && !is_nonempty_unique(&definition.stt_recipes))
         || !is_nonempty_unique(&definition.materializations)
         || !is_nonempty_unique(&definition.prosody_modes)
         || !is_nonempty_unique(&definition.vocabulary_modes)
@@ -738,7 +939,11 @@ fn validate_definition(definition: &LabExperimentDefinition) -> Result<(), Dicta
     }
     if !all_in(
         &definition.postprocess_recipes,
-        &[POSTPROCESS_PLAIN, POSTPROCESS_PROSODY],
+        &[
+            POSTPROCESS_PLAIN,
+            POSTPROCESS_PROSODY,
+            POSTPROCESS_CONSERVATIVE_TIMING,
+        ],
     ) || !all_in(&definition.prosody_modes, &["off", "advisory"])
         || !all_in(&definition.vocabulary_modes, &["off", "automatic", "ask"])
     {
@@ -769,8 +974,13 @@ fn validate_definition(definition: &LabExperimentDefinition) -> Result<(), Dicta
             "provider-real-definition-unsupported",
         ));
     }
-    if definition.mode == PROVIDER_REAL_GATE_B_MODE
-        && (definition.corpus_id != REAL_CORPUS
+    if is_gate_b_mode(&definition.mode) {
+        let expected_postprocess = if definition.mode == PROVIDER_REAL_GATE_B_V2_MODE {
+            [POSTPROCESS_PLAIN, POSTPROCESS_CONSERVATIVE_TIMING]
+        } else {
+            [POSTPROCESS_PLAIN, POSTPROCESS_PROSODY]
+        };
+        if definition.corpus_id != REAL_CORPUS
             || definition
                 .sample_ids
                 .iter()
@@ -778,7 +988,7 @@ fn validate_definition(definition: &LabExperimentDefinition) -> Result<(), Dicta
                 .collect::<Vec<_>>()
                 != REAL_SAMPLE_IDS
             || !definition.stt_recipes.is_empty()
-            || definition.postprocess_recipes != [POSTPROCESS_PLAIN, POSTPROCESS_PROSODY]
+            || definition.postprocess_recipes != expected_postprocess
             || definition.prosody_modes != ["off"]
             || definition.vocabulary_modes != ["off"]
             || definition.materializations != ["response-text-kept"]
@@ -786,11 +996,12 @@ fn validate_definition(definition: &LabExperimentDefinition) -> Result<(), Dicta
             || !definition
                 .source_gate_a_run_id
                 .as_deref()
-                .is_some_and(valid_execution_id))
-    {
-        return Err(DictationLabJobError::new(
-            "provider-real-gate-b-definition-unsupported",
-        ));
+                .is_some_and(valid_execution_id)
+        {
+            return Err(DictationLabJobError::new(
+                "provider-real-gate-b-definition-unsupported",
+            ));
+        }
     }
     if definition.mode == PROVIDER_FREE_MODE
         && (definition.corpus_id != PROVIDER_FREE_CORPUS
@@ -824,7 +1035,7 @@ pub fn estimate_definition(
     validate_definition(&definition)?;
     let definition_hash = hash_definition(&definition);
     let sample_count = definition.sample_ids.len();
-    let gate_b = definition.mode == PROVIDER_REAL_GATE_B_MODE;
+    let gate_b = is_gate_b_mode(&definition.mode);
     let candidate_count = if gate_b {
         definition.postprocess_recipes.len()
     } else {
@@ -839,7 +1050,7 @@ pub fn estimate_definition(
     let combination_count = sample_count.saturating_mul(candidate_count);
     let provider_required = matches!(
         definition.mode.as_str(),
-        PROVIDER_REAL_MODE | PROVIDER_REAL_GATE_B_MODE
+        PROVIDER_REAL_MODE | PROVIDER_REAL_GATE_B_MODE | PROVIDER_REAL_GATE_B_V2_MODE
     );
     let stt_calls = if definition.mode == PROVIDER_REAL_MODE {
         sample_count.saturating_mul(definition.stt_recipes.len())
@@ -1089,7 +1300,7 @@ fn spawn_runner(
                 execution.estimate_hash.clone(),
             ]
         }
-        PROVIDER_REAL_GATE_B_MODE => {
+        PROVIDER_REAL_GATE_B_MODE | PROVIDER_REAL_GATE_B_V2_MODE => {
             let execution = execution
                 .ok_or_else(|| DictationLabJobError::new("laboratory_execution_unauthorized"))?;
             let source_results_path = source_results_path
@@ -1117,6 +1328,12 @@ fn spawn_runner(
                 execution.execution_id.clone(),
                 "--definition-hash".to_string(),
                 execution.definition_hash.clone(),
+                "--schema-version".to_string(),
+                if mode == PROVIDER_REAL_GATE_B_V2_MODE {
+                    "2".to_string()
+                } else {
+                    "1".to_string()
+                },
             ]
         }
         _ => return Err(DictationLabJobError::new("runner-mode-not-allowlisted")),
@@ -1174,7 +1391,7 @@ pub async fn start_dictation_lab_job(
         created_at: now_iso(),
         updated_at: now_iso(),
     };
-    let source_results_path = if definition.mode == PROVIDER_REAL_GATE_B_MODE {
+    let source_results_path = if is_gate_b_mode(&definition.mode) {
         Some(gate_b_source_results_path(
             definition
                 .source_gate_a_run_id
@@ -1202,7 +1419,7 @@ pub async fn start_dictation_lab_job(
     }
     let authoritative_execution = if matches!(
         definition.mode.as_str(),
-        PROVIDER_REAL_MODE | PROVIDER_REAL_GATE_B_MODE
+        PROVIDER_REAL_MODE | PROVIDER_REAL_GATE_B_MODE | PROVIDER_REAL_GATE_B_V2_MODE
     ) {
         let grant = execution_grant
             .as_ref()
@@ -1495,6 +1712,15 @@ mod tests {
             source_gate_a_run_id: Some("12345678-1234-1234-1234-123456789abc".to_string()),
         }
     }
+    fn gate_b_v2_definition() -> LabExperimentDefinition {
+        let mut definition = gate_b_definition();
+        definition.mode = PROVIDER_REAL_GATE_B_V2_MODE.to_string();
+        definition.postprocess_recipes = vec![
+            POSTPROCESS_PLAIN.to_string(),
+            POSTPROCESS_CONSERVATIVE_TIMING.to_string(),
+        ];
+        definition
+    }
 
     #[test]
     fn exact_gate_a_estimate_is_the_frozen_matrix() {
@@ -1540,11 +1766,37 @@ mod tests {
         )
         .expect_err("Gate B must remain closed");
         assert_eq!(gate_b_error.code, "laboratory_execution_unauthorized");
+
+        let gate_b_v2_estimate =
+            estimate_definition(gate_b_v2_definition()).expect("Gate B v2 estimate");
+        let gate_b_v2_error = spawn_runner(
+            PROVIDER_REAL_GATE_B_V2_MODE,
+            "redacted-run",
+            &gate_b_v2_estimate,
+            None,
+            Some("redacted-source"),
+        )
+        .expect_err("Gate B v2 must remain closed");
+        assert_eq!(gate_b_v2_error.code, "laboratory_execution_unauthorized");
     }
 
     #[test]
     fn exact_gate_b_estimate_is_locked_and_provider_real() {
         let estimate = estimate_definition(gate_b_definition()).expect("Gate B estimate");
+        assert_eq!(estimate.sample_count, 3);
+        assert_eq!(estimate.candidate_count, 2);
+        assert_eq!(estimate.combination_count, 6);
+        assert_eq!(estimate.stt_calls, 0);
+        assert_eq!(estimate.postprocess_calls, 6);
+        assert_eq!(estimate.reused_raw_count, 3);
+        assert_eq!(estimate.max_requests, 6);
+        assert_eq!(estimate.max_cost_usd, 0.005);
+        assert!(estimate.provider_required);
+    }
+
+    #[test]
+    fn exact_gate_b_v2_estimate_is_locked_and_provider_real() {
+        let estimate = estimate_definition(gate_b_v2_definition()).expect("Gate B v2 estimate");
         assert_eq!(estimate.sample_count, 3);
         assert_eq!(estimate.candidate_count, 2);
         assert_eq!(estimate.combination_count, 6);
@@ -1598,6 +1850,26 @@ mod tests {
         definition.stt_recipes = vec!["arbitrary-shell-command".to_string()];
         let error = estimate_definition(definition).expect_err("must reject");
         assert_eq!(error.code, "stt-recipe-not-allowlisted");
+    }
+
+    #[test]
+    fn conservative_metadata_analysis_matches_the_frontend_contract() {
+        let metadata = serde_json::json!({
+            "words": [
+                { "word": "uno", "start": 0.0, "end": 0.3 },
+                { "word": "dos", "start": 1.1, "end": 1.4 },
+                { "word": "tres", "start": 1.4, "end": 3.5 },
+                { "word": "cuatro", "start": 3.5, "end": 4.1 },
+                { "word": "cinco", "start": 4.1, "end": 4.4 },
+                { "word": "seis", "start": 5.7, "end": 7.8 },
+                { "word": "siete", "start": 7.8, "end": 8.1 }
+            ]
+        });
+        let summary = metadata_signal_summary("safe-sample", metadata.get("words"));
+        assert_eq!(summary.legacy_signal_count, 2);
+        assert_eq!(summary.conservative_signal_count, 4);
+        assert_eq!(summary.explicit_gap_count, 2);
+        assert_eq!(summary.embedded_duration_count, 2);
     }
 
     #[test]

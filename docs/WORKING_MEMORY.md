@@ -9,7 +9,7 @@ decisiones.
 
 - **Estado:** `ready`.
 - **Plan:** `docs/tracks/transcription-quality-program.md`.
-- **Próximo batch:** **Batch de revisión privada Gate B y decisión de promoción**.
+- **Próximo batch:** **Batch de deploy Gate B v2 y ejecución separadamente aprobada**.
 
 ## Contrato Congelado
 
@@ -17,8 +17,9 @@ decisiones.
   profile/version queda anidada fuera de la definición canónica y la mutación
   envía únicamente `definition`.
 - El catálogo seguro vive en
-  `GET /product/v1/control-room/laboratory/catalog`: exactamente cuatro recipes
-  STT y dos de postprocess desde `evaluation-recipes.ts`. IDs encontrados en
+  `GET /product/v1/control-room/laboratory/catalog`: cuatro recipes STT y tres
+  de postprocess desde `evaluation-recipes.ts`; Gate B v1 conserva su par
+  histórico y Gate B v2 usa `plain` + `conservative-timing`. IDs encontrados en
   artifacts no son autoridad seleccionable.
 - Runtime sólo conserva `engineId`/`promptId`; el idioma es
   `defaults["transcript.language"]`.
@@ -68,9 +69,13 @@ decisiones.
   audio, delivery, vocabulary ni mutación de profile. El ledger quedó en
   `4998/5000` microusd y audit `sequence=20` como JSONB `object`; no quedan
   ejecuciones Gate B activas.
-- El smoke offline de los seis outputs persistidos reportó `6/6` decisiones
-  semánticas `accepted`, cero omissions y cero additions. Eso verifica seguridad
-  semántica del artifact; no promueve automáticamente una recipe.
+- El smoke offline de los seis outputs Gate B v1 persistidos reportó `6/6`
+  decisiones semánticas `accepted`, cero omissions y cero additions. La
+  revisión privada no promovió recipe: aisló metadata temporal demasiado
+  prescriptiva. El candidato local `conservative-timing` reduce `18` señales
+  legacy a `8`, máximo `4` por muestra, sin sugerir puntuación ni estructura.
+  Gate B v2 está implementado y verificado localmente, pero aún no desplegado ni
+  ejecutado.
 - La UI separa recursos y razones de indisponibilidad; owner stale conserva
   catálogo/preview/grants bajo sus gates y provider-free local no depende de
   recent-auth. Los planes Gate A/B son matrices bloqueadas. No se publicó
@@ -80,7 +85,7 @@ decisiones.
 
 | Frente | Estado | Abrir primero |
 | --- | --- | --- |
-| Calidad de transcripción | Dictation Laboratory cerrado: cloud lifecycle, Gate A `12/12`, Gate B `6/6`, UI y smoke Tauri verdes; próxima promoción requiere adjudicación nueva | `docs/tracks/transcription-quality-program.md` |
+| Calidad de transcripción | Gate B v1 cerrado; experimento metadata v2 listo localmente, bloqueado por packet de deploy y luego packet provider separado | `docs/tracks/transcription-quality-program.md` |
 | Reliability/truthfulness | local complete; Phase 4 gated | `docs/tracks/fixvox-minimal-reliability-and-truthfulness.md` |
 | Dock/Wispr | listo para retomar | `docs/tracks/dock-skins-visual-refinement.md` |
 | Cloud/runtime | referencia cerrada | Spec 019 y `docs/topics/fixvox-cloud-runtime-port.md` |

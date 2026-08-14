@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { MANAGED_POSTPROCESS_SAFETY_PROMPT, POSTPROCESS_EVALUATION_RECIPES, type PostprocessEvaluationRecipe } from "../cloud/fixvox-core/src/control-plane/evaluation-recipes";
+import { CONSERVATIVE_TIMING_EVALUATION_RECIPE, MANAGED_POSTPROCESS_SAFETY_PROMPT, POSTPROCESS_EVALUATION_RECIPES, type PostprocessEvaluationRecipe } from "../cloud/fixvox-core/src/control-plane/evaluation-recipes";
 import {
   evaluatePostprocessSemanticSafety,
   POSTPROCESS_SEMANTIC_SAFETY_REASONS,
   type PostprocessSemanticSafetyReceipt,
 } from "../cloud/fixvox-core/src/execution/postprocess-semantic-safety";
-import { formatProsodyHints } from "../src/fixvox-text-runtime";
+import { formatConservativeProsodyContext, formatProsodyHints } from "../src/fixvox-text-runtime";
 import { resolveVocabularyPreDelivery, type PersonalVocabularySnapshot } from "../src/personal-vocabulary";
 import type { TranscriptionQualitySampleResult } from "../src/test-fixtures/transcription-quality-contract";
 import { resolveProductConfiguration, scoreTranscript } from "./transcription-quality-product-baseline";
@@ -71,19 +71,27 @@ export const GATE_B_INPUT_USD_PER_MILLION_TOKENS = 0.15;
 export const GATE_B_OUTPUT_USD_PER_MILLION_TOKENS = 0.60;
 const ACTION_ROUTE = "/product/v1/runtime/actions";
 const GATE_B_RUNNER_VERSION = "gate-b-postprocess-1";
+const GATE_B_V2_RUNNER_VERSION = "gate-b-postprocess-2";
 
 type GateBFailure = Readonly<{ status: number; code?: string; category?: string; retryable?: boolean }>;
 type GateBResult = Readonly<{
   sampleId: string;
   sourceCandidateId: string;
+  candidateId: PostprocessEvaluationRecipe["id"];
   recipeId: PostprocessEvaluationRecipe["id"];
   variant: PostprocessEvaluationRecipe["variant"];
   rawRef: string;
   finalRef: string;
   prosodyRef: string | null;
+  text: {
+    rawTranscriptRef: string;
+    finalTextRef: string;
+    goldRef: string;
+  };
   scores: TranscriptionQualitySampleResult["scores"];
   semanticSafety: PostprocessSemanticSafetyReceipt;
   latencyMs: number;
+  timingsMs: { total: number };
   identity: {
     configured: { provider: "server-owned"; model: "server-owned"; promptId: PostprocessEvaluationRecipe["promptId"] };
     resolved: { provider: PostprocessEvaluationRecipe["provider"]; model: PostprocessEvaluationRecipe["model"]; promptId: PostprocessEvaluationRecipe["promptId"] };
@@ -113,6 +121,7 @@ export type GateBRunOptions = Readonly<{
   maxCostUsd?: number;
   fetchImpl?: typeof fetch;
   now?: () => number;
+  schemaVersion?: 1 | 2;
 }>;
 
 type PreparedGateBSample = Readonly<{
@@ -121,6 +130,12 @@ type PreparedGateBSample = Readonly<{
   gold: string;
   prosodyHints: string;
 }>;
+
+function postprocessRecipesForSchema(schemaVersion: 1 | 2): readonly PostprocessEvaluationRecipe[] {
+  return schemaVersion === 2
+    ? [POSTPROCESS_EVALUATION_RECIPES[0], CONSERVATIVE_TIMING_EVALUATION_RECIPE]
+    : POSTPROCESS_EVALUATION_RECIPES;
+}
 
 export type GateBProviderFreePlan = Readonly<{
   ok: true;
@@ -193,12 +208,15 @@ function validObservedRecipe(value: unknown, recipe: PostprocessEvaluationRecipe
     && observed.promptId === recipe.promptId;
 }
 
-function estimatedMaxGateBCost(prepared: readonly { raw: string; prosodyHints: string }[]): number {
+function estimatedMaxGateBCost(
+  prepared: readonly { raw: string; prosodyHints: string }[],
+  recipes: readonly PostprocessEvaluationRecipe[],
+): number {
   let inputTokenUpperBound = 0;
   let outputTokenUpperBound = 0;
   for (const item of prepared) {
-    for (const recipe of POSTPROCESS_EVALUATION_RECIPES) {
-      const providerInput = { transcript: item.raw, ...(recipe.variant === "with-prosody" ? { prosodyHints: item.prosodyHints } : {}) };
+    for (const recipe of recipes) {
+      const providerInput = { transcript: item.raw, ...(recipe.variant !== "without-prosody" ? { prosodyHints: item.prosodyHints } : {}) };
       inputTokenUpperBound += Buffer.byteLength(MANAGED_POSTPROCESS_SAFETY_PROMPT, "utf8")
         + Buffer.byteLength(JSON.stringify(providerInput), "utf8")
         + 512;
@@ -209,7 +227,7 @@ function estimatedMaxGateBCost(prepared: readonly { raw: string; prosodyHints: s
     + outputTokenUpperBound / 1_000_000 * GATE_B_OUTPUT_USD_PER_MILLION_TOKENS;
 }
 
-async function prepareGateB(workspaceRoot: string, sourceResultsPath: string): Promise<{ prepared: readonly PreparedGateBSample[]; estimatedMaxCostUsd: number }> {
+async function prepareGateB(workspaceRoot: string, sourceResultsPath: string, schemaVersion: 1 | 2): Promise<{ prepared: readonly PreparedGateBSample[]; estimatedMaxCostUsd: number }> {
   const sourceRows = (await readFile(resolve(workspaceRoot, sourceResultsPath), "utf8"))
     .trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as TranscriptionQualitySampleResult);
   const selected = selectedGateARows(sourceRows);
@@ -219,14 +237,20 @@ async function prepareGateB(workspaceRoot: string, sourceResultsPath: string): P
     const metadata = source.stages.stt.metadata;
     if (metadata.status !== "observed") throw new Error(`gate-b-metadata-not-observed:${source.sampleId}`);
     const privateMetadata = JSON.parse(await readFile(resolve(workspaceRoot, metadata.privateRef), "utf8")) as Record<string, unknown>;
-    return { source, raw, gold, prosodyHints: formatProsodyHints(Array.isArray(privateMetadata.words) ? privateMetadata.words : []) };
+    const words = Array.isArray(privateMetadata.words) ? privateMetadata.words : [];
+    const prosodyHints = schemaVersion === 2
+      ? formatConservativeProsodyContext(words)
+      : formatProsodyHints(words);
+    return { source, raw, gold, prosodyHints };
   }));
-  return { prepared, estimatedMaxCostUsd: estimatedMaxGateBCost(prepared) };
+  const recipes = postprocessRecipesForSchema(schemaVersion);
+  return { prepared, estimatedMaxCostUsd: estimatedMaxGateBCost(prepared, recipes) };
 }
 
-export async function planGateBPostprocess(options: Pick<GateBRunOptions, "workspaceRoot" | "sourceResultsPath">): Promise<GateBProviderFreePlan> {
+export async function planGateBPostprocess(options: Pick<GateBRunOptions, "workspaceRoot" | "sourceResultsPath" | "schemaVersion">): Promise<GateBProviderFreePlan> {
   const workspaceRoot = resolve(options.workspaceRoot ?? process.cwd());
-  const { prepared, estimatedMaxCostUsd } = await prepareGateB(workspaceRoot, options.sourceResultsPath);
+  const schemaVersion = options.schemaVersion ?? 1;
+  const { prepared, estimatedMaxCostUsd } = await prepareGateB(workspaceRoot, options.sourceResultsPath, schemaVersion);
   return {
     ok: true,
     providerCalls: 0,
@@ -234,7 +258,7 @@ export async function planGateBPostprocess(options: Pick<GateBRunOptions, "works
     sourceCandidateId: GATE_B_SOURCE_CANDIDATE_ID,
     estimatedMaxCostUsd,
     costCapUsd: GATE_B_COST_CAP_USD,
-    recipes: POSTPROCESS_EVALUATION_RECIPES.map(({ id }) => id),
+    recipes: postprocessRecipesForSchema(schemaVersion).map(({ id }) => id),
     samples: prepared.map(({ source, prosodyHints }) => {
       const metadata = source.stages.stt.metadata;
       if (metadata.status !== "observed") throw new Error(`gate-b-metadata-not-observed:${source.sampleId}`);
@@ -286,7 +310,9 @@ export async function smokeStoredGateBSemanticSafety(options: {
 }
 
 export async function runGateBPostprocess(options: GateBRunOptions): Promise<GateBRunResult> {
-  const runId = options.runId ?? `gate-b-${Date.now().toString(36)}`;
+  const schemaVersion = options.schemaVersion ?? 1;
+  const recipes = postprocessRecipesForSchema(schemaVersion);
+  const runId = options.runId ?? `gate-b-v${schemaVersion}-${Date.now().toString(36)}`;
   if (
     options.allowProviderCalls !== true
     || options.maxRequests !== GATE_B_REQUEST_CAP
@@ -300,7 +326,7 @@ export async function runGateBPostprocess(options: GateBRunOptions): Promise<Gat
   const deviceId = options.deviceId?.trim() ?? "";
   if (!backendBaseUrl || !deviceId) return { ok: false, runId, requestCount: 0, error: "backend-or-device-not-configured" };
   const workspaceRoot = resolve(options.workspaceRoot ?? process.cwd());
-  const { prepared, estimatedMaxCostUsd } = await prepareGateB(workspaceRoot, options.sourceResultsPath);
+  const { prepared, estimatedMaxCostUsd } = await prepareGateB(workspaceRoot, options.sourceResultsPath, schemaVersion);
   if (estimatedMaxCostUsd > GATE_B_COST_CAP_USD) return { ok: false, runId, requestCount: 0, estimatedMaxCostUsd, error: "provider-cost-cap-exceeded" };
   const fetchImpl = options.fetchImpl ?? fetch;
   const now = options.now ?? (() => performance.now());
@@ -308,16 +334,16 @@ export async function runGateBPostprocess(options: GateBRunOptions): Promise<Gat
   let requestCount = 0;
 
   for (const { source, raw, gold, prosodyHints } of prepared) {
-    for (const recipe of POSTPROCESS_EVALUATION_RECIPES) {
+    for (const recipe of recipes) {
       if (requestCount >= GATE_B_REQUEST_CAP) return { ok: false, runId, requestCount, error: "provider-cap-exceeded" };
-      const operationId = `${runId}-${source.sampleId}-${recipe.variant === "with-prosody" ? "prosody" : "plain"}`;
+      const operationId = `${runId}-${source.sampleId}-${recipe.variant}`;
       const body = {
         operationId,
         kind: "postprocess",
         evaluationRecipeId: recipe.id,
         input: {
           transcript: raw,
-          ...(recipe.variant === "with-prosody" ? { prosodyHints } : {}),
+          ...(recipe.variant !== "without-prosody" ? { prosodyHints } : {}),
         },
       };
       const started = now();
@@ -341,21 +367,28 @@ export async function runGateBPostprocess(options: GateBRunOptions): Promise<Gat
       }
       const privateRoot = `artifacts/transcription-quality/${runId}/private/${source.sampleId}/${recipe.id}`;
       const finalRef = `${privateRoot}/final.txt`;
-      const prosodyRef = recipe.variant === "with-prosody" ? `${privateRoot}/prosody-hints.txt` : null;
+      const prosodyRef = recipe.variant !== "without-prosody" ? `${privateRoot}/prosody-hints.txt` : null;
       await mkdir(resolve(workspaceRoot, privateRoot), { recursive: true });
       await writeFile(resolve(workspaceRoot, finalRef), `${finalText}\n`);
       if (prosodyRef) await writeFile(resolve(workspaceRoot, prosodyRef), `${prosodyHints}\n`);
       results.push({
         sampleId: source.sampleId,
+        candidateId: recipe.id,
         sourceCandidateId: source.candidateId,
         recipeId: recipe.id,
         variant: recipe.variant,
         rawRef: source.text.rawTranscriptRef,
         finalRef,
         prosodyRef,
+        text: {
+          rawTranscriptRef: source.text.rawTranscriptRef,
+          finalTextRef: finalRef,
+          goldRef: source.text.goldRef,
+        },
         scores: scoreTranscript(gold, finalText, semanticSafety),
         semanticSafety,
         latencyMs,
+        timingsMs: { total: latencyMs },
         identity: {
           configured: { provider: "server-owned", model: "server-owned", promptId: recipe.promptId },
           resolved: { provider: recipe.provider, model: recipe.model, promptId: recipe.promptId },
@@ -370,7 +403,7 @@ export async function runGateBPostprocess(options: GateBRunOptions): Promise<Gat
   const resultsPath = `${root}/results.jsonl`;
   const summaryPath = `${root}/summary.json`;
   await mkdir(resolve(workspaceRoot, root), { recursive: true });
-  const run = { schemaVersion: 1, runId, runnerVersion: GATE_B_RUNNER_VERSION, sourceResultsPath: options.sourceResultsPath, sourceCandidateId: GATE_B_SOURCE_CANDIDATE_ID, requestCap: GATE_B_REQUEST_CAP, costCapUsd: GATE_B_COST_CAP_USD, estimatedMaxCostUsd, pricing: { inputUsdPerMillionTokens: GATE_B_INPUT_USD_PER_MILLION_TOKENS, outputUsdPerMillionTokens: GATE_B_OUTPUT_USD_PER_MILLION_TOKENS }, requestCount };
+  const run = { schemaVersion: 1, runId, runnerVersion: schemaVersion === 2 ? GATE_B_V2_RUNNER_VERSION : GATE_B_RUNNER_VERSION, sourceResultsPath: options.sourceResultsPath, sourceCandidateId: GATE_B_SOURCE_CANDIDATE_ID, requestCap: GATE_B_REQUEST_CAP, costCapUsd: GATE_B_COST_CAP_USD, estimatedMaxCostUsd, pricing: { inputUsdPerMillionTokens: GATE_B_INPUT_USD_PER_MILLION_TOKENS, outputUsdPerMillionTokens: GATE_B_OUTPUT_USD_PER_MILLION_TOKENS }, requestCount };
   const publicResults = results.map(({ prosodyRef: _prosodyRef, ...result }) => result);
   const summary = {
     schemaVersion: 1,
@@ -378,7 +411,7 @@ export async function runGateBPostprocess(options: GateBRunOptions): Promise<Gat
     requestCount,
     costCapUsd: GATE_B_COST_CAP_USD,
     estimatedMaxCostUsd,
-    variants: POSTPROCESS_EVALUATION_RECIPES.map(({ id, variant, provider, model, promptId }) => ({ id, variant, provider, model, promptId })),
+    variants: recipes.map(({ id, variant, provider, model, promptId }) => ({ id, variant, provider, model, promptId })),
     samples: publicResults,
   };
   await writeFile(resolve(workspaceRoot, runPath), `${JSON.stringify(run, null, 2)}\n`);
@@ -398,7 +431,8 @@ if (import.meta.main) {
   if (smokeRun) {
     console.log(JSON.stringify(await smokeStoredGateBSemanticSafety({ runRoot: smokeRun })));
   } else if (process.argv.includes("--plan")) {
-    const plan = await planGateBPostprocess({ sourceResultsPath });
+    const schemaVersion = Number(readArg("--schema-version")) === 2 ? 2 : 1;
+    const plan = await planGateBPostprocess({ sourceResultsPath, schemaVersion });
     console.log(JSON.stringify({ ...plan, samples: plan.samples.map(({ sampleId, prosodyAvailable }) => ({ sampleId, prosodyAvailable })), redacted: true }));
   } else {
     const configuration = resolveProductConfiguration({});
@@ -412,6 +446,7 @@ if (import.meta.main) {
       runId: readArg("--run-id"),
       executionId: readArg("--execution-id"),
       definitionHash: readArg("--definition-hash"),
+      schemaVersion: Number(readArg("--schema-version")) === 2 ? 2 : 1,
     });
     console.log(JSON.stringify({ ...result, results: undefined, redacted: true }));
     if (!result.ok) process.exitCode = 1;

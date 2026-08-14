@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+  ALL_POSTPROCESS_EVALUATION_RECIPES,
   EVALUATION_RECIPES,
+  GATE_B_V2_FIXED_DEFINITION,
   POSTPROCESS_EVALUATION_RECIPES,
   buildBoundedSttMetadata,
   resolveEvaluationRecipe,
@@ -17,12 +19,28 @@ describe("transcription quality evaluation recipes", () => {
     expect(() => resolveEvaluationRecipe("unknown-recipe")).toThrow("evaluation_recipe_unknown");
   });
 
-  test("exposes exactly two bounded GPT-OSS postprocess variants", () => {
+  test("preserves Gate B v1 and exposes the bounded conservative timing candidate", () => {
     expect(POSTPROCESS_EVALUATION_RECIPES.map(({ id, variant }) => [id, variant])).toEqual([
       ["transcription-quality-v1-postprocess-120b-plain", "without-prosody"],
       ["transcription-quality-v1-postprocess-120b-prosody", "with-prosody"],
     ]);
     expect(POSTPROCESS_EVALUATION_RECIPES.every(({ model, temperature, maxCompletionTokens }) => model === "openai/gpt-oss-120b" && temperature === 0 && maxCompletionTokens === 512)).toBe(true);
+    expect(ALL_POSTPROCESS_EVALUATION_RECIPES.map(({ id, variant }) => [id, variant])).toEqual([
+      ["transcription-quality-v1-postprocess-120b-plain", "without-prosody"],
+      ["transcription-quality-v1-postprocess-120b-prosody", "with-prosody"],
+      ["transcription-quality-v2-postprocess-120b-conservative-timing", "conservative-timing"],
+    ]);
+    expect(GATE_B_V2_FIXED_DEFINITION.postprocessRecipeIds).toEqual([
+      "transcription-quality-v1-postprocess-120b-plain",
+      "transcription-quality-v2-postprocess-120b-conservative-timing",
+    ]);
+    expect(resolvePostprocessEvaluationRecipe("transcription-quality-v2-postprocess-120b-conservative-timing")).toMatchObject({
+      version: "v2",
+      promptId: "managed-postprocess-v2",
+      model: "openai/gpt-oss-120b",
+      temperature: 0,
+      maxCompletionTokens: 512,
+    });
     expect(() => resolvePostprocessEvaluationRecipe("unknown-recipe")).toThrow("postprocess_evaluation_recipe_unknown");
   });
 

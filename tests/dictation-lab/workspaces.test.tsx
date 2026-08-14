@@ -108,6 +108,23 @@ describe("Dictation Laboratory workspace contracts", () => {
         artifacts={{ index: artifacts, loading: false, error: "" }}
         definition={definition}
         localReplayDefinition={definition}
+        metadataExperiment={{
+          schemaVersion: 1,
+          status: "provider-free-analysis-complete",
+          sourceExecutionId: "12345678-1234-1234-1234-123456789abc",
+          sourceCandidateId: "transcription-quality-v1-short-auto",
+          sampleCount: 3,
+          providerCalls: 0,
+          plannedPostprocessCalls: 6,
+          model: "openai/gpt-oss-120b",
+          baselinePromptId: "managed-postprocess-v1-plain",
+          candidatePromptId: "managed-postprocess-v2-conservative-timing",
+          maxSignalsPerSample: 4,
+          legacySignalCount: 18,
+          conservativeSignalCount: 8,
+          samples: [],
+        }}
+        metadataCandidateAvailable
         catalogState={{ status: "available", code: null }}
         estimate={null}
         estimateLoading={false}
@@ -131,6 +148,13 @@ describe("Dictation Laboratory workspace contracts", () => {
     expect(html).not.toContain("artifact-only-stt");
     expect(html).not.toContain("artifact-only-postprocess");
     expect(html).not.toContain("artifact-only-materialization");
+    expect(html).toContain("Candidato: timing conservador");
+    expect(html).toContain("Cero llamadas al proveedor");
+    expect(html).toContain("Señales anteriores");
+    expect(html).toContain("Señales conservadoras");
+    expect(html).toContain("Raw, Final");
+    expect(html).toContain("Gate B v2 · fixed 3×2");
+    expect(html).toContain("conservative verbose timing");
   });
 
   it("keeps orchestration unavailable and provider-real work fail-closed", () => {

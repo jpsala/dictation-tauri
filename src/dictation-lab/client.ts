@@ -11,6 +11,7 @@ import type {
   LabArtifactIndex,
   LabExperimentDefinition,
   LabGateSource,
+  LabMetadataExperimentPlan,
   JsonObject,
   JsonValue,
   LabHumanVerdictMutation,
@@ -505,6 +506,12 @@ export function createDictationLabClient(): DictationLabClient {
           source.completedRequestCount === 12 &&
           source.canonicalRawRefCount === 3,
       );
+      const metadataExperiment = gateASource
+        ? await invoke<LabMetadataExperimentPlan>(
+            "plan_dictation_lab_metadata_experiment",
+            { executionId: gateASource.executionId },
+          ).catch(() => null)
+        : null;
       const grantAuthorityAvailable = Boolean(
         authorizedSession &&
         ["editor", "publisher", "owner"].includes(authorizedSession.role) &&
@@ -532,6 +539,7 @@ export function createDictationLabClient(): DictationLabClient {
         catalog: parsedCatalog,
         localReplay: localReplayValue.value,
         gateSources,
+        metadataExperiment,
         accounts:
           accountsValue.status === "fulfilled"
             ? accounts(accountsValue.value)

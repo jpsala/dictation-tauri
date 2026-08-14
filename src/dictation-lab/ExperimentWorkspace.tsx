@@ -5,6 +5,7 @@ import type {
   LabCandidateSummary,
   LabExperimentDefinition,
   LabExperimentEstimate,
+  LabMetadataExperimentPlan,
   LabJobSnapshot,
   LabRunSummary,
 } from "./types";
@@ -28,6 +29,8 @@ export type ExperimentWorkspaceProps = {
   definition: LabExperimentDefinition;
   localReplayDefinition?: LabExperimentDefinition;
   gateASourceExecutionId?: string | null;
+  metadataExperiment?: LabMetadataExperimentPlan | null;
+  metadataCandidateAvailable?: boolean;
   catalogState?: {
     status: "available" | "partial" | "unavailable";
     code: string | null;
@@ -61,6 +64,8 @@ export function ExperimentWorkspace({
   definition,
   localReplayDefinition = definition,
   gateASourceExecutionId = null,
+  metadataExperiment = null,
+  metadataCandidateAvailable = false,
   catalogState = { status: "unavailable", code: "catalog-unavailable" },
   estimate,
   estimateLoading,
@@ -96,6 +101,9 @@ export function ExperimentWorkspace({
     LabJobSnapshot["state"] | null
   >(job?.state ?? null);
   const jobActive = job?.state === "queued" || job?.state === "running";
+  const isGateB =
+    definition.mode === "provider-real-gate-b" ||
+    definition.mode === "provider-real-gate-b-v2";
   const canEstimate =
     orchestrationAvailable &&
     Boolean(definition.corpusId) &&
@@ -103,7 +111,7 @@ export function ExperimentWorkspace({
     definition.materializations.length > 0 &&
     definition.prosodyModes.length > 0 &&
     definition.vocabularyModes.length > 0 &&
-    (definition.mode === "provider-real-gate-b"
+    (isGateB
       ? definition.sttRecipes.length === 0 &&
         definition.postprocessRecipes.length === 2
       : definition.sttRecipes.length > 0 &&
@@ -150,7 +158,9 @@ export function ExperimentWorkspace({
               ? "Provider-free replay"
               : definition.mode === "provider-real"
                 ? "Gate A · locked 3×4"
-                : "Gate B · locked 3×2"
+                : definition.mode === "provider-real-gate-b-v2"
+                  ? "Gate B v2 · locked 3×2"
+                  : "Gate B v1 · locked 3×2"
           }
           tone={definition.mode === "provider-free-replay" ? "info" : "warning"}
         />
@@ -285,6 +295,50 @@ export function ExperimentWorkspace({
                 </small>
               </span>
             </label>
+            <label>
+              <input
+                type="radio"
+                name="experiment-mode"
+                checked={definition.mode === "provider-real-gate-b-v2"}
+                disabled={
+                  !gateASourceExecutionId ||
+                  !metadataExperiment ||
+                  !metadataCandidateAvailable ||
+                  catalogState.status !== "available"
+                }
+                onChange={() => {
+                  if (!gateASourceExecutionId) return;
+                  setProviderBoundaryAcknowledged(false);
+                  onChange({
+                    schemaVersion: 1,
+                    mode: "provider-real-gate-b-v2",
+                    corpusId: "transcription-quality-local-human",
+                    sampleIds: [
+                      "jp-quality-bilingual-technical-20260812",
+                      "jp-quality-punctuation-list-20260812",
+                      "jp-quality-model-comparison-20260812",
+                    ],
+                    sttRecipes: [],
+                    materializations: ["response-text-kept"],
+                    postprocessRecipes: [
+                      "transcription-quality-v1-postprocess-120b-plain",
+                      "transcription-quality-v2-postprocess-120b-conservative-timing",
+                    ],
+                    prosodyModes: ["off"],
+                    vocabularyModes: ["off"],
+                    baselineCandidateId: "transcription-quality-v1-short-auto",
+                    sourceGateARunId: gateASourceExecutionId,
+                  });
+                }}
+              />
+              <span>
+                <strong>Gate B v2 · fixed 3×2</strong>
+                <small>
+                  Plain baseline versus conservative verbose timing. Six
+                  postprocess calls; zero STT/audio/delivery.
+                </small>
+              </span>
+            </label>
           </fieldset>
 
           {catalogState.status !== "available" ? (
@@ -310,6 +364,47 @@ export function ExperimentWorkspace({
               title="Gate B unavailable"
               detail="A completed Gate A with 12 requests and three canonical short-auto raw references is required."
             />
+          ) : null}
+          {metadataExperiment ? (
+            <section
+              className="lab-inline-notice"
+              data-tone="info"
+              aria-label="Candidato de metadatos verbose"
+            >
+              <strong>Candidato: timing conservador</strong>
+              <p>
+                Análisis local sobre {metadataExperiment.sampleCount} muestras
+                short-auto. Cero llamadas al proveedor.
+              </p>
+              <dl className="lab-detail-list">
+                <div>
+                  <dt>Señales anteriores</dt>
+                  <dd>{metadataExperiment.legacySignalCount}</dd>
+                </div>
+                <div>
+                  <dt>Señales conservadoras</dt>
+                  <dd>{metadataExperiment.conservativeSignalCount}</dd>
+                </div>
+                <div>
+                  <dt>Límite por muestra</dt>
+                  <dd>{metadataExperiment.maxSignalsPerSample}</dd>
+                </div>
+                <div>
+                  <dt>Comparación propuesta</dt>
+                  <dd>{metadataExperiment.plannedPostprocessCalls} llamadas</dd>
+                </div>
+              </dl>
+              <p>
+                Hipótesis: conservar el mismo raw y el mismo modelo, pero pasar
+                sólo los límites temporales más fuertes, sin sugerir coma,
+                punto, párrafo ni lista. La comparación debe mostrar Raw, Final
+                y decisión del guard semántico lado a lado.
+              </p>
+              <p>
+                Modelo {metadataExperiment.model}. Ejecutar exige un packet
+                separado; no incluye STT, audio, delivery ni cambio de perfil.
+              </p>
+            </section>
           ) : null}
 
           <section
@@ -350,9 +445,9 @@ export function ExperimentWorkspace({
             </p>
           </section>
 
-          {definition.mode === "provider-real-gate-b" && estimate ? (
+          {isGateB && estimate ? (
             <div className="lab-inline-notice" data-tone="warning">
-              <strong>Gate B provider boundary</strong>
+              <strong>{definition.mode === "provider-real-gate-b-v2" ? "Gate B v2" : "Gate B v1"} provider boundary</strong>
               <p>
                 Exactly three canonical Gate A raw inputs × two postprocess
                 recipes. Model openai/gpt-oss-120b, six requests, USD 0.005 cap,
@@ -398,8 +493,10 @@ export function ExperimentWorkspace({
               }
               onClick={onStart}
             >
-              {definition.mode === "provider-real-gate-b"
-                ? "Request grant and run Gate B"
+              {definition.mode === "provider-real-gate-b-v2"
+                ? "Request grant and run Gate B v2"
+                : definition.mode === "provider-real-gate-b"
+                  ? "Request grant and run Gate B v1"
                 : estimate?.providerRequired
                   ? "Request grant and run Gate A"
                   : "Start provider-free job"}

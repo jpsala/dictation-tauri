@@ -2344,3 +2344,35 @@ Estado: `closed`.
   `accepted`, cero omissions y cero additions. Configured/resolved/observed
   siguen separados; ninguna recipe fue promovida automáticamente. No se publicó
   installer desktop.
+
+### Experimento Metadata Verbose Acotado — 2026-08-14
+
+**Estado:** `implemented_locally_deploy_blocked`
+
+- La revisión privada del Gate B cerrado no justifica promover `plain` todavía:
+  el smoke semántico agregado fue `6/6 accepted`, pero la evidencia observada
+  por muestra mostró que la variante previa con prosodia agregó puntuación o
+  estructura no sostenida por el raw. El problema aislado es la conversión de
+  metadata temporal ruidosa en instrucciones de estilo.
+- El experimento nuevo conserva el mismo raw, el mismo modelo
+  `openai/gpt-oss-120b` y la baseline `plain`. El único cambio es una recipe
+  `conservative-timing` v2: hasta cuatro límites por muestra, sólo gaps
+  fuertes, sin sugerir coma, punto, párrafo ni lista. El guard semántico
+  existente sigue siendo fail-closed.
+- El runner versionado deriva un Gate B v2 exacto `3 × 2 = 6`, secuencial,
+  cap `USD 0.005`, cero retries, STT, audio, delivery o profile mutation. Sus
+  artifacts canónicos exponen IDs, métricas y decisión del guard; raw/final
+  permanecen privados y sólo se leen por acción explícita.
+- El análisis provider-free del metadata productivo existente observó `18`
+  señales legacy frente a `8` conservadoras, máximo `4` por muestra, con
+  `providerCalls=0` y `plannedPostprocessCalls=6`.
+- La UI Tauri real muestra Gate B v1 y Gate B v2 como planes separados; v2
+  permanece deshabilitado hasta que catálogo, source Gate A y análisis local
+  estén disponibles. El control y el panel del candidato se verificaron en la
+  ventana nativa real.
+- Verificación local: cloud API `65/65`, core `43/43`, Vitest focal `17/17`,
+  Rust jobs `11/11`, Rust adapter `5/5`, `cargo check`, `npm run build`,
+  `npm run check`, plan Gate B v2 real con `providerCalls=0`.
+- Producción todavía corre `0434f2cf3d0a6607`; no se hizo deploy ni provider
+  call. El próximo paso requiere primero packet de deploy exacto y, después,
+  un packet provider separado para una única ejecución Gate B v2.

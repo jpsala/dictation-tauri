@@ -296,6 +296,31 @@ export type LabGateSource = {
   canonicalRawRefCount: number;
 };
 
+export type LabMetadataSignalSummary = {
+  sampleId: string;
+  legacySignalCount: number;
+  conservativeSignalCount: number;
+  explicitGapCount: number;
+  embeddedDurationCount: number;
+};
+
+export type LabMetadataExperimentPlan = {
+  schemaVersion: 1;
+  status: "provider-free-analysis-complete";
+  sourceExecutionId: string;
+  sourceCandidateId: "transcription-quality-v1-short-auto";
+  sampleCount: number;
+  providerCalls: 0;
+  plannedPostprocessCalls: number;
+  model: "openai/gpt-oss-120b";
+  baselinePromptId: "managed-postprocess-v1-plain";
+  candidatePromptId: "managed-postprocess-v2-conservative-timing";
+  maxSignalsPerSample: number;
+  legacySignalCount: number;
+  conservativeSignalCount: number;
+  samples: readonly LabMetadataSignalSummary[];
+};
+
 export type LaboratoryLoad = {
   session: LaboratorySession | null;
   profiles: ProfilesResponse;
@@ -303,6 +328,7 @@ export type LaboratoryLoad = {
   catalog: LaboratoryCatalog | null;
   localReplay: LabExperimentDefinition;
   gateSources: readonly LabGateSource[];
+  metadataExperiment: LabMetadataExperimentPlan | null;
   accounts: AccountsResponse;
   audit: AuditResponse;
   runs: readonly LabRunEvidence[];
@@ -407,6 +433,15 @@ export type LabSampleSummary = {
     structure: number | null;
     semanticSafety: number | null;
   };
+  postprocess: {
+    recipeId: string;
+    recipeVersion: string | null;
+    variant: string | null;
+    decision: string;
+    reasons: string[];
+    omissions: number | null;
+    additions: number | null;
+  } | null;
   fallback: { used: boolean | null; reasons: string[] };
   latencyMs: number | null;
   costUsd: number | null;
@@ -415,7 +450,7 @@ export type LabSampleSummary = {
 
 export type LabExperimentDefinition = {
   schemaVersion: 1;
-  mode: "provider-free-replay" | "provider-real" | "provider-real-gate-b";
+  mode: "provider-free-replay" | "provider-real" | "provider-real-gate-b" | "provider-real-gate-b-v2";
   corpusId: string;
   sampleIds: string[];
   sttRecipes: string[];

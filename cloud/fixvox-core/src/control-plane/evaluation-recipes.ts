@@ -65,15 +65,16 @@ export function resolveEvaluationRecipe(value: unknown): EvaluationRecipe {
 
 export type PostprocessEvaluationRecipeId =
   | "transcription-quality-v1-postprocess-120b-plain"
-  | "transcription-quality-v1-postprocess-120b-prosody";
+  | "transcription-quality-v1-postprocess-120b-prosody"
+  | "transcription-quality-v2-postprocess-120b-conservative-timing";
 
 export type PostprocessEvaluationRecipe = Readonly<{
   id: PostprocessEvaluationRecipeId;
-  version: "v1";
-  variant: "without-prosody" | "with-prosody";
+  version: "v1" | "v2";
+  variant: "without-prosody" | "with-prosody" | "conservative-timing";
   provider: "groq";
   model: "openai/gpt-oss-120b";
-  promptId: "managed-postprocess-v1";
+  promptId: "managed-postprocess-v1" | "managed-postprocess-v2";
   temperature: 0;
   maxCompletionTokens: 512;
 }>;
@@ -97,6 +98,23 @@ export const POSTPROCESS_EVALUATION_RECIPES: readonly PostprocessEvaluationRecip
   Object.freeze({ id: "transcription-quality-v1-postprocess-120b-prosody", version: "v1", variant: "with-prosody", provider: "groq", model: "openai/gpt-oss-120b", promptId: "managed-postprocess-v1", temperature: 0, maxCompletionTokens: 512 }),
 ]);
 
+export const CONSERVATIVE_TIMING_EVALUATION_RECIPE: PostprocessEvaluationRecipe = Object.freeze({
+  id: "transcription-quality-v2-postprocess-120b-conservative-timing",
+  version: "v2",
+  variant: "conservative-timing",
+  provider: "groq",
+  model: "openai/gpt-oss-120b",
+  promptId: "managed-postprocess-v2",
+  temperature: 0,
+  maxCompletionTokens: 512,
+});
+
+export const ALL_POSTPROCESS_EVALUATION_RECIPES: readonly PostprocessEvaluationRecipe[] =
+  Object.freeze([
+    ...POSTPROCESS_EVALUATION_RECIPES,
+    CONSERVATIVE_TIMING_EVALUATION_RECIPE,
+  ]);
+
 export const GATE_B_FIXED_DEFINITION = Object.freeze({
   schemaVersion: 1 as const,
   id: "transcription-quality-gate-b-v1" as const,
@@ -104,6 +122,25 @@ export const GATE_B_FIXED_DEFINITION = Object.freeze({
   postprocessRecipeIds: Object.freeze([
     "transcription-quality-v1-postprocess-120b-plain",
     "transcription-quality-v1-postprocess-120b-prosody",
+  ] as const),
+  provider: "groq" as const,
+  model: "openai/gpt-oss-120b" as const,
+  sttCalls: 0 as const,
+  postprocessCalls: 6 as const,
+  maxRequests: 6 as const,
+  maxCostUsd: 0.005 as const,
+  audio: "off" as const,
+  delivery: "off" as const,
+  vocabularyMode: "off" as const,
+});
+
+export const GATE_B_V2_FIXED_DEFINITION = Object.freeze({
+  schemaVersion: 2 as const,
+  id: "transcription-quality-gate-b-v2" as const,
+  sampleIds: GATE_A_DEFINITION.sampleIds,
+  postprocessRecipeIds: Object.freeze([
+    "transcription-quality-v1-postprocess-120b-plain",
+    "transcription-quality-v2-postprocess-120b-conservative-timing",
   ] as const),
   provider: "groq" as const,
   model: "openai/gpt-oss-120b" as const,
@@ -139,7 +176,7 @@ export type GateBDefinition = Readonly<{
   delivery: "off";
   vocabularyMode: "off";
 }>;
-const postprocessById: Record<string, PostprocessEvaluationRecipe> = Object.fromEntries(POSTPROCESS_EVALUATION_RECIPES.map((recipe) => [recipe.id, recipe]));
+const postprocessById: Record<string, PostprocessEvaluationRecipe> = Object.fromEntries(ALL_POSTPROCESS_EVALUATION_RECIPES.map((recipe) => [recipe.id, recipe]));
 export function resolvePostprocessEvaluationRecipe(value: unknown): PostprocessEvaluationRecipe {
   if (typeof value !== "string" || !postprocessById[value]) throw new Error("postprocess_evaluation_recipe_unknown");
   return postprocessById[value];

@@ -16,6 +16,7 @@ import {
 import {
   GATE_A_DEFINITION,
   GATE_B_FIXED_DEFINITION,
+  GATE_B_V2_FIXED_DEFINITION,
   isExactGateADefinition,
 } from "../../../fixvox-core/src/control-plane/evaluation-recipes.ts";
 
@@ -239,7 +240,7 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
           maxRequests = GATE_A_DEFINITION.estimate.maxRequests;
           maxCostUsd = GATE_A_DEFINITION.estimate.maxCostUsd;
         } else if (
-          command.schemaVersion === 1
+          (command.schemaVersion === 1 || command.schemaVersion === 2)
           && command.kind === "gate-b"
           && typeof command.sourceGateARunId === "string"
           && /^[a-f0-9-]{36}$/.test(command.sourceGateARunId)
@@ -257,15 +258,18 @@ export async function handleAdminRoute(request: Request, url: URL, deps: AdminRo
               rawRefs[index]?.sampleId === sampleId
               && /^lraw_[a-f0-9]{64}$/.test(rawRefs[index]?.rawRef ?? ""));
           if (!source || !exactRawSource) return cors(request, executionFailure("laboratory_execution_source_incomplete"));
+          const fixedDefinition = command.schemaVersion === 2
+            ? GATE_B_V2_FIXED_DEFINITION
+            : GATE_B_FIXED_DEFINITION;
           definition = {
-            ...GATE_B_FIXED_DEFINITION,
+            ...fixedDefinition,
             sourceGateARunId: sourceRunId,
             sourceGateADefinitionHash: source.definitionHash,
             rawRefs,
           };
-          requestValue = { schemaVersion: 1, kind: "gate-b", sourceGateARunId: sourceRunId };
-          maxRequests = GATE_B_FIXED_DEFINITION.maxRequests;
-          maxCostUsd = GATE_B_FIXED_DEFINITION.maxCostUsd;
+          requestValue = { schemaVersion: command.schemaVersion, kind: "gate-b", sourceGateARunId: sourceRunId };
+          maxRequests = fixedDefinition.maxRequests;
+          maxCostUsd = fixedDefinition.maxCostUsd;
         } else {
           return cors(request, error("invalid_request", 400));
         }

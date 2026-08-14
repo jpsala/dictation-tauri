@@ -1469,6 +1469,18 @@
   gap: var(--lab-space-sm);
 }
 
+.lab-postprocess-comparison {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--lab-space-xs) var(--lab-space-sm);
+  padding: var(--lab-space-sm);
+  border: 1px solid var(--lab-border);
+  border-radius: var(--lab-radius-md);
+  background: color-mix(in srgb, var(--lab-surface) 88%, var(--lab-primary) 12%);
+  color: var(--lab-ink);
+  font-size: 13px;
+}
+
 .lab-sample-actions > div {
   min-width: 150px;
   display: grid;

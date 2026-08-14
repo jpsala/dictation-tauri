@@ -330,7 +330,81 @@ export function EvidenceResultsWorkspace({ artifacts, client, selectedRun: contr
 
 function EvidenceSampleRow({ sample, privateText, textLoading, audio, audioLoading, verdict, revision, verdictNotice, onReadText, onCheckAudio, onVerdictChange, onSaveVerdict }: { sample: LabSampleSummary; privateText: Record<string, string>; textLoading: string | null; audio: Record<string, { available: boolean; kind: "audio"; mimeType: string; bytes: number; audioId: string; readable: boolean }>; audioLoading: string | null; verdict: Record<string, LabHumanVerdictMutation["verdict"] | "">; revision: Record<string, number | null>; verdictNotice: Record<string, string>; onReadText: (sample: LabSampleSummary, kind: TextKind) => void; onCheckAudio: (sample: LabSampleSummary) => void; onVerdictChange: (value: LabHumanVerdictMutation["verdict"] | "") => void; onSaveVerdict: () => void }) {
   const key = `${sample.runId}:${sample.sampleId}:${sample.candidateId}`;
-  return <article className="lab-sample-row"><div className="lab-section-heading"><div><h4>{sample.sampleId}</h4><p>{sample.candidateId} · {sample.language} · {sample.difficulty} · {sample.goldStatus}</p></div><Status label={sample.availability.status} tone={toneForAvailability(sample.availability.status)} /></div><div className="lab-sample-metrics"><span>WER {sample.scores.wer === null ? "Not observed" : `${(sample.scores.wer * 100).toFixed(1)}%`}</span><span>CER {sample.scores.cer === null ? "Not observed" : `${(sample.scores.cer * 100).toFixed(1)}%`}</span><span>Entities {sample.scores.entities === null ? "Not observed" : `${(sample.scores.entities * 100).toFixed(1)}%`}</span><span>Latency {sample.latencyMs === null ? "Not observed" : `${sample.latencyMs.toFixed(0)} ms`}</span></div><div className="lab-sample-actions">{(["raw", "final", "gold"] as TextKind[]).map((kind) => { const textKey = `${key}:${kind}`; return <div key={kind}><button type="button" className="lab-secondary-button" onClick={() => onReadText(sample, kind)} disabled={textLoading === textKey}>{textLoading === textKey ? "Reading" : `Read ${kind}`}</button>{privateText[textKey] !== undefined ? <pre>{privateText[textKey]}</pre> : null}</div>; })}<div><button type="button" className="lab-secondary-button" onClick={() => onCheckAudio(sample)} disabled={audioLoading === key}>{audioLoading === key ? "Checking audio" : "Check audio capability"}</button>{audio[key]?.available ? <span className="lab-private-note">Audio available ({audio[key].mimeType}, {audio[key].bytes} bytes). Playback remains behind the audio capability boundary.</span> : audio[key] ? <span className="lab-private-note">Audio unavailable.</span> : null}</div></div><div className="lab-verdict-row"><label><span>Human verdict</span><select value={verdict[key] ?? ""} onChange={(event) => onVerdictChange(event.currentTarget.value as LabHumanVerdictMutation["verdict"] | "")}><option value="">Unreviewed</option>{["better", "same", "lost-content", "added-content", "changed-intent", "improved-structure", "improved-terms"].map((value) => <option key={value} value={value}>{value}</option>)}</select></label><button type="button" className="lab-primary-button" disabled={!verdict[key]} onClick={onSaveVerdict}>Save verdict</button>{revision[key] !== undefined ? <span className="lab-private-note">Revision {revision[key]}</span> : null}{verdictNotice[key] ? <span className="lab-private-note">{verdictNotice[key]}</span> : null}</div></article>;
+  return (
+    <article className="lab-sample-row">
+      <div className="lab-section-heading">
+        <div>
+          <h4>{sample.sampleId}</h4>
+          <p>{sample.candidateId} · {sample.language} · {sample.difficulty} · {sample.goldStatus}</p>
+        </div>
+        <Status label={sample.availability.status} tone={toneForAvailability(sample.availability.status)} />
+      </div>
+      <><div className="lab-sample-metrics"><span>WER {sample.scores.wer === null ? "No observado" : `${(sample.scores.wer * 100).toFixed(1)}%`}</span>
+      <span>CER {sample.scores.cer === null ? "No observado" : `${(sample.scores.cer * 100).toFixed(1)}%`}</span>
+      <span>Entidades {sample.scores.entities === null ? "No observado" : `${(sample.scores.entities * 100).toFixed(1)}%`}</span>
+      <span>Seguridad semántica {sample.scores.semanticSafety === null ? "No observada" : `${(sample.scores.semanticSafety * 100).toFixed(1)}%`}</span>
+      <span>Guard {sample.fallback.used === null ? "No observado" : sample.fallback.used ? "Fallback al raw" : "Aceptado"}</span>
+      <span>Latencia {sample.latencyMs === null ? "No observada" : `${sample.latencyMs.toFixed(0)} ms`}</span></div>{sample.postprocess ? <div className="lab-postprocess-comparison" aria-label="Postprocess comparison"><span>Recipe {sample.postprocess.recipeId} {sample.postprocess.recipeVersion ?? "version not observed"}</span><span>Semantic guard: {sample.postprocess.decision}</span><span>Omissions {sample.postprocess.omissions ?? "Not observed"}</span><span>Additions {sample.postprocess.additions ?? "Not observed"}</span></div> : null}</>
+      {sample.fallback.reasons.length ? (
+        <p className="lab-private-note">Razones del guard: {sample.fallback.reasons.join(", ")}</p>
+      ) : null}
+      <div className="lab-sample-actions">
+        {(["raw", "final", "gold"] as TextKind[]).map((kind) => {
+          const textKey = `${key}:${kind}`;
+          return (
+            <div key={kind}>
+              <button
+                type="button"
+                className="lab-secondary-button"
+                onClick={() => onReadText(sample, kind)}
+                disabled={textLoading === textKey}
+              >
+                {textLoading === textKey ? "Leyendo" : `Leer ${kind}`}
+              </button>
+              {privateText[textKey] !== undefined ? <pre>{privateText[textKey]}</pre> : null}
+            </div>
+          );
+        })}
+        <div>
+          <button
+            type="button"
+            className="lab-secondary-button"
+            onClick={() => onCheckAudio(sample)}
+            disabled={audioLoading === key}
+          >
+            {audioLoading === key ? "Comprobando audio" : "Comprobar capacidad de audio"}
+          </button>
+          {audio[key]?.available ? (
+            <span className="lab-private-note">
+              Audio disponible ({audio[key].mimeType}, {audio[key].bytes} bytes).
+              La reproducción sigue detrás del límite de capacidad de audio.
+            </span>
+          ) : audio[key] ? (
+            <span className="lab-private-note">Audio no disponible.</span>
+          ) : null}
+        </div>
+      </div>
+      <div className="lab-verdict-row">
+        <label>
+          <span>Veredicto humano</span>
+          <select
+            value={verdict[key] ?? ""}
+            onChange={(event) => onVerdictChange(event.currentTarget.value as LabHumanVerdictMutation["verdict"] | "")}
+          >
+            <option value="">Sin revisar</option>
+            {["better", "same", "lost-content", "added-content", "changed-intent", "improved-structure", "improved-terms"].map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
+          </select>
+        </label>
+        <button type="button" className="lab-primary-button" disabled={!verdict[key]} onClick={onSaveVerdict}>
+          Guardar veredicto
+        </button>
+        {revision[key] !== undefined ? <span className="lab-private-note">Revisión {revision[key]}</span> : null}
+        {verdictNotice[key] ? <span className="lab-private-note">{verdictNotice[key]}</span> : null}
+      </div>
+    </article>
+  );
 }
 
 export function EvidenceCorpusWorkspace({ artifacts, samples = [] }: { artifacts: EvidenceArtifactState; samples?: readonly LabSampleSummary[] }) {

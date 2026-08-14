@@ -88,6 +88,7 @@ pub fn run() {
             dictation_lab_jobs::estimate_dictation_lab_experiment,
             dictation_lab_jobs::get_dictation_lab_local_plan,
             dictation_lab_jobs::list_dictation_lab_gate_sources,
+            dictation_lab_jobs::plan_dictation_lab_metadata_experiment,
             dictation_lab_jobs::recover_dictation_lab_gate_a_completion,
             dictation_lab_jobs::abort_dictation_lab_execution,
             dictation_lab_jobs::start_dictation_lab_job,

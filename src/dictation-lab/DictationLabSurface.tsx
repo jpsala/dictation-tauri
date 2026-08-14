@@ -174,7 +174,8 @@ export function DictationLabSurface({
         source.canonicalRawRefCount === 3,
     ) ?? null;
   const catalogExecutionMode: "provider-free-replay" | "provider-real" =
-    experiment?.mode === "provider-real-gate-b"
+    experiment?.mode === "provider-real-gate-b" ||
+    experiment?.mode === "provider-real-gate-b-v2"
       ? "provider-real"
       : experiment?.mode ?? "provider-free-replay";
   const dirty = useMemo(() => {
@@ -694,6 +695,15 @@ export function DictationLabSurface({
               definition={experiment}
               localReplayDefinition={load.localReplay}
               gateASourceExecutionId={gateASource?.executionId ?? null}
+              metadataExperiment={load.metadataExperiment}
+              metadataCandidateAvailable={Boolean(
+                load.catalog?.postprocessRecipes.some(
+                  (entry) =>
+                    entry.id ===
+                      "transcription-quality-v2-postprocess-120b-conservative-timing" &&
+                    entry.availability.status === "available",
+                ),
+              )}
               catalogState={load.resources.catalog}
               estimate={estimate}
               estimateLoading={estimateLoading}
@@ -712,6 +722,10 @@ export function DictationLabSurface({
                 postprocess: (load.catalog?.postprocessRecipes ?? [])
                   .filter(
                     (entry) =>
+                      [
+                        "transcription-quality-v1-postprocess-120b-plain",
+                        "transcription-quality-v1-postprocess-120b-prosody",
+                      ].includes(entry.id) &&
                       entry.availability.status === "available" &&
                       entry.executionModes.includes(catalogExecutionMode ?? ""),
                   )

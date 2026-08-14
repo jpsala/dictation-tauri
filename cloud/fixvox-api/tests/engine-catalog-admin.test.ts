@@ -127,7 +127,7 @@ describe("laboratory execution authority", () => {
     expect(await catalogResponse?.json()).toMatchObject({
       data: {
         sttRecipes: [{}, {}, {}, {}],
-        postprocessRecipes: [{}, {}],
+        postprocessRecipes: [{}, {}, {}],
         providerAuthorization: { status: "available", reasonCode: null },
       },
     });
@@ -158,64 +158,69 @@ describe("laboratory execution authority", () => {
     });
   });
 
-  test("derives an exact Gate B grant from the identity-bound Gate A source", async () => {
+  test("derives versioned Gate B grants from the same identity-bound Gate A source", async () => {
     const sourceExecutionId = "00000000-0000-4000-8000-000000000002";
-    let issued: Record<string, unknown> | null = null;
-    const laboratoryGrants = {
-      async gateBSource(input: Record<string, unknown>) {
-        expect(input).toEqual({
-          runId: sourceExecutionId,
-          principalKey,
-          deviceId: "device-lab",
-        });
-        return {
-          definitionHash: "a".repeat(64),
-          rawRefs: GATE_A_DEFINITION.sampleIds.map((sampleId, index) => ({
-            sampleId,
-            rawRef: `lraw_${String(index + 1).repeat(64)}`,
-          })),
-        };
-      },
-      async issue(input: Record<string, unknown>) {
-        issued = input;
-        return { grantToken: "d".repeat(64) };
-      },
-    };
-    const request = new Request(
-      "https://control-room.test/product/v1/control-room/laboratory/execution-grants",
-      {
-        method: "POST",
-        headers: {
-          authorization: "Bearer desktop-session",
-          "x-device-id": "device-lab",
-          "content-type": "application/json",
+    const issuedDefinitions: string[] = [];
+    for (const schemaVersion of [1, 2] as const) {
+      let issued: Record<string, unknown> | null = null;
+      const laboratoryGrants = {
+        async gateBSource(input: Record<string, unknown>) {
+          expect(input).toEqual({
+            runId: sourceExecutionId,
+            principalKey,
+            deviceId: "device-lab",
+          });
+          return {
+            definitionHash: "a".repeat(64),
+            rawRefs: GATE_A_DEFINITION.sampleIds.map((sampleId, index) => ({
+              sampleId,
+              rawRef: `lraw_${String(index + 1).repeat(64)}`,
+            })),
+          };
         },
-        body: JSON.stringify({
-          schemaVersion: 1,
+        async issue(input: Record<string, unknown>) {
+          issued = input;
+          return { grantToken: "d".repeat(64) };
+        },
+      };
+      const request = new Request(
+        "https://control-room.test/product/v1/control-room/laboratory/execution-grants",
+        {
+          method: "POST",
+          headers: {
+            authorization: "Bearer desktop-session",
+            "x-device-id": "device-lab",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            schemaVersion,
+            kind: "gate-b",
+            sourceGateARunId: sourceExecutionId,
+          }),
+        },
+      );
+
+      const response = await handleAdminRoute(
+        request,
+        new URL(request.url),
+        { ...deps(), sessions, laboratoryGrants } as never,
+      );
+      expect(response?.status).toBe(201);
+      expect(issued).toMatchObject({
+        principalKey,
+        deviceId: "device-lab",
+        request: {
+          schemaVersion,
           kind: "gate-b",
           sourceGateARunId: sourceExecutionId,
-        }),
-      },
-    );
-
-    const response = await handleAdminRoute(
-      request,
-      new URL(request.url),
-      { ...deps(), sessions, laboratoryGrants } as never,
-    );
-    expect(response?.status).toBe(201);
-    expect(issued).toMatchObject({
-      principalKey,
-      deviceId: "device-lab",
-      request: {
-        schemaVersion: 1,
-        kind: "gate-b",
-        sourceGateARunId: sourceExecutionId,
-      },
-      sourceRunId: sourceExecutionId,
-      maxRequests: 6,
-      maxCostMicrousd: 5000,
-    });
+        },
+        sourceRunId: sourceExecutionId,
+        maxRequests: 6,
+        maxCostMicrousd: 5000,
+      });
+      issuedDefinitions.push(String((issued as unknown as Record<string, unknown>).definitionHash));
+    }
+    expect(new Set(issuedDefinitions).size).toBe(2);
   });
 });
 

@@ -95,6 +95,60 @@ export function formatProsodyHints(values: readonly unknown[]): string {
   return lines.join("\n");
 }
 
+export type ConservativeProsodySignal = Readonly<{
+  afterWord: string;
+  afterWordIndex: number;
+  pauseMs: number;
+  source: "explicit-gap" | "embedded-duration";
+  strength: "noticeable" | "strong";
+}>;
+
+const MAX_CONSERVATIVE_PROSODY_SIGNALS = 4;
+
+export function detectConservativeProsodySignals(
+  values: readonly unknown[],
+): readonly ConservativeProsodySignal[] {
+  const words = values.filter(validWhisperWord);
+  const candidates: ConservativeProsodySignal[] = [];
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    const durationMs = Math.max(0, (word.end - word.start) * 1000);
+    const expectedMs = Math.max(150, Math.min(500, estimateSyllables(word.word) * 200));
+    const embeddedMs = durationMs > expectedMs * 3.2 ? Math.max(0, durationMs - expectedMs) : 0;
+    const next = words[index + 1];
+    const explicitGapMs = next ? Math.max(0, (next.start - word.end) * 1000) : 0;
+    const eligibleExplicitMs = explicitGapMs >= 500 ? explicitGapMs : 0;
+    const eligibleEmbeddedMs = embeddedMs >= 900 ? embeddedMs : 0;
+    const pauseMs = Math.round(Math.max(eligibleExplicitMs, eligibleEmbeddedMs));
+    if (pauseMs === 0) continue;
+    candidates.push({
+      afterWord: word.word,
+      afterWordIndex: index,
+      pauseMs,
+      source: eligibleExplicitMs >= eligibleEmbeddedMs ? "explicit-gap" : "embedded-duration",
+      strength: pauseMs >= 1200 ? "strong" : "noticeable",
+    });
+  }
+  return candidates
+    .sort((left, right) => right.pauseMs - left.pauseMs || left.afterWordIndex - right.afterWordIndex)
+    .slice(0, MAX_CONSERVATIVE_PROSODY_SIGNALS)
+    .sort((left, right) => left.afterWordIndex - right.afterWordIndex);
+}
+
+export function formatConservativeProsodyContext(values: readonly unknown[]): string {
+  const signals = detectConservativeProsodySignals(values);
+  if (!signals.length) {
+    return "No reliable timing boundary was detected. Use transcript semantics only.";
+  }
+  return [
+    "Timing boundaries (advisory evidence only):",
+    "Do not infer punctuation, paragraph breaks, list structure, or removed wording from timing alone.",
+    ...signals.map((signal) =>
+      `- After token ${signal.afterWordIndex + 1} ("${signal.afterWord}"): approximately ${signal.pauseMs}ms ${signal.strength} boundary (${signal.source}).`
+    ),
+  ].join("\n");
+}
+
 export type RawVoicePostProcessSanitizeReason =
   | "final_marker"
   | "explanation_marker"

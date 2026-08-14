@@ -1,7 +1,7 @@
 import {
+  ALL_POSTPROCESS_EVALUATION_RECIPES,
   EVALUATION_RECIPES,
   GATE_A_DEFINITION,
-  POSTPROCESS_EVALUATION_RECIPES,
   type EvaluationRecipeId,
   type GateADefinition,
   type PostprocessEvaluationRecipeId,
@@ -147,7 +147,7 @@ export type LaboratoryExecutionGrantRequest =
       definition: GateADefinition;
     }>
   | Readonly<{
-      schemaVersion: 1;
+      schemaVersion: 1 | 2;
       kind: "gate-b";
       sourceGateARunId: string;
     }>;
@@ -255,6 +255,11 @@ export const LABORATORY_EXECUTION_WIRE_EXAMPLES = Object.freeze({
   }),
   issueGateB: Object.freeze({
     schemaVersion: 1 as const,
+    kind: "gate-b" as const,
+    sourceGateARunId: "gate-a-run-id" as const,
+  }),
+  issueGateBV2: Object.freeze({
+    schemaVersion: 2 as const,
     kind: "gate-b" as const,
     sourceGateARunId: "gate-a-run-id" as const,
   }),
@@ -492,15 +497,19 @@ export function buildLaboratoryCatalog(
       defaults: { "transcript.language": recipe.language },
     },
   })) as LaboratoryCatalog["sttRecipes"];
-  const postprocessRecipes = POSTPROCESS_EVALUATION_RECIPES.map((recipe) => laboratoryEntry({
+  const postprocessRecipes = ALL_POSTPROCESS_EVALUATION_RECIPES.map((recipe) => laboratoryEntry({
     id: recipe.id,
-    label: recipe.variant === "with-prosody" ? "120B · advisory prosody" : "120B · plain",
+    label: recipe.variant === "with-prosody"
+      ? "120B · advisory prosody"
+      : recipe.variant === "conservative-timing"
+        ? "120B · conservative timing"
+        : "120B · plain",
     version: recipe.version,
     availability: unavailableGateB,
     executionModes: ["provider-real"],
     compatibility: {
       profileRuntimeKinds: Object.freeze(["postprocess"]),
-      prosodyModes: Object.freeze([recipe.variant === "with-prosody" ? "advisory" : "off"]),
+      prosodyModes: Object.freeze([recipe.variant === "without-prosody" ? "off" : "advisory"]),
       requiresVocabularySnapshot: false,
     },
     profileMaterialization: {

@@ -371,10 +371,11 @@ describe("Bun API adapter", () => {
     }
   });
 
-  test("binds Gate B postprocess recipes server-side and enforces the prosody contrast", async () => {
+  test("binds Gate B postprocess recipes server-side and enforces each timing contract", async () => {
     for (const fixture of [
-      { id: "transcription-quality-v1-postprocess-120b-plain", variant: "without-prosody", input: { transcript: "private raw" } },
-      { id: "transcription-quality-v1-postprocess-120b-prosody", variant: "with-prosody", input: { transcript: "private raw", prosodyHints: "advisory pause" } },
+      { id: "transcription-quality-v1-postprocess-120b-plain", variant: "without-prosody", promptId: "managed-postprocess-v1", input: { transcript: "private raw" } },
+      { id: "transcription-quality-v1-postprocess-120b-prosody", variant: "with-prosody", promptId: "managed-postprocess-v1", input: { transcript: "private raw", prosodyHints: "advisory pause" } },
+      { id: "transcription-quality-v2-postprocess-120b-conservative-timing", variant: "conservative-timing", promptId: "managed-postprocess-v2", input: { transcript: "private raw", prosodyHints: "bounded timing boundary" } },
     ] as const) {
       let policy: unknown;
       let laboratoryKind: unknown;
@@ -403,7 +404,7 @@ describe("Bun API adapter", () => {
         data: {
           output: { text: "Private raw." },
           semanticSafety: { decision: "accepted", reasons: [], alignment: { omissions: 0, additions: 0 }, redacted: true },
-          evaluationRecipe: { id: fixture.id, variant: fixture.variant, provider: "groq", model: "openai/gpt-oss-120b", promptId: "managed-postprocess-v1" },
+          evaluationRecipe: { id: fixture.id, variant: fixture.variant, provider: "groq", model: "openai/gpt-oss-120b", promptId: fixture.promptId },
         },
       });
     }
@@ -411,6 +412,7 @@ describe("Bun API adapter", () => {
     for (const fixture of [
       { id: "transcription-quality-v1-postprocess-120b-plain", input: { transcript: "private raw", prosodyHints: "forbidden" } },
       { id: "transcription-quality-v1-postprocess-120b-prosody", input: { transcript: "private raw" } },
+      { id: "transcription-quality-v2-postprocess-120b-conservative-timing", input: { transcript: "private raw" } },
     ]) {
       let calls = 0;
       let reserves = 0;

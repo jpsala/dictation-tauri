@@ -555,7 +555,7 @@ async function dispatch(
     const instruction = kind === "selection_transform" ? text(input.instruction) : null;
     const prosodyHints = kind === "postprocess" ? text(input.prosodyHints) : null;
     if (!content || (kind === "selection_transform" && !instruction)) throw productError(400, "invalid_request", "request", false);
-    if (evaluationRecipe?.variant === "with-prosody" && !prosodyHints) throw productError(400, "invalid_request", "prosodyHints", false);
+    if (evaluationRecipe?.variant !== "without-prosody" && evaluationRecipe && !prosodyHints) throw productError(400, "invalid_request", "prosodyHints", false);
     if (evaluationRecipe?.variant === "without-prosody" && prosodyHints) throw productError(400, "invalid_request", "prosodyHints", false);
     const typedProviderInput = kind === "postprocess"
       ? { transcript: content, ...(prosodyHints ? { prosodyHints } : {}) }

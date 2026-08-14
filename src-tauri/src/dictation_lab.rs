@@ -166,6 +166,7 @@ pub struct LabSampleSummary {
     pub gold: LabArtifactRef,
     pub scores: SampleScores,
     pub fallback: FallbackSummary,
+    pub postprocess: Option<PostprocessSampleSummary>,
     pub latency_ms: Option<f64>,
     pub cost_usd: Option<f64>,
     pub availability: LabAvailability,
@@ -178,6 +179,17 @@ pub struct SampleScores {
     pub entities: Option<f64>,
     pub structure: Option<f64>,
     pub semantic_safety: Option<f64>,
+}
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostprocessSampleSummary {
+    pub recipe_id: String,
+    pub recipe_version: Option<String>,
+    pub variant: Option<String>,
+    pub decision: String,
+    pub reasons: Vec<String>,
+    pub omissions: Option<u64>,
+    pub additions: Option<u64>,
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct FallbackSummary {
@@ -663,7 +675,9 @@ pub async fn request_dictation_lab_execution_grant(
                 "definition": gate_a_wire_definition(),
             })
         }
-        "provider-real-gate-b" if estimate.max_requests == 6 && estimate.max_cost_usd == 0.005 => {
+        "provider-real-gate-b" | "provider-real-gate-b-v2"
+            if estimate.max_requests == 6 && estimate.max_cost_usd == 0.005 =>
+        {
             let source_gate_a_run_id = definition
                 .source_gate_a_run_id
                 .filter(|value| {
@@ -679,7 +693,7 @@ pub async fn request_dictation_lab_execution_grant(
                     )
                 })?;
             serde_json::json!({
-                "schemaVersion": 1,
+                "schemaVersion": if definition.mode == "provider-real-gate-b-v2" { 2 } else { 1 },
                 "kind": "gate-b",
                 "sourceGateARunId": source_gate_a_run_id,
             })
@@ -1708,6 +1722,30 @@ fn sample_summary(
                 .and_then(|v| v.get("instructionFollowing"))
                 .and_then(Value::as_f64),
         },
+        postprocess: result.and_then(|row| {
+            let receipt = row.get("semanticSafety")?;
+            let recipe_id = string_at(row, &["recipeId"])?;
+            let decision = string_at(receipt, &["decision"])?;
+            Some(PostprocessSampleSummary {
+                recipe_id: recipe_id.to_string(),
+                recipe_version: string_at(
+                    row,
+                    &["identity", "observed", "evaluationRecipeVersion"],
+                )
+                .map(str::to_string),
+                variant: string_at(row, &["variant"]).map(str::to_string),
+                decision: decision.to_string(),
+                reasons: array_strings(receipt, "reasons"),
+                omissions: receipt
+                    .get("alignment")
+                    .and_then(|value| value.get("omissions"))
+                    .and_then(Value::as_u64),
+                additions: receipt
+                    .get("alignment")
+                    .and_then(|value| value.get("additions"))
+                    .and_then(Value::as_u64),
+            })
+        }),
         fallback: FallbackSummary {
             used: fallback.map(|x| x == "reused"),
             reasons: result

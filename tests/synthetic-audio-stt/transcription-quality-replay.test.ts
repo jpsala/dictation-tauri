@@ -66,10 +66,11 @@ describe("Wave 2 provider-free replay", () => {
       const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
       requests.push(request);
       const recipeId = String(request.evaluationRecipeId);
-      const withProsody = recipeId.endsWith("-prosody");
+      const hasTiming = recipeId !== "transcription-quality-v1-postprocess-120b-plain";
+      const conservative = recipeId.includes("conservative-timing");
       const input = request.input as Record<string, unknown>;
       const raw = String(input.transcript);
-      const semanticSafety = withProsody
+      const semanticSafety = hasTiming
         ? {
             decision: "fallback",
             reasons: ["material_omission", "unsupported_addition", "semantic_transformation"],
@@ -91,11 +92,11 @@ describe("Wave 2 provider-free replay", () => {
           semanticSafety,
           evaluationRecipe: {
             id: recipeId,
-            version: "v1",
-            variant: withProsody ? "with-prosody" : "without-prosody",
+            version: conservative ? "v2" : "v1",
+            variant: conservative ? "conservative-timing" : hasTiming ? "with-prosody" : "without-prosody",
             provider: "groq",
             model: "openai/gpt-oss-120b",
-            promptId: "managed-postprocess-v1",
+            promptId: conservative ? "managed-postprocess-v2" : "managed-postprocess-v1",
           },
         },
       });
@@ -104,6 +105,12 @@ describe("Wave 2 provider-free replay", () => {
     expect(plan).toMatchObject({ ok: true, providerCalls: 0, plannedRequests: 6, costCapUsd: 0.005 });
     expect(plan.estimatedMaxCostUsd).toBeLessThan(0.005);
     expect(plan.samples).toHaveLength(3);
+    const v2Plan = await planGateBPostprocess({ workspaceRoot: root, sourceResultsPath, schemaVersion: 2 });
+    expect(v2Plan.recipes).toEqual([
+      "transcription-quality-v1-postprocess-120b-plain",
+      "transcription-quality-v2-postprocess-120b-conservative-timing",
+    ]);
+    expect(v2Plan.estimatedMaxCostUsd).toBeLessThan(0.005);
 
     const result = await runGateBPostprocess({
       workspaceRoot: root,
@@ -128,5 +135,39 @@ describe("Wave 2 provider-free replay", () => {
     expect(result.results?.every(({ identity }) => identity.resolved.model === "openai/gpt-oss-120b")).toBe(true);
     expect(result.results?.filter(({ variant }) => variant === "without-prosody").every(({ semanticSafety, scores }) => semanticSafety.decision === "accepted" && scores.semanticSafety.instructionFollowing === 1)).toBe(true);
     expect(result.results?.filter(({ variant }) => variant === "with-prosody").every(({ semanticSafety, scores }) => semanticSafety.decision === "fallback" && scores.semanticSafety.instructionFollowing === 0 && scores.semanticSafety.omissions === 3 && scores.semanticSafety.additions === 6)).toBe(true);
+
+    const v2Result = await runGateBPostprocess({
+      workspaceRoot: root,
+      sourceResultsPath,
+      backendBaseUrl: "https://fixture.test",
+      deviceId: "fixture-device",
+      runId: "gate-b-v2-test",
+      allowProviderCalls: true,
+      maxRequests: GATE_B_REQUEST_CAP,
+      maxCostUsd: GATE_B_COST_CAP_USD,
+      executionId: "00000000-0000-4000-8000-000000000003",
+      definitionHash: "c".repeat(64),
+      schemaVersion: 2,
+      fetchImpl,
+    });
+    expect(v2Result).toMatchObject({ ok: true, requestCount: 6 });
+    expect(fetchImpl).toHaveBeenCalledTimes(12);
+    expect(v2Result.results?.map(({ recipeId }) => recipeId)).toEqual([
+      "transcription-quality-v1-postprocess-120b-plain",
+      "transcription-quality-v2-postprocess-120b-conservative-timing",
+      "transcription-quality-v1-postprocess-120b-plain",
+      "transcription-quality-v2-postprocess-120b-conservative-timing",
+      "transcription-quality-v1-postprocess-120b-plain",
+      "transcription-quality-v2-postprocess-120b-conservative-timing",
+    ]);
+    expect(v2Result.results?.filter(({ variant }) => variant === "conservative-timing")
+      .every(({ identity }) => identity.observed.evaluationRecipeVersion === "v2")).toBe(true);
+    expect(v2Result.results?.every((row) =>
+      row.candidateId === row.recipeId &&
+      row.text.rawTranscriptRef === row.rawRef &&
+      row.text.finalTextRef === row.finalRef &&
+      row.text.goldRef.length > 0 &&
+      row.timingsMs.total === row.latencyMs
+    )).toBe(true);
   });
 });

@@ -6,7 +6,9 @@ import {
   buildFixvoxManagedSpeechRequestPreview,
   buildRawVoicePostProcessSystemPrompt,
   detectProsodyPauses,
+  detectConservativeProsodySignals,
   formatProsodyHints,
+  formatConservativeProsodyContext,
   materializeFixvoxNormalDictationOutput,
   resolveDictationRuntimePlanFromPolicyCache,
   resolveEffectiveFixvoxVoiceRuntime,
@@ -78,6 +80,31 @@ describe("Fixvox text runtime regressions", () => {
     expect(hints).toContain('After "ahora": ~800ms');
     expect(hints).toContain("advisory only");
     expect(formatProsodyHints([])).toContain("No reliable pause signal");
+  });
+
+  it("keeps verbose timing evidence bounded and non-prescriptive", () => {
+    const words = [
+      { word: "uno", start: 0, end: 0.3 },
+      { word: "dos", start: 1.1, end: 1.4 },
+      { word: "tres", start: 1.4, end: 3.5 },
+      { word: "cuatro", start: 3.5, end: 4.1 },
+      { word: "cinco", start: 4.1, end: 4.4 },
+      { word: "seis", start: 5.7, end: 7.8 },
+      { word: "siete", start: 7.8, end: 8.1 },
+    ];
+
+    expect(detectConservativeProsodySignals(words)).toEqual([
+      { afterWord: "uno", afterWordIndex: 0, pauseMs: 800, source: "explicit-gap", strength: "noticeable" },
+      { afterWord: "tres", afterWordIndex: 2, pauseMs: 1900, source: "embedded-duration", strength: "strong" },
+      { afterWord: "cinco", afterWordIndex: 4, pauseMs: 1300, source: "explicit-gap", strength: "strong" },
+      { afterWord: "seis", afterWordIndex: 5, pauseMs: 1900, source: "embedded-duration", strength: "strong" },
+    ]);
+    const context = formatConservativeProsodyContext(words);
+    expect(context).toContain("advisory evidence only");
+    expect(context).toContain("Do not infer punctuation");
+    expect(context).not.toContain("possible period");
+    expect(context.split("\n").filter((line) => line.startsWith("- "))).toHaveLength(4);
+    expect(formatConservativeProsodyContext([])).toContain("semantics only");
   });
 
   it("pins prompt clauses for Spanish punctuation, corrections, fillers, and technical identifiers", () => {
