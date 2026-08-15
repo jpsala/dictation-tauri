@@ -564,6 +564,28 @@ output contained the numbered multiline list and reconstructed filesystem path;
 the native sanitizer preserved it unchanged. Private raw and final artifacts
 remain local and are not operational receipts.
 
+## Assigned Profile And Plan Projection — 2026-08-14
+
+The account-profile cutover first deployed schema-compatible release
+`a8dc509b64506240`. Source commit `b3c97c0` then separated the assigned
+profile identity from its product plan in the desktop context contract. A clean
+checkout produced immutable release `5d53030dca65cf0a`, archive SHA-256
+`5d53030dca65cf0a0001b3e88cb2ebdbb96e111855799b4b8c6c0ba350c71572`.
+The first Windows-worktree archive failed closed before install or restart
+because its `0009` bytes did not match production; current remained
+`a8dc509b64506240`.
+
+The corrected archive reproduced twice, matched exact production checksums
+`0001..0009`, promoted once and restarted once with
+`a8dc509b64506240` preserved as the immediate schema-9 rollback. Independent
+verification observed current `5d53030dca65cf0a`, service active/enabled,
+`NRestarts=0`, unique `127.0.0.1:8790` listener, green local/public health and
+readiness, and `cloudflare-authority`. There was no migration, backfill, manual
+SQL, env, DNS or tunnel change. Authenticated desktop context returned assigned
+profile `dictation-complete-v1` / `Dictado completo` and plan `pro` / `Pro` as
+separate fields.
+
+
 ## Stop Conditions
 
 Stop without repair beyond one bounded local correction if the port is occupied, bind is not exact loopback, memory or disk falls below 1 GiB, schema/checksum/authority diverges, a secret or sensitive body appears, the off-host age identity is unavailable, the dirty VPS checkout would need mutation, or any provider/import/DNS/Tunnel/canary/cutover/public traffic/dependency becomes necessary.

@@ -45,23 +45,27 @@ decisiones.
 
 ## Gates Ejecutados Y Cierre Actual
 
-- Producción corre el release inmutable `bb1de673e1c36c50`, archive SHA-256
-  `bb1de673e1c36c50c54e34ac90cac26c2cff09c79117e01eb4b80db240ba50f6`.
-  `6ac7ed0a2a88f0d0` es el rollback inmediato schema-9;
-  `c1154baf25dbe005`, `2a49be9eccf4ce17`, `0434f2cf3d0a6607`,
-  `bc1a3e5cadba1903` y `650b4c8f6ed00a2a` siguen preservados;
-  `11bf651ce5d983b6` no es ejecutable directamente contra schema 9.
+- Producción corre el release inmutable `5d53030dca65cf0a`, archive SHA-256
+  `5d53030dca65cf0a0001b3e88cb2ebdbb96e111855799b4b8c6c0ba350c71572`.
+  `a8dc509b64506240` es el rollback inmediato schema-9;
+  `bb1de673e1c36c50`, `6ac7ed0a2a88f0d0`, `c1154baf25dbe005`,
+  `2a49be9eccf4ce17`, `0434f2cf3d0a6607`, `bc1a3e5cadba1903` y
+  `650b4c8f6ed00a2a` siguen preservados; `11bf651ce5d983b6` no es ejecutable
+  directamente contra schema 9.
 - Producción permanece schema `9`, migrations `0001..0009` y marker
   `laboratory_execution_grants`; service active/enabled, `NRestarts=0`,
   listener único `127.0.0.1:8790`, health/readiness local+público verdes y
   `cloudflare-authority`. No hubo migración, backfill, SQL manual, env, DNS ni
   tunnel.
-- El runtime desktop vuelve a proyectar el profile productivo `pro` desde
-  `runtimePolicy.profile.key` y `capabilities.postprocess`. STT server-owned
-  deriva señales privadas de prosodia desde timestamps y las entrega sólo al
-  postprocess `openai/gpt-oss-120b`; no se serializan en receipts ni UI. Un
-  dictado sintético real único confirmó `fixvox-cloud` + postprocess
-  policy-owned, sin fallback, y materializó una lista numerada.
+- El runtime desktop proyecta por separado el profile asignado y el plan que
+  lo agrupa. La asignación productiva observada es profile
+  `dictation-complete-v1` / `Dictado completo` bajo plan `pro` / `Pro`; el
+  cliente local construido desde `cec5ecf` quedó instalado y muestra ambos
+  nombres en Cuenta. STT server-owned deriva señales privadas de prosodia desde
+  timestamps y las entrega sólo al postprocess `openai/gpt-oss-120b`; no se
+  serializan en receipts ni UI. Un dictado sintético real único confirmó
+  `fixvox-cloud` + postprocess policy-owned, sin fallback, y materializó una
+  lista numerada.
 - Settings expone un modo host-owned persistente: `Según mi perfil` (default)
   o `Dictado completo`. El segundo fuerza postprocess canónico sin duplicar
   prompt/provider/model locales; los overrides temporales del Laboratory
@@ -98,8 +102,9 @@ decisiones.
   Gate B activas.
 - La UI separa recursos y razones de indisponibilidad; owner stale conserva
   catálogo/preview/grants bajo sus gates y provider-free local no depende de
-  recent-auth. Los planes Gate A/B son matrices bloqueadas. No se publicó
-  installer desktop.
+  recent-auth. Los planes Gate A/B son matrices bloqueadas. El cliente desktop
+  actualizado se instaló localmente desde source limpio; no se publicó
+  prerelease.
 
 ## Frentes Retomables
 
