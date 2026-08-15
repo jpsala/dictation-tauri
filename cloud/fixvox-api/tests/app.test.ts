@@ -11,7 +11,7 @@ function createDependencies(lines: string[] = []): ApiDependencies {
     devices: {
       async bindDevice() { return { deviceId: "fixture-device-001", created: true }; },
       async resolveDevice(deviceId) { return deviceId === "fixture-device-001" ? { deviceId } : null; },
-      async resolveEffectiveProfile() { return { profileId: "basic", label: "Basic", version: 1, source: "fallback", definition: { capabilities: ["dictation", "postprocess", "selection_transform", "assistant"], quota: { limit: 20 }, engines: { chat: { provider: "mock", model: "chat-policy" }, audio: { provider: "mock", model: "audio-policy" } } } }; },
+      async resolveEffectiveProfile() { return { profileId: "basic", label: "Basic", version: 1, source: "fallback", definition: { plan: { templateId: "pro", label: "Pro" }, capabilities: ["dictation", "postprocess", "selection_transform", "assistant"], quota: { limit: 20 }, engines: { chat: { provider: "mock", model: "chat-policy" }, audio: { provider: "mock", model: "audio-policy" } } } }; },
     },
     providers: createMockProviderProxy(),
     quota: {
@@ -257,11 +257,14 @@ describe("Bun API adapter", () => {
       body: JSON.stringify({ installId: "fixture-install", device: { platform: "windows", appVersion: "1.0" } }),
     }));
     expect(bootstrap.status).toBe(200);
-    const encoded = JSON.stringify(await bootstrap.json());
+    const bootstrapPayload = await bootstrap.json();
+    expect(bootstrapPayload.data.context.profile).toEqual({ key: "basic", label: "Basic", plan: { templateId: "pro", label: "Pro" }, version: 1, revision: 1 });
+    const encoded = JSON.stringify(bootstrapPayload);
     expect(encoded).toContain('"quotaClass":"metered"');
     expect(encoded).not.toMatch(/chat-policy|audio-policy|provider|model/i);
     const context = await handler(new Request("https://fixture.test/product/v1/desktop/context", { headers: { "x-device-id": "fixture-device-001" } }));
     expect(context.status).toBe(200);
+    expect((await context.json()).data.profile).toEqual({ key: "basic", label: "Basic", plan: { templateId: "pro", label: "Pro" }, version: 1, revision: 1 });
   });
 
   test("runs canonical transcription through one reserve and one provider call", async () => {

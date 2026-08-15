@@ -736,8 +736,13 @@ function effectiveContext(profile: RuntimeIdentity["profile"], vocabularyRevisio
     feedback: capabilityEnabled(profile, "feedback"), adminSettings: capabilityEnabled(profile, "admin_settings"),
   };
   if (capabilityEnabled(profile, "vocabulary")) capabilities.vocabulary = true;
+  const configuredPlan = record(profile.definition.plan);
+  const plan = {
+    templateId: typeof configuredPlan.templateId === "string" && configuredPlan.templateId ? configuredPlan.templateId : profile.profileId,
+    label: typeof configuredPlan.label === "string" && configuredPlan.label ? configuredPlan.label : profile.label,
+  };
   return {
-    profile: { key: profile.profileId, version: profile.version, revision: profile.version },
+    profile: { key: profile.profileId, label: profile.label, plan, version: profile.version, revision: profile.version },
     capabilities,
     limits: { quotaClass: unlimited ? "pro-unlimited" : "metered" },
     actions: ["postprocess", "selection_transform", "assistant"].map((kind) => ({ kind, enabled: capabilityEnabled(profile, kind) })),

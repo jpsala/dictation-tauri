@@ -71,7 +71,7 @@ describe("Checkpoint E local product integration", () => {
   test("runs Admin BFF and canonical Tauri flows against one provider-free PostgreSQL service", async () => {
     await resetDomainData();
     await bootstrapBuiltinEnginePromptCatalog(sql);
-    await sql.unsafe(`INSERT INTO engines (engine_id, kind, provider, model) VALUES ('e-local-stt', 'transcription', 'mock', 'stt-local'), ('e-local-chat', 'postprocess', 'mock', 'chat-local'), ('e-local-selection', 'selectionTransform', 'mock', 'selection-local')`);
+    await sql.unsafe(`INSERT INTO engines (engine_id, kind, provider, model, provider_label, model_label) VALUES ('e-local-stt', 'transcription', 'mock', 'stt-local', 'Mock', 'STT local'), ('e-local-chat', 'postprocess', 'mock', 'chat-local', 'Mock', 'Chat local'), ('e-local-selection', 'selectionTransform', 'mock', 'selection-local', 'Mock', 'Selection local')`);
     await sql.unsafe(`INSERT INTO prompts (prompt_id, kind, body) VALUES ('p-local-stt', 'transcription', 'synthetic prompt'), ('p-local-chat', 'postprocess', 'synthetic prompt'), ('p-local-selection', 'selectionTransform', 'synthetic prompt')`);
     const definition = {
       schemaVersion: 1, label: "Local Basic",
@@ -148,7 +148,7 @@ describe("Checkpoint E local product integration", () => {
       const bootstrap = await jsonFetch(`${apiBase}/product/v1/desktop/bootstrap`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ installId: "checkpoint-e-runtime-install", device: { platform: "windows", appVersion: "0.1.0" } }) });
       responses.push(bootstrap);
       const deviceId = bootstrap.data.binding.deviceId;
-      expect(bootstrap.data.context.profile).toEqual({ key: "basic", version: 3, revision: 3 });
+      expect(bootstrap.data.context.profile).toEqual({ key: "basic", label: "Local Basic", plan: { templateId: "basic", label: "Local Basic" }, version: 3, revision: 3 });
       expect(bootstrap.data.context.capabilities).toEqual({ transcription: true, postprocess: true, selectionTransform: true, assistant: true, feedback: false, adminSettings: true });
       const context = await jsonFetch(`${apiBase}/product/v1/desktop/context`, { headers: { "x-device-id": deviceId } });
       responses.push(context);

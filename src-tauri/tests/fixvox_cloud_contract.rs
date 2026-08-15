@@ -14,12 +14,23 @@ fn fixture<T: for<'de> Deserialize<'de>>(json: &str) -> T {
 }
 
 fn product_bootstrap_response(device_id: &str, profile_key: &str) -> serde_json::Value {
+    let (profile_label, plan_template_id, plan_template_label) = match profile_key {
+        "alpha-basic" => ("Alpha Basic", "alpha-basic", "Alpha Basic"),
+        "pro" => ("Pro", "pro", "Pro"),
+        _ => (profile_key, profile_key, profile_key),
+    };
     serde_json::json!({
         "ok": true,
         "data": {
             "binding": { "deviceId": device_id, "status": "active" },
             "context": {
-                "profile": { "key": profile_key, "version": 1, "revision": 1 },
+                "profile": {
+                    "key": profile_key,
+                    "label": profile_label,
+                    "plan": { "templateId": plan_template_id, "label": plan_template_label },
+                    "version": 1,
+                    "revision": 1
+                },
                 "capabilities": {
                     "transcription": true,
                     "postprocess": true,
@@ -490,8 +501,12 @@ fn register_command_helper_persists_policy_snapshot_and_redacts_ids() {
         Some("dev_test_1234567890abcdef")
     );
     assert_eq!(status.policy_id.as_deref(), Some("alpha-basic"));
-    assert_eq!(status.policy_label.as_deref(), Some("alpha-basic"));
+    assert_eq!(status.policy_label.as_deref(), Some("Alpha Basic"));
     assert_eq!(status.transport_policy.as_ref().unwrap()["mode"], "managed");
+    let auth_policy = status.auth_policy.as_ref().expect("auth policy should be projected");
+    assert_eq!(auth_policy.group_label.as_deref(), Some("Alpha Basic"));
+    assert_eq!(auth_policy.policy_template_id.as_deref(), Some("alpha-basic"));
+    assert_eq!(auth_policy.policy_template_label.as_deref(), Some("Alpha Basic"));
 
     let raw = std::fs::read_to_string(&state_path).expect("state should be written");
     assert!(raw.contains("dev_test_1234567890abcdef"));

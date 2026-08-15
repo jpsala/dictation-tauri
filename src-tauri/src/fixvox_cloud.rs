@@ -1021,6 +1021,21 @@ fn build_device_state_from_product_context(
                 "Fixvox product context did not include a profile key.",
             )
         })?;
+    let profile_label = context
+        .pointer("/profile/label")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| clean_env_value(Some(value.to_string())))
+        .unwrap_or_else(|| profile_key.clone());
+    let plan_template_id = context
+        .pointer("/profile/plan/templateId")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| clean_env_value(Some(value.to_string())))
+        .unwrap_or_else(|| profile_key.clone());
+    let plan_template_label = context
+        .pointer("/profile/plan/label")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|value| clean_env_value(Some(value.to_string())))
+        .unwrap_or_else(|| profile_label.clone());
     let capability = |key: &str| {
         context
             .get("capabilities")
@@ -1071,7 +1086,7 @@ fn build_device_state_from_product_context(
     let transport_policy = serde_json::json!({ "mode": "managed", "contract": "product-v1" });
     let policy_snapshot = FixvoxPolicySnapshot {
         policy_id: Some(profile_key.clone()),
-        policy_label: Some(profile_key.clone()),
+        policy_label: Some(profile_label.clone()),
         features: context.get("capabilities").cloned(),
         capabilities: product_capabilities.clone(),
         transport_policy: Some(transport_policy.clone()),
@@ -1088,15 +1103,15 @@ fn build_device_state_from_product_context(
         last_register_error_code: None,
         last_register_error_message: None,
         policy_id: Some(profile_key.clone()),
-        policy_label: Some(profile_key.clone()),
+        policy_label: Some(profile_label),
         transport_policy: Some(transport_policy),
         policy_snapshot: Some(policy_snapshot),
         auth_policy: Some(FixvoxAuthPolicyStatus {
             access_mode: if signed_in { "signed_in" } else { "device" }.to_string(),
             user_redacted: None,
-            group_label: None,
-            policy_template_id: Some(profile_key.clone()),
-            policy_template_label: Some(profile_key),
+            group_label: Some(plan_template_label.clone()),
+            policy_template_id: Some(plan_template_id),
+            policy_template_label: Some(plan_template_label),
             capabilities,
             limits: context.get("limits").cloned(),
             redacted: true,
