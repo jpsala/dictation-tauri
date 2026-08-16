@@ -3,13 +3,13 @@
 Router operativo corto; el detalle durable vive en topics, tracks, specs y
 decisiones.
 
-Última actualización: 2026-08-14.
+Última actualización: 2026-08-15.
 
 ## Foco Único De Ejecución
 
 - **Estado:** `complete`.
-- **Referencia:** `docs/tracks/transcription-quality-program.md`.
-- **Siguiente acción:** Seleccionar el próximo frente desde Frentes Retomables.
+- **Referencia:** `docs/tracks/settings-transparency-and-power.md`.
+- **Siguiente acción:** Elegir la siguiente prioridad antes de ejecutar.
 
 ## Contrato Congelado
 
@@ -42,6 +42,20 @@ decisiones.
   El smoke Tauri real final pasó `11/11`: Settings→Laboratory, cinco workspaces,
   `720x620`, `900x700`, 200% zoom, provider-free y cero
   bootstrap/device/cloud/provider.
+- Settings quedó modularizado: shell/registry/search, controller compartido de
+  preferencias y nueve secciones aisladas. El smoke Tauri provider-free abrió
+  desde tray, validó rail completo a `720x480`, búsqueda con foco exacto,
+  resize compacto y reapertura nativa. Evidencia en
+  `artifacts/settings-architecture/20260815/`.
+- Settings ahora muestra procedencia, alcance, efecto, persistencia, relaciones,
+  búsqueda/deep links y diagnóstico redactado sin inventar autoridad. El smoke
+  Tauri provider-free recorrió las nueve secciones, cinco búsquedas, preview,
+  cierre/reapertura nativa y dejó Avanzado abierto. Evidencia en
+  `artifacts/settings-transparency/20260815-dev-smoke/`.
+- El pulido posterior corrigió una divergencia real: Cuenta refrescaba el estado
+  Cloud sin compartirlo con Acciones, Ayuda y Avanzado. `SettingsSurface` ahora
+  conserva una proyección segura común. Evidencia en
+  `artifacts/settings-transparency/20260815-polish-smoke/`.
 
 ## Gates Ejecutados Y Cierre Actual
 
@@ -66,10 +80,13 @@ decisiones.
   serializan en receipts ni UI. Un dictado sintético real único confirmó
   `fixvox-cloud` + postprocess policy-owned, sin fallback, y materializó una
   lista numerada.
-- Settings expone un modo host-owned persistente: `Según mi perfil` (default)
-  o `Dictado completo`. El segundo fuerza postprocess canónico sin duplicar
-  prompt/provider/model locales; los overrides temporales del Laboratory
-  conservan precedencia.
+- El modo global host-owned persiste en `user_preferences` y se selecciona
+  desde Settings, tray o menú contextual del dock: `Según mi perfil`, `Rápido`,
+  `Limpieza segura` o `Completo`. Runtime resuelve respectivamente perfil
+  publicado, `daily-literal-v1`, `daily-safe-cleanup-v1` o
+  `daily-experimental-rich-v1`; los dos últimos usan postprocess canónico
+  conservador y `Completo` habilita STT rich allowlisted. Los overrides
+  next/session de Laboratory conservan precedencia sin mutar el modo global.
 - Un replay separado y aprobado del dictado complejo de `59.3 s` ejecutó una
   sola llamada STT y una postprocess, sin retries. El raw STT conservó la lista
   hablada y el path fonético; `openai/gpt-oss-120b` los convirtió en una lista
