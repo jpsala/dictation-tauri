@@ -113,7 +113,7 @@ describe("VoiceDock Fixvox Skin4 parity contract", () => {
     expectNoPasteObservedWording(html);
   });
 
-  it("renders Fixvox-style preset and assistant indicators as compact visual metadata", () => {
+  it("keeps recording metadata accessible while hiding the idle-only preset badge", () => {
     const html = renderDock(
       createVoiceDockState(
         session({ state: "listening" }),
@@ -124,10 +124,9 @@ describe("VoiceDock Fixvox Skin4 parity contract", () => {
       ),
     );
 
-    expect(html).toContain('data-testid="voice-dock-preset-badge"');
-    expect(html).toContain('data-command="clear_preset"');
-    expect(html).toContain("Corregir texto");
-    expect(html).toContain("Disable active preset: Corregir texto");
+    expect(html).not.toContain('data-testid="voice-dock-preset-badge"');
+    expect(html).not.toContain('data-command="clear_preset"');
+    expect(html).toContain('aria-label="Voice dock, action Corregir texto"');
     expect(html).toContain('data-testid="voice-dock-assistant-indicator"');
     expect(html).toContain("Assistant mode available");
     expectNoDeveloperLeakage(html);

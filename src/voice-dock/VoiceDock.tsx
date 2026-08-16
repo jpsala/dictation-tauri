@@ -1,12 +1,33 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import type { DockCommand, DockDragEvent, VoiceDockState } from "./types";
 import { defaultDockSkinId, getDockSkin, type DockSkinId } from "./skins";
+
+export type VoiceDockMode = "profile" | "fast" | "safeCleanup" | "complete";
+export type VoiceDockModeMetadata = Readonly<{
+  mode: VoiceDockMode;
+  label: string;
+  compactLabel: string;
+}>;
+
+export function createVoiceDockModeMetadata(mode: VoiceDockMode | undefined): VoiceDockModeMetadata | undefined {
+  if (!mode || mode === "profile") return undefined;
+  const labels: Record<
+    Exclude<VoiceDockMode, "profile">,
+    Pick<VoiceDockModeMetadata, "label" | "compactLabel">
+  > = {
+    fast: { label: "Rápido", compactLabel: "Ráp" },
+    safeCleanup: { label: "Limpieza segura", compactLabel: "Limp" },
+    complete: { label: "Completo", compactLabel: "Comp" },
+  };
+  return { mode, ...labels[mode] };
+}
 
 export type VoiceDockProps = {
   state: VoiceDockState;
   skinId?: DockSkinId;
   hotkeyLabel?: string;
+  modeMetadata?: VoiceDockModeMetadata;
   transcriptPreview?: string;
   audioEnhancementNotice?: string;
   onCommand: (command: DockCommand) => void;
@@ -28,6 +49,7 @@ export function VoiceDock({
   state,
   skinId = defaultDockSkinId,
   hotkeyLabel = "Ctrl+Shift+F9",
+  modeMetadata,
   transcriptPreview,
   audioEnhancementNotice,
   onCommand,
@@ -43,9 +65,21 @@ export function VoiceDock({
     moved: boolean;
   } | undefined>(undefined);
   const suppressNextClickRef = useRef(false);
+  const [hoverSuppressed, setHoverSuppressed] = useState(false);
+  useEffect(() => {
+    const collapseAfterBlur = () => {
+      setHoverSuppressed(true);
+    };
+    window.addEventListener("blur", collapseAfterBlur);
+    return () => window.removeEventListener("blur", collapseAfterBlur);
+  }, []);
   const handleDockPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button === 2 && onContextMenuRequest) {
       event.preventDefault();
+      event.currentTarget
+        .closest(".voice-dock")
+        ?.classList.add("voice-dock--hover-suppressed");
+      setHoverSuppressed(true);
       event.stopPropagation();
       onContextMenuRequest();
       return;
@@ -146,32 +180,74 @@ export function VoiceDock({
     : createCompanionChip(state);
   const primaryAction = getPrimaryActionCommand(state);
   const primaryActionLabel = getPrimaryActionLabel(state);
+  const visiblePreset = state.phase === "idle" ? state.activePreset : undefined;
+  const visibleModeMetadata = state.phase === "idle" ? modeMetadata : undefined;
+  const accessibleContext = [
+    modeMetadata ? `dictation mode ${modeMetadata.label}` : undefined,
+    state.activePreset ? `action ${state.activePreset.presetName}` : undefined,
+  ].filter(Boolean).join(", ");
+  const dockAriaLabel = accessibleContext
+    ? `Voice dock, ${accessibleContext}`
+    : "Voice dock";
 
   return (
     <section
-      className={`voice-dock voice-dock--${state.phase}`}
+      className={`voice-dock voice-dock--${state.phase}${hoverSuppressed ? " voice-dock--hover-suppressed" : ""}`}
       data-testid="voice-dock"
       data-phase={state.phase}
       data-delivery-status={state.deliveryStatus}
       data-skin={skin.id}
       role="toolbar"
-      aria-label="Voice dock"
+      aria-label={dockAriaLabel}
       data-context-menu="available"
+      onMouseMove={(event) => {
+        if (
+          hoverSuppressed
+          && (event.movementX !== 0 || event.movementY !== 0)
+        ) {
+          setHoverSuppressed(false);
+        }
+      }}
       onContextMenu={(event) => {
         if (!onContextMenuRequest) {
           return;
         }
 
         event.preventDefault();
+        event.currentTarget.classList.add("voice-dock--hover-suppressed");
+        setHoverSuppressed(true);
         onContextMenuRequest();
       }}
     >
-      {state.activePreset ? (
-        <PresetBadge
-          preset={state.activePreset}
-          onClear={() => onCommand("clear_preset")}
-        />
+      {visiblePreset || visibleModeMetadata ? (
+        <div
+          className="voice-dock__indicators"
+          data-mode-visible={visibleModeMetadata ? "true" : "false"}
+        >
+          {visiblePreset ? (
+            <PresetBadge
+              preset={visiblePreset}
+              onClear={() => onCommand("clear_preset")}
+            />
+          ) : null}
+          {visibleModeMetadata ? (
+            <button
+              type="button"
+              className={`voice-dock__mode-badge voice-dock__mode-badge--${visibleModeMetadata.mode}`}
+              data-testid="voice-dock-mode-badge"
+              data-mode={visibleModeMetadata.mode}
+              data-command="clear_mode"
+              aria-label={`Use profile mode instead of ${visibleModeMetadata.label}`}
+              title="Volver a Según mi perfil"
+              onClick={() => onCommand("clear_mode")}
+            >
+              <strong aria-hidden="true">{visibleModeMetadata.compactLabel}</strong>
+              <span className="voice-dock__mode-clear" aria-hidden="true">×</span>
+            </button>
+          ) : null}
+        </div>
       ) : null}
+
 
       {state.assistantModeEnabled ? (
         <div
@@ -462,6 +538,7 @@ function getActionSide(command: DockCommand): "left" | "center" | "right" {
     case "retry":
     case "paste_last_safe":
     case "clear_preset":
+    case "clear_mode":
     case "start":
       return "right";
   }

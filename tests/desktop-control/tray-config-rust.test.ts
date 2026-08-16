@@ -21,7 +21,7 @@ describe("Tauri tray background lifecycle", () => {
     expect(packageJson.scripts["dev:desktop:restart"]).toContain("-Refresh");
   });
 
-  it("uses one dock toggle, nested skins/presets, settings, and quit", () => {
+  it("uses one dock toggle, nested skins/actions/modes, settings, and quit", () => {
     const source = readFileSync("src-tauri/src/tray.rs", "utf8");
 
     expect(source).toContain('TrayIconBuilder::with_id("dictation-tauri-tray")');
@@ -33,7 +33,8 @@ describe("Tauri tray background lifecycle", () => {
     expect(source).toContain('.text(MENU_SHOW_RESULT_HISTORY, "History")');
     expect(source.match(/CheckMenuItemBuilder::with_id/g)).toHaveLength(1);
     expect(source).toContain('SubmenuBuilder::new(app, "Dock skin")');
-    expect(source).toContain('SubmenuBuilder::new(app, "Presets")');
+    expect(source).toContain('SubmenuBuilder::new(app, "Acciones")');
+    expect(source).toContain('SubmenuBuilder::new(app, "Modo de dictado")');
     expect(source).toContain('MENU_PRESET_COMO_YO_ES: &str = "preset_como_yo_es"');
     expect(source).toContain('MENU_PRESET_CORREGIR_TEXTO: &str = "preset_corregir_texto"');
     expect(source).toContain('MENU_PRESET_FIX_WRITING: &str = "preset_fix_writing"');

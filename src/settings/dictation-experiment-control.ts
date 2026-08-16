@@ -1,4 +1,106 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import type { DictationMode } from "./user-preferences-control";
+
+export type DictationModeCatalogItem = Readonly<{
+  mode: DictationMode;
+  label: string;
+  summary: string;
+  postProcessEnabled: boolean;
+  experimental: boolean;
+  literal: boolean;
+}>;
+
+export const defaultDictationModeCatalog: readonly DictationModeCatalogItem[] = Object.freeze([
+  Object.freeze({
+    mode: "profile",
+    label: "Según mi perfil",
+    summary: "Usa el comportamiento publicado para tu cuenta o dispositivo.",
+    postProcessEnabled: false,
+    experimental: false,
+    literal: false,
+  }),
+  Object.freeze({
+    mode: "fast",
+    label: "Rápido",
+    summary: "Entrega el texto reconocido sin limpieza adicional.",
+    postProcessEnabled: false,
+    experimental: false,
+    literal: true,
+  }),
+  Object.freeze({
+    mode: "safeCleanup",
+    label: "Limpieza segura",
+    summary: "Limpia el dictado con una revisión conservadora y vuelve al texto reconocido si hace falta.",
+    postProcessEnabled: true,
+    experimental: false,
+    literal: false,
+  }),
+  Object.freeze({
+    mode: "complete",
+    label: "Completo",
+    summary: "Combina reconocimiento y limpieza conservadora para dictados con más estructura.",
+    postProcessEnabled: true,
+    experimental: true,
+    literal: false,
+  }),
+]);
+
+
+function isDictationMode(value: unknown): value is DictationMode {
+  return value === "profile"
+    || value === "fast"
+    || value === "safeCleanup"
+    || value === "complete";
+}
+
+function normalizeDictationModeCatalog(value: unknown): readonly DictationModeCatalogItem[] {
+  if (!Array.isArray(value)) {
+    return defaultDictationModeCatalog;
+  }
+  const byMode: Partial<Record<DictationMode, DictationModeCatalogItem>> = {};
+  for (const item of value) {
+    if (
+      !item
+      || typeof item !== "object"
+      || Array.isArray(item)
+      || !("mode" in item)
+      || !isDictationMode(item.mode)
+    ) {
+      continue;
+    }
+    const candidate = item as Record<string, unknown>;
+    const mode = item.mode as DictationMode;
+    const fallback = defaultDictationModeCatalog.find((entry) => entry.mode === mode);
+    if (!fallback) continue;
+    byMode[mode] = {
+      ...fallback,
+      label: typeof candidate.label === "string" && candidate.label.trim()
+        ? candidate.label
+        : fallback.label,
+      summary: typeof candidate.summary === "string" && candidate.summary.trim()
+        ? candidate.summary
+        : fallback.summary,
+      postProcessEnabled: typeof candidate.postProcessEnabled === "boolean"
+        ? candidate.postProcessEnabled
+        : fallback.postProcessEnabled,
+      experimental: typeof candidate.experimental === "boolean"
+        ? candidate.experimental
+        : fallback.experimental,
+      literal: typeof candidate.literal === "boolean" ? candidate.literal : fallback.literal,
+    };
+  }
+
+  return defaultDictationModeCatalog.map((entry) => byMode[entry.mode] ?? entry);
+}
+
+export async function getDictationModeCatalog(): Promise<readonly DictationModeCatalogItem[]> {
+  if (!isTauri()) return defaultDictationModeCatalog;
+  try {
+    return normalizeDictationModeCatalog(await invoke<unknown>("get_dictation_mode_catalog"));
+  } catch {
+    return defaultDictationModeCatalog;
+  }
+}
 
 export const profileDefaultRecipeId = "profile-default-v1";
 export const dailyLiteralRecipeId = "daily-literal-v1";

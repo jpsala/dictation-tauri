@@ -381,7 +381,9 @@ h1 {
   --dock-recording-core-offset: 0px;
 }
 
-.voice-dock[data-skin="wispr-flow"].voice-dock--idle:hover {
+.voice-dock[data-skin="wispr-flow"].voice-dock--idle:not(
+    .voice-dock--hover-suppressed
+  ):has(.voice-dock__orb:hover) {
   --dock-core-width: 72px;
   --dock-core-height: 32px;
 }
@@ -645,40 +647,129 @@ h1 {
   transform: translateY(-1px);
 }
 
-.voice-dock__preset-badge {
+.voice-dock__indicators {
   position: absolute;
+  top: 1px;
   left: 50%;
-  top: 3px;
   z-index: 6;
-  display: inline-flex;
+  display: flex;
+  width: max-content;
+  max-width: calc(100% - 8px);
+  min-height: 16px;
   align-items: center;
-  gap: 4px;
-  max-width: 132px;
-  min-height: 18px;
-  padding: 2px 6px;
-  border: 1px solid rgb(74 222 128 / 24%);
-  border-radius: 999px;
-  background: rgb(20 83 45 / 76%);
+  justify-content: center;
+  gap: 0;
+  padding: 1px 3px;
+  overflow: hidden;
+  border: 1px solid rgb(72 72 72 / 88%);
+  border-radius: 8px;
+  background: rgb(5 8 12 / 98%);
+  box-shadow: none;
+  pointer-events: none;
+  transform: translateX(-50%);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.voice-dock--idle:not(.voice-dock--hover-suppressed):has(
+    .voice-dock__orb:hover
+  )
+  .voice-dock__indicators {
+  opacity: 0;
+  transform: translate(-50%, -2px);
+}
+
+.voice-dock--idle:has(.voice-dock__indicators) .voice-dock__main {
+  opacity: 1;
+  transform: translateY(8px);
+  transition: transform 120ms ease;
+}
+
+.voice-dock__preset-badge {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 12px;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 4px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
   color: rgb(187 247 208 / 96%);
   font: inherit;
-  font-size: 8.5px;
+  font-size: 7.5px;
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
-  transform: translateX(-50%);
-  box-shadow: 0 4px 8px rgb(15 23 42 / 16%);
-  backdrop-filter: blur(8px);
   cursor: pointer;
+  pointer-events: auto;
+}
+
+.voice-dock__indicators[data-mode-visible="true"] .voice-dock__preset-badge {
+  max-width: calc(100% - 34px);
+}
+
+.voice-dock__indicators:not(:has(.voice-dock__preset-badge)) {
+  border-color: rgb(125 211 252 / 42%);
+  background: rgb(7 20 28 / 98%);
 }
 
 .voice-dock__preset-badge:hover {
-  background: rgb(20 83 45 / 92%);
+  background: rgb(20 83 45 / 72%);
 }
 
 .voice-dock__preset-badge:focus-visible {
   outline: 2px solid rgb(134 239 172 / 82%);
-  outline-offset: 2px;
+  outline-offset: 1px;
 }
+
+.voice-dock__mode-badge {
+  display: inline-flex;
+  min-width: 22px;
+  min-height: 12px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 3px 0 4px;
+  border: 0;
+  border-left: 1px solid rgb(125 211 252 / 26%);
+  border-radius: 0;
+  background: transparent;
+  color: rgb(224 242 254 / 98%);
+  font: inherit;
+  font-size: 7px;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.voice-dock__mode-badge:hover {
+  background: rgb(15 61 83 / 58%);
+}
+
+.voice-dock__mode-badge:focus-visible {
+  outline: 2px solid rgb(125 211 252 / 74%);
+  outline-offset: -1px;
+}
+
+.voice-dock__mode-clear {
+  color: rgb(224 242 254 / 72%);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.voice-dock__indicators:not(:has(.voice-dock__preset-badge))
+  .voice-dock__mode-badge {
+  padding-inline: 2px;
+  border-left: 0;
+}
+
 
 .voice-dock__preset-dot {
   width: 5px;
@@ -973,8 +1064,12 @@ h1 {
   content: "";
 }
 
-.voice-dock[data-skin="wispr-flow"].voice-dock--idle:hover .voice-dock__main {
+.voice-dock[data-skin="wispr-flow"].voice-dock--idle:not(
+    .voice-dock--hover-suppressed
+  ):has(.voice-dock__orb:hover)
+  .voice-dock__main {
   border-color: rgb(72 72 72 / 92%);
+  transform: translateY(0);
 }
 
 .voice-dock[data-skin="wispr-flow"].voice-dock--arming .voice-dock__main,
@@ -996,7 +1091,17 @@ h1 {
   opacity: 0;
 }
 
-.voice-dock[data-skin="wispr-flow"].voice-dock--idle:hover .voice-dock__vu-dot {
+.voice-dock[data-skin="wispr-flow"].voice-dock--idle:has(
+    .voice-dock__indicators
+  )
+  .voice-dock__vu-dot {
+  opacity: 0.5;
+}
+
+.voice-dock[data-skin="wispr-flow"].voice-dock--idle:not(
+    .voice-dock--hover-suppressed
+  ):has(.voice-dock__orb:hover)
+  .voice-dock__vu-dot {
   opacity: 0.82;
 }
 
@@ -1213,6 +1318,10 @@ h1 {
 
 .dock-companion-card--standalone {
   width: 100%;
+}
+
+.dock-companion-card--recovery {
+  min-height: 0;
 }
 
 .dock-companion-card--history {

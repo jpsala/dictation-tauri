@@ -9,6 +9,63 @@ pub const PROFILE_DEFAULT_RECIPE_ID: &str = "profile-default-v1";
 pub const LITERAL_RECIPE_ID: &str = "daily-literal-v1";
 pub const SAFE_CLEANUP_RECIPE_ID: &str = "daily-safe-cleanup-v1";
 pub const EXPERIMENTAL_RICH_RECIPE_ID: &str = "daily-experimental-rich-v1";
+const RECIPE_VERSION: &str = "v1";
+const CANONICAL_POST_PROCESS_POLICY_ID: &str = "canonical-conservative-v1";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DictationModeCatalogItem {
+    pub mode: DictationMode,
+    pub label: &'static str,
+    pub summary: &'static str,
+    pub post_process_enabled: bool,
+    pub experimental: bool,
+    pub literal: bool,
+}
+
+const DICTATION_MODE_CATALOG: [DictationModeCatalogItem; 4] = [
+    DictationModeCatalogItem {
+        mode: DictationMode::Profile,
+        label: "Según mi perfil",
+        summary: "Usa el comportamiento publicado para tu cuenta o dispositivo.",
+        post_process_enabled: false,
+        experimental: false,
+        literal: false,
+    },
+    DictationModeCatalogItem {
+        mode: DictationMode::Fast,
+        label: "Rápido",
+        summary: "Entrega el texto reconocido sin limpieza adicional.",
+        post_process_enabled: false,
+        experimental: false,
+        literal: true,
+    },
+    DictationModeCatalogItem {
+        mode: DictationMode::SafeCleanup,
+        label: "Limpieza segura",
+        summary: "Limpia el dictado con una revisión conservadora y vuelve al texto reconocido si hace falta.",
+        post_process_enabled: true,
+        experimental: false,
+        literal: false,
+    },
+    DictationModeCatalogItem {
+        mode: DictationMode::Complete,
+        label: "Completo",
+        summary: "Combina reconocimiento y limpieza conservadora para dictados con más estructura.",
+        post_process_enabled: true,
+        experimental: true,
+        literal: false,
+    },
+];
+
+pub fn dictation_mode_catalog() -> &'static [DictationModeCatalogItem] {
+    &DICTATION_MODE_CATALOG
+}
+
+#[tauri::command]
+pub fn get_dictation_mode_catalog() -> Vec<DictationModeCatalogItem> {
+    dictation_mode_catalog().to_vec()
+}
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -76,6 +133,54 @@ pub fn set_dictation_experiment_selection(
     Ok(get_dictation_experiment_state())
 }
 
+fn canonical_post_process_policy(
+    source: &'static str,
+    recipe_id: &str,
+    enabled: bool,
+) -> HostPostProcessPolicy {
+    HostPostProcessPolicy {
+        enabled,
+        prompt: None,
+        provider: None,
+        model: None,
+        source: Some(source.to_string()),
+        policy_id: enabled.then(|| CANONICAL_POST_PROCESS_POLICY_ID.to_string()),
+        voice_routing_profile_id: None,
+        experiment_recipe_id: Some(recipe_id.to_string()),
+        experiment_recipe_version: Some(RECIPE_VERSION.to_string()),
+    }
+}
+
+fn apply_global_dictation_mode(
+    request: &mut HostTranscriptionRequest,
+    dictation_mode: DictationMode,
+) {
+    match dictation_mode {
+        DictationMode::Profile => {}
+        DictationMode::Fast => {
+            request.post_process = Some(canonical_post_process_policy(
+                "dictation-mode-fast-v1",
+                LITERAL_RECIPE_ID,
+                false,
+            ));
+        }
+        DictationMode::SafeCleanup => {
+            request.post_process = Some(canonical_post_process_policy(
+                "dictation-mode-safe-cleanup-v1",
+                SAFE_CLEANUP_RECIPE_ID,
+                true,
+            ));
+        }
+        DictationMode::Complete => {
+            request.post_process = Some(canonical_post_process_policy(
+                "dictation-mode-complete-v1",
+                EXPERIMENTAL_RICH_RECIPE_ID,
+                true,
+            ));
+        }
+    }
+}
+
 pub fn apply_dictation_experiment(
     mut request: HostTranscriptionRequest,
     dictation_mode: DictationMode,
@@ -97,39 +202,18 @@ pub fn apply_dictation_experiment(
         }
     };
     let Some(selection) = selection else {
-        if dictation_mode == DictationMode::Complete {
-            request.post_process = Some(HostPostProcessPolicy {
-                enabled: true,
-                prompt: None,
-                provider: None,
-                model: None,
-                source: Some("dictation-mode-complete-v1".to_string()),
-                policy_id: None,
-                voice_routing_profile_id: None,
-                experiment_recipe_id: None,
-                experiment_recipe_version: None,
-            });
-        }
+        apply_global_dictation_mode(&mut request, dictation_mode);
         return (request, None);
     };
     let source = match selection.scope {
         DictationExperimentScope::NextDictation => "dictation-experiment-next",
         DictationExperimentScope::Session => "dictation-experiment-session",
     };
-    if selection.recipe_id == EXPERIMENTAL_RICH_RECIPE_ID {
-        request.evaluation_recipe_id = Some("transcription-quality-v1-rich-auto".to_string());
-    }
-    request.post_process = Some(HostPostProcessPolicy {
-        enabled: selection.recipe_id == SAFE_CLEANUP_RECIPE_ID,
-        prompt: None,
-        provider: None,
-        model: None,
-        source: Some(source.to_string()),
-        policy_id: None,
-        voice_routing_profile_id: None,
-        experiment_recipe_id: Some(selection.recipe_id.clone()),
-        experiment_recipe_version: Some(selection.recipe_version.clone()),
-    });
+    request.post_process = Some(canonical_post_process_policy(
+        source,
+        &selection.recipe_id,
+        selection.recipe_id == SAFE_CLEANUP_RECIPE_ID,
+    ));
     (request, Some(selection))
 }
 
@@ -302,11 +386,76 @@ mod tests {
         })
         .expect("selection should be valid");
         let (result, _) = apply_dictation_experiment(request(), DictationMode::Profile);
-        assert_eq!(
-            result.evaluation_recipe_id.as_deref(),
-            Some("transcription-quality-v1-rich-auto")
+        assert!(
+            result.evaluation_recipe_id.is_none(),
+            "interactive experiments do not carry laboratory-only execution recipes"
         );
         assert!(!result.post_process.expect("policy").enabled);
+    }
+
+    #[test]
+    fn global_modes_resolve_to_allowlisted_routes() {
+        let _guard = TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        reset();
+
+        let (profile, _) = apply_dictation_experiment(request(), DictationMode::Profile);
+        assert!(profile.post_process.is_none());
+        assert!(profile.evaluation_recipe_id.is_none());
+
+        let (fast, _) = apply_dictation_experiment(request(), DictationMode::Fast);
+        let fast_policy = fast.post_process.expect("fast mode policy");
+        assert!(!fast_policy.enabled);
+        assert_eq!(
+            fast_policy.experiment_recipe_id.as_deref(),
+            Some(LITERAL_RECIPE_ID)
+        );
+
+        let (safe, _) = apply_dictation_experiment(request(), DictationMode::SafeCleanup);
+        let safe_policy = safe.post_process.expect("safe cleanup policy");
+        assert!(safe_policy.enabled);
+        assert_eq!(
+            safe_policy.experiment_recipe_id.as_deref(),
+            Some(SAFE_CLEANUP_RECIPE_ID)
+        );
+        assert_eq!(
+            safe_policy.policy_id.as_deref(),
+            Some(CANONICAL_POST_PROCESS_POLICY_ID)
+        );
+
+        let (complete, _) = apply_dictation_experiment(request(), DictationMode::Complete);
+        let complete_policy = complete.post_process.expect("complete mode policy");
+        assert!(complete_policy.enabled);
+        assert!(
+            complete.evaluation_recipe_id.is_none(),
+            "global dictation modes must not require a laboratory execution grant"
+        );
+        assert_eq!(
+            complete_policy.experiment_recipe_id.as_deref(),
+            Some(EXPERIMENTAL_RICH_RECIPE_ID)
+        );
+    }
+
+    #[test]
+    fn catalog_is_presentational_and_covers_all_global_modes() {
+        let modes: Vec<_> = dictation_mode_catalog()
+            .iter()
+            .map(|entry| entry.mode)
+            .collect();
+        assert_eq!(
+            modes,
+            vec![
+                DictationMode::Profile,
+                DictationMode::Fast,
+                DictationMode::SafeCleanup,
+                DictationMode::Complete,
+            ]
+        );
+        assert_eq!(get_dictation_mode_catalog().len(), 4);
+        assert!(dictation_mode_catalog()
+            .iter()
+            .all(|entry| !entry.label.is_empty() && !entry.summary.is_empty()));
     }
 
     #[test]

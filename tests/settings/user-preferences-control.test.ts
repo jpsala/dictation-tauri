@@ -63,8 +63,10 @@ describe("user preference contracts", () => {
     expect(normalizeUserPreferences({ deliveryMode: "unsupported" as never }).deliveryMode).toBe("direct");
   });
 
-  it("accepts only the two supported dictation modes", () => {
+  it("accepts all four supported dictation modes", () => {
     expect(normalizeUserPreferences({ dictationMode: "profile" }).dictationMode).toBe("profile");
+    expect(normalizeUserPreferences({ dictationMode: "fast" }).dictationMode).toBe("fast");
+    expect(normalizeUserPreferences({ dictationMode: "safeCleanup" }).dictationMode).toBe("safeCleanup");
     expect(normalizeUserPreferences({ dictationMode: "complete" }).dictationMode).toBe("complete");
     expect(normalizeUserPreferences({ dictationMode: "unsupported" as never }).dictationMode).toBe("profile");
   });

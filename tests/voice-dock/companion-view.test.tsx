@@ -53,10 +53,59 @@ describe("dock companion view", () => {
 
     expect(action).toMatchObject({
       kind: "inspect_setup",
-      label: "Completar configuración",
-      reason: "Conectá tu cuenta antes de volver a dictar.",
+      label: "Revisar cuenta",
+      reason:
+        "Abrí Cuenta en Ajustes para revisar el acceso. El audio no se volverá a enviar automáticamente.",
     });
     expect(JSON.stringify(action)).not.toMatch(/device id|managed|provider|record again/i);
+  });
+
+  it("renders managed access denial as compact account guidance without a false retry", () => {
+    const action = getRuntimeRecoveryAction({
+      runId: "access-denied",
+      terminalState: "error",
+      capture: { artifact: undefined },
+      error: {
+        phase: "transcribing",
+        message: "Fixvox managed transcription returned HTTP 403 Forbidden.",
+      },
+    } as SimulatedRunSummary);
+    const snapshot = createDockCompanionSnapshot({
+      voiceDockState: createVoiceDockState(
+        session({
+          state: "error",
+          error: {
+            code: "pipeline-error",
+            message: "Completá la configuración de tu cuenta antes de dictar.",
+          },
+          recoveryAction: {
+            kind: "inspect_setup",
+            label: "Revisar cuenta",
+            reason:
+              "Abrí Cuenta en Ajustes para revisar el acceso. El audio no se volverá a enviar automáticamente.",
+            clipAvailable: false,
+          },
+        }),
+      ),
+      resultHistoryOpen: false,
+      resultHistoryEntries: [],
+      settingsPanelOpen: false,
+    });
+
+    const html = renderToStaticMarkup(<CompanionSurfaceView snapshot={snapshot} />);
+
+    expect(action).toMatchObject({ kind: "inspect_setup", label: "Revisar cuenta" });
+    expect(html).toContain("dock-companion-card--recovery");
+    expect(html).not.toContain("dock-companion-actions");
+    expect(readFileSync("src/styles.css", "utf8")).toMatch(
+      /\.dock-companion-card--recovery\s*\{\s*min-height:\s*0;/,
+    );
+    expect(html).toContain("Requiere atención");
+    expect(html).toContain("Revisá tu cuenta");
+    expect(html).toContain("Abrí Cuenta en Ajustes para revisar el acceso.");
+    expect(html).not.toContain("Record again");
+    expect(html).not.toContain("403");
+    expect(html).not.toContain("managed");
   });
 
   it("renders no-speech as a compact Spanish notice with retry, close, Escape, and timeout", () => {

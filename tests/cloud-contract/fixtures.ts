@@ -359,6 +359,21 @@ export const HTTP_CONTRACT_FIXTURES: readonly ContractFixture[] = [
     response: jsonResponse(200, ["ok", "source", "updatedAt", "policyOptions", "accounts", "nextCursor"]),
   },
   {
+    id: "admin-account-identity-link",
+    area: "admin",
+    source: "worker.fetch",
+    method: "POST",
+    path: "/admin/control-plane/accounts/identity-link",
+    adminCapability: "publish",
+    request: adminJsonRequest({
+      sourceAccountHandle: "acc_fixture_missing",
+      targetAccountId: "google:fixture-identity",
+      actorKey: "arp_fixture",
+      confirmation: "LINK acc_fixture_missing TO CURRENT ADMIN",
+    }),
+    response: errorResponse([404, 400], ["account_not_found"]),
+  },
+  {
     id: "admin-account-policy",
     area: "admin",
     source: "worker.fetch",

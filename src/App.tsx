@@ -92,6 +92,7 @@ import {
   createDockCompanionSyncKey,
   createEmptyDockCompanionSnapshot,
   createVoiceDockState,
+  createVoiceDockModeMetadata,
   dockCompanionCommandAckEvent,
   dockCompanionCommandEvent,
   dockCompanionStateEvent,
@@ -110,9 +111,7 @@ import {
   type TeachCorrectionCommandPayload,
   type DockSkinId,
 } from "./voice-dock";
-import {
-  createCompanionCommandBridge,
-} from "./voice-dock/companion-command-bridge";
+import { createCompanionCommandBridge } from "./voice-dock/companion-command-bridge";
 import { createCompanionCommandDedupe } from "./voice-dock/companion-command-dedupe";
 import type { DockCompanionCommandAck } from "./voice-dock/companion-state";
 import {
@@ -167,6 +166,7 @@ import {
   setUserPreferences,
   userPreferencesChangedEvent,
   type UserPreferences,
+  type DictationMode,
 } from "./settings/user-preferences-control";
 import type {
   DesktopDictationSession,
@@ -929,15 +929,20 @@ function resolvePresetPickerChord(chordKey: string | null | undefined): DockComp
 function accountSetupRecoveryAction(clipAvailable = false): DesktopRecoveryAction & RuntimeRecoveryAction {
   return {
     kind: "inspect_setup",
-    label: "Completar configuración",
-    reason: "Conectá tu cuenta antes de volver a dictar.",
+    label: "Revisar cuenta",
+    reason:
+      "Abrí Cuenta en Ajustes para revisar el acceso. El audio no se volverá a enviar automáticamente.",
     clipAvailable,
   };
 }
 
 function isAccountSetupFailure(message: string): boolean {
   const normalized = message.toLowerCase();
-  return normalized.includes("registered device") || normalized.includes("device id");
+  return (
+    normalized.includes("registered device") ||
+    normalized.includes("device id") ||
+    /fixvox managed transcription returned http (401|403)\b/.test(normalized)
+  );
 }
 
 function classifyTranscriptionFailure(
@@ -954,12 +959,11 @@ function classifyTranscriptionFailure(
   }
 
   if (
+    isAccountSetupFailure(message) ||
     normalized.includes("setup") ||
     normalized.includes("not configured") ||
     normalized.includes("missing") ||
-    normalized.includes("unavailable") ||
-    normalized.includes("registered device") ||
-    normalized.includes("device id")
+    normalized.includes("unavailable")
   ) {
     return "setup-error";
   }
@@ -1313,6 +1317,8 @@ function companionActionLabel(command: DockCommand): string {
       return "Cancel";
     case "clear_preset":
       return "Disable preset";
+    case "clear_mode":
+      return "Use profile mode";
   }
 }
 
@@ -1758,24 +1764,26 @@ export function CompanionSurfaceView({
       ) : null}
 
       {snapshot.recovery ? (
-        <section className="dock-companion-card dock-companion-card--standalone">
+        <section className="dock-companion-card dock-companion-card--standalone dock-companion-card--recovery">
           <div className="dock-companion-title-row">
-            <p className="dock-companion-kicker">Recovery</p>
+            <p className="dock-companion-kicker">Requiere atención</p>
             {closeButton}
           </div>
           <strong>{snapshot.recovery.title}</strong>
           <p>{snapshot.recovery.message}</p>
-          <div className="dock-companion-actions" aria-label="Recovery actions">
-            {recoveryActions.map((action) => (
-              <CompanionCommandButton
-                key={action.payload.command}
-                payload={action.payload}
-                onCommand={onCommand}
-              >
-                {action.label}
-              </CompanionCommandButton>
-            ))}
-          </div>
+          {recoveryActions.length > 0 ? (
+            <div className="dock-companion-actions" aria-label="Acciones de recuperación">
+              {recoveryActions.map((action) => (
+                <CompanionCommandButton
+                  key={action.payload.command}
+                  payload={action.payload}
+                  onCommand={onCommand}
+                >
+                  {action.label}
+                </CompanionCommandButton>
+              ))}
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -2595,6 +2603,13 @@ export function DockSurface() {
   });
   const [effectiveHotkeyLabel, setEffectiveHotkeyLabel] = useState(tauriGlobalHotkeyShortcut);
   const [dockSkin, setDockSkin] = useState<DockSkinId>(defaultUserPreferences.dockSkin);
+  const [dictationMode, setDictationMode] = useState<DictationMode>(
+    defaultUserPreferences.dictationMode,
+  );
+  const dockModeMetadata = useMemo(
+    () => createVoiceDockModeMetadata(dictationMode),
+    [dictationMode],
+  );
   const [activePreset, setActivePreset] = useState<DockActivePreset | undefined>(
     activePresetRef.current,
   );
@@ -2737,6 +2752,7 @@ export function DockSurface() {
         schemaVersion: 1,
       };
       setDockSkin(userPreferencesRef.current.dockSkin);
+      setDictationMode(userPreferencesRef.current.dictationMode);
       Object.assign(
         autoStopSilencePolicyRef.current,
         createAutoStopSilencePolicy(userPreferencesRef.current),
@@ -4516,6 +4532,20 @@ async function openPresetPicker(targetSnapshot?: TauriDesktopDeliveryTarget) {
       case "clear_preset":
         clearActivePreset();
         break;
+      case "clear_mode": {
+        const previousPreferences = userPreferencesRef.current;
+        const nextPreferences: UserPreferences = {
+          ...previousPreferences,
+          dictationMode: "profile",
+        };
+        userPreferencesRef.current = nextPreferences;
+        setDictationMode("profile");
+        void setUserPreferences(nextPreferences).catch(() => {
+          userPreferencesRef.current = previousPreferences;
+          setDictationMode(previousPreferences.dictationMode);
+        });
+        break;
+      }
     }
   }
 
@@ -4943,6 +4973,7 @@ async function openPresetPicker(targetSnapshot?: TauriDesktopDeliveryTarget) {
           state={voiceDockState}
           skinId={dockSkin}
           hotkeyLabel={voiceDockHotkey}
+          modeMetadata={dockModeMetadata}
           transcriptPreview={assistantHandledBySurface ? undefined : transcriptReview?.text}
           audioEnhancementNotice={audioEnhancementNotice}
           onCommand={handleVoiceDockCommand}

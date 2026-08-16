@@ -210,11 +210,13 @@ function createRecoveryState(
       };
     }
 
+    const recoveryAction = input.state === "idle" ? undefined : input.recoveryAction;
+    const setupRecovery = recoveryAction?.kind === "inspect_setup";
     return {
       kind: mapFailureRecoveryKind(input),
-      title: "Dictation needs attention",
-      message,
-      primaryAction: "retry",
+      title: setupRecovery ? "Revisá tu cuenta" : "No pudimos completar el dictado",
+      message: setupRecovery ? recoveryAction.reason : message,
+      primaryAction: setupRecovery ? undefined : "retry",
       secondaryAction: actions.canCopy ? "copy" : undefined,
     };
   }

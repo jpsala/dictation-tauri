@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { VoiceDock } from "../../src/voice-dock/VoiceDock";
+import { createVoiceDockModeMetadata, VoiceDock } from "../../src/voice-dock/VoiceDock";
 import type { DockSkinId } from "../../src/voice-dock/skins";
 import type { DockCommand, VoiceDockState } from "../../src/voice-dock/types";
 import { createVoiceDockState } from "../../src/voice-dock/visual-semantics";
@@ -101,10 +101,10 @@ describe("VoiceDock UI", () => {
     expect(countNeedles(html, 'data-testid="voice-dock-vu-dot"')).toBe(7);
   });
 
-  it("renders visual-only preset and assistant indicators when provided", () => {
+  it("renders compact preset and assistant indicators when idle", () => {
     const { html } = renderDock(
       createVoiceDockState(
-        session({ state: "listening" }),
+        { state: "idle" },
         {
           activePreset: { presetName: "Corregir texto", appKey: "global" },
           assistantModeEnabled: true,
@@ -119,6 +119,55 @@ describe("VoiceDock UI", () => {
     expect(html).toContain("Disable active preset: Corregir texto");
     expect(html).toContain('data-testid="voice-dock-assistant-indicator"');
     expect(html).toContain("Assistant mode available");
+  });
+
+  it("shows accessible non-profile mode badges without replacing the preset badge", () => {
+    const state = createVoiceDockState(
+      { state: "idle" },
+      { activePreset: { presetName: "Corregir texto", appKey: "global" } },
+    );
+
+    const profileHtml = renderToStaticMarkup(
+      <VoiceDock
+        state={state}
+        modeMetadata={createVoiceDockModeMetadata("profile")}
+        onCommand={vi.fn()}
+      />,
+    );
+    expect(profileHtml).not.toContain('data-testid="voice-dock-mode-badge"');
+
+    for (const mode of ["fast", "safeCleanup", "complete"] as const) {
+      const html = renderToStaticMarkup(
+        <VoiceDock
+          state={state}
+          modeMetadata={createVoiceDockModeMetadata(mode)}
+          onCommand={vi.fn()}
+        />,
+      );
+      expect(html).toContain('data-testid="voice-dock-mode-badge"');
+      expect(html).toContain(`data-mode="${mode}"`);
+      expect(html).toContain('data-command="clear_mode"');
+      expect(html).toContain("Use profile mode instead of");
+      expect(html).toContain('data-testid="voice-dock-preset-badge"');
+      expect(html).toContain("Corregir texto");
+      expect(html).toContain("×");
+    }
+
+    const activeHtml = renderToStaticMarkup(
+      <VoiceDock
+        state={createVoiceDockState(
+          session({ state: "listening" }),
+          { activePreset: { presetName: "Corregir texto", appKey: "global" } },
+        )}
+        modeMetadata={createVoiceDockModeMetadata("fast")}
+        onCommand={vi.fn()}
+      />,
+    );
+    expect(activeHtml).not.toContain('data-testid="voice-dock-mode-badge"');
+    expect(activeHtml).not.toContain('data-testid="voice-dock-preset-badge"');
+    expect(activeHtml).toContain(
+      'aria-label="Voice dock, dictation mode Rápido, action Corregir texto"',
+    );
   });
 
   it("renders a passive transient audio enhancement notice", () => {
@@ -212,7 +261,7 @@ describe("VoiceDock UI", () => {
 
     expect(failed).toContain('data-phase="failed"');
     expect(failed).toContain("Needs attention");
-    expect(failed).toContain("Dictation needs attention");
+    expect(failed).toContain("No pudimos completar el dictado");
     expect(failed).toContain("Provider unavailable");
     expectAction(failed, "Retry");
     expectNoAction(failed, "Copy transcript");

@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 pub const USER_PREFERENCES_FILE: &str = "user-preferences.v1.json";
+pub const USER_PREFERENCES_CHANGED_EVENT: &str = "settings://user-preferences-changed";
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub enum DockSkinId {
@@ -29,6 +30,8 @@ pub enum DeliveryMode {
 pub enum DictationMode {
     #[default]
     Profile,
+    Fast,
+    SafeCleanup,
     Complete,
 }
 
@@ -68,10 +71,25 @@ pub struct UserPreferences {
 pub fn get_user_preferences(app: AppHandle) -> Result<UserPreferences, String> {
     read_user_preferences(&app)
 }
-
 #[tauri::command]
 pub fn set_user_preferences(
     app: AppHandle,
+    preferences: UserPreferences,
+) -> Result<UserPreferences, String> {
+    persist_user_preferences(&app, preferences)
+}
+
+pub fn set_dictation_mode_for_app<R: Runtime>(
+    app: &AppHandle<R>,
+    mode: DictationMode,
+) -> Result<UserPreferences, String> {
+    let mut preferences = read_user_preferences(app)?;
+    preferences.dictation_mode = mode;
+    persist_user_preferences(app, preferences)
+}
+
+fn persist_user_preferences<R: Runtime>(
+    app: &AppHandle<R>,
     preferences: UserPreferences,
 ) -> Result<UserPreferences, String> {
     let next = UserPreferences {
@@ -90,7 +108,7 @@ pub fn set_user_preferences(
         dictation_sound_cues_enabled: preferences.dictation_sound_cues_enabled,
         enhance_low_volume_enabled: preferences.enhance_low_volume_enabled,
     };
-    let path = preferences_path(&app).map_err(|error| error.to_string())?;
+    let path = preferences_path(app).map_err(|error| error.to_string())?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
@@ -99,6 +117,8 @@ pub fn set_user_preferences(
         serde_json::to_string_pretty(&next).map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())?;
+    let _ = app.emit(USER_PREFERENCES_CHANGED_EVENT, next.clone());
+    let _ = crate::tray::refresh_host_menu(app);
     Ok(next)
 }
 
@@ -221,6 +241,8 @@ mod tests {
     fn dictation_mode_ids_match_renderer_contract() {
         for (mode, encoded) in [
             (DictationMode::Profile, "\"profile\""),
+            (DictationMode::Fast, "\"fast\""),
+            (DictationMode::SafeCleanup, "\"safeCleanup\""),
             (DictationMode::Complete, "\"complete\""),
         ] {
             assert_eq!(serde_json::to_string(&mode).unwrap(), encoded);

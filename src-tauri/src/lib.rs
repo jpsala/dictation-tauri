@@ -169,6 +169,7 @@ pub fn run() {
             sound_cues::play_dictation_sound_cue,
             startup_launch::get_startup_launch_config,
             startup_launch::set_startup_launch_enabled,
+            dictation_experiments::get_dictation_mode_catalog,
             user_preferences::get_user_preferences,
             user_preferences::set_user_preferences,
             tray::show_dock_context_menu,

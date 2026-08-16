@@ -11,7 +11,7 @@ describe("Fixvox Cloud host-owned login start", () => {
     const rustSource = readFileSync("src-tauri/src/fixvox_cloud.rs", "utf8");
     const libSource = readFileSync("src-tauri/src/lib.rs", "utf8");
     const rendererSource = readFileSync("src/settings/fixvox-cloud-control.ts", "utf8");
-    const settingsSurfaceSource = readFileSync("src/settings/SettingsSurface.tsx", "utf8");
+    const accountSettingsSource = readFileSync("src/settings/sections/AccountSettings.tsx", "utf8");
 
     expect(rustSource).toContain("start_fixvox_cloud_login");
     expect(rustSource).toContain("get_fixvox_auth_session_status");
@@ -38,9 +38,11 @@ describe("Fixvox Cloud host-owned login start", () => {
     expect(rendererSource).toContain("get_fixvox_auth_session_status");
     expect(rendererSource).toContain("poll_fixvox_cloud_login");
     expect(rendererSource).toContain("verificationUrlRedacted");
-    expect(settingsSurfaceSource).toContain("Cuenta conectada. Esta computadora ya está lista para dictar.");
-    expect(settingsSurfaceSource).toContain("Esta pantalla se actualizará automáticamente");
-    expect(settingsSurfaceSource).not.toContain("Comprobar estado");
+    expect(accountSettingsSource).toContain("Cuenta conectada. Esta computadora ya está lista para dictar.");
+    expect(accountSettingsSource).toContain("Esta pantalla se actualizará automáticamente");
+    expect(accountSettingsSource).toContain("onClick={() => void startLogin()}");
+    expect(accountSettingsSource).not.toContain("onClick={() => void startLogin}");
+    expect(accountSettingsSource).not.toContain("Comprobar estado");
     expect(rendererSource).not.toContain("sessionSecret");
     expect(rendererSource).not.toContain("refreshSecret");
     expect(rendererSource).not.toContain("localStorage");

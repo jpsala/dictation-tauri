@@ -1,5 +1,4 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { emit } from "@tauri-apps/api/event";
 import {
   defaultDockSkinId,
   normalizeDockSkinId,
@@ -9,7 +8,7 @@ import {
 export const userPreferencesChangedEvent = "settings://user-preferences-changed";
 
 export type DeliveryMode = "direct" | "clipboardPaste";
-export type DictationMode = "profile" | "complete";
+export type DictationMode = "profile" | "fast" | "safeCleanup" | "complete";
 
 
 export type UserPreferences = {
@@ -75,8 +74,10 @@ export function normalizeUserPreferences(
   const deliveryMode = preferences?.deliveryMode === "clipboardPaste"
     ? "clipboardPaste"
     : "direct";
-  const dictationMode = preferences?.dictationMode === "complete"
-    ? "complete"
+  const dictationMode = preferences?.dictationMode === "fast"
+    || preferences?.dictationMode === "safeCleanup"
+    || preferences?.dictationMode === "complete"
+    ? preferences.dictationMode
     : "profile";
   return {
     ...defaultUserPreferences,
@@ -125,7 +126,5 @@ export async function setUserPreferences(preferences: UserPreferences): Promise<
   }
 
   const saved = await invoke<UserPreferences>("set_user_preferences", { preferences: normalized });
-  const next = normalizeUserPreferences(saved);
-  await emit(userPreferencesChangedEvent, next);
-  return next;
+  return normalizeUserPreferences(saved);
 }

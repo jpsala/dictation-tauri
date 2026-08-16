@@ -8,7 +8,15 @@ export type {
   VoiceDockState,
 } from "./types";
 
-export type { VoiceDockProps } from "./VoiceDock";
+export {
+  createVoiceDockModeMetadata,
+  VoiceDock,
+} from "./VoiceDock";
+export type {
+  VoiceDockMode,
+  VoiceDockModeMetadata,
+  VoiceDockProps,
+} from "./VoiceDock";
 export type { DockSkinDefinition, DockSkinId } from "./skins";
 export {
   classicDockSkin,
@@ -43,6 +51,5 @@ export type {
   DockCompanionSnapshot,
 } from "./companion-state";
 export type { TeachCorrectionCommandPayload } from "./companion-state";
-export { VoiceDock } from "./VoiceDock";
 export { VocabularyChoiceSurface } from "./VocabularyChoiceSurface";
 export type { VocabularyChoiceSurfaceProps } from "./VocabularyChoiceSurface";

@@ -1,248 +1,274 @@
-// @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
-import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SettingsSurface } from "../../src/settings/SettingsSurface";
+import { settingsRegistry, settingsSearchIndex } from "../../src/settings/settings-registry";
+import { nativeHotkeyEditCandidates, nativeHotkeyEditContract } from "../../src/settings/hotkey-edit-contract";
 import { PersonalVocabularySettings } from "../../src/personal-vocabulary/PersonalVocabularySettings";
 import type { PersonalVocabularySnapshot } from "../../src/personal-vocabulary/types";
 import type { FixvoxCloudStatus } from "../../src/settings/fixvox-cloud-control";
+import { AdvancedSettings } from "../../src/settings/sections/AdvancedSettings";
+import { HelpSettings } from "../../src/settings/sections/HelpSettings";
+import { PrivacySettings } from "../../src/settings/sections/PrivacySettings";
+import { defaultUserPreferences } from "../../src/settings/user-preferences-control";
+import { ApplicationSettings } from "../../src/settings/sections/ApplicationSettings";
+import { DictationSettings } from "../../src/settings/sections/DictationSettings";
+
+const savedPreferences = {
+  preferences: { ...defaultUserPreferences, dictationMode: "safeCleanup" as const },
+  state: { status: "saved" as const, target: "preferencias", scope: "device" as const },
+  available: true,
+  refresh: async () => undefined,
+  update: async () => true,
+};
+
+const deniedCloudStatus: FixvoxCloudStatus = {
+  backendBaseUrl: "redacted",
+  statePath: "redacted",
+  installIdPresent: false,
+  deviceRegistered: true,
+  lastRegisterOk: true,
+  capabilities: { canUseManagedTranscription: false, canSeeAdvancedSettings: false, canUseDebugTools: false },
+  authPolicy: { accessMode: "anonymous", redacted: true },
+  redacted: true,
+};
+
+
+const readyCloudStatus: FixvoxCloudStatus = {
+  backendBaseUrl: "redacted",
+  statePath: "redacted",
+  installIdPresent: true,
+  deviceRegistered: true,
+  lastRegisterOk: true,
+  authPolicy: {
+    accessMode: "signed_in",
+    policyTemplateId: "pro",
+    capabilities: ["selection_transform", "custom_prompts", "managed_llm"],
+    redacted: true,
+  },
+  redacted: true,
+};
+
+function renderSection(section: Parameters<typeof SettingsSurface>[0]["initialSection"]) {
+  return renderToStaticMarkup(<SettingsSurface initialSection={section} initialCloudStatus={readyCloudStatus} />);
+}
 
 describe("SettingsSurface", () => {
-  const editableCloudStatus: FixvoxCloudStatus = {
-    backendBaseUrl: "redacted",
-    statePath: "redacted",
-    installIdPresent: true,
-    deviceRegistered: true,
-    lastRegisterOk: true,
-    authPolicy: {
-      accessMode: "signed_in",
-      policyTemplateId: "pro",
-      capabilities: ["selection_transform", "custom_prompts", "managed_llm"],
-      redacted: true,
-    },
-    policySnapshot: {
-      capabilities: {
-        canUseManagedTranscription: true,
-        canSeeAdvancedSettings: true,
-        canUseDebugTools: false,
-      },
-      runtimePolicy: {
-        defaults: {
-          userSettingsDefaults: {
-            selectionPresets: {
-              items: [{ id: "corregir-texto", label: "Corregir texto", promptContent: "Corregí el texto." }],
-            },
-          },
-        },
-      },
-      fetchedAt: "2026-07-21T00:00:00Z",
-      trust: "fresh",
-      stale: false,
-    },
-    redacted: true,
-  };
-
-  it("renders the nine-section Settings rail and keeps General limited to startup and dock", () => {
-    const hotkeys = renderToStaticMarkup(<SettingsSurface initialSection="hotkeys" />);
-    const general = renderToStaticMarkup(<SettingsSurface initialSection="general" />);
-
-    expect(hotkeys).toContain("Ajustes de escritorio");
-    expect(hotkeys).not.toContain('role="tablist"');
-    expect(hotkeys).not.toContain("Current policy");
-    for (const section of ["General", "Cuenta", "Dictado", "Atajos", "Presets", "Correcciones", "Privacidad", "Ayuda", "Avanzado"]) {
-      expect(hotkeys).toContain(section);
-    }
-    expect(hotkeys).toContain("Estados: Editable, Fijo o Próximamente.");
-    expect(hotkeys).toContain("Editá tus atajos");
-    expect(hotkeys).toContain("Elegí un campo y presioná el nuevo atajo.");
-    expect(hotkeys).not.toContain("Current policy");
-    expect(hotkeys).not.toContain("Host preview");
-    expect(hotkeys).not.toContain("registration");
-    expect(hotkeys).not.toContain("internal contract");
-    expect(hotkeys).not.toContain("contract heading");
-    expect(hotkeys).not.toContain("contract summary");
-    expect(hotkeys).not.toContain("contract steps");
-    expect(hotkeys).not.toContain("navigator.clipboard");
-    expect(hotkeys.toLowerCase()).not.toContain("raw transcript");
-    expect(hotkeys.toLowerCase()).not.toContain("selected text");
-
-    expect(general).toContain("Inicio de la aplicación");
-    expect(general).toContain("Abrir Dictation al iniciar Windows");
-    expect(general).toContain("Mostrar el dock al iniciar");
-    expect(general).not.toContain("Atajos administrados por la aplicación.");
-    expect(general).not.toContain("role=\"tablist\"");
+  it("uses the registry order, grouping, labels, and exact search targets", () => {
+    expect(settingsRegistry.map(({ id }) => id)).toEqual([
+      "account", "dictation", "hotkeys", "actions", "vocabulary", "application", "privacy", "help", "advanced",
+    ]);
+    expect(settingsRegistry.filter(({ group }) => group === "primary").map(({ id }) => id)).toEqual([
+      "account", "dictation", "hotkeys", "actions", "vocabulary", "application",
+    ]);
+    expect(settingsRegistry.filter(({ group }) => group === "utility").map(({ id }) => id)).toEqual([
+      "privacy", "help", "advanced",
+    ]);
+    expect(settingsRegistry.find(({ id }) => id === "application")).toMatchObject({ label: "Aplicación" });
+    expect(settingsRegistry.find(({ id }) => id === "actions")).toMatchObject({ label: "Acciones de texto" });
+    expect(settingsRegistry.flatMap(({ search }) => search.map(({ targetId }) => targetId))).toEqual([
+      "settings-account-access",
+      "settings-dictation-mode",
+      "settings-dictation-listening",
+      "settings-dictation-delivery",
+      "settings-dictation-feedback",
+      "settings-hotkeys-list",
+      "settings-actions-list",
+      "settings-vocabulary-rules",
+      "settings-application-startup",
+      "settings-application-dock",
+      "settings-privacy-history",
+      "settings-help-status",
+      "settings-advanced-diagnostics",
+    ]);
+    expect(settingsSearchIndex.every(({ label, summary, targetId }) => label && summary && targetId)).toBe(true);
   });
 
-  it("renders Cuenta signed-out UX without infrastructure detail", () => {
-    const cloudStatus: FixvoxCloudStatus = {
-      backendBaseUrl: "https://auth-fixvox.jpsala.dev",
-      statePath: "C:/Users/JP/AppData/Roaming/dictation-tauri/fixvox-device-state.json",
-      installIdPresent: true,
-      installIdRedacted: "instal…1234",
-      deviceRegistered: false,
-      lastRegisterOk: false,
-      redacted: true,
-    };
-
-    const html = renderToStaticMarkup(<SettingsSurface initialSection="account" initialCloudStatus={cloudStatus} />);
-
-    expect(html).toContain("Cuenta");
-    expect(html).toContain("Iniciá sesión para usar Dictation");
-    expect(html).toContain("Tu cuenta se vincula automáticamente a esta computadora.");
-    expect(html).toContain("Conectá tu cuenta");
-    expect(html).toContain("Continuar con Google");
-    expect(html).toContain("Se abrirá Google en tu navegador. Cuando termines, volvé a Fixvox para continuar con la configuración.");
-    expect(html).not.toContain("Cloud");
-    expect(html).not.toContain("policy");
-    expect(html).not.toContain("invite code");
-    expect(html).not.toContain("fixvox-device-state.json");
-    expect(html).not.toContain("user_1234567890abcdef");
-    expect(html).not.toContain("dev_test_1234567890abcdef");
-    expect(html).not.toContain("C:/Users/JP/AppData");
-    expect(html).not.toContain("token");
-    expect(html).not.toContain("Comprobar estado");
-    expect(html).not.toContain("registered device");
-    expect(html).not.toContain("managed dictation");
+  it("renders the shell search surface and only mounts the active section", () => {
+    const application = renderSection("application");
+    expect(application).toContain('role="search"');
+    expect(application).toContain('aria-label="Buscar ajustes"');
+    expect(application).toContain("Aplicación");
+    expect(application).toContain("Abrir Dictation al iniciar Windows");
+    expect(application).toContain('id="settings-application-startup"');
+    expect(application).toContain('id="settings-application-dock"');
+    expect(application).not.toContain('id="settings-dictation-mode"');
+    expect(application).not.toContain('id="settings-hotkeys-list"');
+    expect(application).not.toContain('id="settings-actions-list"');
+    expect(application).not.toContain("General");
+    expect(application).not.toContain("Presets");
   });
 
-  it("shows automatic pending-login progress without a redundant status button", () => {
+  it("keeps Account redacted and excludes infrastructure details", () => {
     const html = renderToStaticMarkup(
       <SettingsSurface
         initialSection="account"
         initialCloudStatus={{
-          backendBaseUrl: "redacted",
-          statePath: "redacted",
-          installIdPresent: true,
-          deviceRegistered: false,
-          lastRegisterOk: false,
-          redacted: true,
+          ...readyCloudStatus,
+          statePath: "C:/Users/JP/AppData/Roaming/dictation-tauri/fixvox-device-state.json",
+          authPolicy: { accessMode: "signed_in", userRedacted: "user_1234567890abcdef", redacted: true },
         }}
         initialAuthSessionStatus={{
-          status: "pending",
+          status: "signed_in",
           secretsPresent: false,
           sessionPath: "redacted",
           redacted: true,
         }}
       />,
     );
-
-    expect(html).toContain("Completá el inicio de sesión");
-    expect(html).toContain("Esperando confirmación…");
-    expect(html).toContain("Esta pantalla se actualizará automáticamente cuando vuelvas.");
-    expect(html).not.toContain("Comprobar estado");
-    expect(html).not.toContain("Continuar con Google");
-    expect(html).not.toContain("invite code");
-    expect(html).not.toContain("Fixvox Cloud");
+    expect(html).toContain("Cuenta");
+    expect(html).toContain("Cuenta conectada");
+    expect(html).not.toContain("fixvox-device-state.json");
+    expect(html).not.toContain("C:/Users/JP/AppData");
+    expect(html).not.toContain("user_1234567890abcdef");
+    expect(html).not.toContain("token");
+    expect(html).not.toContain("policy");
   });
 
-  it("renders signed-in Cuenta summary from simulated redacted state", () => {
-    const cloudStatus: FixvoxCloudStatus = {
-      backendBaseUrl: "https://auth-fixvox.jpsala.dev",
-      statePath: "redacted",
-      installIdPresent: true,
-      installIdRedacted: "instal…1234",
-      deviceRegistered: true,
-      deviceIdRedacted: "dev…cdef",
-      lastRegisterOk: true,
-      policyLabel: "Dictado completo",
-      capabilities: {
-        canUseManagedTranscription: true,
-        canSeeAdvancedSettings: true,
-        canUseDebugTools: false,
-      },
-      policySnapshot: {
-        policyLabel: "Dictado completo",
-        capabilities: {
-          canUseManagedTranscription: true,
-          canSeeAdvancedSettings: true,
-          canUseDebugTools: false,
-        },
-        fetchedAt: "2026-06-29T00:00:00Z",
-        trust: "simulated",
-        stale: false,
-      },
-      authPolicy: {
-        accessMode: "signed_in",
-        userRedacted: "user_1234567890abcdef",
-        groupLabel: "Founders",
-        policyTemplateId: "pro",
-        policyTemplateLabel: "Pro",
-        redacted: true,
-      },
-      redacted: true,
-    };
+  it("keeps Dictation everyday modes separate from Laboratory", () => {
+    const html = renderSection("dictation");
+    expect(html).toContain('id="settings-dictation-mode"');
+    for (const label of ["Según mi perfil", "Rápido", "Limpieza segura", "Completo"]) {
+      expect(html).toContain(label);
+    }
+    expect(html).toContain("Laboratory");
+    expect(html).toContain("Los overrides temporales sólo afectan una ejecución y no cambian el modo global guardado.");
+    expect(html).toContain('id="settings-dictation-listening"');
+    expect(html).toContain('id="settings-dictation-delivery"');
+    expect(html).toContain('id="settings-dictation-feedback"');
+    expect(html).not.toContain("Configuración de prueba");
+  });
 
-    const html = renderToStaticMarkup(
+  it("preserves the host-owned hotkey candidate and dirty contracts", () => {
+    expect(nativeHotkeyEditCandidates.map(({ shortcut }) => shortcut)).toEqual([
+      "Alt+Space", "Alt+3", "Ctrl+Shift+F9",
+    ]);
+    expect(nativeHotkeyEditContract.rendererBoundary).toEqual({
+      editableControlsAllowed: true,
+      keyboardCaptureAllowed: false,
+      registrationAllowed: false,
+      persistenceAllowed: false,
+    });
+    const html = renderSection("hotkeys");
+    expect(html).toContain('id="settings-hotkeys-list"');
+    expect(html).toContain("Cambiar");
+    expect(html).not.toContain("Comprobar atajo");
+  });
+
+  it("keeps Actions advanced details disclosed and capability-aware", () => {
+    const denied = renderToStaticMarkup(<SettingsSurface initialSection="actions" />);
+    expect(denied).toContain("Acciones");
+    expect(denied).not.toContain("Editar detalles avanzados");
+    expect(denied).not.toContain("Nombre del preset");
+
+    const readOnly = renderToStaticMarkup(
       <SettingsSurface
-        initialSection="account"
-        initialCloudStatus={cloudStatus}
-        initialAuthSessionStatus={{
-          status: "signed_in",
-          flow: "device_code_polling",
-          userRedacted: "user_1234567890abcdef",
-          sessionIdRedacted: "sess…cdef",
-          stateRedacted: "state…cdef",
-          secretsPresent: false,
-          sessionPath: "fixvox-auth-session.v1.json · host app data",
-          redacted: true,
+        initialSection="actions"
+        initialCloudStatus={{
+          ...readyCloudStatus,
+          authPolicy: { accessMode: "signed_in", capabilities: ["selection_transform", "managed_llm"], redacted: true },
         }}
       />,
     );
+    expect(readOnly).not.toContain("Editar detalles avanzados");
+    expect(readOnly).toContain("disabled");
 
-    expect(html).toContain("Cuenta conectada");
-    expect(html).toContain("Perfil de dictado");
-    expect(html).toContain("Tu cuenta y esta computadora están listas para dictar.");
-    expect(html).toContain("Plan Pro");
-    expect(html).toContain("Dictado completo");
-    expect(html).toContain("Define el comportamiento de transcripción y postproceso administrado.");
-    expect(html).not.toContain("No elevated limits");
-    expect(html).not.toContain("Founders");
-    expect(html).not.toContain("managed dictation");
-    expect(html).not.toContain("postprocess");
-    expect(html).not.toContain("policy");
-    expect(html).not.toContain("Capabilities remain basic until the host links this device");
-    expect(html).not.toContain("user_1234567890abcdef");
-    expect(html).not.toContain("device_id");
-    expect(html).not.toContain("gsk_");
+    const editable = renderSection("actions");
+    expect(editable).toContain('id="settings-actions-list"');
+    expect(editable).toContain("Editar detalles avanzados");
+    expect(editable).not.toContain("Provider");
+    expect(editable).toContain("<details");
+    expect(editable).toContain("Vista previa no disponible");
+    expect(editable).toContain("no ejecuta proveedores ni inventa una salida");
+    expect(editable).not.toContain("Salida ilustrativa");
   });
 
-  it("keeps denied Presets mutually exclusive from data and mutation controls", () => {
-    const html = renderToStaticMarkup(<SettingsSurface initialSection="presets" initialCloudStatus={{
-      backendBaseUrl: "redacted", statePath: "redacted", installIdPresent: true,
-      deviceRegistered: false, lastRegisterOk: false, redacted: true,
-    }} />);
-    const presetsContent = html.slice(html.indexOf('aria-label="Administrar presets"'));
-    expect(presetsContent).toContain("Los presets no están disponibles para esta cuenta.");
-    expect(presetsContent).toContain("Cuenta");
-    for (const forbidden of ["Nombre", "Tecla", "Atajo", "Agregar preset", "Importar valores disponibles", "Guardar cambios", "Editar el preset seleccionado", "No hay presets."]) {
-      expect(presetsContent).not.toContain(forbidden);
+  it("renders honest effective state for unavailable, denied, and proven local data", () => {
+    const unavailable = renderToStaticMarkup(<SettingsSurface initialSection="advanced" />);
+    expect(unavailable).toContain("Estado efectivo del dictado");
+    expect(unavailable).toContain("No disponible");
+    expect(unavailable).not.toContain("Alt+Space");
+    expect(unavailable).not.toContain("Copiar");
+
+    const notConfigured = renderToStaticMarkup(
+      <AdvancedSettings tauriRuntime={false} cloudStatus={deniedCloudStatus} preferences={savedPreferences} />,
+    );
+    expect(notConfigured).toContain("No configurado");
+    expect(notConfigured).not.toContain("C:/");
+    expect(notConfigured).not.toContain("token");
+
+    const disabled = renderToStaticMarkup(
+      <AdvancedSettings
+        tauriRuntime={false}
+        cloudStatus={{ ...deniedCloudStatus, installIdPresent: true }}
+        preferences={savedPreferences}
+      />,
+    );
+    expect(disabled).toContain("Deshabilitado");
+    const populated = renderToStaticMarkup(
+      <AdvancedSettings tauriRuntime={false} cloudStatus={readyCloudStatus} preferences={savedPreferences} />,
+    );
+    expect(populated).toContain("Limpieza segura");
+    expect(populated).toContain("Configuración local");
+    expect(populated).toContain("Diagnóstico redactado seleccionable");
+    expect(populated).not.toContain("sessionPath");
+    expect(populated).not.toContain("provider");
+    expect(populated).not.toContain("clipboard");
+  });
+
+  it("renders concise local-data controls and honest shared health copy", () => {
+    const onNavigate = vi.fn();
+    const privacy = renderToStaticMarkup(<PrivacySettings tauriRuntime={false} onNavigate={onNavigate} />);
+    const help = renderToStaticMarkup(
+      <HelpSettings
+        tauriRuntime={false}
+        cloudStatus={{
+          ...readyCloudStatus,
+          capabilities: {
+            canUseManagedTranscription: true,
+            canSeeAdvancedSettings: true,
+            canUseDebugTools: false,
+          },
+        }}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    expect(privacy).toContain("Datos locales");
+    expect(privacy).toContain("Historial de resultados");
+    expect(privacy).toContain("Ver diagnóstico");
+    expect(privacy).not.toContain("El historial se guarda localmente y podés borrarlo");
+    expect(help).toContain("Estado de esta computadora");
+    expect(help).toContain("La cuenta y esta computadora están preparadas.");
+    expect(help).toContain("Listo");
+    expect(help).not.toContain("Hay información disponible");
+    for (const html of [privacy, help]) {
+      expect(html).toContain("settings-advanced-diagnostics");
+      expect(html).not.toContain("<a ");
     }
   });
-  it("renders read-only and editable Presets with the correct control authority", () => {
-    const readOnly = renderToStaticMarkup(<SettingsSurface initialSection="presets" initialCloudStatus={{
-      backendBaseUrl: "redacted", statePath: "redacted", installIdPresent: true,
-      deviceRegistered: true, lastRegisterOk: true,
-      authPolicy: { accessMode: "signed_in", capabilities: ["selection_transform", "managed_llm"], redacted: true },
-      redacted: true,
-    }} />);
-    expect(readOnly).not.toContain("Importar valores disponibles");
-    expect(readOnly).not.toContain('aria-label="Agregar preset"');
-    expect(readOnly).toMatch(/<input[^>]*disabled/);
-    expect(readOnly).toMatch(/<textarea[^>]*disabled/);
-    expect(readOnly).toMatch(/<button(?=[^>]*aria-label="Duplicar preset")(?=[^>]*disabled)[^>]*>/);
-    expect(readOnly).toMatch(/<button(?=[^>]*aria-label="Eliminar preset")(?=[^>]*disabled)[^>]*>/);
-    expect(readOnly).toMatch(/<button[^>]*disabled[^>]*>Guardar cambios<\/button>/);
-    const editable = renderToStaticMarkup(<SettingsSurface initialSection="presets" initialCloudStatus={editableCloudStatus} />);
-    expect(editable).toContain("Nombre");
-    expect(editable).toContain("Guardar cambios");
-    expect(editable).toContain('aria-label="Agregar preset"');
+
+  it("shows local provenance, host-grounded effects, relations, and a non-mutating dock preview", () => {
+    const onNavigate = vi.fn();
+    const dictation = renderToStaticMarkup(
+      <DictationSettings tauriRuntime={false} preferences={savedPreferences} onNavigate={onNavigate} />,
+    );
+    const application = renderToStaticMarkup(
+      <ApplicationSettings tauriRuntime={false} preferences={savedPreferences} onNavigate={onNavigate} />,
+    );
+    expect(dictation).toContain("Configuración local");
+    expect(dictation).toContain("Esta computadora");
+    expect(dictation).toContain("Próximo dictado");
+    expect(dictation).toContain("settings-advanced-diagnostics");
+    expect(dictation).toContain("Tauri no está disponible");
+    expect(application).toContain("Configuración local");
+    expect(application).toContain("Se aplica de inmediato");
+    expect(application).toContain("Se aplica al reiniciar");
+    expect(application).toContain("Vista previa local");
+    expect(application).toContain("settings-hotkeys-list");
+    expect(application).toContain("sin guardar preferencias");
   });
-  it("keeps Presets checking until cloud status resolves", () => {
-    const source = readFileSync("src/settings/SettingsSurface.tsx", "utf8");
-    expect(source).toContain("tauriRuntime && !cloudStatusResolved");
-    expect(source).toContain("No hay presets.");
-  });
-  it("renders Correcciones empty and first-create states exclusively", () => {
+
+  it("keeps Correcciones empty and populated states mutually exclusive", () => {
     const emptySnapshot: PersonalVocabularySnapshot = { revision: "r1", rules: [] };
     const empty = renderToStaticMarkup(<PersonalVocabularySettings initialSnapshot={emptySnapshot} />);
     expect(empty).toContain("No hay correcciones guardadas.");
@@ -267,197 +293,5 @@ describe("SettingsSurface", () => {
     expect(populated).toContain("Correcciones personales");
     expect(populated).toContain("dictado");
     expect(populated).not.toContain("Nueva corrección. Completá los textos para guardarla.");
-  });
-
-  it("shows the Control Room entry only in Avanzado for admin capability", () => {
-    const html = renderToStaticMarkup(<SettingsSurface
-      initialSection="advanced"
-      initialCloudStatus={{
-        backendBaseUrl: "redacted",
-        statePath: "redacted",
-        installIdPresent: true,
-        deviceRegistered: true,
-        lastRegisterOk: true,
-        authPolicy: {
-          accessMode: "signed_in",
-          policyTemplateId: "power-admin",
-          capabilities: ["admin_settings"],
-          redacted: true,
-        },
-        redacted: true,
-      }}
-    />);
-
-    expect(html).toContain("Avanzado");
-    expect(html).toContain("Abrir Control Room");
-    expect(html).toContain("Diagnóstico seguro");
-    expect(html).toContain("Volver a comprobar");
-    expect(html).toContain("Todavía no comprobado");
-    expect(html).not.toContain("Actualizar estado");
-    expect(html).not.toContain("ADMIN_API_KEY");
-
-    const nonAdminHtml = renderToStaticMarkup(<SettingsSurface initialSection="advanced" />);
-    expect(nonAdminHtml).not.toContain("Abrir Control Room");
-  });
-
-  it("keeps Dictado focused on local capture and delivery settings", () => {
-    const dictation = renderToStaticMarkup(<SettingsSurface initialSection="dictation" />);
-    const privacy = renderToStaticMarkup(<SettingsSurface initialSection="privacy" />);
-    const help = renderToStaticMarkup(<SettingsSurface initialSection="help" />);
-
-    expect(dictation).toContain("Dictado");
-    expect(dictation).toContain("Detener después de un silencio");
-    expect(dictation).toContain("Silenciar salida al grabar");
-    expect(dictation).toContain("Modo de entrega");
-    expect(dictation).toContain("Entrada directa");
-    expect(dictation).toContain("Pegado rápido");
-    expect(dictation).not.toContain("Configuración de prueba");
-    expect(dictation).toContain("Según mi perfil");
-    expect(dictation).not.toContain("Literal");
-    expect(dictation).not.toContain("Limpieza segura");
-    expect(dictation).not.toContain("Experimental");
-    expect(dictation).not.toContain("Próximo dictado");
-    expect(dictation).not.toContain("Hasta cerrar Dictation");
-    expect(dictation).toContain("Edición, validación, runs y publicación viven en el laboratorio.");
-    expect(dictation).not.toContain("server-owned");
-    expect(dictation).not.toContain("policy del perfil");
-    expect(dictation).not.toContain("Cloud");
-    expect(dictation).not.toContain("policy");
-    expect(privacy).toContain("Privacidad");
-    expect(privacy).toContain("El historial se guarda sólo en esta computadora.");
-    expect(privacy).toContain("Borrar historial");
-    expect(privacy).not.toContain("raw transcript");
-    expect(help).toContain("Ayuda");
-    expect(help).toContain("Estado del servicio");
-    expect(help).toContain("Abrir diagnóstico seguro");
-    expect(help).not.toContain("provider");
-  });
-
-  it("renders compact preset controls with accessible icon actions", () => {
-    const html = renderToStaticMarkup(<SettingsSurface initialSection="presets" initialCloudStatus={editableCloudStatus} />);
-    const withCloudDefaults = renderToStaticMarkup(<SettingsSurface
-      initialSection="presets"
-      initialCloudStatus={editableCloudStatus}
-    />);
-
-    expect(html).toContain("Presets");
-    expect(html).toContain('aria-label="Administrar presets"');
-    expect(html).toContain("Acciones disponibles para tu cuenta.");
-    expect(html).toContain("Como yo (español)");
-    expect(html).toContain("Corregir texto");
-    expect(html).toContain("Fix Writing");
-    expect(html).toContain("Like me (English)");
-    expect(html).toContain('aria-label="Agregar preset"');
-    expect(html).toContain('aria-label="Duplicar preset"');
-    expect(html).toContain('aria-label="Eliminar preset"');
-    expect(html).toContain('aria-label="Importar valores disponibles"');
-    expect(withCloudDefaults).toContain('aria-label="Importar valores disponibles"');
-    expect(html).toContain("Nombre");
-    expect(html).toContain("Tecla");
-    expect(html).toContain("Atajo");
-    expect(html).toContain('aria-label="Nombre del preset"');
-    expect(html).toContain('aria-label="Tecla del selector del preset"');
-    expect(html).toContain('aria-label="Atajo del preset"');
-    expect(html).toContain("Guardar cambios");
-    expect(html).not.toContain("Cambios guardados");
-    expect(html).not.toContain("Editar el preset seleccionado");
-    expect(html).not.toContain("como-yo-es");
-    expect(html).not.toContain("Restablecer incluido");
-    expect(html).not.toContain("Preset incluido");
-    expect(html).not.toContain("Personalizado");
-    expect(html).not.toContain("Managed engine");
-    expect(html).not.toContain("Configured in Control Room");
-    expect(html).not.toContain("Preset provider");
-    expect(html).not.toContain("Preset model");
-    expect(html).not.toContain("raw transcript");
-    expect(html).not.toContain("token");
-  });
-
-  it("wires the single shortcut field to record key presses and save through the host", () => {
-    const source = readFileSync("src/settings/SettingsSurface.tsx", "utf8");
-
-    expect(source).toContain("desktop-control://hotkey-capture");
-    expect(source).toContain("set_desktop_control_hotkey_capture_enabled");
-    expect(source).toContain("startShortcutCapture");
-    expect(source).toContain("onClick={() => void startShortcutCapture()}");
-    expect(source).toContain("captureState === \"recording\" || captureArmedRef.current");
-    expect(source).not.toContain("onMouseDown={() => void startShortcutCapture()}");
-    expect(source).not.toContain("onFocus={() => void startShortcutCapture()}");
-    expect(source).toContain("handleShortcutCaptureKeyDown");
-    expect(source).toContain("shortcutFromKeyboardEvent");
-    expect(source).toContain("await applyCandidate(shortcut)");
-    expect(source).toContain("Presioná el nuevo atajo…");
-    expect(source).toContain("onClick={() => setSelectedSection(section.id)}");
-    expect(source).not.toContain("disabled={!isActive}");
-    expect(source).toContain("effectiveSection === \"hotkeys\"");
-    expect(source).toContain("effectiveSection === \"account\"");
-    expect(source).toContain("effectiveSection === \"advanced\"");
-    expect(source).toContain("effectiveSection === \"presets\"");
-    expect(source).toContain("getTauriActionHotkeyConfig");
-    expect(source).toContain("applyTauriActionHotkeyRegistration");
-    expect(source).not.toContain("essentialsTabs");
-    expect(source).not.toContain("role=\"tablist\"");
-    expect(source).toContain("createSelectionTransformPreset");
-    expect(source).toContain("deleteSelectionTransformPreset");
-    expect(source).toContain("window.confirm");
-    expect(source).toContain("saveSelectionTransformPreset");
-    expect(source).not.toContain("resetSelectionTransformPresetCustomization");
-    expect(source).toContain("extractCloudSelectionPresetDefaults");
-    expect(source).toContain("importCloudSelectionPresetDefaults");
-    expect(source).not.toContain("close_settings_window");
-    expect(source).not.toContain("closeSettingsWindow");
-    expect(source).toContain("getFixvoxCloudStatus");
-    expect(source).toContain("getUserPreferences");
-    expect(source).toContain("setUserPreferences");
-    expect(source).toContain("autoStopOnSilenceEnabled");
-    expect(source).toContain("dictationMode");
-    expect(source).toContain("Según mi perfil");
-    expect(source).toContain("Dictado completo");
-    expect(source).toContain("updateDictationMode");
-    expect(source).toContain("autoStopSilenceMs");
-    expect(source).toContain("Detener después de un silencio");
-    expect(source).toContain("followFocusUntilDelivery");
-    expect(source).toContain("followFocusUntilDelivery");
-    expect(source).toContain("muteOutputDuringRecording");
-    expect(source).toContain("Silenciar salida al grabar");
-    expect(source).toContain("dictationSoundCuesEnabled");
-    expect(source).toContain("Sonidos de dictado");
-    expect(source).toContain("enhanceLowVolumeEnabled");
-    expect(source).toContain("Mejorar grabaciones con volumen bajo");
-    expect(source).toContain("pasteWithoutFocusChange");
-    expect(source).toContain("Pegar sin cambiar de ventana");
-    expect(source).toContain("Envía Ctrl+V sólo al input que siga activo al entregar");
-    expect(source).toContain("getFixvoxAuthSessionStatus");
-    expect(source).toContain("pollFixvoxCloudLogin");
-    expect(source).toContain("pollCloudLoginStatus");
-    expect(source).toContain("visibilitychange");
-    expect(source).not.toContain("activateFixvoxDevice");
-    expect(source).toContain("startFixvoxCloudLogin");
-    expect(source).toContain("startCloudLogin");
-    expect(source).not.toContain("Open the external browser to start Fixvox Cloud sign-in?");
-    expect(source).not.toContain("void applyCandidate(candidate.shortcut)");
-    expect(source).not.toContain("Save ${editingShortcut}");
-  });
-
-  it("notifies the dock runtime when host-owned user preferences change", () => {
-    const settingsControlSource = readFileSync("src/settings/user-preferences-control.ts", "utf8");
-    const appSource = readFileSync("src/App.tsx", "utf8");
-
-    expect(settingsControlSource).toContain("settings://user-preferences-changed");
-    expect(settingsControlSource).toContain("emit(userPreferencesChangedEvent, next)");
-    expect(appSource).toContain("userPreferencesChangedEvent");
-    expect(appSource).toContain("getUserPreferences()");
-    expect(appSource).toContain("userPreferencesRef.current.pressEnterAfterPaste");
-    expect(appSource).toContain("userPreferencesRef.current.followFocusUntilDelivery");
-    expect(appSource).toContain("(await getUserPreferences()).pasteWithoutFocusChange");
-    expect(appSource).toContain("userPreferencesRef.current.pasteWithoutFocusChange");
-    expect(settingsControlSource).toContain("followFocusUntilDelivery");
-    expect(settingsControlSource).toContain("pasteWithoutFocusChange");
-    expect(settingsControlSource).toContain("autoStopOnSilenceEnabled");
-    expect(settingsControlSource).toContain("defaultAutoStopSilenceMs");
-    expect(settingsControlSource).toContain("createMuteOutputPolicy");
-    expect(settingsControlSource).toContain("enhanceLowVolumeEnabled");
-    expect(appSource).toContain("forcePressEnterAfterPasteRef.current");
-    expect(appSource).toContain("reviewBeforeDelivery ? \"review_only\" : \"paste_send\"");
   });
 });

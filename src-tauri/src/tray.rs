@@ -13,7 +13,7 @@ use tauri::{
 use crate::desktop_delivery;
 use crate::dock_shell::{self, DOCK_WINDOW_LABEL};
 use crate::settings_window;
-use crate::user_preferences::DockSkinId;
+use crate::user_preferences::{DictationMode, DockSkinId};
 
 pub const HOST_COMMAND_EVENT: &str = "desktop-control://host-command";
 pub const HOST_PRESET_MENU_SYNC_EVENT: &str = "desktop-control://preset-menu-sync";
@@ -22,6 +22,10 @@ pub const HOST_PRESET_MENU_SCHEMA_VERSION: u32 = 1;
 pub const HOST_PRESET_MENU_MAX_ITEMS: usize = 64;
 pub const HOST_PRESET_MENU_MAX_ID_CHARS: usize = 128;
 pub const HOST_PRESET_MENU_MAX_NAME_CHARS: usize = 128;
+pub const MENU_DICTATION_MODE_PROFILE: &str = "dictation_mode_profile";
+pub const MENU_DICTATION_MODE_FAST: &str = "dictation_mode_fast";
+pub const MENU_DICTATION_MODE_SAFE_CLEANUP: &str = "dictation_mode_safe_cleanup";
+pub const MENU_DICTATION_MODE_COMPLETE: &str = "dictation_mode_complete";
 
 pub const MENU_TOGGLE_DOCK: &str = "toggle_dock";
 pub const MENU_PASTE_LAST_SAFE: &str = "paste_last_safe";
@@ -288,6 +292,7 @@ pub enum HostMenuAction {
     ClearPreset,
     SelectPreset(&'static str),
     SelectPresetOwned(String),
+    SelectDictationMode(DictationMode),
     SelectDockSkin(DockSkinId),
     OpenSettings,
     Quit,
@@ -304,6 +309,14 @@ pub fn resolve_host_menu_action(id: &str) -> HostMenuAction {
         MENU_PRESET_CORREGIR_TEXTO => HostMenuAction::SelectPreset("corregir-texto"),
         MENU_PRESET_FIX_WRITING => HostMenuAction::SelectPreset("fix-writing"),
         MENU_PRESET_LIKE_ME_EN => HostMenuAction::SelectPreset("like-me-en"),
+        MENU_DICTATION_MODE_PROFILE => HostMenuAction::SelectDictationMode(DictationMode::Profile),
+        MENU_DICTATION_MODE_FAST => HostMenuAction::SelectDictationMode(DictationMode::Fast),
+        MENU_DICTATION_MODE_SAFE_CLEANUP => {
+            HostMenuAction::SelectDictationMode(DictationMode::SafeCleanup)
+        }
+        MENU_DICTATION_MODE_COMPLETE => {
+            HostMenuAction::SelectDictationMode(DictationMode::Complete)
+        }
         MENU_DOCK_SKIN_CLASSIC => HostMenuAction::SelectDockSkin(DockSkinId::Classic7),
         MENU_DOCK_SKIN_COMPACT => HostMenuAction::SelectDockSkin(DockSkinId::Compact5),
         MENU_DOCK_SKIN_WISPR_FLOW => HostMenuAction::SelectDockSkin(DockSkinId::WisprFlow),
@@ -333,7 +346,8 @@ pub fn host_command_payload(action: HostMenuAction) -> Option<HostCommandPayload
         HostMenuAction::SelectDockSkin(DockSkinId::WisprFlow) => {
             ("set_dock_skin", None, Some("wispr-flow"))
         }
-        HostMenuAction::ToggleDock
+        HostMenuAction::SelectDictationMode(_)
+        | HostMenuAction::ToggleDock
         | HostMenuAction::OpenSettings
         | HostMenuAction::Quit
         | HostMenuAction::Unknown => return None,
@@ -347,6 +361,15 @@ pub fn host_command_payload(action: HostMenuAction) -> Option<HostCommandPayload
         chord_key: None,
         target_snapshot: None,
     })
+}
+
+pub fn refresh_host_menu<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+    let menu = build_host_menu(app).map_err(|error| error.to_string())?;
+    if let Some(tray) = app.tray_by_id(TRAY_ICON_ID) {
+        tray.set_menu(Some(menu))
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 pub fn configure_tray_and_background<R: Runtime>(
@@ -419,6 +442,46 @@ fn build_host_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu:
         .text(MENU_DOCK_SKIN_COMPACT, "Compact 5")
         .text(MENU_DOCK_SKIN_WISPR_FLOW, "Wispr Flow")
         .build()?;
+    let active_dictation_mode =
+        crate::user_preferences::read_user_preferences_for_app(app).dictation_mode;
+    let dictation_mode_profile = CheckMenuItem::with_id(
+        app,
+        MENU_DICTATION_MODE_PROFILE,
+        "Según mi perfil",
+        true,
+        active_dictation_mode == DictationMode::Profile,
+        None::<&str>,
+    )?;
+    let dictation_mode_fast = CheckMenuItem::with_id(
+        app,
+        MENU_DICTATION_MODE_FAST,
+        "Rápido",
+        true,
+        active_dictation_mode == DictationMode::Fast,
+        None::<&str>,
+    )?;
+    let dictation_mode_safe_cleanup = CheckMenuItem::with_id(
+        app,
+        MENU_DICTATION_MODE_SAFE_CLEANUP,
+        "Limpieza segura",
+        true,
+        active_dictation_mode == DictationMode::SafeCleanup,
+        None::<&str>,
+    )?;
+    let dictation_mode_complete = CheckMenuItem::with_id(
+        app,
+        MENU_DICTATION_MODE_COMPLETE,
+        "Completo",
+        true,
+        active_dictation_mode == DictationMode::Complete,
+        None::<&str>,
+    )?;
+    let dictation_mode_menu = SubmenuBuilder::new(app, "Modo de dictado")
+        .item(&dictation_mode_profile)
+        .item(&dictation_mode_fast)
+        .item(&dictation_mode_safe_cleanup)
+        .item(&dictation_mode_complete)
+        .build()?;
 
     let preset_snapshot = current_host_preset_menu_snapshot();
     let clear_preset = CheckMenuItem::with_id(
@@ -440,7 +503,7 @@ fn build_host_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu:
             None::<&str>,
         )?);
     }
-    let mut presets_menu_builder = SubmenuBuilder::new(app, "Presets").item(&clear_preset);
+    let mut presets_menu_builder = SubmenuBuilder::new(app, "Acciones").item(&clear_preset);
     for preset_item in &preset_items {
         presets_menu_builder = presets_menu_builder.item(preset_item);
     }
@@ -452,6 +515,7 @@ fn build_host_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::menu:
         .text(MENU_PASTE_LAST_SAFE, "Paste last")
         .text(MENU_SHOW_RESULT_HISTORY, "History")
         .separator()
+        .item(&dictation_mode_menu)
         .item(&skin_menu)
         .item(&presets_menu)
         .text(MENU_OPEN_SETTINGS, "Settings")
@@ -489,6 +553,11 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
         HostMenuAction::OpenSettings => {
             if let Err(error) = settings_window::show_settings_window_for_app(app) {
                 eprintln!("failed to open settings window: {error}");
+            }
+        }
+        HostMenuAction::SelectDictationMode(mode) => {
+            if let Err(error) = crate::user_preferences::set_dictation_mode_for_app(app, mode) {
+                eprintln!("failed to set dictation mode: {error}");
             }
         }
         HostMenuAction::Quit => app.exit(0),
@@ -543,6 +612,17 @@ mod tests {
             resolve_host_menu_action(MENU_PRESET_LIKE_ME_EN),
             HostMenuAction::SelectPreset("like-me-en")
         );
+        for (id, mode) in [
+            (MENU_DICTATION_MODE_PROFILE, DictationMode::Profile),
+            (MENU_DICTATION_MODE_FAST, DictationMode::Fast),
+            (MENU_DICTATION_MODE_SAFE_CLEANUP, DictationMode::SafeCleanup),
+            (MENU_DICTATION_MODE_COMPLETE, DictationMode::Complete),
+        ] {
+            assert_eq!(
+                resolve_host_menu_action(id),
+                HostMenuAction::SelectDictationMode(mode)
+            );
+        }
         assert_eq!(
             resolve_host_menu_action(MENU_DOCK_SKIN_CLASSIC),
             HostMenuAction::SelectDockSkin(DockSkinId::Classic7)
@@ -786,6 +866,12 @@ mod tests {
             })
         );
         assert_eq!(host_command_payload(HostMenuAction::ToggleDock), None);
+        assert_eq!(
+            host_command_payload(HostMenuAction::SelectDictationMode(
+                DictationMode::SafeCleanup
+            )),
+            None
+        );
         assert_eq!(host_command_payload(HostMenuAction::OpenSettings), None);
         assert_eq!(host_command_payload(HostMenuAction::Quit), None);
         assert_eq!(
