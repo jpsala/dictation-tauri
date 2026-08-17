@@ -3067,6 +3067,11 @@ export function DockSurface() {
     latestAttemptBlocksHistoryPasteRef.current = true;
     setDismissedRecoveryKey(undefined);
     setNoSpeechNoticeOpen(false);
+    setDesktopRecoveryAction(undefined);
+    setCapture({
+      state: "requesting_permission",
+      message: captureRuntime.permissionMessage,
+    });
     if (isTauri() && !(await ensureTauriDictationReadiness(invoke))) {
       setDesktopRecoveryAction(accountSetupRecoveryAction());
       setPipelineUi({
@@ -3086,14 +3091,9 @@ export function DockSurface() {
       setDismissedAssistantRunId(companionSnapshot.assistant.runId);
       await prepareDictationStartContext();
     }
-    setDesktopRecoveryAction(undefined);
     setPipelineUi({
       status: "idle",
       message: "Capture an artifact before checking the safe host boundary.",
-    });
-    setCapture({
-      state: "requesting_permission",
-      message: captureRuntime.permissionMessage,
     });
 
     await playStartSoundCueBeforeMute();
@@ -4860,11 +4860,11 @@ async function openPresetPicker(targetSnapshot?: TauriDesktopDeliveryTarget) {
       }
 
       if (controlAction === "start") {
-        await prepareDictationStartContext({ targetSnapshot: event.targetSnapshot });
         setCapture({
           state: "requesting_permission",
           message: captureRuntime.permissionMessage,
         });
+        await prepareDictationStartContext({ targetSnapshot: event.targetSnapshot });
       }
 
       if (controlAction === "stop") {

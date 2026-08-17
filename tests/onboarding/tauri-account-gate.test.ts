@@ -96,6 +96,9 @@ describe("Tauri account readiness gate", () => {
 
     expect(startCapture).toContain("ensureTauriDictationReadiness(invoke)");
     expect(startCapture).toContain("Completá la configuración de tu cuenta antes de dictar.");
+    expect(startCapture.indexOf('state: "requesting_permission"')).toBeLessThan(
+      startCapture.indexOf("ensureTauriDictationReadiness(invoke)"),
+    );
     expect(startCapture.indexOf("ensureTauriDictationReadiness(invoke)")).toBeLessThan(
       startCapture.indexOf("desktopSession.start()"),
     );

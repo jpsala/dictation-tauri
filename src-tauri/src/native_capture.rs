@@ -4,7 +4,7 @@ use std::{
     sync::mpsc,
     sync::{Arc, Mutex, OnceLock},
     thread::{self, JoinHandle},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use cpal::{
@@ -127,56 +127,112 @@ struct ActiveCapture {
     output_mute: OutputMuteSession,
 }
 
+#[derive(Clone, Copy, Default)]
+struct CaptureStartupTimings {
+    output_mute_ms: u64,
+    default_device_ms: u64,
+    default_config_ms: u64,
+    stream_build_ms: u64,
+    stream_play_ms: u64,
+    total_ms: u64,
+}
+
+struct CaptureStartError {
+    phase: &'static str,
+    code: &'static str,
+    message: String,
+    timings: CaptureStartupTimings,
+}
+
 struct StartedCapture {
     device_label: Option<String>,
     sample_rate_hz: u32,
     channel_count: u16,
+    timings: CaptureStartupTimings,
 }
 
 #[tauri::command]
-pub fn start_native_microphone_capture(app: AppHandle) -> Result<CaptureMetadata, String> {
+pub async fn start_native_microphone_capture(app: AppHandle) -> Result<CaptureMetadata, String> {
+    let started_at = Instant::now();
+    tauri::async_runtime::spawn_blocking(move || start_native_microphone_capture_blocking(app))
+        .await
+        .map_err(|_| {
+            let timings = CaptureStartupTimings {
+                total_ms: elapsed_ms(started_at),
+                ..CaptureStartupTimings::default()
+            };
+            log_capture_start_failure(timings, "dispatcher", "startup-task-failed");
+            "Native microphone capture startup task failed.".to_string()
+        })?
+}
+
+fn start_native_microphone_capture_blocking(app: AppHandle) -> Result<CaptureMetadata, String> {
+    let startup_started_at = Instant::now();
     let state = ACTIVE_CAPTURE.get_or_init(|| Mutex::new(None));
-    let mut active = state
-        .lock()
-        .map_err(|_| "Native capture state is unavailable.".to_string())?;
+    let mut active = match state.lock() {
+        Ok(active) => active,
+        Err(_) => {
+            let timings = CaptureStartupTimings {
+                total_ms: elapsed_ms(startup_started_at),
+                ..CaptureStartupTimings::default()
+            };
+            log_capture_start_failure(timings, "state", "unavailable");
+            return Err("Native capture state is unavailable.".to_string());
+        }
+    };
 
     if let Some(existing) = active.as_ref() {
+        let timings = CaptureStartupTimings {
+            total_ms: elapsed_ms(startup_started_at),
+            ..CaptureStartupTimings::default()
+        };
+        log_capture_start_failure(timings, "recording", "already-active");
         return Err(format!(
             "Capture session already active: {}",
             existing.capture_id
         ));
     }
 
+    let output_mute_started_at = Instant::now();
     let output_mute = begin_output_mute_for_capture(&app);
+    let output_mute_ms = elapsed_ms(output_mute_started_at);
     let samples = Arc::new(Mutex::new(Vec::<i16>::new()));
     let capture_id = format!("capture-native-{}", now_ms());
-    let (started_sender, started_receiver) = mpsc::channel::<Result<StartedCapture, String>>();
+    let (started_sender, started_receiver) =
+        mpsc::channel::<Result<StartedCapture, CaptureStartError>>();
     let (stop_sender, stop_receiver) = mpsc::channel::<()>();
     let thread_samples = Arc::clone(&samples);
     let capture_thread = thread::spawn(move || {
-        let started = start_capture_stream(thread_samples);
+        let started = start_capture_stream(thread_samples, startup_started_at, output_mute_ms);
         match started {
             Ok((stream, info)) => {
                 let _ = started_sender.send(Ok(info));
                 let _ = stop_receiver.recv();
                 drop(stream);
             }
-            Err(message) => {
-                let _ = started_sender.send(Err(message));
+            Err(error) => {
+                let _ = started_sender.send(Err(error));
             }
         }
     });
 
     let started = match started_receiver.recv() {
         Ok(Ok(started)) => started,
-        Ok(Err(message)) => {
+        Ok(Err(error)) => {
             let _ = capture_thread.join();
             let _ = output_mute.restore();
-            return Err(message);
+            log_capture_start_failure(error.timings, error.phase, error.code);
+            return Err(error.message);
         }
         Err(_) => {
             let _ = capture_thread.join();
             let _ = output_mute.restore();
+            let timings = CaptureStartupTimings {
+                output_mute_ms,
+                total_ms: elapsed_ms(startup_started_at),
+                ..CaptureStartupTimings::default()
+            };
+            log_capture_start_failure(timings, "dispatcher", "capture-thread-failed");
             return Err("Native microphone capture thread did not start.".to_string());
         }
     };
@@ -193,6 +249,7 @@ pub fn start_native_microphone_capture(app: AppHandle) -> Result<CaptureMetadata
         output_mute,
     });
 
+    log_capture_start_success(started.timings);
     Ok(create_metadata(capture_id, "granted", started.device_label))
 }
 
@@ -365,32 +422,143 @@ pub fn cancel_native_microphone_capture() -> CaptureResult {
     )
 }
 
-fn start_capture_stream(samples: Arc<Mutex<Vec<i16>>>) -> Result<(Stream, StartedCapture), String> {
+fn start_capture_stream(
+    samples: Arc<Mutex<Vec<i16>>>,
+    startup_started_at: Instant,
+    output_mute_ms: u64,
+) -> Result<(Stream, StartedCapture), CaptureStartError> {
+    let mut timings = CaptureStartupTimings {
+        output_mute_ms,
+        ..CaptureStartupTimings::default()
+    };
     let host = cpal::default_host();
-    let device = host
-        .default_input_device()
-        .ok_or_else(|| "No microphone input device was found.".to_string())?;
+
+    let device_lookup_started_at = Instant::now();
+    let device = host.default_input_device();
+    timings.default_device_ms = elapsed_ms(device_lookup_started_at);
+    let device = match device {
+        Some(device) => device,
+        None => {
+            return Err(capture_start_error(
+                timings,
+                startup_started_at,
+                "device",
+                "not-found",
+                "No microphone input device was found.",
+            ));
+        }
+    };
     let device_label = device.name().ok();
-    let supported_config = device
-        .default_input_config()
-        .map_err(|_| "Microphone input could not be configured.".to_string())?;
+
+    let config_lookup_started_at = Instant::now();
+    let supported_config = device.default_input_config();
+    timings.default_config_ms = elapsed_ms(config_lookup_started_at);
+    let supported_config = match supported_config {
+        Ok(config) => config,
+        Err(_) => {
+            return Err(capture_start_error(
+                timings,
+                startup_started_at,
+                "config",
+                "unavailable",
+                "Microphone input could not be configured.",
+            ));
+        }
+    };
     let sample_format = supported_config.sample_format();
     let config: StreamConfig = supported_config.into();
     let sample_rate_hz = config.sample_rate.0;
     let channel_count = config.channels;
-    let stream = build_input_stream(&device, &config, sample_format, samples)?;
-    stream
-        .play()
-        .map_err(|_| "Microphone input could not be started.".to_string())?;
 
+    let stream_build_started_at = Instant::now();
+    let stream = build_input_stream(&device, &config, sample_format, samples);
+    timings.stream_build_ms = elapsed_ms(stream_build_started_at);
+    let stream = match stream {
+        Ok(stream) => stream,
+        Err(message) => {
+            return Err(capture_start_error(
+                timings,
+                startup_started_at,
+                "stream",
+                "build-failed",
+                message,
+            ));
+        }
+    };
+
+    let stream_play_started_at = Instant::now();
+    let play_result = stream.play();
+    timings.stream_play_ms = elapsed_ms(stream_play_started_at);
+    if play_result.is_err() {
+        return Err(capture_start_error(
+            timings,
+            startup_started_at,
+            "stream",
+            "play-failed",
+            "Microphone input could not be started.",
+        ));
+    }
+
+    timings.total_ms = elapsed_ms(startup_started_at);
     Ok((
         stream,
         StartedCapture {
             device_label,
             sample_rate_hz,
             channel_count,
+            timings,
         },
     ))
+}
+
+fn capture_start_error(
+    mut timings: CaptureStartupTimings,
+    startup_started_at: Instant,
+    phase: &'static str,
+    code: &'static str,
+    message: impl Into<String>,
+) -> CaptureStartError {
+    timings.total_ms = elapsed_ms(startup_started_at);
+    CaptureStartError {
+        phase,
+        code,
+        message: message.into(),
+        timings,
+    }
+}
+
+fn elapsed_ms(started_at: Instant) -> u64 {
+    started_at.elapsed().as_millis().min(u64::MAX as u128) as u64
+}
+
+fn log_capture_start_success(timings: CaptureStartupTimings) {
+    eprintln!(
+        "[dictation-tauri][capture-start] success output_mute_ms={} default_device_ms={} default_config_ms={} stream_build_ms={} stream_play_ms={} total_ms={}",
+        timings.output_mute_ms,
+        timings.default_device_ms,
+        timings.default_config_ms,
+        timings.stream_build_ms,
+        timings.stream_play_ms,
+        timings.total_ms,
+    );
+}
+
+fn log_capture_start_failure(
+    timings: CaptureStartupTimings,
+    phase: &'static str,
+    code: &'static str,
+) {
+    eprintln!(
+        "[dictation-tauri][capture-start] failure phase={} code={} output_mute_ms={} default_device_ms={} default_config_ms={} stream_build_ms={} stream_play_ms={} total_ms={}",
+        phase,
+        code,
+        timings.output_mute_ms,
+        timings.default_device_ms,
+        timings.default_config_ms,
+        timings.stream_build_ms,
+        timings.stream_play_ms,
+        timings.total_ms,
+    );
 }
 
 fn build_input_stream(
