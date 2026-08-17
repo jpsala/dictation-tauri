@@ -1,44 +1,47 @@
 #[cfg(windows)]
 mod platform {
-    use std::{
-        fs,
-        path::{Path, PathBuf},
-        sync::OnceLock,
-    };
+    use std::{fs, path::Path, sync::OnceLock, time::Instant};
 
     use windows::{
         core::HSTRING,
-        Win32::Media::Audio::{PlaySoundW, SND_FILENAME, SND_NODEFAULT},
+        Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_FILENAME, SND_NODEFAULT},
     };
 
     const SAMPLE_RATE: u32 = 24_000;
     const CHANNELS: u16 = 1;
     const BITS_PER_SAMPLE: u16 = 16;
 
-    #[derive(Clone)]
     struct CueFiles {
-        start: PathBuf,
-        stop: PathBuf,
-        attention: PathBuf,
+        start: HSTRING,
+        stop: HSTRING,
+        attention: HSTRING,
     }
 
     static CUE_FILES: OnceLock<Result<CueFiles, String>> = OnceLock::new();
 
     pub fn play(cue: &str) -> Result<(), String> {
+        let started_at = Instant::now();
+        let prepare_started_at = Instant::now();
         let files = CUE_FILES.get_or_init(prepare_cue_files);
         let files = files.as_ref().map_err(Clone::clone)?;
+        let prepare_ms = prepare_started_at.elapsed().as_millis();
         let path = match cue {
             "start" => &files.start,
             "stop" | "success" => &files.stop,
             "error" | "no-speech" => &files.attention,
             _ => return Err("Unsupported dictation sound cue.".to_string()),
         };
-        let path = HSTRING::from(path.to_string_lossy().as_ref());
-        let played = unsafe { PlaySoundW(&path, None, SND_FILENAME | SND_NODEFAULT) };
+        let queue_started_at = Instant::now();
+        let played = unsafe { PlaySoundW(path, None, SND_FILENAME | SND_ASYNC | SND_NODEFAULT) };
+        let queue_ms = queue_started_at.elapsed().as_millis();
+        let total_ms = started_at.elapsed().as_millis();
+        eprintln!(
+            "[dictation-tauri][sound-cue] cue={cue} async=true prepare_ms={prepare_ms} queue_ms={queue_ms} total_ms={total_ms}"
+        );
         if played.as_bool() {
             Ok(())
         } else {
-            Err("Windows could not play the dictation sound cue.".to_string())
+            Err("Windows could not queue the dictation sound cue.".to_string())
         }
     }
 
@@ -58,9 +61,9 @@ mod platform {
         )?;
 
         Ok(CueFiles {
-            start,
-            stop,
-            attention,
+            start: HSTRING::from(start.to_string_lossy().as_ref()),
+            stop: HSTRING::from(stop.to_string_lossy().as_ref()),
+            attention: HSTRING::from(attention.to_string_lossy().as_ref()),
         })
     }
 
@@ -101,6 +104,9 @@ mod platform {
             wav.extend_from_slice(&sample.to_le_bytes());
         }
 
+        if fs::read(path).is_ok_and(|existing| existing == wav) {
+            return Ok(());
+        }
         fs::write(path, wav).map_err(|error| format!("Could not write sound cue: {error}"))
     }
 }

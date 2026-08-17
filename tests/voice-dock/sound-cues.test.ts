@@ -51,6 +51,8 @@ describe("dictation sound cues", () => {
     expect(source).toContain("await playStartSoundCueBeforeMute()");
     expect(source).toContain("queueDictationSoundCue(\"stop\")");
     expect(cueBackend).toContain("PlaySoundW");
+    expect(cueBackend).toContain("SND_ASYNC");
+    expect(cueBackend).toContain("existing == wav");
     expect(cueBackend).toContain("dictation-start.wav");
     expect(cueBackend).toContain("dictation-stop.wav");
     expect(source).not.toContain("queueDictationSoundCue(summary.transcript ? \"success\" : \"no-speech\")");
