@@ -177,6 +177,14 @@ Trabajo cerrado: `specs/012-fixvox-dock-dictation-key/tasks.md` Phase 8 / Checkp
 - Alt+Space es default en Windows y `Ctrl+Shift+F9` queda fallback explicito. Falta mas soak/manual E2E post-default para harden antes de llamarlo final.
 - Escape cancel esta implementado por hook nativo Windows host-owned: el renderer arma/desarma `set_desktop_control_escape_cancel_enabled` solo mientras hay captura cancelable, el hook emite `desktop-control://global-hotkey` con `action: "cancel"`/`shortcut: "Escape"`, y la ruta comparte el cancel existente del controller. Mientras no esta armado, Escape no se intercepta.
 - `Alt+Shift+X` / paste-last tiene hook nativo Windows host-owned (`WH_KEYBOARD_LL`) que exige combo exacto Alt+Shift+X y emite `desktop-control://host-command` con `paste_last_safe` despues de `X` keyup y de esperar que Alt/Shift esten liberados, para que el paste no salga como `Ctrl+Alt+Shift+V`. Si viene de `global_hotkey`, el renderer intenta pegar el ultimo resultado en el foreground target actual usando delivery Tauri real (`paste_sent`/observer si aplica) y puede recuperar el ultimo result desde `result-history.v1.jsonl`. Si no hay ultimo resultado, queda en idle y no abre recovery modal persistente.
+- `Detener y enviar` es una acción host-owned editable, con `Win+Space` como
+  default en Windows. El hook nativo emite `stop_submit_pressed` en keydown y
+  `stop_submit` en keyup: pressed inicia captura sólo cuando no hay sesión
+  activa; release detiene/envía y fuerza Enter después del delivery. Si release
+  llega durante `requesting_permission`/`arming`, el renderer conserva la
+  intención hasta `listening`. Alt+Space permanece en su canal normal. La capa
+  nativa (down/up de ambos hotkeys) quedó verificada en vivo 2026-08-18; el
+  smoke visual del dock (recording → stop) sigue gated por cuenta (`service_unavailable`). No llamarla final hasta confirmar el ciclo del dock en una instancia account-ready.
 - Context menu/tray comparten menú nativo con `Paste last`, `History`, skins, presets y Settings. Para recovery, el tray cachea el foreground editable en mouse-down y el botón derecho del dock justo antes del popup; los comandos adjuntan ese snapshot, History lo conserva hasta elegir una entrada y delivery usa afinidad `saved`. El menú y Companion nunca deben convertirse en target. Falta settings real editable, input device y result history UX avanzada.
 - Existe ventana Tauri `dock-companion` separada; el primer sync real ya evita el placeholder estatico y redakta history a longitud/status. Las acciones basicas de recovery/history/settings ya estan cableadas por evento renderer; falta converger layout avanzado, settings editing y acciones de seleccion/assistant a la companion de Fixvox.
 - Preset badge ya responde a menu, pero todavia no activa motor real de selection transform/assistant por default.

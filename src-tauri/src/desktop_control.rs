@@ -1,5 +1,6 @@
 use crate::tray::{HostCommandPayload, HOST_COMMAND_EVENT};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{
@@ -21,6 +22,7 @@ pub const FALLBACK_DESKTOP_CONTROL_HOTKEY: &str = "Ctrl+Shift+F9";
 pub const ALT_SPACE_DESKTOP_CONTROL_HOTKEY: &str = "Alt+Space";
 pub const ALT_3_DESKTOP_CONTROL_HOTKEY: &str = "Alt+3";
 pub const PASTE_LAST_SAFE_HOTKEY: &str = "Alt+Shift+X";
+pub const STOP_SUBMIT_HOTKEY: &str = "Win+Space";
 pub const PRESET_PICKER_HOTKEY: &str = "Alt+Q";
 pub const DESKTOP_CONTROL_HOTKEY_EVENT: &str = "desktop-control://global-hotkey";
 pub const DESKTOP_CONTROL_HOTKEY_CAPTURE_EVENT: &str = "desktop-control://hotkey-capture";
@@ -70,13 +72,13 @@ fn hotkey_listener_queue() -> &'static Mutex<HotkeyListenerQueueState> {
     HOTKEY_LISTENER_QUEUE.get_or_init(|| Mutex::new(HotkeyListenerQueueState::default()))
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EffectiveDictationHotkey {
-    pub shortcut: &'static str,
+    pub shortcut: Cow<'static, str>,
     pub modifiers: Modifiers,
     pub code: Code,
     pub backend: HotkeyBackend,
-    pub requested_shortcut: Option<&'static str>,
+    pub requested_shortcut: Option<Cow<'static, str>>,
     pub alt_space_requested: bool,
     pub alt_space_enabled: bool,
     pub fallback_reason: Option<&'static str>,
@@ -85,9 +87,9 @@ pub struct EffectiveDictationHotkey {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopControlHotkeyConfig {
-    pub shortcut: &'static str,
+    pub shortcut: Cow<'static, str>,
     pub default_shortcut: &'static str,
-    pub requested_shortcut: Option<&'static str>,
+    pub requested_shortcut: Option<Cow<'static, str>>,
     pub alt_space_requested: bool,
     pub alt_space_enabled: bool,
     pub backend: HotkeyBackend,
@@ -99,7 +101,7 @@ pub struct DesktopControlHotkeyConfig {
 pub struct DesktopControlHotkeyPayload {
     pub source: &'static str,
     pub action: &'static str,
-    pub shortcut: &'static str,
+    pub shortcut: Cow<'static, str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_snapshot: Option<crate::desktop_delivery::DesktopDeliveryTarget>,
 }
@@ -108,7 +110,7 @@ pub struct DesktopControlHotkeyPayload {
 #[serde(rename_all = "camelCase")]
 pub struct DesktopControlHotkeyCapturePayload {
     pub source: &'static str,
-    pub shortcut: &'static str,
+    pub shortcut: Cow<'static, str>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -147,6 +149,8 @@ pub struct DesktopControlActionHotkeyConfig {
     pub schema_version: u8,
     pub preset_picker: String,
     pub paste_last_safe: String,
+    #[serde(default = "default_stop_submit_hotkey")]
+    pub stop_submit: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -172,10 +176,10 @@ pub struct DesktopControlActionHotkeyRegistrationApplyResult {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NativeShortcutChord {
-    pub label: &'static str,
     pub ctrl: bool,
     pub alt: bool,
     pub shift: bool,
+    pub win: bool,
     pub key_vk: u32,
 }
 
@@ -305,12 +309,12 @@ pub fn current_desktop_control_hotkey_config() -> DesktopControlHotkeyConfig {
 fn current_effective_hotkey() -> EffectiveDictationHotkey {
     CURRENT_HOTKEY
         .get()
-        .and_then(|lock| lock.lock().ok().map(|guard| *guard))
+        .and_then(|lock| lock.lock().ok().map(|guard| guard.clone()))
         .unwrap_or_else(resolve_effective_dictation_hotkey_from_env)
 }
 
 fn remember_current_hotkey(hotkey: EffectiveDictationHotkey) {
-    let lock = CURRENT_HOTKEY.get_or_init(|| Mutex::new(hotkey));
+    let lock = CURRENT_HOTKEY.get_or_init(|| Mutex::new(hotkey.clone()));
     if let Ok(mut guard) = lock.lock() {
         *guard = hotkey;
     }
@@ -405,12 +409,16 @@ fn action_hotkey_preference_path<R: tauri::Runtime>(
         .app_data_dir()?
         .join(ACTION_HOTKEY_PREFERENCE_FILE))
 }
+fn default_stop_submit_hotkey() -> String {
+    STOP_SUBMIT_HOTKEY.to_string()
+}
 
 fn default_action_hotkey_config() -> DesktopControlActionHotkeyConfig {
     DesktopControlActionHotkeyConfig {
         schema_version: 1,
         preset_picker: PRESET_PICKER_HOTKEY.to_string(),
         paste_last_safe: PASTE_LAST_SAFE_HOTKEY.to_string(),
+        stop_submit: default_stop_submit_hotkey(),
     }
 }
 
@@ -429,17 +437,23 @@ fn read_action_hotkey_preferences<R: tauri::Runtime>(
     }
 
     let mut merged = default_action_hotkey_config();
-    if preview_action_shortcut(&stored.preset_picker).is_none() {
+    if preview_action_shortcut(&stored.preset_picker, false).is_none() {
         eprintln!("[dictation-tauri][hotkey] ignoring unsupported preset picker shortcut");
     } else {
         merged.preset_picker =
             canonicalize_shortcut(&stored.preset_picker).unwrap_or(stored.preset_picker);
     }
-    if preview_action_shortcut(&stored.paste_last_safe).is_none() {
+    if preview_action_shortcut(&stored.paste_last_safe, false).is_none() {
         eprintln!("[dictation-tauri][hotkey] ignoring unsupported paste-last shortcut");
     } else {
         merged.paste_last_safe =
             canonicalize_shortcut(&stored.paste_last_safe).unwrap_or(stored.paste_last_safe);
+    }
+    if preview_action_shortcut(&stored.stop_submit, true).is_none() {
+        eprintln!("[dictation-tauri][hotkey] ignoring unsupported stop-submit shortcut");
+    } else {
+        merged.stop_submit =
+            canonicalize_shortcut(&stored.stop_submit).unwrap_or(stored.stop_submit);
     }
     Ok(merged)
 }
@@ -460,6 +474,7 @@ fn normalize_action_id(action_id: &str) -> Option<&'static str> {
     match action_id {
         "preset_picker" | "preset-picker" => Some("preset_picker"),
         "paste_last_safe" | "paste-last-safe" => Some("paste_last_safe"),
+        "stop_submit" | "stop-submit" => Some("stop_submit"),
         _ => None,
     }
 }
@@ -478,17 +493,28 @@ fn set_shortcut_for_action(
             config.paste_last_safe = shortcut;
             true
         }
+        Some("stop_submit") => {
+            config.stop_submit = shortcut;
+            true
+        }
         _ => false,
     }
 }
 
-fn preview_action_shortcut(requested_shortcut: &str) -> Option<String> {
+fn preview_action_shortcut(
+    requested_shortcut: &str,
+    allow_windows_modifier: bool,
+) -> Option<String> {
     let canonical = canonicalize_shortcut(requested_shortcut)?;
     let normalized = normalize_shortcut(&canonical);
     if matches!(normalized.as_str(), "escape" | "alt+space") {
         return None;
     }
-    native_shortcut_chord_from_request(&canonical).map(|_| canonical)
+    let chord = native_shortcut_chord_from_request(&canonical)?;
+    if chord.win && !allow_windows_modifier {
+        return None;
+    }
+    Some(canonical)
 }
 
 fn preview_action_hotkey_registration_request<R: tauri::Runtime>(
@@ -503,7 +529,7 @@ fn preview_action_hotkey_registration_request<R: tauri::Runtime>(
     let normalized_shortcut = canonicalize_shortcut(requested_shortcut)
         .unwrap_or_else(|| normalize_shortcut(requested_shortcut));
     let action = normalize_action_id(action_id);
-    let candidate = preview_action_shortcut(requested_shortcut);
+    let candidate = preview_action_shortcut(requested_shortcut, action == Some("stop_submit"));
     let reason = if action.is_none() {
         Some("unknown_action_hotkey")
     } else if candidate.is_none() {
@@ -514,6 +540,15 @@ fn preview_action_hotkey_registration_request<R: tauri::Runtime>(
         let other_conflict = match action.unwrap() {
             "preset_picker" => normalize_shortcut(&effective_config.paste_last_safe),
             "paste_last_safe" => normalize_shortcut(&effective_config.preset_picker),
+            "stop_submit" => {
+                if normalize_shortcut(&effective_config.preset_picker)
+                    == normalize_shortcut(&normalized_shortcut)
+                {
+                    normalize_shortcut(&effective_config.preset_picker)
+                } else {
+                    normalize_shortcut(&effective_config.paste_last_safe)
+                }
+            }
             _ => String::new(),
         };
         if normalize_shortcut(&normalized_shortcut) == other_conflict {
@@ -586,22 +621,43 @@ fn apply_action_hotkeys_to_runtime(config: &DesktopControlActionHotkeyConfig) {
     if let Some(chord) = native_shortcut_chord_from_request(&config.paste_last_safe) {
         native_paste_last::set_paste_last_shortcut(chord);
     }
+    if let Some(chord) = native_shortcut_chord_from_request(&config.stop_submit) {
+        native_alt_space::set_stop_submit_shortcut(chord);
+    }
 }
 
 fn native_shortcut_chord_from_request(requested: &str) -> Option<NativeShortcutChord> {
     let canonical = canonicalize_shortcut(requested)?;
-    let parsed = canonical.parse::<Shortcut>().ok()?;
-    if parsed.mods == Modifiers::empty() || parsed.mods.intersects(Modifiers::SUPER) {
+    let mut ctrl = false;
+    let mut alt = false;
+    let mut shift = false;
+    let mut win = false;
+    let mut key: Option<&str> = None;
+
+    for part in canonical.split('+') {
+        match part {
+            "Ctrl" => ctrl = true,
+            "Alt" => alt = true,
+            "Shift" => shift = true,
+            "Win" => win = true,
+            value => {
+                if key.replace(value).is_some() {
+                    return None;
+                }
+            }
+        }
+    }
+
+    if !ctrl && !alt && !shift && !win {
         return None;
     }
-    let key = canonical.split('+').next_back()?;
-    let key_vk = virtual_key_from_canonical_key(key)?;
-    let label = leak_shortcut(canonical);
+
+    let key_vk = virtual_key_from_canonical_key(key?)?;
     Some(NativeShortcutChord {
-        label,
-        ctrl: parsed.mods.intersects(Modifiers::CONTROL),
-        alt: parsed.mods.intersects(Modifiers::ALT),
-        shift: parsed.mods.intersects(Modifiers::SHIFT),
+        ctrl,
+        alt,
+        shift,
+        win,
         key_vk,
     })
 }
@@ -645,8 +701,8 @@ pub fn resolve_effective_dictation_hotkey(
         Some(value) => {
             effective_hotkey_from_request(value, alt_space_allowed).unwrap_or_else(|| {
                 let requested_shortcut = canonicalize_shortcut(value)
-                    .map(leak_shortcut)
-                    .or(Some("unsupported"));
+                    .map(shortcut_value)
+                    .or(Some(Cow::Borrowed("unsupported")));
                 EffectiveDictationHotkey {
                     requested_shortcut,
                     fallback_reason: Some("unsupported_shortcut"),
@@ -657,9 +713,9 @@ pub fn resolve_effective_dictation_hotkey(
     }
 }
 
-fn fallback_hotkey(requested_shortcut: Option<&'static str>) -> EffectiveDictationHotkey {
+fn fallback_hotkey(requested_shortcut: Option<Cow<'static, str>>) -> EffectiveDictationHotkey {
     EffectiveDictationHotkey {
-        shortcut: FALLBACK_DESKTOP_CONTROL_HOTKEY,
+        shortcut: Cow::Borrowed(FALLBACK_DESKTOP_CONTROL_HOTKEY),
         modifiers: Modifiers::CONTROL | Modifiers::SHIFT,
         code: Code::F9,
         backend: HotkeyBackend::TauriGlobalShortcut,
@@ -670,9 +726,9 @@ fn fallback_hotkey(requested_shortcut: Option<&'static str>) -> EffectiveDictati
     }
 }
 
-fn alt_space_hotkey(requested_shortcut: Option<&'static str>) -> EffectiveDictationHotkey {
+fn alt_space_hotkey(requested_shortcut: Option<Cow<'static, str>>) -> EffectiveDictationHotkey {
     EffectiveDictationHotkey {
-        shortcut: ALT_SPACE_DESKTOP_CONTROL_HOTKEY,
+        shortcut: Cow::Borrowed(ALT_SPACE_DESKTOP_CONTROL_HOTKEY),
         modifiers: Modifiers::ALT,
         code: Code::Space,
         backend: HotkeyBackend::WindowsLowLevelHook,
@@ -684,10 +740,10 @@ fn alt_space_hotkey(requested_shortcut: Option<&'static str>) -> EffectiveDictat
 }
 
 fn tauri_global_hotkey(
-    shortcut: &'static str,
+    shortcut: Cow<'static, str>,
     modifiers: Modifiers,
     code: Code,
-    requested_shortcut: Option<&'static str>,
+    requested_shortcut: Option<Cow<'static, str>>,
 ) -> EffectiveDictationHotkey {
     EffectiveDictationHotkey {
         shortcut,
@@ -712,11 +768,13 @@ fn effective_hotkey_from_request(
 
     if normalized == "alt+space" {
         if alt_space_allowed && cfg!(windows) {
-            return Some(alt_space_hotkey(Some(ALT_SPACE_DESKTOP_CONTROL_HOTKEY)));
+            return Some(alt_space_hotkey(Some(Cow::Borrowed(
+                ALT_SPACE_DESKTOP_CONTROL_HOTKEY,
+            ))));
         }
         if alt_space_allowed {
             return Some(EffectiveDictationHotkey {
-                requested_shortcut: Some(ALT_SPACE_DESKTOP_CONTROL_HOTKEY),
+                requested_shortcut: Some(Cow::Borrowed(ALT_SPACE_DESKTOP_CONTROL_HOTKEY)),
                 alt_space_requested: true,
                 alt_space_enabled: false,
                 fallback_reason: Some("alt_space_native_hook_windows_only"),
@@ -724,7 +782,7 @@ fn effective_hotkey_from_request(
             });
         }
         return Some(EffectiveDictationHotkey {
-            requested_shortcut: Some(ALT_SPACE_DESKTOP_CONTROL_HOTKEY),
+            requested_shortcut: Some(Cow::Borrowed(ALT_SPACE_DESKTOP_CONTROL_HOTKEY)),
             alt_space_requested: true,
             alt_space_enabled: false,
             fallback_reason: Some("alt_space_requires_explicit_gate"),
@@ -741,9 +799,9 @@ fn effective_hotkey_from_request(
         return None;
     }
 
-    let shortcut = leak_shortcut(canonical);
+    let shortcut = shortcut_value(canonical);
     Some(tauri_global_hotkey(
-        shortcut,
+        shortcut.clone(),
         parsed.mods,
         parsed.key,
         Some(shortcut),
@@ -757,13 +815,14 @@ fn is_reserved_shortcut(shortcut: &str) -> bool {
     )
 }
 
-fn leak_shortcut(shortcut: String) -> &'static str {
+fn shortcut_value(shortcut: String) -> Cow<'static, str> {
     match shortcut.as_str() {
-        DEFAULT_DESKTOP_CONTROL_HOTKEY => DEFAULT_DESKTOP_CONTROL_HOTKEY,
-        FALLBACK_DESKTOP_CONTROL_HOTKEY => FALLBACK_DESKTOP_CONTROL_HOTKEY,
-        ALT_3_DESKTOP_CONTROL_HOTKEY => ALT_3_DESKTOP_CONTROL_HOTKEY,
-        PASTE_LAST_SAFE_HOTKEY => PASTE_LAST_SAFE_HOTKEY,
-        _ => Box::leak(shortcut.into_boxed_str()),
+        DEFAULT_DESKTOP_CONTROL_HOTKEY => Cow::Borrowed(DEFAULT_DESKTOP_CONTROL_HOTKEY),
+        FALLBACK_DESKTOP_CONTROL_HOTKEY => Cow::Borrowed(FALLBACK_DESKTOP_CONTROL_HOTKEY),
+        ALT_3_DESKTOP_CONTROL_HOTKEY => Cow::Borrowed(ALT_3_DESKTOP_CONTROL_HOTKEY),
+        PASTE_LAST_SAFE_HOTKEY => Cow::Borrowed(PASTE_LAST_SAFE_HOTKEY),
+        STOP_SUBMIT_HOTKEY => Cow::Borrowed(STOP_SUBMIT_HOTKEY),
+        _ => Cow::Owned(shortcut),
     }
 }
 
@@ -771,6 +830,7 @@ fn canonicalize_shortcut(value: &str) -> Option<String> {
     let mut ctrl = false;
     let mut alt = false;
     let mut shift = false;
+    let mut win = false;
     let mut key: Option<String> = None;
 
     for raw in value.split('+') {
@@ -782,7 +842,7 @@ fn canonicalize_shortcut(value: &str) -> Option<String> {
             "ctrl" | "control" => ctrl = true,
             "alt" | "option" => alt = true,
             "shift" => shift = true,
-            "cmd" | "command" | "meta" | "super" | "win" | "windows" => return None,
+            "win" | "windows" | "super" | "cmd" | "command" | "meta" => win = true,
             other => {
                 if key.is_some() {
                     return None;
@@ -793,7 +853,7 @@ fn canonicalize_shortcut(value: &str) -> Option<String> {
     }
 
     let key = key?;
-    if !ctrl && !alt && !shift {
+    if !ctrl && !alt && !shift && !win {
         return None;
     }
 
@@ -806,6 +866,9 @@ fn canonicalize_shortcut(value: &str) -> Option<String> {
     }
     if shift {
         parts.push("Shift".to_string());
+    }
+    if win {
+        parts.push("Win".to_string());
     }
     parts.push(key);
     Some(parts.join("+"))
@@ -873,7 +936,7 @@ pub fn apply_hotkey_registration_request<R: tauri::Runtime>(
 ) -> DesktopControlHotkeyRegistrationApplyResult {
     let preview = preview_hotkey_registration_request(requested_shortcut);
     let previous_hotkey = current_effective_hotkey();
-    let previous_config = desktop_control_hotkey_config(previous_hotkey);
+    let previous_config = desktop_control_hotkey_config(previous_hotkey.clone());
     let Some(target_config) = preview.target_config.clone() else {
         return DesktopControlHotkeyRegistrationApplyResult {
             preview,
@@ -900,7 +963,7 @@ pub fn apply_hotkey_registration_request<R: tauri::Runtime>(
         };
     }
 
-    let Some(target_hotkey) = effective_hotkey_from_request(target_config.shortcut, true) else {
+    let Some(target_hotkey) = effective_hotkey_from_request(&target_config.shortcut, true) else {
         return DesktopControlHotkeyRegistrationApplyResult {
             preview,
             previous_config: previous_config.clone(),
@@ -916,7 +979,7 @@ pub fn apply_hotkey_registration_request<R: tauri::Runtime>(
     if previous_hotkey.shortcut == target_hotkey.shortcut
         && previous_hotkey.backend == target_hotkey.backend
     {
-        if let Err(error) = verify_effective_hotkey(app, target_hotkey) {
+        if let Err(error) = verify_effective_hotkey(app, target_hotkey.clone()) {
             return DesktopControlHotkeyRegistrationApplyResult {
                 preview,
                 previous_config: previous_config.clone(),
@@ -929,8 +992,8 @@ pub fn apply_hotkey_registration_request<R: tauri::Runtime>(
             };
         }
 
-        remember_current_hotkey(target_hotkey);
-        let persistence_error = write_hotkey_preference(app, target_hotkey.shortcut)
+        remember_current_hotkey(target_hotkey.clone());
+        let persistence_error = write_hotkey_preference(app, &target_hotkey.shortcut)
             .err()
             .map(|error| error.to_string());
         return DesktopControlHotkeyRegistrationApplyResult {
@@ -945,10 +1008,10 @@ pub fn apply_hotkey_registration_request<R: tauri::Runtime>(
         };
     }
 
-    match swap_registered_hotkey(app, previous_hotkey, target_hotkey) {
+    match swap_registered_hotkey(app, previous_hotkey.clone(), target_hotkey.clone()) {
         Ok(()) => {
-            remember_current_hotkey(target_hotkey);
-            let persistence_error = write_hotkey_preference(app, target_hotkey.shortcut)
+            remember_current_hotkey(target_hotkey.clone());
+            let persistence_error = write_hotkey_preference(app, &target_hotkey.shortcut)
                 .err()
                 .map(|error| error.to_string());
             DesktopControlHotkeyRegistrationApplyResult {
@@ -963,7 +1026,8 @@ pub fn apply_hotkey_registration_request<R: tauri::Runtime>(
             }
         }
         Err(error) => {
-            let rollback_error = swap_registered_hotkey(app, target_hotkey, previous_hotkey).err();
+            let rollback_error =
+                swap_registered_hotkey(app, target_hotkey.clone(), previous_hotkey.clone()).err();
             remember_current_hotkey(previous_hotkey);
             DesktopControlHotkeyRegistrationApplyResult {
                 preview,
@@ -989,7 +1053,7 @@ fn swap_registered_hotkey<R: tauri::Runtime>(
     next: EffectiveDictationHotkey,
 ) -> Result<(), String> {
     unregister_effective_hotkey(app, previous)?;
-    register_effective_hotkey(app, next)?;
+    register_effective_hotkey(app, next.clone())?;
     verify_effective_hotkey(app, next)
 }
 
@@ -1005,26 +1069,26 @@ fn swap_registered_hotkey<R: tauri::Runtime>(
 pub fn desktop_control_hotkey_pressed_payload(
     hotkey: EffectiveDictationHotkey,
 ) -> DesktopControlHotkeyPayload {
-    desktop_control_hotkey_payload("pressed", hotkey)
+    desktop_control_hotkey_payload("pressed", &hotkey)
 }
 
 pub fn desktop_control_hotkey_released_payload(
     hotkey: EffectiveDictationHotkey,
 ) -> DesktopControlHotkeyPayload {
-    desktop_control_hotkey_payload("released", hotkey)
+    desktop_control_hotkey_payload("released", &hotkey)
 }
 
 pub fn desktop_control_escape_cancel_payload() -> DesktopControlHotkeyPayload {
     DesktopControlHotkeyPayload {
         source: "global_hotkey",
         action: "cancel",
-        shortcut: "Escape",
+        shortcut: Cow::Borrowed("Escape"),
         target_snapshot: None,
     }
 }
 
 pub fn desktop_control_hotkey_capture_payload(
-    shortcut: &'static str,
+    shortcut: Cow<'static, str>,
 ) -> DesktopControlHotkeyCapturePayload {
     DesktopControlHotkeyCapturePayload {
         source: "host_capture",
@@ -1034,12 +1098,12 @@ pub fn desktop_control_hotkey_capture_payload(
 
 fn desktop_control_hotkey_payload(
     action: &'static str,
-    hotkey: EffectiveDictationHotkey,
+    hotkey: &EffectiveDictationHotkey,
 ) -> DesktopControlHotkeyPayload {
     DesktopControlHotkeyPayload {
         source: "global_hotkey",
         action,
-        shortcut: hotkey.shortcut,
+        shortcut: hotkey.shortcut.clone(),
         target_snapshot: None,
     }
 }
@@ -1057,7 +1121,7 @@ fn register_effective_hotkey<R: tauri::Runtime>(
         HotkeyBackend::TauriGlobalShortcut => {
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
             app.global_shortcut()
-                .register(hotkey.shortcut)
+                .register(hotkey.shortcut.as_ref())
                 .map_err(|error| error.to_string())?;
             eprintln!(
                 "[dictation-tauri][hotkey] registered global shortcut={}",
@@ -1080,9 +1144,12 @@ fn unregister_effective_hotkey<R: tauri::Runtime>(
         }
         HotkeyBackend::TauriGlobalShortcut => {
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
-            if app.global_shortcut().is_registered(hotkey.shortcut) {
+            if app
+                .global_shortcut()
+                .is_registered(hotkey.shortcut.as_ref())
+            {
                 app.global_shortcut()
-                    .unregister(hotkey.shortcut)
+                    .unregister(hotkey.shortcut.as_ref())
                     .map_err(|error| error.to_string())?;
             }
             Ok(())
@@ -1105,7 +1172,10 @@ fn verify_effective_hotkey<R: tauri::Runtime>(
         }
         HotkeyBackend::TauriGlobalShortcut => {
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
-            if app.global_shortcut().is_registered(hotkey.shortcut) {
+            if app
+                .global_shortcut()
+                .is_registered(hotkey.shortcut.as_ref())
+            {
                 Ok(())
             } else {
                 Err("shortcut_not_registered_after_swap".to_string())
@@ -1125,21 +1195,21 @@ pub fn register_desktop_control_hotkey<R: tauri::Runtime>(
         "[dictation-tauri][hotkey] effective shortcut={} backend={:?} requested={:?} fallback={:?}",
         hotkey.shortcut, hotkey.backend, hotkey.requested_shortcut, hotkey.fallback_reason
     );
-    remember_current_hotkey(hotkey);
+    remember_current_hotkey(hotkey.clone());
     let action_hotkeys = read_action_hotkey_preferences(app).unwrap_or_else(|error| {
         eprintln!("[dictation-tauri][hotkey] action preferences unavailable: {error}");
         default_action_hotkey_config()
     });
     apply_action_hotkeys_to_runtime(&action_hotkeys);
     eprintln!(
-        "[dictation-tauri][hotkey] action shortcuts preset_picker={} paste_last_safe={}",
-        action_hotkeys.preset_picker, action_hotkeys.paste_last_safe
+        "[dictation-tauri][hotkey] action shortcuts preset_picker={} paste_last_safe={} stop_submit={}",
+        action_hotkeys.preset_picker, action_hotkeys.paste_last_safe, action_hotkeys.stop_submit
     );
     native_escape_cancel::register_escape_cancel_hook(app)?;
     native_paste_last::register_paste_last_hook(app, PASTE_LAST_SAFE_HOTKEY)?;
     native_alt_space::register_alt_space_hook(
         app,
-        alt_space_hotkey(Some(ALT_SPACE_DESKTOP_CONTROL_HOTKEY)),
+        alt_space_hotkey(Some(Cow::Borrowed(ALT_SPACE_DESKTOP_CONTROL_HOTKEY))),
     )?;
     native_alt_space::set_alt_space_enabled(hotkey.backend == HotkeyBackend::WindowsLowLevelHook);
 
@@ -1168,9 +1238,13 @@ pub fn register_desktop_control_hotkey<R: tauri::Runtime>(
                 );
 
                 let payload = if event.state == ShortcutState::Pressed {
-                    Some(desktop_control_hotkey_pressed_payload(active_hotkey))
+                    Some(desktop_control_hotkey_pressed_payload(
+                        active_hotkey.clone(),
+                    ))
                 } else if event.state == ShortcutState::Released {
-                    Some(desktop_control_hotkey_released_payload(active_hotkey))
+                    Some(desktop_control_hotkey_released_payload(
+                        active_hotkey.clone(),
+                    ))
                 } else {
                     None
                 };
@@ -1237,7 +1311,7 @@ fn emit_preset_picker_hotkey_payload<R: tauri::Runtime>(app: &tauri::AppHandle<R
 
 fn emit_preset_picker_chord_payload<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
-    chord_key: &'static str,
+    chord_key: Cow<'static, str>,
 ) {
     let target_snapshot = crate::desktop_delivery::capture_desktop_delivery_target().ok();
     let payload = HostCommandPayload {
@@ -1245,7 +1319,7 @@ fn emit_preset_picker_chord_payload<R: tauri::Runtime>(
         command: "run_preset_picker_chord",
         preset_id: None,
         dock_skin: None,
-        chord_key: Some(chord_key),
+        chord_key: Some(chord_key.into_owned()),
         target_snapshot,
     };
     emit_host_command_payload(app, payload);
@@ -1514,7 +1588,7 @@ mod native_escape_cancel {
 
 #[cfg(windows)]
 mod native_paste_last {
-    use super::{NativeShortcutChord, PASTE_LAST_SAFE_HOTKEY};
+    use super::NativeShortcutChord;
     use crate::{
         desktop_delivery::{self, DesktopDeliveryTarget},
         tray::{HostCommandPayload, HOST_COMMAND_EVENT},
@@ -1538,10 +1612,10 @@ mod native_paste_last {
     static EVENT_SENDER: OnceLock<Mutex<Option<mpsc::Sender<Option<DesktopDeliveryTarget>>>>> =
         OnceLock::new();
     static PASTE_LAST_SHORTCUT: Mutex<NativeShortcutChord> = Mutex::new(NativeShortcutChord {
-        label: PASTE_LAST_SAFE_HOTKEY,
         ctrl: false,
         alt: true,
         shift: true,
+        win: false,
         key_vk: 0x58,
     });
     static SHORTCUT_DOWN: AtomicBool = AtomicBool::new(false);
@@ -1632,10 +1706,10 @@ mod native_paste_last {
             .lock()
             .map(|guard| *guard)
             .unwrap_or(NativeShortcutChord {
-                label: PASTE_LAST_SAFE_HOTKEY,
                 ctrl: false,
                 alt: true,
                 shift: true,
+                win: false,
                 key_vk: 0x58,
             })
     }
@@ -1649,7 +1723,7 @@ mod native_paste_last {
         alt_down == shortcut.alt
             && shift_down == shortcut.shift
             && ctrl_down == shortcut.ctrl
-            && !win_down
+            && win_down == shortcut.win
     }
 
     fn is_key_down(vk: i32) -> bool {
@@ -1717,8 +1791,10 @@ mod native_alt_space {
         desktop_control_hotkey_capture_payload, desktop_control_hotkey_pressed_payload,
         desktop_control_hotkey_released_payload, EffectiveDictationHotkey, NativeShortcutChord,
         ALT_SPACE_DESKTOP_CONTROL_HOTKEY, DESKTOP_CONTROL_HOTKEY_CAPTURE_EVENT,
-        DESKTOP_CONTROL_HOTKEY_EVENT, PRESET_PICKER_HOTKEY,
+        DESKTOP_CONTROL_HOTKEY_EVENT,
     };
+    use crate::tray::{HostCommandPayload, HOST_COMMAND_EVENT};
+    use std::borrow::Cow;
     use std::error::Error;
     use std::ptr::null_mut;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -1736,13 +1812,15 @@ mod native_alt_space {
         WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
 
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Debug)]
     enum NativeAltSpaceEvent {
         Pressed,
         Released,
-        Capture(&'static str),
+        StopSubmitPressed,
+        StopSubmit,
+        Capture(Cow<'static, str>),
         PresetPicker,
-        PresetPickerChord(&'static str),
+        PresetPickerChord(Cow<'static, str>),
     }
 
     const LLKHF_ALTDOWN: u32 = 0x20;
@@ -1752,12 +1830,23 @@ mod native_alt_space {
         OnceLock::new();
     static PRESET_CHORD_ARMED_AT: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
     static PRESET_PICKER_SHORTCUT: Mutex<NativeShortcutChord> = Mutex::new(NativeShortcutChord {
-        label: PRESET_PICKER_HOTKEY,
         ctrl: false,
         alt: true,
         shift: false,
+        win: false,
         key_vk: 0x51,
     });
+    static STOP_SUBMIT_SHORTCUT: Mutex<NativeShortcutChord> = Mutex::new(NativeShortcutChord {
+        ctrl: false,
+        alt: false,
+        shift: false,
+        win: true,
+        key_vk: VK_SPACE as u32,
+    });
+    static STOP_SUBMIT_DOWN: AtomicBool = AtomicBool::new(false);
+    static LEFT_WIN_DOWN: AtomicBool = AtomicBool::new(false);
+    static RIGHT_WIN_DOWN: AtomicBool = AtomicBool::new(false);
+    static SUPPRESS_STOP_SUBMIT_WIN_UP: AtomicBool = AtomicBool::new(false);
     static ALT_SPACE_ENABLED: AtomicBool = AtomicBool::new(false);
     static ALT_SPACE_CAPTURE_ENABLED: AtomicBool = AtomicBool::new(false);
     static SPACE_DOWN: AtomicBool = AtomicBool::new(false);
@@ -1765,6 +1854,14 @@ mod native_alt_space {
     static PRESET_PICKER_DOWN: AtomicBool = AtomicBool::new(false);
     static SUPPRESS_NEXT_ALT_UP: AtomicBool = AtomicBool::new(false);
     static SUPPRESS_NEXT_ALT_UP_ONLY: AtomicBool = AtomicBool::new(false);
+    pub fn set_stop_submit_shortcut(shortcut: NativeShortcutChord) -> bool {
+        if let Ok(mut guard) = STOP_SUBMIT_SHORTCUT.lock() {
+            *guard = shortcut;
+        }
+        STOP_SUBMIT_DOWN.store(false, Ordering::SeqCst);
+        SUPPRESS_STOP_SUBMIT_WIN_UP.store(false, Ordering::SeqCst);
+        true
+    }
 
     pub fn set_preset_picker_shortcut(shortcut: NativeShortcutChord) -> bool {
         if let Ok(mut guard) = PRESET_PICKER_SHORTCUT.lock() {
@@ -1812,13 +1909,39 @@ mod native_alt_space {
                     NativeAltSpaceEvent::Pressed => {
                         let _ = app_handle.emit(
                             DESKTOP_CONTROL_HOTKEY_EVENT,
-                            desktop_control_hotkey_pressed_payload(hotkey),
+                            desktop_control_hotkey_pressed_payload(hotkey.clone()),
                         );
                     }
                     NativeAltSpaceEvent::Released => {
                         let _ = app_handle.emit(
                             DESKTOP_CONTROL_HOTKEY_EVENT,
-                            desktop_control_hotkey_released_payload(hotkey),
+                            desktop_control_hotkey_released_payload(hotkey.clone()),
+                        );
+                    }
+                    NativeAltSpaceEvent::StopSubmitPressed => {
+                        let _ = app_handle.emit(
+                            HOST_COMMAND_EVENT,
+                            HostCommandPayload {
+                                source: "global_hotkey",
+                                command: "stop_submit_pressed",
+                                preset_id: None,
+                                dock_skin: None,
+                                chord_key: None,
+                                target_snapshot: None,
+                            },
+                        );
+                    }
+                    NativeAltSpaceEvent::StopSubmit => {
+                        let _ = app_handle.emit(
+                            HOST_COMMAND_EVENT,
+                            HostCommandPayload {
+                                source: "global_hotkey",
+                                command: "stop_submit",
+                                preset_id: None,
+                                dock_skin: None,
+                                chord_key: None,
+                                target_snapshot: None,
+                            },
                         );
                     }
                     NativeAltSpaceEvent::Capture(shortcut) => {
@@ -1862,11 +1985,42 @@ mod native_alt_space {
             let is_up = event == WM_KEYUP || event == WM_SYSKEYUP;
             let keyboard = &*(l_param as *const KBDLLHOOKSTRUCT);
             let is_space = keyboard.vkCode == VK_SPACE as u32;
+            let is_left_win = keyboard.vkCode == VK_LWIN as u32;
+            let is_right_win = keyboard.vkCode == VK_RWIN as u32;
+            let is_win = is_left_win || is_right_win;
             let is_alt = keyboard.vkCode == VK_MENU as u32
                 || keyboard.vkCode == 0xA4
                 || keyboard.vkCode == 0xA5;
             let alt_down = (GetAsyncKeyState(VK_MENU as i32) & 0x8000u16 as i16) != 0
                 || (keyboard.flags & LLKHF_ALTDOWN) != 0;
+            if is_win {
+                if is_down {
+                    if is_left_win {
+                        LEFT_WIN_DOWN.store(true, Ordering::SeqCst);
+                    }
+                    if is_right_win {
+                        RIGHT_WIN_DOWN.store(true, Ordering::SeqCst);
+                    }
+                } else if is_up {
+                    let suppress = SUPPRESS_STOP_SUBMIT_WIN_UP.swap(false, Ordering::SeqCst);
+                    if is_left_win {
+                        LEFT_WIN_DOWN.store(false, Ordering::SeqCst);
+                    }
+                    if is_right_win {
+                        RIGHT_WIN_DOWN.store(false, Ordering::SeqCst);
+                    }
+                    if suppress {
+                        // Win down passed through to the system, but this Win up
+                        // is swallowed so the shell never sees a lone release of
+                        // a stop-submit chord. Re-inject a synthetic release so
+                        // the Windows key is not treated as still held down.
+                        release_modifiers();
+                        return 1;
+                    }
+                }
+            }
+            let win_down =
+                LEFT_WIN_DOWN.load(Ordering::SeqCst) || RIGHT_WIN_DOWN.load(Ordering::SeqCst);
             let capture_enabled = ALT_SPACE_CAPTURE_ENABLED.load(Ordering::SeqCst);
             let hotkey_enabled = ALT_SPACE_ENABLED.load(Ordering::SeqCst);
 
@@ -1886,6 +2040,32 @@ mod native_alt_space {
                     return 1;
                 }
             }
+            let stop_submit_shortcut = current_stop_submit_shortcut();
+            let is_stop_submit_key = keyboard.vkCode == stop_submit_shortcut.key_vk;
+            if is_stop_submit_key
+                && is_down
+                && exact_shortcut_combo(stop_submit_shortcut, alt_down, win_down)
+            {
+                eprintln!(
+                    "[dictation-tauri][hotkey] native stop-submit captured keydown win_down={win_down}"
+                );
+                STOP_SUBMIT_DOWN.store(true, Ordering::SeqCst);
+                if stop_submit_shortcut.win {
+                    SUPPRESS_STOP_SUBMIT_WIN_UP.store(true, Ordering::SeqCst);
+                }
+                send_event(NativeAltSpaceEvent::StopSubmitPressed);
+                return 1;
+            }
+
+            if is_stop_submit_key && is_up && STOP_SUBMIT_DOWN.swap(false, Ordering::SeqCst) {
+                eprintln!("[dictation-tauri][hotkey] native stop-submit captured keyup");
+                send_event(NativeAltSpaceEvent::StopSubmit);
+                return 1;
+            }
+
+            if is_stop_submit_key && is_down && STOP_SUBMIT_DOWN.load(Ordering::SeqCst) {
+                return 1;
+            }
 
             if is_down && !alt_down && !modifier_key_down() {
                 if let Some(chord_key) = take_armed_preset_chord(keyboard.vkCode) {
@@ -1896,8 +2076,8 @@ mod native_alt_space {
 
             let preset_shortcut = current_preset_picker_shortcut();
             let is_preset_key = keyboard.vkCode == preset_shortcut.key_vk;
-
-            if is_preset_key && is_down && exact_shortcut_combo(preset_shortcut, alt_down) {
+            if is_preset_key && is_down && exact_shortcut_combo(preset_shortcut, alt_down, win_down)
+            {
                 if !PRESET_PICKER_DOWN.swap(true, Ordering::SeqCst) {
                     if preset_shortcut.alt {
                         // Delay opening Alt-based picker shortcuts until the matching Alt-up. Alt
@@ -1933,26 +2113,28 @@ mod native_alt_space {
             if is_space && alt_down && is_down && capture_enabled {
                 if !SPACE_DOWN.swap(true, Ordering::SeqCst) {
                     SUPPRESS_NEXT_ALT_UP_ONLY.store(true, Ordering::SeqCst);
-                    send_event(NativeAltSpaceEvent::Capture(
+                    send_event(NativeAltSpaceEvent::Capture(Cow::Borrowed(
                         ALT_SPACE_DESKTOP_CONTROL_HOTKEY,
-                    ));
+                    )));
                 }
                 return 1;
             }
 
-            if is_space && is_up && SPACE_DOWN.swap(false, Ordering::SeqCst) && capture_enabled {
+            if capture_enabled && is_space && is_up && SPACE_DOWN.swap(false, Ordering::SeqCst) {
                 return 1;
             }
 
             if is_space && alt_down && is_down && hotkey_enabled {
                 if !SPACE_DOWN.swap(true, Ordering::SeqCst) {
                     SUPPRESS_NEXT_ALT_UP_ONLY.store(true, Ordering::SeqCst);
+                    eprintln!("[dictation-tauri][hotkey] native Alt+Space captured keydown");
                     send_event(NativeAltSpaceEvent::Pressed);
                 }
                 return 1;
             }
 
             if is_space && is_up && SPACE_DOWN.swap(false, Ordering::SeqCst) && hotkey_enabled {
+                eprintln!("[dictation-tauri][hotkey] native Alt+Space captured keyup");
                 send_event(NativeAltSpaceEvent::Released);
                 return 1;
             }
@@ -1970,7 +2152,7 @@ mod native_alt_space {
         }
     }
 
-    fn take_armed_preset_chord(vk_code: u32) -> Option<&'static str> {
+    fn take_armed_preset_chord(vk_code: u32) -> Option<Cow<'static, str>> {
         let mut guard = PRESET_CHORD_ARMED_AT
             .get_or_init(|| Mutex::new(None))
             .lock()
@@ -1980,7 +2162,7 @@ mod native_alt_space {
             return None;
         }
         let chord_key = canonical_key_from_vk(vk_code)?;
-        Some(super::leak_shortcut(chord_key))
+        Some(super::shortcut_value(chord_key))
     }
 
     fn modifier_key_down() -> bool {
@@ -1990,11 +2172,11 @@ mod native_alt_space {
             || is_key_down(VK_RWIN as i32)
     }
 
-    fn capture_shortcut_from_keyboard(vk_code: u32, alt_down: bool) -> Option<&'static str> {
+    fn capture_shortcut_from_keyboard(vk_code: u32, alt_down: bool) -> Option<Cow<'static, str>> {
         let shift_down = is_key_down(VK_SHIFT as i32);
         let ctrl_down = is_key_down(VK_CONTROL as i32);
         let win_down = is_key_down(VK_LWIN as i32) || is_key_down(VK_RWIN as i32);
-        if win_down || (!ctrl_down && !alt_down && !shift_down) {
+        if !win_down && !ctrl_down && !alt_down && !shift_down {
             return None;
         }
         let key = canonical_key_from_vk(vk_code)?;
@@ -2008,8 +2190,11 @@ mod native_alt_space {
         if shift_down {
             parts.push("Shift".to_string());
         }
+        if win_down {
+            parts.push("Win".to_string());
+        }
         parts.push(key);
-        Some(super::leak_shortcut(parts.join("+")))
+        Some(super::shortcut_value(parts.join("+")))
     }
 
     fn canonical_key_from_vk(vk_code: u32) -> Option<String> {
@@ -2021,28 +2206,40 @@ mod native_alt_space {
         }
     }
 
+    fn current_stop_submit_shortcut() -> NativeShortcutChord {
+        STOP_SUBMIT_SHORTCUT
+            .lock()
+            .map(|guard| *guard)
+            .unwrap_or(NativeShortcutChord {
+                ctrl: false,
+                alt: false,
+                shift: false,
+                win: true,
+                key_vk: VK_SPACE as u32,
+            })
+    }
+
     fn current_preset_picker_shortcut() -> NativeShortcutChord {
         PRESET_PICKER_SHORTCUT
             .lock()
             .map(|guard| *guard)
             .unwrap_or(NativeShortcutChord {
-                label: PRESET_PICKER_HOTKEY,
                 ctrl: false,
                 alt: true,
                 shift: false,
+                win: false,
                 key_vk: 0x51,
             })
     }
 
-    fn exact_shortcut_combo(shortcut: NativeShortcutChord, alt_down: bool) -> bool {
+    fn exact_shortcut_combo(shortcut: NativeShortcutChord, alt_down: bool, win_down: bool) -> bool {
         let shift_down = is_key_down(VK_SHIFT as i32);
         let ctrl_down = is_key_down(VK_CONTROL as i32);
-        let win_down = is_key_down(VK_LWIN as i32) || is_key_down(VK_RWIN as i32);
 
         alt_down == shortcut.alt
             && shift_down == shortcut.shift
             && ctrl_down == shortcut.ctrl
-            && !win_down
+            && win_down == shortcut.win
     }
 
     fn is_key_down(vk: i32) -> bool {
@@ -2079,6 +2276,37 @@ mod native_alt_space {
             }
         }
     }
+    #[cfg(test)]
+    mod tests {
+        use super::{exact_shortcut_combo, NativeShortcutChord};
+
+        #[test]
+        fn win_space_requires_tracked_windows_modifier() {
+            let shortcut = NativeShortcutChord {
+                ctrl: false,
+                alt: false,
+                shift: false,
+                win: true,
+                key_vk: 0x20,
+            };
+
+            assert!(exact_shortcut_combo(shortcut, false, true));
+            assert!(!exact_shortcut_combo(shortcut, false, false));
+        }
+
+        #[test]
+        fn non_windows_shortcut_rejects_tracked_windows_modifier() {
+            let shortcut = NativeShortcutChord {
+                ctrl: false,
+                alt: true,
+                shift: false,
+                win: false,
+                key_vk: 0x51,
+            };
+
+            assert!(!exact_shortcut_combo(shortcut, true, true));
+        }
+    }
 }
 
 #[cfg(not(windows))]
@@ -2087,6 +2315,9 @@ mod native_alt_space {
     use std::error::Error;
 
     pub fn set_preset_picker_shortcut(_shortcut: NativeShortcutChord) -> bool {
+        true
+    }
+    pub fn set_stop_submit_shortcut(_shortcut: NativeShortcutChord) -> bool {
         true
     }
 
@@ -2199,7 +2430,7 @@ mod tests {
             DesktopControlHotkeyPayload {
                 source: "global_hotkey",
                 action: "pressed",
-                shortcut: "Alt+Space",
+                shortcut: Cow::Borrowed("Alt+Space"),
                 target_snapshot: None,
             }
         );
@@ -2209,7 +2440,7 @@ mod tests {
             DesktopControlHotkeyPayload {
                 source: "global_hotkey",
                 action: "released",
-                shortcut: "Ctrl+Shift+F9",
+                shortcut: Cow::Borrowed("Ctrl+Shift+F9"),
                 target_snapshot: None,
             }
         );
@@ -2257,7 +2488,7 @@ mod tests {
             DesktopControlHotkeyPayload {
                 source: "global_hotkey",
                 action: "cancel",
-                shortcut: "Escape",
+                shortcut: Cow::Borrowed("Escape"),
                 target_snapshot: None,
             }
         );
@@ -2270,17 +2501,36 @@ mod tests {
 
     #[test]
     fn action_hotkeys_accept_host_owned_recorded_shortcuts() {
-        let picker = preview_action_shortcut("Ctrl+Alt+P");
+        let picker = preview_action_shortcut("Ctrl+Alt+P", false);
         assert_eq!(picker.as_deref(), Some("Ctrl+Alt+P"));
 
         let chord = native_shortcut_chord_from_request("Ctrl+Alt+P").unwrap();
         assert!(chord.ctrl);
         assert!(chord.alt);
         assert!(!chord.shift);
+        assert!(!chord.win);
         assert_eq!(chord.key_vk, 0x50);
 
-        assert!(preview_action_shortcut("Alt+Space").is_none());
-        assert!(preview_action_shortcut("P").is_none());
+        assert!(preview_action_shortcut("Alt+Space", false).is_none());
+        assert!(preview_action_shortcut("P", false).is_none());
+    }
+
+    #[test]
+    fn stop_submit_accepts_win_space_and_defaults_to_it() {
+        assert_eq!(STOP_SUBMIT_HOTKEY, "Win+Space");
+        assert_eq!(
+            preview_action_shortcut(STOP_SUBMIT_HOTKEY, true).as_deref(),
+            Some(STOP_SUBMIT_HOTKEY)
+        );
+        assert!(preview_action_shortcut(STOP_SUBMIT_HOTKEY, false).is_none());
+
+        let chord = native_shortcut_chord_from_request(STOP_SUBMIT_HOTKEY).unwrap();
+        assert!(chord.win);
+        assert_eq!(chord.key_vk, 0x20);
+        assert_eq!(
+            default_action_hotkey_config().stop_submit,
+            STOP_SUBMIT_HOTKEY
+        );
     }
 
     #[test]

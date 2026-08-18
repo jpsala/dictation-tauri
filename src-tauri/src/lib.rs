@@ -164,6 +164,7 @@ pub fn run() {
             result_history::clear_result_history,
             settings_window::show_settings_window,
             settings_window::show_account_setup_window,
+            settings_window::show_account_notice_window,
             settings_window::show_dictation_lab_window,
             settings_window::show_admin_control_room,
             sound_cues::play_dictation_sound_cue,

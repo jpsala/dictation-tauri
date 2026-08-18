@@ -49,12 +49,13 @@ export type TauriHotkeyRegistrationApplyResult = {
   error?: string;
 };
 
-export type TauriActionHotkeyId = "preset_picker" | "paste_last_safe";
+export type TauriActionHotkeyId = "preset_picker" | "paste_last_safe" | "stop_submit";
 
 export type TauriActionHotkeyConfig = {
   schemaVersion: 1;
   presetPicker: string;
   pasteLastSafe: string;
+  stopSubmit: string;
 };
 
 export type TauriActionHotkeyRegistrationPreview = {
@@ -77,6 +78,8 @@ export type TauriActionHotkeyRegistrationApplyResult = {
 export type TauriHostCommand =
   | "start"
   | "stop"
+  | "stop_submit_pressed"
+  | "stop_submit"
   | "cancel"
   | "paste_last_safe"
   | "select_preset"

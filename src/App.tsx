@@ -146,6 +146,7 @@ import type {
 import { OnboardingSurface } from "./onboarding/OnboardingSurface";
 import { createAccountFirstFixtureController } from "./onboarding/account-first-flow";
 import { SetupReadinessRouter } from "./onboarding/SetupReadinessRouter";
+import { AccountNoticeSurface } from "./onboarding/account-notice-surface";
 import { createStartDockHandoff } from "./onboarding/start-dock-handoff";
 import {
   ensureTauriDictationReadiness,
@@ -1253,13 +1254,13 @@ function createSyntheticDockVu(tick: number) {
   return { level, bands };
 }
 
-function getAppSurface(): "dock" | "companion" | "preset-picker" | "settings" | "onboarding" | "dictation-lab" {
+function getAppSurface(): "dock" | "companion" | "preset-picker" | "settings" | "onboarding" | "dictation-lab" | "account-notice" {
   if (typeof window === "undefined") {
     return "dock";
   }
 
   const surface = new URLSearchParams(window.location.search).get("surface");
-  if (surface === "companion" || surface === "preset-picker" || surface === "settings" || surface === "onboarding" || surface === "dictation-lab") {
+  if (surface === "companion" || surface === "preset-picker" || surface === "settings" || surface === "onboarding" || surface === "dictation-lab" || surface === "account-notice") {
     return surface;
   }
 
@@ -2406,6 +2407,7 @@ export function DockSurface() {
   const muteOutputPolicyRef = useRef(createMuteOutputPolicy(defaultUserPreferences));
   const soundCuePolicyRef = useRef(createSoundCuePolicy(defaultUserPreferences));
   const forcePressEnterAfterPasteRef = useRef(false);
+  const pendingStopSubmitRef = useRef(false);
   const [desktopSessionState, setDesktopSessionState] = useState<
     DesktopDictationSession | IdleDesktopDictationState
   >({ state: "idle" });
@@ -3082,6 +3084,8 @@ export function DockSurface() {
         state: "idle",
         message: "Abrimos Cuenta para continuar la configuración.",
       });
+      pendingStopSubmitRef.current = false;
+      forcePressEnterAfterPasteRef.current = false;
       return;
     }
 
@@ -3110,8 +3114,17 @@ export function DockSurface() {
         state: "recording",
         message: captureRuntime.listeningMessage,
       });
+      if (pendingStopSubmitRef.current) {
+        pendingStopSubmitRef.current = false;
+        await stopCapture().finally(() => {
+          forcePressEnterAfterPasteRef.current = false;
+        });
+        return;
+      }
       return;
     }
+    pendingStopSubmitRef.current = false;
+    forcePressEnterAfterPasteRef.current = false;
 
     dictationKeyStateRef.current = resetDictationKeyState(
       dictationKeyStateRef.current,
@@ -4258,6 +4271,9 @@ async function openPresetPicker(targetSnapshot?: TauriDesktopDeliveryTarget) {
         });
         break;
       }
+      case "stop_submit_pressed":
+        requestStopSubmitPressed();
+        break;
       default:
         handleVoiceDockCommand(payload.command);
     }
@@ -4502,6 +4518,35 @@ async function openPresetPicker(targetSnapshot?: TauriDesktopDeliveryTarget) {
       setVocabularyChoiceBusy(false);
     }
   }
+  function requestStopSubmitPressed() {
+    const desktopSessionIsActive =
+      desktopSessionState.state !== "idle" &&
+      desktopSessionState.state !== "done" &&
+      desktopSessionState.state !== "error" &&
+      desktopSessionState.state !== "cancelled";
+    if (capture.state === "idle" && !desktopSessionIsActive) {
+      void startCapture();
+    }
+  }
+
+  function requestStopSubmit() {
+    const canStopNow = capture.state === "recording" || desktopSessionState.state === "listening";
+    if (!canStopNow) {
+      const startInProgress =
+        capture.state === "requesting_permission" || desktopSessionState.state === "arming";
+      if (startInProgress) {
+        forcePressEnterAfterPasteRef.current = true;
+        pendingStopSubmitRef.current = true;
+      }
+      return;
+    }
+
+    forcePressEnterAfterPasteRef.current = true;
+    void stopCapture().finally(() => {
+      forcePressEnterAfterPasteRef.current = false;
+      pendingStopSubmitRef.current = false;
+    });
+  }
 
   function handleVoiceDockCommand(command: DockCommand) {
     switch (command) {
@@ -4512,10 +4557,7 @@ async function openPresetPicker(targetSnapshot?: TauriDesktopDeliveryTarget) {
         void stopCapture();
         break;
       case "stop_submit":
-        forcePressEnterAfterPasteRef.current = true;
-        void stopCapture().finally(() => {
-          forcePressEnterAfterPasteRef.current = false;
-        });
+        requestStopSubmit();
         break;
       case "cancel":
         void cancelCapture();
@@ -4899,8 +4941,21 @@ async function openPresetPicker(targetSnapshot?: TauriDesktopDeliveryTarget) {
         session,
         "Dictation key did not produce a captured artifact.",
       );
+      if (
+        controlAction === "start" &&
+        session.state === "listening" &&
+        pendingStopSubmitRef.current
+      ) {
+        pendingStopSubmitRef.current = false;
+        await stopCapture().finally(() => {
+          forcePressEnterAfterPasteRef.current = false;
+        });
+        return;
+      }
 
       if (controlAction === "start" && session.state !== "listening") {
+        pendingStopSubmitRef.current = false;
+        forcePressEnterAfterPasteRef.current = false;
         dictationKeyStateRef.current = resetDictationKeyState(
           dictationKeyStateRef.current,
         );
@@ -5235,6 +5290,9 @@ export function App() {
   }
   if (appSurface === "dictation-lab") {
     return <DictationLabSurface />;
+  }
+  if (appSurface === "account-notice") {
+    return <AccountNoticeSurface />;
   }
   if (appSurface === "onboarding") {
     if (isTauri()) {

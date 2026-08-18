@@ -1945,3 +1945,115 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+/* Account gate: compact not-logged-in feedback shown inside the dock window. */
+.dock-gate {
+  display: grid;
+  place-items: center;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.dock-gate__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  max-width: calc(100vw - 8px);
+  padding: 0 11px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 999px;
+  background: rgb(7 8 10 / 96%);
+  color: rgb(226 232 240 / 96%);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+
+.dock-gate__pill--action {
+  cursor: pointer;
+  color: rgb(187 247 208 / 96%);
+  border-color: rgb(52 211 153 / 34%);
+}
+
+.dock-gate__pill--action:hover {
+  border-color: rgb(52 211 153 / 52%);
+  background: rgb(15 20 16 / 96%);
+}
+
+.dock-gate__pill--action:active {
+  transform: translateY(1px);
+}
+
+.dock-gate__pill--action:focus-visible {
+  outline: 2px solid rgb(52 211 153 / 72%);
+  outline-offset: 2px;
+}
+
+.dock-gate__dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.dock-gate__pill--action .dock-gate__dot {
+  background: rgb(52 211 153);
+}
+
+.dock-gate__pill--progress .dock-gate__dot {
+  animation: dock-gate-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes dock-gate-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock-gate__pill--progress .dock-gate__dot {
+    animation: none;
+  }
+}
+
+.account-notice {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  padding: 16px 20px;
+  background: oklch(1 0 0);
+  color: oklch(0.21 0.018 235);
+}
+
+.account-notice__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.25;
+  color: oklch(0.21 0.018 235);
+}
+
+.account-notice__detail {
+  margin: 0;
+  max-width: 65ch;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: oklch(0.45 0.02 235);
+}
+
+.account-notice__actions {
+  display: flex;
+  margin-top: 8px;
+}

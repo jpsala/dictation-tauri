@@ -2,7 +2,7 @@
 
 Generated cache. Do not edit by hand.
 
-Generated: 2026-08-17T15:06:16.281Z
+Generated: 2026-08-18T17:46:07.264Z
 
 ## Topics
 
@@ -32,7 +32,8 @@ Generated: 2026-08-17T15:06:16.281Z
 
 ## Tracks
 
-- No focused track. Search `docs/tracks/` on demand.
+- blocked: [Stop & Submit Hotkey Reliability](../tracks/stop-submit-hotkey-reliability.md)
+- Other tracks are omitted from the hot index; search `docs/tracks/` on demand.
 
 ## Specs
 

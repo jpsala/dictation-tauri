@@ -1,9 +1,14 @@
 // @ts-expect-error Vitest executes this Node-only assertion outside the app tsconfig.
 import { readFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { AccountNoticeSurface } from "../../src/onboarding/account-notice-surface";
 import {
+  dockGateFeedbackForPhase,
   ensureTauriDictationReadiness,
   getEffectiveTauriAccountReadiness,
+  openTauriAccountNotice,
   projectTauriAccountGateReady,
   shouldOpenTauriAccountSetup,
 } from "../../src/onboarding/tauri-account-gate";
@@ -104,5 +109,57 @@ describe("Tauri account readiness gate", () => {
     );
     expect(source).toContain("<TauriAccountGate invoke={invoke} renderReady={() => <DockSurface />} />");
     expect(source).toContain("<SetupReadinessRouter invoke={invoke} onReady={completeOnboarding} />");
+  });
+});
+
+describe("dock gate feedback copy", () => {
+  it("offers account connection for a not-signed-in service", () => {
+    expect(dockGateFeedbackForPhase("service_unavailable")).toEqual({
+      label: "Conectá tu cuenta",
+      detail: "Iniciá sesión para empezar a dictar.",
+      action: "open-notice",
+    });
+  });
+
+  it("offers an immediate retry for connectivity and policy outages", () => {
+    for (const phase of ["offline", "policy_unavailable"] as const) {
+      expect(dockGateFeedbackForPhase(phase).action).toBe("refresh");
+    }
+  });
+
+  it("keeps transient and setup phases non-interactive", () => {
+    for (const phase of [null, "checking", "welcome", "oauth_handoff"] as const) {
+      expect(dockGateFeedbackForPhase(phase).action).toBeUndefined();
+    }
+  });
+
+  it("never exposes device id, policy, provider, or tokens", () => {
+    for (const phase of ["service_unavailable", "offline", "policy_unavailable", null] as const) {
+      const feedback = dockGateFeedbackForPhase(phase);
+      expect(`${feedback.label} ${feedback.detail}`.toLowerCase()).not.toMatch(
+        /device|policy|provider|token|google/,
+      );
+    }
+  });
+});
+
+describe("account notice window", () => {
+  it("opens the compact notice without hiding the dock", async () => {
+    const invoke = vi.fn(async () => null);
+
+    await openTauriAccountNotice(invoke);
+
+    expect(invoke.mock.calls.map(([command]) => command)).toEqual([
+      "show_account_notice_window",
+    ]);
+  });
+
+  it("renders the static notice copy without exposing account details", () => {
+    const markup = renderToStaticMarkup(createElement(AccountNoticeSurface));
+
+    expect(markup).toContain("Conectá tu cuenta");
+    expect(markup).toContain("Iniciá sesión para empezar a dictar.");
+    expect(markup).toContain("Cerrar");
+    expect(markup.toLowerCase()).not.toMatch(/device|policy|provider|token|google/);
   });
 });

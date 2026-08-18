@@ -23,6 +23,7 @@ const DEFAULT_ACTION_HOTKEYS: TauriActionHotkeyConfig = {
   schemaVersion: 1,
   presetPicker: "Alt+Q",
   pasteLastSafe: "Alt+Shift+X",
+  stopSubmit: "Win+Space",
 };
 
 export type HotkeyTarget = "dictation" | TauriActionHotkeyId;
@@ -208,7 +209,19 @@ export function useHotkeysController(enabled: boolean): HotkeysController {
   }, [enabled, setDraft]);
 
   const apply = useCallback(async (target: HotkeyTarget) => {
-    const binding = target === "dictation" ? dictationShortcut : actionHotkeys[target === "preset_picker" ? "presetPicker" : "pasteLastSafe"];
+    const getActionShortcut = (actionTarget: Exclude<HotkeyTarget, "dictation">) => {
+      switch (actionTarget) {
+        case "preset_picker":
+          return actionHotkeys.presetPicker;
+        case "paste_last_safe":
+          return actionHotkeys.pasteLastSafe;
+        case "stop_submit":
+          return actionHotkeys.stopSubmit;
+      }
+    };
+    const binding = target === "dictation"
+      ? dictationShortcut
+      : getActionShortcut(target);
     const candidate = drafts[target]?.candidate;
     const preview = drafts[target]?.preview;
     if (!enabled || !candidate || candidate === binding || !preview?.canApply) {
@@ -285,6 +298,14 @@ export function useHotkeysController(enabled: boolean): HotkeysController {
       shortcut: actionHotkeys.pasteLastSafe,
       ...drafts.paste_last_safe,
       state: drafts.paste_last_safe?.state ?? "idle",
+    },
+    {
+      id: "stop_submit",
+      label: "Detener y enviar",
+      description: "Finaliza una captura iniciada con la tecla de dictado y envía Enter después de entregar el resultado.",
+      shortcut: actionHotkeys.stopSubmit,
+      ...drafts.stop_submit,
+      state: drafts.stop_submit?.state ?? "idle",
     },
   ], [actionHotkeys, dictationShortcut, drafts]);
   const dirty = bindings.some((binding) => Boolean(binding.candidate && binding.candidate !== binding.shortcut));

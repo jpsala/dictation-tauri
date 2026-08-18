@@ -3,13 +3,33 @@
 Router operativo corto; el detalle durable vive en topics, tracks, specs y
 decisiones.
 
-Última actualización: 2026-08-15.
+Última actualización: 2026-08-18.
 
 ## Foco Único De Ejecución
 
-- **Estado:** `complete`.
-- **Referencia:** `docs/tracks/settings-transparency-and-power.md`.
-- **Siguiente acción:** Elegir la siguiente prioridad antes de ejecutar.
+- **Estado:** `blocked`.
+- **Siguiente acción:** smoke físico de `Alt+Space`/`Win+Space` sobre el dock con una instancia account-ready.
+- **Bloqueo:** el dock exige cuenta signed-in (OAuth/cloud), fuera de invariantes provider-free.
+- **Referencia:** `docs/tracks/stop-submit-hotkey-reliability.md`.
+
+## Hotkey Win Space · Estado actual · 2026-08-18
+
+- Objetivo activo: cerrar la acción Fixvox `stopAndSubmit` con `Win+Space`
+  editable/persistente como default alternativo, sin cambiar Alt+Space.
+- Contrato implementado: el hook `WH_KEYBOARD_LL` emite
+  `stop_submit_pressed` en keydown y `stop_submit` en keyup. El pressed inicia
+  sólo si no hay sesión activa; el release detiene/envía y fuerza Enter.
+- `App.tsx` conserva `pendingStopSubmitRef` durante
+  `requesting_permission`/`arming` y ejecuta el stop al llegar a `listening`.
+- Corrección adicional aplicada al hook: la rama de captura verifica
+  `capture_enabled` antes de consumir `SPACE_DOWN`, evitando anular el release
+  de Alt+Space. Win-up suprimido no limpia prematuramente `STOP_SUBMIT_DOWN`.
+- Reporte físico (2026-08-18): la capa nativa quedó verificada en vivo — `Alt+Space` (`captured keydown/keyup`) y `Win+Space` (`stop-submit captured keydown win_down=true`/`keyup`) firean en una instancia Tauri real, y el fix `release_modifiers()` en el Win-up suprimido funciona (releases sintéticas de `VK_LWIN`/`VK_RWIN`, `GetAsyncKeyState` limpio).
+- Bloqueo: el smoke visual del dock (recording → stop) no se pudo ejecutar porque el dock está gateado por cuenta — readiness `service_unavailable` (`fixvox-setup-readiness.v1.json`); el `TauriAccountGate` muestra `Verificando tu cuenta…`. Requiere cuenta signed-in (OAuth/cloud), fuera de invariantes provider-free.
+- Instancia real usada: `artifacts/live-app/20260818-104905/tauri-dev.log`.
+- Diagnósticos retirados: `native key vk=…` eliminado; logs semánticos `captured keydown/keyup` conservados.
+- Checks: `cargo fmt`, `cargo check`, tests Rust `desktop_control` (16), Vitest focal `tauri-host-control` (8), `npm run build` — todos pasan.
+- Próximo paso: con instancia account-ready, smoke físico de Alt+Space y Win+Space down/up sobre el dock para confirmar recording → stop (detalle en la track).
 
 ## Contrato Congelado
 

@@ -279,7 +279,7 @@ pub struct HostCommandPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dock_skin: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub chord_key: Option<&'static str>,
+    pub chord_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_snapshot: Option<crate::desktop_delivery::DesktopDeliveryTarget>,
 }

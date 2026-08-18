@@ -153,6 +153,7 @@ export function AdvancedSettings({
         typeof global?.shortcut === "string" && global.shortcut.trim() ? `Dictado: ${global.shortcut.trim()}` : undefined,
         typeof actions?.presetPicker === "string" && actions.presetPicker.trim() ? `Selector: ${actions.presetPicker.trim()}` : undefined,
         typeof actions?.pasteLastSafe === "string" && actions.pasteLastSafe.trim() ? `Pegar último: ${actions.pasteLastSafe.trim()}` : undefined,
+        typeof actions?.stopSubmit === "string" && actions.stopSubmit.trim() ? `Detener y enviar: ${actions.stopSubmit.trim()}` : undefined,
       ].filter((shortcut): shortcut is string => Boolean(shortcut));
       setRegisteredHotkeys({
         status: global || actions ? "available" : "unavailable",

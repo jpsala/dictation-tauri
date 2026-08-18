@@ -6,12 +6,6 @@ import { hotkeyPreviewMessage, useHotkeysController, type HotkeyBinding } from "
 
 const FIXED_BINDINGS = [
   {
-    id: "stop-submit",
-    label: "Detener y entregar",
-    description: "Finaliza la captura y entrega el resultado.",
-    shortcut: "Alt+Shift+Space",
-  },
-  {
     id: "result-history",
     label: "Historial de resultados",
     description: "Abre los resultados recientes y la recuperación para pegar el último.",

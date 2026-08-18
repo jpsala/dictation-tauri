@@ -179,12 +179,22 @@ describe("Tauri host-owned global hotkey boundary", () => {
       command: "run_preset_picker_chord",
       chordKey: "Y",
     };
+    const stopSubmitPressedPayload: TauriHostCommandPayload = {
+      source: "global_hotkey",
+      command: "stop_submit_pressed",
+    };
+    const stopSubmitPayload: TauriHostCommandPayload = {
+      source: "global_hotkey",
+      command: "stop_submit",
+    };
 
     expect(presetPayload.presetId).toBe("corregir-texto");
     expect(historyPayload.command).toBe("show_result_history");
     expect(pasteLastPayload.command).toBe("paste_last_safe");
     expect(pickerPayload.command).toBe("show_preset_picker");
     expect(pickerChordPayload.chordKey).toBe("Y");
+    expect(stopSubmitPressedPayload.command).toBe("stop_submit_pressed");
+    expect(stopSubmitPayload.command).toBe("stop_submit");
   });
 
   it("keeps Rust hotkey registration host-owned with a gated Alt+Space path", () => {
@@ -220,6 +230,10 @@ describe("Tauri host-owned global hotkey boundary", () => {
     expect(source).toContain("apply_desktop_control_action_hotkey_registration");
     expect(source).toContain("action-hotkey-preferences.v1.json");
     expect(source).toContain("set_preset_picker_shortcut");
+    expect(source).toContain("Win+Space");
+    expect(source).toContain("STOP_SUBMIT_HOTKEY");
+    expect(source).toContain('command: "stop_submit"');
+    expect(source).toContain("set_stop_submit_shortcut");
     expect(source).toContain("set_paste_last_shortcut");
     expect(source).toContain("desktop-control://hotkey-capture");
     expect(source).toContain("VK_ESCAPE");
