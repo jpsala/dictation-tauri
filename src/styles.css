@@ -2024,39 +2024,3 @@ h1 {
   }
 }
 
-.account-notice {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 8px;
-  width: 100vw;
-  height: 100vh;
-  margin: 0;
-  padding: 20px 24px;
-  background: oklch(1 0 0);
-  color: oklch(0.21 0.018 235);
-  overflow: hidden;
-}
-
-.account-notice__title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 650;
-  line-height: 1.25;
-  color: oklch(0.21 0.018 235);
-}
-
-.account-notice__detail {
-  margin: 0;
-  max-width: 65ch;
-  font-size: 0.875rem;
-  line-height: 1.4;
-  color: oklch(0.45 0.02 235);
-}
-
-.account-notice__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 8px;
-}
