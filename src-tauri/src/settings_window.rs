@@ -82,7 +82,6 @@ pub fn show_account_setup_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Resu
     show_existing_settings_window(window)
 }
 
-
 pub fn show_admin_control_room_for_app<R: Runtime>(_app: &AppHandle<R>) -> Result<(), String> {
     if !crate::fixvox_cloud::policy_allows_admin_settings() {
         return Err("Admin settings are not allowed by the current Fixvox policy.".to_string());
@@ -175,7 +174,6 @@ fn create_fresh_account_setup_window<R: Runtime>(
     Ok(window)
 }
 
-
 fn attach_close_lifecycle<R: Runtime>(window: WebviewWindow<R>) {
     window.on_window_event(move |event| {
         if let WindowEvent::CloseRequested { .. } = event {
@@ -201,7 +199,6 @@ pub async fn show_account_setup_window(app: AppHandle) -> Result<(), String> {
             "account setup window unavailable (settings_startup_join_failed)".to_string()
         })?
 }
-
 
 #[tauri::command]
 pub fn show_admin_control_room(app: AppHandle) -> Result<(), String> {
