@@ -179,12 +179,20 @@ Trabajo cerrado: `specs/012-fixvox-dock-dictation-key/tasks.md` Phase 8 / Checkp
 - `Alt+Shift+X` / paste-last tiene hook nativo Windows host-owned (`WH_KEYBOARD_LL`) que exige combo exacto Alt+Shift+X y emite `desktop-control://host-command` con `paste_last_safe` despues de `X` keyup y de esperar que Alt/Shift esten liberados, para que el paste no salga como `Ctrl+Alt+Shift+V`. Si viene de `global_hotkey`, el renderer intenta pegar el ultimo resultado en el foreground target actual usando delivery Tauri real (`paste_sent`/observer si aplica) y puede recuperar el ultimo result desde `result-history.v1.jsonl`. Si no hay ultimo resultado, queda en idle y no abre recovery modal persistente.
 - `Detener y enviar` es una acción host-owned editable, con `Win+Space` como
   default en Windows. El hook nativo emite `stop_submit_pressed` en keydown y
-  `stop_submit` en keyup: pressed inicia captura sólo cuando no hay sesión
-  activa; release detiene/envía y fuerza Enter después del delivery. Si release
-  llega durante `requesting_permission`/`arming`, el renderer conserva la
-  intención hasta `listening`. Alt+Space permanece en su canal normal. La capa
-  nativa (down/up de ambos hotkeys) quedó verificada en vivo 2026-08-18; el
-  smoke visual del dock (recording → stop) sigue gated por cuenta (`service_unavailable`). No llamarla final hasta confirmar el ciclo del dock en una instancia account-ready.
+  `stop_submit` en keyup; el renderer enruta ambos eventos por el mismo
+  resolver hold/tap de `Alt+Space`: una pulsación larga inicia y el release
+  detiene/envía con Enter; una pulsación breve inicia y queda latched, y la
+  siguiente pulsación detiene/envía.
+- El inicio sólo se acepta si no hay una captura/sesión activa; una sesión
+  `reviewing` es reiniciable. El release largo que llega mientras arranca la
+  captura se difiere hasta `listening`; el dedupe y los guards in-flight evitan
+  doble start/stop.
+- La capa nativa consume el chord sólo bajo
+  `DICTATION_TAURI_WIN_SPACE_MASK_MODE=enabled`, consume Space down/repeat/up,
+  marca sus inyecciones `VK_E8` con `LLKHF_INJECTED + dwExtraInfo` propio y
+  deja pasar el Win-up físico. Alt+Space y otros shortcuts conservan su ruta.
+- El comportamiento sigue en validación provider-free: no llamarlo final hasta
+  cerrar el ciclo renderer/native sin provider, paste, selección ni audio real.
 - Context menu/tray comparten menú nativo con `Paste last`, `History`, skins, presets y Settings. Para recovery, el tray cachea el foreground editable en mouse-down y el botón derecho del dock justo antes del popup; los comandos adjuntan ese snapshot, History lo conserva hasta elegir una entrada y delivery usa afinidad `saved`. El menú y Companion nunca deben convertirse en target. Falta settings real editable, input device y result history UX avanzada.
 - Existe ventana Tauri `dock-companion` separada; el primer sync real ya evita el placeholder estatico y redakta history a longitud/status. Las acciones basicas de recovery/history/settings ya estan cableadas por evento renderer; falta converger layout avanzado, settings editing y acciones de seleccion/assistant a la companion de Fixvox.
 - Preset badge ya responde a menu, pero todavia no activa motor real de selection transform/assistant por default.

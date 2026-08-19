@@ -3,33 +3,50 @@
 Router operativo corto; el detalle durable vive en topics, tracks, specs y
 decisiones.
 
-Última actualización: 2026-08-18.
+Última actualización: 2026-08-19.
 
 ## Foco Único De Ejecución
 
 - **Estado:** `blocked`.
-- **Siguiente acción:** smoke físico de `Alt+Space`/`Win+Space` sobre el dock con una instancia account-ready.
-- **Bloqueo:** el dock exige cuenta signed-in (OAuth/cloud), fuera de invariantes provider-free.
+- **Siguiente acción:** validar en un harness provider-free la carrera `stop_submit_pressed` → `stop_submit` antes de decidir adopción.
+- **Bloqueo:** una prueba física post-fix de `Win+Space` fuerza stop/submit y puede ejecutar provider/paste real; eso está fuera de los invariantes de este lote.
 - **Referencia:** `docs/tracks/stop-submit-hotkey-reliability.md`.
 
-## Hotkey Win Space · Estado actual · 2026-08-18
+## Hotkey Win Space · Estado actual · 2026-08-19
 
 - Objetivo activo: cerrar la acción Fixvox `stopAndSubmit` con `Win+Space`
-  editable/persistente como default alternativo, sin cambiar Alt+Space.
-- Contrato implementado: el hook `WH_KEYBOARD_LL` emite
-  `stop_submit_pressed` en keydown y `stop_submit` en keyup. El pressed inicia
-  sólo si no hay sesión activa; el release detiene/envía y fuerza Enter.
+  editable/persistente como default, sin cambiar Alt+Space.
+- Contrato nativo: `WH_KEYBOARD_LL` emite
+  `stop_submit_pressed` en keydown y `stop_submit` en keyup. El renderer usa la
+  misma semántica hold/tap de `Alt+Space`: una pulsación larga inicia y el
+  release detiene/envía con Enter; una pulsación breve inicia y queda latched,
+  y la siguiente pulsación detiene/envía. El pressed inicia cuando la captura
+  es iniciable y no hay una sesión ocupada; también permite iniciar una nueva
+  captura desde `reviewing`.
+- La corrección evita que el estado `reviewing` de una captura anterior bloquee
+  el nuevo inicio de Win+Space y conserva el release largo durante el arranque
+  asíncrono.
+- La máquina nativa consume Space-down, autorepeat y Space-up del chord,
+  inyecta sólo `VK_E8` con marca propia, deja pasar Win-up físico y conserva
+  `Alt+Space`/otros shortcuts fuera del masking nuevo.
 - `App.tsx` conserva `pendingStopSubmitRef` durante
-  `requesting_permission`/`arming` y ejecuta el stop al llegar a `listening`.
-- Corrección adicional aplicada al hook: la rama de captura verifica
-  `capture_enabled` antes de consumir `SPACE_DOWN`, evitando anular el release
-  de Alt+Space. Win-up suprimido no limpia prematuramente `STOP_SUBMIT_DOWN`.
-- Reporte físico (2026-08-18): la capa nativa quedó verificada en vivo — `Alt+Space` (`captured keydown/keyup`) y `Win+Space` (`stop-submit captured keydown win_down=true`/`keyup`) firean en una instancia Tauri real, y el fix `release_modifiers()` en el Win-up suprimido funciona (releases sintéticas de `VK_LWIN`/`VK_RWIN`, `GetAsyncKeyState` limpio).
-- Bloqueo: el smoke visual del dock (recording → stop) no se pudo ejecutar porque el dock está gateado por cuenta — readiness `service_unavailable` (`fixvox-setup-readiness.v1.json`); el `TauriAccountGate` muestra `Verificando tu cuenta…`. Requiere cuenta signed-in (OAuth/cloud), fuera de invariantes provider-free.
-- Instancia real usada: `artifacts/live-app/20260818-104905/tauri-dev.log`.
-- Diagnósticos retirados: `native key vk=…` eliminado; logs semánticos `captured keydown/keyup` conservados.
-- Checks: `cargo fmt`, `cargo check`, tests Rust `desktop_control` (16), Vitest focal `tauri-host-control` (8), `npm run build` — todos pasan.
-- Próximo paso: con instancia account-ready, smoke físico de Alt+Space y Win+Space down/up sobre el dock para confirmar recording → stop (detalle en la track).
+  `requesting_permission`/`arming` y ahora también conserva
+  `stopSubmitStartInFlightRef` mientras `startCapture()` es asíncrono. Esto
+  corrige la carrera observada cuando el release llegaba antes de que React
+  reflejara el estado de arranque.
+- Evidencia física anterior: el hook nativo activó Win+Space y llegó a
+  `Recording`, pero el release no detuvo la captura durante la carrera
+  asíncrona; un `Alt+Space` posterior terminó el ciclo y produjo un delivery
+  real accidental. No repetir ese smoke.
+- Estado post-fix: la instalación del hook y los contratos provider-free
+  pasan; el ciclo físico hold/tap completo sigue sin validarse porque el
+  release puede ejecutar provider/paste real.
+- Checks actuales: `npm run build`, Vitest focal
+  `app-hotkey-toggle.test.ts` (10) y `dictation-key.test.ts` (10), compilación
+  Tauri durante el arranque real; permanecen warnings preexistentes.
+- Próximo paso: crear una validación provider-free de la integración renderer
+  `pressed`/`released` o dejar el spike bloqueado; no hacer commit, push,
+  release, login ni delivery real.
 
 ## Contrato Congelado
 

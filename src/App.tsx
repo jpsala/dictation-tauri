@@ -51,6 +51,7 @@ import {
 } from "./desktop-control/tauri-host-control";
 import {
   createInitialDictationKeyState,
+  type DictationKeyEvent,
   dictationKeyDecisionToControlAction,
   markDictationKeyLatched,
   markDictationKeyStarted,
@@ -180,6 +181,39 @@ type CaptureUiState = {
   message: string;
   result?: CaptureResult;
 };
+
+function isDesktopSessionBusyForWinSpace(
+  state: DesktopDictationSession | IdleDesktopDictationState,
+): boolean {
+  return state.state === "arming" ||
+    state.state === "listening" ||
+    state.state === "stopping" ||
+    state.state === "transcribing" ||
+    state.state === "postprocessing" ||
+    state.state === "waiting_for_choice" ||
+    state.state === "delivering";
+}
+
+function createWinSpaceDictationKeyEvent(
+  kind: DictationKeyEvent["kind"],
+  sequence: number,
+): DictationKeyEvent {
+  return {
+    kind,
+    shortcut: "Win+Space",
+    source: "global_hotkey",
+    receivedAt: new Date().toISOString(),
+    eventId: `win-space-${kind}-${sequence}`,
+  };
+}
+
+function isCaptureStartable(state: CaptureState): boolean {
+  return state === "idle" ||
+    state === "captured" ||
+    state === "failed" ||
+    state === "cancelled" ||
+    state === "permission_needed";
+}
 
 type PipelineUiOperation = "dictation" | "copy" | "paste_last" | "selection_transform";
 
@@ -2408,6 +2442,9 @@ export function DockSurface() {
   const soundCuePolicyRef = useRef(createSoundCuePolicy(defaultUserPreferences));
   const forcePressEnterAfterPasteRef = useRef(false);
   const pendingStopSubmitRef = useRef(false);
+  const stopSubmitStartInFlightRef = useRef(false);
+  const winSpaceEventSequenceRef = useRef(0);
+  const winSpaceStartInFlightRef = useRef(false);
   const [desktopSessionState, setDesktopSessionState] = useState<
     DesktopDictationSession | IdleDesktopDictationState
   >({ state: "idle" });
@@ -3086,6 +3123,7 @@ export function DockSurface() {
       });
       pendingStopSubmitRef.current = false;
       forcePressEnterAfterPasteRef.current = false;
+      winSpaceStartInFlightRef.current = false;
       return;
     }
 
@@ -3106,10 +3144,18 @@ export function DockSurface() {
     setVocabularyChoiceState(undefined);
     setDesktopRecoveryAction(session.recoveryAction);
     if (session.state === "listening") {
-      dictationKeyStateRef.current = markDictationKeyLatched(
-        dictationKeyStateRef.current,
-        session.sessionId,
-      );
+      if (winSpaceStartInFlightRef.current) {
+        dictationKeyStateRef.current = markDictationKeyStarted(
+          dictationKeyStateRef.current,
+          session.sessionId,
+        );
+      } else {
+        dictationKeyStateRef.current = markDictationKeyLatched(
+          dictationKeyStateRef.current,
+          session.sessionId,
+        );
+      }
+      winSpaceStartInFlightRef.current = false;
       setCapture({
         state: "recording",
         message: captureRuntime.listeningMessage,
@@ -3125,6 +3171,7 @@ export function DockSurface() {
     }
     pendingStopSubmitRef.current = false;
     forcePressEnterAfterPasteRef.current = false;
+    winSpaceStartInFlightRef.current = false;
 
     dictationKeyStateRef.current = resetDictationKeyState(
       dictationKeyStateRef.current,
@@ -3555,12 +3602,7 @@ export function DockSurface() {
     }
   }
 
-  const canStart =
-    capture.state === "idle" ||
-    capture.state === "captured" ||
-    capture.state === "failed" ||
-    capture.state === "cancelled" ||
-    capture.state === "permission_needed";
+  const canStart = isCaptureStartable(capture.state);
   const canStop = capture.state === "recording";
   const canCancel =
     capture.state === "recording" || capture.state === "requesting_permission";
@@ -4274,6 +4316,9 @@ async function openPresetPicker(targetSnapshot?: TauriDesktopDeliveryTarget) {
       case "stop_submit_pressed":
         requestStopSubmitPressed();
         break;
+      case "stop_submit":
+        requestStopSubmit(payload.source === "global_hotkey");
+        break;
       default:
         handleVoiceDockCommand(payload.command);
     }
@@ -4518,34 +4563,120 @@ async function openPresetPicker(targetSnapshot?: TauriDesktopDeliveryTarget) {
       setVocabularyChoiceBusy(false);
     }
   }
-  function requestStopSubmitPressed() {
-    const desktopSessionIsActive =
-      desktopSessionState.state !== "idle" &&
-      desktopSessionState.state !== "done" &&
-      desktopSessionState.state !== "error" &&
-      desktopSessionState.state !== "cancelled";
-    if (capture.state === "idle" && !desktopSessionIsActive) {
-      void startCapture();
-    }
-  }
-
-  function requestStopSubmit() {
-    const canStopNow = capture.state === "recording" || desktopSessionState.state === "listening";
-    if (!canStopNow) {
-      const startInProgress =
-        capture.state === "requesting_permission" || desktopSessionState.state === "arming";
-      if (startInProgress) {
-        forcePressEnterAfterPasteRef.current = true;
-        pendingStopSubmitRef.current = true;
-      }
-      return;
-    }
-
+  function stopSubmitCaptureNow() {
     forcePressEnterAfterPasteRef.current = true;
     void stopCapture().finally(() => {
       forcePressEnterAfterPasteRef.current = false;
       pendingStopSubmitRef.current = false;
     });
+  }
+
+  function deferStopSubmitUntilStarted() {
+    forcePressEnterAfterPasteRef.current = true;
+    pendingStopSubmitRef.current = true;
+  }
+
+  function requestStopSubmitPressed() {
+    if (stopSubmitStartInFlightRef.current) {
+      return;
+    }
+
+    const hasActiveRecording =
+      capture.state === "recording" || desktopSessionState.state === "listening";
+    if (
+      !hasActiveRecording &&
+      (
+        capture.state === "requesting_permission" ||
+        capture.state === "stopping" ||
+        isDesktopSessionBusyForWinSpace(desktopSessionState)
+      )
+    ) {
+      return;
+    }
+
+    if (hasActiveRecording && dictationKeyStateRef.current.status === "idle") {
+      const activeSessionId = desktopSessionState.state === "idle"
+        ? "win-space-active"
+        : desktopSessionState.sessionId;
+      dictationKeyStateRef.current = markDictationKeyLatched(
+        dictationKeyStateRef.current,
+        activeSessionId,
+      );
+    }
+
+    const resolution = resolveDictationKeyEvent(
+      dictationKeyStateRef.current,
+      createWinSpaceDictationKeyEvent(
+        "pressed",
+        ++winSpaceEventSequenceRef.current,
+      ),
+    );
+    dictationKeyStateRef.current = resolution.state;
+
+    switch (resolution.decision.action) {
+      case "start":
+        winSpaceStartInFlightRef.current = true;
+        stopSubmitStartInFlightRef.current = true;
+        void startCapture().finally(() => {
+          winSpaceStartInFlightRef.current = false;
+          stopSubmitStartInFlightRef.current = false;
+        });
+        break;
+      case "stop":
+        stopSubmitCaptureNow();
+        break;
+      case "defer_stop_until_started":
+        deferStopSubmitUntilStarted();
+        break;
+      case "cancel":
+      case "ignore":
+        break;
+    }
+  }
+
+  function requestStopSubmit(fromWinSpaceRelease = false) {
+    if (!fromWinSpaceRelease) {
+      const canStopNow = capture.state === "recording" || desktopSessionState.state === "listening";
+      if (!canStopNow) {
+        const startInProgress =
+          stopSubmitStartInFlightRef.current ||
+          capture.state === "requesting_permission" ||
+          desktopSessionState.state === "arming";
+        if (startInProgress) {
+          deferStopSubmitUntilStarted();
+        }
+        return;
+      }
+
+      stopSubmitCaptureNow();
+      return;
+    }
+
+    const resolution = resolveDictationKeyEvent(
+      dictationKeyStateRef.current,
+      createWinSpaceDictationKeyEvent(
+        "released",
+        ++winSpaceEventSequenceRef.current,
+      ),
+    );
+    dictationKeyStateRef.current = resolution.state;
+
+    switch (resolution.decision.action) {
+      case "defer_stop_until_started":
+        deferStopSubmitUntilStarted();
+        break;
+      case "stop":
+        stopSubmitCaptureNow();
+        break;
+      case "ignore":
+        if (resolution.decision.reason === "release_without_press") {
+          requestStopSubmit();
+        }
+        break;
+      case "cancel":
+      case "start":
+        break;
+    }
   }
 
   function handleVoiceDockCommand(command: DockCommand) {

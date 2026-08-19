@@ -28,8 +28,173 @@ pub const DESKTOP_CONTROL_HOTKEY_EVENT: &str = "desktop-control://global-hotkey"
 pub const DESKTOP_CONTROL_HOTKEY_CAPTURE_EVENT: &str = "desktop-control://hotkey-capture";
 pub const DICTATION_KEY_ENV: &str = "DICTATION_TAURI_DICTATION_KEY";
 pub const ALT_SPACE_GATE_ENV: &str = "DICTATION_TAURI_ALLOW_ALT_SPACE";
+pub const WIN_SPACE_MASK_MODE_ENV: &str = "DICTATION_TAURI_WIN_SPACE_MASK_MODE";
 pub const HOTKEY_PREFERENCE_FILE: &str = "hotkey-preferences.v1.json";
 pub const ACTION_HOTKEY_PREFERENCE_FILE: &str = "action-hotkey-preferences.v1.json";
+
+const WIN_SPACE_MASK_MODE_ENABLED: &str = "enabled";
+const WIN_SPACE_MASK_KEY_VK: u32 = 0xE8;
+const WIN_SPACE_OWN_INJECTED_EXTRA_INFO: usize = 0x4454_5753;
+
+fn win_space_mask_mode_enabled(value: Option<&str>) -> bool {
+    value.is_some_and(|value| value.eq_ignore_ascii_case(WIN_SPACE_MASK_MODE_ENABLED))
+}
+
+fn win_space_mask_mode_from_env() -> bool {
+    win_space_mask_mode_enabled(std::env::var(WIN_SPACE_MASK_MODE_ENV).ok().as_deref())
+}
+fn win_space_mask_applies(shortcut: NativeShortcutChord) -> bool {
+    shortcut.win && !shortcut.ctrl && !shortcut.alt && !shortcut.shift && shortcut.key_vk == 0x20
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WinSpaceKey {
+    LeftWin,
+    RightWin,
+    Space,
+    Other,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WinSpaceEventKind {
+    Down,
+    Up,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WinSpaceEventSource {
+    Physical,
+    ForeignInjected,
+    OwnInjected,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct WinSpaceModifiers {
+    ctrl: bool,
+    alt: bool,
+    shift: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WinSpaceInput {
+    key: WinSpaceKey,
+    kind: WinSpaceEventKind,
+    modifiers: WinSpaceModifiers,
+    source: WinSpaceEventSource,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WinSpaceDecision {
+    PassThrough,
+    Suppress,
+    SuppressAndEmitReleased,
+    SuppressAndMaskWin,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct WinSpaceTransition {
+    decision: WinSpaceDecision,
+    emit_pressed: bool,
+    emit_released: bool,
+    inject_mask: bool,
+}
+
+impl WinSpaceTransition {
+    const fn pass_through() -> Self {
+        Self {
+            decision: WinSpaceDecision::PassThrough,
+            emit_pressed: false,
+            emit_released: false,
+            inject_mask: false,
+        }
+    }
+
+    const fn suppress() -> Self {
+        Self {
+            decision: WinSpaceDecision::Suppress,
+            emit_pressed: false,
+            emit_released: false,
+            inject_mask: false,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct WinSpaceState {
+    left_win_physical_down: bool,
+    right_win_physical_down: bool,
+    space_physical_down: bool,
+    chord_active: bool,
+    win_masked: bool,
+}
+
+impl WinSpaceState {
+    fn handle(&mut self, input: WinSpaceInput) -> WinSpaceTransition {
+        if input.source == WinSpaceEventSource::OwnInjected {
+            return WinSpaceTransition::pass_through();
+        }
+
+        match (input.key, input.kind) {
+            (WinSpaceKey::LeftWin, WinSpaceEventKind::Down) => {
+                self.left_win_physical_down = true;
+                WinSpaceTransition::pass_through()
+            }
+            (WinSpaceKey::LeftWin, WinSpaceEventKind::Up) => {
+                self.left_win_physical_down = false;
+                WinSpaceTransition::pass_through()
+            }
+            (WinSpaceKey::RightWin, WinSpaceEventKind::Down) => {
+                self.right_win_physical_down = true;
+                WinSpaceTransition::pass_through()
+            }
+            (WinSpaceKey::RightWin, WinSpaceEventKind::Up) => {
+                self.right_win_physical_down = false;
+                WinSpaceTransition::pass_through()
+            }
+            (WinSpaceKey::Space, WinSpaceEventKind::Down) => {
+                self.space_physical_down = true;
+                if self.win_is_physical_down()
+                    && !input.modifiers.ctrl
+                    && !input.modifiers.alt
+                    && !input.modifiers.shift
+                {
+                    if self.chord_active && self.space_physical_down && self.win_masked {
+                        return WinSpaceTransition::suppress();
+                    }
+
+                    self.chord_active = true;
+                    self.win_masked = true;
+                    return WinSpaceTransition {
+                        decision: WinSpaceDecision::SuppressAndMaskWin,
+                        emit_pressed: true,
+                        emit_released: false,
+                        inject_mask: true,
+                    };
+                }
+                WinSpaceTransition::pass_through()
+            }
+            (WinSpaceKey::Space, WinSpaceEventKind::Up) => {
+                self.space_physical_down = false;
+                if self.chord_active {
+                    self.chord_active = false;
+                    self.win_masked = false;
+                    return WinSpaceTransition {
+                        decision: WinSpaceDecision::SuppressAndEmitReleased,
+                        emit_pressed: false,
+                        emit_released: true,
+                        inject_mask: false,
+                    };
+                }
+                WinSpaceTransition::pass_through()
+            }
+            (WinSpaceKey::Other, _) => WinSpaceTransition::pass_through(),
+        }
+    }
+
+    fn win_is_physical_down(self) -> bool {
+        self.left_win_physical_down || self.right_win_physical_down
+    }
+}
 
 static CURRENT_HOTKEY: OnceLock<Mutex<EffectiveDictationHotkey>> = OnceLock::new();
 static HOST_COMMAND_LISTENER_READY: AtomicBool = AtomicBool::new(false);
@@ -196,6 +361,21 @@ pub fn set_desktop_control_escape_cancel_enabled(enabled: bool) -> bool {
 #[tauri::command]
 pub fn set_desktop_control_hotkey_capture_enabled(enabled: bool) -> bool {
     native_alt_space::set_alt_space_capture_enabled(enabled)
+}
+#[tauri::command]
+pub fn restart_desktop_control_hook<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> bool {
+    let hotkey = alt_space_hotkey(Some(Cow::Borrowed(ALT_SPACE_DESKTOP_CONTROL_HOTKEY)));
+    match native_alt_space::restart_alt_space_hook(&app, hotkey) {
+        Ok(()) => true,
+        Err(error) => {
+            eprintln!("[dictation-tauri][hotkey] win-space hook restart failed: {error}");
+            false
+        }
+    }
+}
+
+pub fn shutdown_desktop_control_hooks() {
+    native_alt_space::shutdown_alt_space_hook();
 }
 
 #[tauri::command]
@@ -1789,27 +1969,37 @@ mod native_paste_last {
 mod native_alt_space {
     use super::{
         desktop_control_hotkey_capture_payload, desktop_control_hotkey_pressed_payload,
-        desktop_control_hotkey_released_payload, EffectiveDictationHotkey, NativeShortcutChord,
+        desktop_control_hotkey_released_payload, win_space_mask_mode_from_env,
+        EffectiveDictationHotkey, NativeShortcutChord, WinSpaceDecision, WinSpaceEventKind,
+        WinSpaceEventSource, WinSpaceInput, WinSpaceKey, WinSpaceModifiers, WinSpaceState,
         ALT_SPACE_DESKTOP_CONTROL_HOTKEY, DESKTOP_CONTROL_HOTKEY_CAPTURE_EVENT,
-        DESKTOP_CONTROL_HOTKEY_EVENT,
+        DESKTOP_CONTROL_HOTKEY_EVENT, WIN_SPACE_MASK_KEY_VK, WIN_SPACE_OWN_INJECTED_EXTRA_INFO,
     };
     use crate::tray::{HostCommandPayload, HOST_COMMAND_EVENT};
     use std::borrow::Cow;
     use std::error::Error;
     use std::ptr::null_mut;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{mpsc, Mutex, OnceLock};
+    use std::sync::{mpsc, LazyLock, Mutex, OnceLock};
+    use std::thread::JoinHandle;
     use std::time::{Duration, Instant};
     use tauri::Emitter;
-    use windows_sys::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput as WindowsSendInput, INPUT as WindowsInput, INPUT_0 as WindowsInput0,
+        INPUT_KEYBOARD as WINDOWS_INPUT_KEYBOARD, KEYBDINPUT as WindowsKeybdInput,
+        KEYEVENTF_KEYUP as WINDOWS_KEYEVENTF_KEYUP, VIRTUAL_KEY,
+    };
+    use windows_sys::Win32::Foundation::{GetLastError, LPARAM, LRESULT, WPARAM};
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::System::Threading::GetCurrentThreadId;
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         keybd_event, GetAsyncKeyState, KEYEVENTF_KEYUP, VK_CONTROL, VK_LCONTROL, VK_LMENU,
         VK_LSHIFT, VK_LWIN, VK_MENU, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT, VK_SPACE,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, GetMessageW, SetWindowsHookExW, HC_ACTION, KBDLLHOOKSTRUCT, MSG,
-        WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+        CallNextHookEx, GetMessageW, PeekMessageW, PostThreadMessageW, SetWindowsHookExW,
+        UnhookWindowsHookEx, HC_ACTION, KBDLLHOOKSTRUCT, MSG, PM_NOREMOVE, WH_KEYBOARD_LL,
+        WM_KEYDOWN, WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
 
     #[derive(Clone, Debug)]
@@ -1825,6 +2015,37 @@ mod native_alt_space {
 
     const LLKHF_ALTDOWN: u32 = 0x20;
     const PRESET_CHORD_TIMEOUT: Duration = Duration::from_millis(2500);
+    const LLKHF_INJECTED: u32 = 0x10;
+
+    struct HookRuntime {
+        thread_id: u32,
+        hook: usize,
+        thread: JoinHandle<()>,
+    }
+
+    static HOOK_RUNTIME: LazyLock<Mutex<Option<HookRuntime>>> = LazyLock::new(|| Mutex::new(None));
+    static WIN_SPACE_MASK_ENABLED: AtomicBool = AtomicBool::new(false);
+    static WIN_SPACE_STATE: LazyLock<Mutex<WinSpaceState>> =
+        LazyLock::new(|| Mutex::new(WinSpaceState::default()));
+
+    fn hook_runtime() -> &'static Mutex<Option<HookRuntime>> {
+        &HOOK_RUNTIME
+    }
+
+    fn win_space_state() -> &'static Mutex<WinSpaceState> {
+        &WIN_SPACE_STATE
+    }
+
+    fn reset_win_space_state() {
+        if let Ok(mut state) = win_space_state().lock() {
+            *state = WinSpaceState::default();
+        }
+    }
+
+    pub fn set_win_space_mask_mode(enabled: bool) -> bool {
+        WIN_SPACE_MASK_ENABLED.store(enabled, Ordering::SeqCst);
+        enabled
+    }
 
     static EVENT_SENDER: OnceLock<Mutex<Option<mpsc::Sender<NativeAltSpaceEvent>>>> =
         OnceLock::new();
@@ -1860,6 +2081,7 @@ mod native_alt_space {
         }
         STOP_SUBMIT_DOWN.store(false, Ordering::SeqCst);
         SUPPRESS_STOP_SUBMIT_WIN_UP.store(false, Ordering::SeqCst);
+        reset_win_space_state();
         true
     }
 
@@ -1891,11 +2113,58 @@ mod native_alt_space {
         }
         enabled
     }
+    fn stop_installed_hook() {
+        let runtime = hook_runtime()
+            .lock()
+            .ok()
+            .and_then(|mut guard| guard.take());
+        if let Some(runtime) = runtime {
+            let posted = unsafe { PostThreadMessageW(runtime.thread_id, WM_QUIT, 0, 0) };
+            if posted == 0 {
+                eprintln!(
+                    "[dictation-tauri][hotkey] win-space hook stop message failed error={}",
+                    unsafe { GetLastError() }
+                );
+                unsafe {
+                    let _ = UnhookWindowsHookEx(runtime.hook as _);
+                    let _ = PostThreadMessageW(runtime.thread_id, WM_QUIT, 0, 0);
+                }
+            }
+            let _ = runtime.thread.join();
+            eprintln!("[dictation-tauri][hotkey] win-space hook uninstalled");
+        }
+        reset_win_space_state();
+        STOP_SUBMIT_DOWN.store(false, Ordering::SeqCst);
+        SUPPRESS_STOP_SUBMIT_WIN_UP.store(false, Ordering::SeqCst);
+        LEFT_WIN_DOWN.store(false, Ordering::SeqCst);
+        RIGHT_WIN_DOWN.store(false, Ordering::SeqCst);
+    }
+
+    pub fn shutdown_alt_space_hook() {
+        stop_installed_hook();
+        if let Some(sender) = EVENT_SENDER.get() {
+            if let Ok(mut guard) = sender.lock() {
+                *guard = None;
+            }
+        }
+    }
+
+    pub fn restart_alt_space_hook<R: tauri::Runtime>(
+        app: &tauri::AppHandle<R>,
+        hotkey: EffectiveDictationHotkey,
+    ) -> Result<(), Box<dyn Error>> {
+        register_alt_space_hook(app, hotkey)?;
+        eprintln!("[dictation-tauri][hotkey] win-space hook restarted");
+        Ok(())
+    }
 
     pub fn register_alt_space_hook<R: tauri::Runtime>(
         app: &tauri::AppHandle<R>,
         hotkey: EffectiveDictationHotkey,
     ) -> Result<(), Box<dyn Error>> {
+        stop_installed_hook();
+        set_win_space_mask_mode(win_space_mask_mode_from_env());
+
         let (tx, rx) = mpsc::channel::<NativeAltSpaceEvent>();
         let sender = EVENT_SENDER.get_or_init(|| Mutex::new(None));
         *sender
@@ -1960,17 +2229,75 @@ mod native_alt_space {
             }
         });
 
-        std::thread::spawn(move || unsafe {
+        let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+        let thread = std::thread::spawn(move || unsafe {
+            let thread_id = GetCurrentThreadId();
+            let mut queue_message: MSG = std::mem::zeroed();
+            PeekMessageW(&mut queue_message, null_mut(), 0, 0, PM_NOREMOVE);
+
             let module = GetModuleHandleW(null_mut());
             let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), module, 0);
             if hook.is_null() {
+                let _ = ready_tx.send(Err(GetLastError()));
                 return;
             }
 
+            let _ = ready_tx.send(Ok((thread_id, hook as usize)));
             let mut message: MSG = std::mem::zeroed();
-            while GetMessageW(&mut message, null_mut(), 0, 0) > 0 {}
+            let result = loop {
+                let result = GetMessageW(&mut message, null_mut(), 0, 0);
+                if result <= 0 {
+                    break result;
+                }
+            };
+            if result < 0 {
+                eprintln!(
+                    "[dictation-tauri][hotkey] win-space hook message loop failed error={}",
+                    GetLastError()
+                );
+            }
+            if UnhookWindowsHookEx(hook) == 0 {
+                eprintln!(
+                    "[dictation-tauri][hotkey] win-space hook uninstall failed error={}",
+                    GetLastError()
+                );
+            }
         });
 
+        let (thread_id, hook) = match ready_rx.recv_timeout(Duration::from_secs(2)) {
+            Ok(Ok(runtime)) => runtime,
+            Ok(Err(error)) => {
+                let _ = thread.join();
+                if let Some(sender) = EVENT_SENDER.get() {
+                    if let Ok(mut guard) = sender.lock() {
+                        *guard = None;
+                    }
+                }
+                return Err(format!("SetWindowsHookExW failed: {error}").into());
+            }
+            Err(error) => {
+                let _ = thread.join();
+                if let Some(sender) = EVENT_SENDER.get() {
+                    if let Ok(mut guard) = sender.lock() {
+                        *guard = None;
+                    }
+                }
+                return Err(format!("keyboard hook installation timed out: {error}").into());
+            }
+        };
+
+        hook_runtime()
+            .lock()
+            .map_err(|_| "keyboard hook runtime poisoned")?
+            .replace(HookRuntime {
+                thread_id,
+                hook,
+                thread,
+            });
+        eprintln!(
+            "[dictation-tauri][hotkey] win-space hook installed mask_mode={}",
+            WIN_SPACE_MASK_ENABLED.load(Ordering::SeqCst)
+        );
         Ok(())
     }
 
@@ -1984,6 +2311,12 @@ mod native_alt_space {
             let is_down = event == WM_KEYDOWN || event == WM_SYSKEYDOWN;
             let is_up = event == WM_KEYUP || event == WM_SYSKEYUP;
             let keyboard = &*(l_param as *const KBDLLHOOKSTRUCT);
+            let own_injected_event = (keyboard.flags & LLKHF_INJECTED) != 0
+                && keyboard.dwExtraInfo == WIN_SPACE_OWN_INJECTED_EXTRA_INFO;
+            if own_injected_event {
+                eprintln!("[dictation-tauri][hotkey] win-space own injected event ignored");
+                return CallNextHookEx(null_mut(), code, w_param, l_param);
+            }
             let is_space = keyboard.vkCode == VK_SPACE as u32;
             let is_left_win = keyboard.vkCode == VK_LWIN as u32;
             let is_right_win = keyboard.vkCode == VK_RWIN as u32;
@@ -2019,6 +2352,52 @@ mod native_alt_space {
                     }
                 }
             }
+            let stop_submit_shortcut = current_stop_submit_shortcut();
+            let mask_win_space = WIN_SPACE_MASK_ENABLED.load(Ordering::SeqCst)
+                && super::win_space_mask_applies(stop_submit_shortcut);
+            if mask_win_space && (is_win || is_space) && (is_down || is_up) {
+                let input = WinSpaceInput {
+                    key: win_space_key_from_vk(keyboard.vkCode),
+                    kind: if is_down {
+                        WinSpaceEventKind::Down
+                    } else {
+                        WinSpaceEventKind::Up
+                    },
+                    modifiers: WinSpaceModifiers {
+                        ctrl: is_key_down(VK_CONTROL as i32),
+                        alt: alt_down,
+                        shift: is_key_down(VK_SHIFT as i32),
+                    },
+                    source: if (keyboard.flags & LLKHF_INJECTED) != 0 {
+                        WinSpaceEventSource::ForeignInjected
+                    } else {
+                        WinSpaceEventSource::Physical
+                    },
+                };
+                let transition = win_space_state()
+                    .lock()
+                    .map(|mut state| state.handle(input))
+                    .unwrap_or_else(|_| super::WinSpaceTransition::pass_through());
+
+                if transition.emit_pressed {
+                    eprintln!("[dictation-tauri][hotkey] win-space physical chord activated");
+                }
+                if transition.inject_mask {
+                    inject_win_space_menu_mask();
+                }
+                if transition.emit_pressed {
+                    send_event(NativeAltSpaceEvent::StopSubmitPressed);
+                }
+                if transition.emit_released {
+                    eprintln!("[dictation-tauri][hotkey] win-space space-up suppressed");
+                    send_event(NativeAltSpaceEvent::StopSubmit);
+                    eprintln!("[dictation-tauri][hotkey] win-space released");
+                }
+
+                if transition.decision != WinSpaceDecision::PassThrough {
+                    return 1;
+                }
+            }
             let win_down =
                 LEFT_WIN_DOWN.load(Ordering::SeqCst) || RIGHT_WIN_DOWN.load(Ordering::SeqCst);
             let capture_enabled = ALT_SPACE_CAPTURE_ENABLED.load(Ordering::SeqCst);
@@ -2040,7 +2419,6 @@ mod native_alt_space {
                     return 1;
                 }
             }
-            let stop_submit_shortcut = current_stop_submit_shortcut();
             let is_stop_submit_key = keyboard.vkCode == stop_submit_shortcut.key_vk;
             if is_stop_submit_key
                 && is_down
@@ -2245,6 +2623,14 @@ mod native_alt_space {
     fn is_key_down(vk: i32) -> bool {
         unsafe { (GetAsyncKeyState(vk) & 0x8000u16 as i16) != 0 }
     }
+    fn win_space_key_from_vk(vk_code: u32) -> WinSpaceKey {
+        match vk_code {
+            value if value == VK_LWIN as u32 => WinSpaceKey::LeftWin,
+            value if value == VK_RWIN as u32 => WinSpaceKey::RightWin,
+            value if value == VK_SPACE as u32 => WinSpaceKey::Space,
+            _ => WinSpaceKey::Other,
+        }
+    }
 
     fn send_event(event: NativeAltSpaceEvent) {
         if let Some(lock) = EVENT_SENDER.get() {
@@ -2253,6 +2639,42 @@ mod native_alt_space {
                     let _ = sender.send(event);
                 }
             }
+        }
+    }
+
+    fn win_space_menu_mask_input(key_up: bool) -> WindowsInput {
+        WindowsInput {
+            r#type: WINDOWS_INPUT_KEYBOARD,
+            Anonymous: WindowsInput0 {
+                ki: WindowsKeybdInput {
+                    wVk: VIRTUAL_KEY(WIN_SPACE_MASK_KEY_VK as u16),
+                    wScan: 0,
+                    dwFlags: if key_up {
+                        WINDOWS_KEYEVENTF_KEYUP
+                    } else {
+                        Default::default()
+                    },
+                    time: 0,
+                    dwExtraInfo: WIN_SPACE_OWN_INJECTED_EXTRA_INFO,
+                },
+            },
+        }
+    }
+
+    fn inject_win_space_menu_mask() {
+        let inputs = [
+            win_space_menu_mask_input(false),
+            win_space_menu_mask_input(true),
+        ];
+        let sent = unsafe { WindowsSendInput(&inputs, std::mem::size_of::<WindowsInput>() as i32) };
+        if sent == inputs.len() as u32 {
+            eprintln!("[dictation-tauri][hotkey] win-space menu mask injected");
+        } else {
+            eprintln!(
+                "[dictation-tauri][hotkey] win-space menu mask injection failed sent={} expected={}",
+                sent,
+                inputs.len()
+            );
         }
     }
 
@@ -2339,11 +2761,311 @@ mod native_alt_space {
     ) -> Result<(), Box<dyn Error>> {
         Ok(())
     }
+    pub fn shutdown_alt_space_hook() {}
+
+    pub fn restart_alt_space_hook<R: tauri::Runtime>(
+        app: &tauri::AppHandle<R>,
+        hotkey: EffectiveDictationHotkey,
+    ) -> Result<(), Box<dyn Error>> {
+        register_alt_space_hook(app, hotkey)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn win_space_input(
+        key: WinSpaceKey,
+        kind: WinSpaceEventKind,
+        modifiers: WinSpaceModifiers,
+        source: WinSpaceEventSource,
+    ) -> WinSpaceInput {
+        WinSpaceInput {
+            key,
+            kind,
+            modifiers,
+            source,
+        }
+    }
+
+    fn win_down(key: WinSpaceKey, source: WinSpaceEventSource) -> WinSpaceInput {
+        win_space_input(
+            key,
+            WinSpaceEventKind::Down,
+            WinSpaceModifiers::default(),
+            source,
+        )
+    }
+
+    fn win_up(key: WinSpaceKey) -> WinSpaceInput {
+        win_space_input(
+            key,
+            WinSpaceEventKind::Up,
+            WinSpaceModifiers::default(),
+            WinSpaceEventSource::Physical,
+        )
+    }
+
+    fn space_event(
+        kind: WinSpaceEventKind,
+        modifiers: WinSpaceModifiers,
+        source: WinSpaceEventSource,
+    ) -> WinSpaceInput {
+        win_space_input(WinSpaceKey::Space, kind, modifiers, source)
+    }
+
+    #[test]
+    fn win_space_machine_emits_once_and_returns_to_clean_state() {
+        let mut state = WinSpaceState::default();
+
+        assert_eq!(
+            state
+                .handle(win_down(
+                    WinSpaceKey::LeftWin,
+                    WinSpaceEventSource::Physical
+                ))
+                .decision,
+            WinSpaceDecision::PassThrough
+        );
+        let activated = state.handle(space_event(
+            WinSpaceEventKind::Down,
+            WinSpaceModifiers::default(),
+            WinSpaceEventSource::Physical,
+        ));
+        assert_eq!(activated.decision, WinSpaceDecision::SuppressAndMaskWin);
+        assert!(activated.emit_pressed);
+        assert!(activated.inject_mask);
+
+        let repeated = state.handle(space_event(
+            WinSpaceEventKind::Down,
+            WinSpaceModifiers::default(),
+            WinSpaceEventSource::Physical,
+        ));
+        assert_eq!(repeated.decision, WinSpaceDecision::Suppress);
+        assert!(!repeated.emit_pressed);
+        assert!(!repeated.emit_released);
+
+        let released = state.handle(space_event(
+            WinSpaceEventKind::Up,
+            WinSpaceModifiers::default(),
+            WinSpaceEventSource::Physical,
+        ));
+        assert_eq!(released.decision, WinSpaceDecision::SuppressAndEmitReleased);
+        assert!(released.emit_released);
+        assert!(!released.emit_pressed);
+        assert_eq!(
+            state.handle(win_up(WinSpaceKey::LeftWin)).decision,
+            WinSpaceDecision::PassThrough
+        );
+        assert_eq!(state, WinSpaceState::default());
+    }
+
+    #[test]
+    fn right_win_activates_the_same_machine_path() {
+        let mut state = WinSpaceState::default();
+
+        state.handle(win_down(
+            WinSpaceKey::RightWin,
+            WinSpaceEventSource::Physical,
+        ));
+        let pressed = state.handle(space_event(
+            WinSpaceEventKind::Down,
+            WinSpaceModifiers::default(),
+            WinSpaceEventSource::Physical,
+        ));
+        let released = state.handle(space_event(
+            WinSpaceEventKind::Up,
+            WinSpaceModifiers::default(),
+            WinSpaceEventSource::Physical,
+        ));
+        state.handle(win_up(WinSpaceKey::RightWin));
+        assert!(pressed.emit_pressed);
+        assert!(released.emit_released);
+        assert!(!state.right_win_physical_down);
+        assert!(!state.chord_active);
+    }
+
+    #[test]
+    fn releasing_win_before_space_keeps_release_exactly_once() {
+        let mut state = WinSpaceState::default();
+
+        state.handle(win_down(
+            WinSpaceKey::LeftWin,
+            WinSpaceEventSource::Physical,
+        ));
+        let pressed = state.handle(space_event(
+            WinSpaceEventKind::Down,
+            WinSpaceModifiers::default(),
+            WinSpaceEventSource::Physical,
+        ));
+        let win_released = state.handle(win_up(WinSpaceKey::LeftWin));
+        let space_released = state.handle(space_event(
+            WinSpaceEventKind::Up,
+            WinSpaceModifiers::default(),
+            WinSpaceEventSource::Physical,
+        ));
+
+        assert!(pressed.emit_pressed);
+        assert_eq!(win_released.decision, WinSpaceDecision::PassThrough);
+        assert!(space_released.emit_released);
+        assert_eq!(state, WinSpaceState::default());
+    }
+
+    #[test]
+    fn releasing_space_before_win_suppresses_space_only() {
+        let mut state = WinSpaceState::default();
+
+        state.handle(win_down(
+            WinSpaceKey::LeftWin,
+            WinSpaceEventSource::Physical,
+        ));
+        state.handle(space_event(
+            WinSpaceEventKind::Down,
+            WinSpaceModifiers::default(),
+            WinSpaceEventSource::Physical,
+        ));
+        let space_released = state.handle(space_event(
+            WinSpaceEventKind::Up,
+            WinSpaceModifiers::default(),
+            WinSpaceEventSource::Physical,
+        ));
+        let win_released = state.handle(win_up(WinSpaceKey::LeftWin));
+
+        assert_eq!(
+            space_released.decision,
+            WinSpaceDecision::SuppressAndEmitReleased
+        );
+        assert_eq!(win_released.decision, WinSpaceDecision::PassThrough);
+        assert_eq!(state, WinSpaceState::default());
+    }
+
+    #[test]
+    fn own_injected_event_passes_without_changing_physical_state() {
+        let mut state = WinSpaceState::default();
+        state.handle(win_down(
+            WinSpaceKey::LeftWin,
+            WinSpaceEventSource::Physical,
+        ));
+
+        let own = state.handle(space_event(
+            WinSpaceEventKind::Down,
+            WinSpaceModifiers::default(),
+            WinSpaceEventSource::OwnInjected,
+        ));
+
+        assert_eq!(own.decision, WinSpaceDecision::PassThrough);
+        assert!(!state.space_physical_down);
+        assert!(!state.chord_active);
+        assert!(!state.win_masked);
+    }
+
+    #[test]
+    fn foreign_injected_event_uses_normal_hotkey_state() {
+        let mut state = WinSpaceState::default();
+        state.handle(win_down(
+            WinSpaceKey::LeftWin,
+            WinSpaceEventSource::ForeignInjected,
+        ));
+        let pressed = state.handle(space_event(
+            WinSpaceEventKind::Down,
+            WinSpaceModifiers::default(),
+            WinSpaceEventSource::ForeignInjected,
+        ));
+        let released = state.handle(space_event(
+            WinSpaceEventKind::Up,
+            WinSpaceModifiers::default(),
+            WinSpaceEventSource::ForeignInjected,
+        ));
+
+        assert!(pressed.emit_pressed);
+        assert!(released.emit_released);
+    }
+
+    #[test]
+    fn win_only_win_e_and_extra_modifiers_pass_through() {
+        let mut state = WinSpaceState::default();
+        assert_eq!(
+            state
+                .handle(win_down(
+                    WinSpaceKey::LeftWin,
+                    WinSpaceEventSource::Physical
+                ))
+                .decision,
+            WinSpaceDecision::PassThrough
+        );
+        assert_eq!(
+            state
+                .handle(win_space_input(
+                    WinSpaceKey::Other,
+                    WinSpaceEventKind::Down,
+                    WinSpaceModifiers::default(),
+                    WinSpaceEventSource::Physical,
+                ))
+                .decision,
+            WinSpaceDecision::PassThrough
+        );
+        assert_eq!(
+            state
+                .handle(space_event(
+                    WinSpaceEventKind::Down,
+                    WinSpaceModifiers {
+                        ctrl: true,
+                        alt: false,
+                        shift: false,
+                    },
+                    WinSpaceEventSource::Physical,
+                ))
+                .decision,
+            WinSpaceDecision::PassThrough
+        );
+        assert!(!state.chord_active);
+    }
+
+    #[test]
+    fn alt_space_and_non_win_shortcuts_do_not_use_win_masking() {
+        let mut state = WinSpaceState::default();
+        let alt_space = state.handle(space_event(
+            WinSpaceEventKind::Down,
+            WinSpaceModifiers {
+                ctrl: false,
+                alt: true,
+                shift: false,
+            },
+            WinSpaceEventSource::Physical,
+        ));
+        assert_eq!(alt_space.decision, WinSpaceDecision::PassThrough);
+        assert!(!win_space_mask_applies(NativeShortcutChord {
+            ctrl: false,
+            alt: true,
+            shift: false,
+            win: false,
+            key_vk: 0x20,
+        }));
+        assert!(!win_space_mask_applies(NativeShortcutChord {
+            ctrl: false,
+            alt: false,
+            shift: false,
+            win: true,
+            key_vk: 0x45,
+        }));
+        assert!(win_space_mask_applies(NativeShortcutChord {
+            ctrl: false,
+            alt: false,
+            shift: false,
+            win: true,
+            key_vk: 0x20,
+        }));
+    }
+
+    #[test]
+    fn mask_mode_requires_explicit_enabled_value() {
+        assert!(win_space_mask_mode_enabled(Some("enabled")));
+        assert!(win_space_mask_mode_enabled(Some("ENABLED")));
+        assert!(!win_space_mask_mode_enabled(None));
+        assert!(!win_space_mask_mode_enabled(Some("disabled")));
+        assert!(!win_space_mask_mode_enabled(Some("true")));
+    }
 
     #[test]
     fn defaults_to_alt_space_on_windows() {

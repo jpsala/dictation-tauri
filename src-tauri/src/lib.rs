@@ -150,6 +150,7 @@ pub fn run() {
             desktop_control::apply_desktop_control_action_hotkey_registration,
             desktop_control::set_desktop_control_escape_cancel_enabled,
             desktop_control::set_desktop_control_hotkey_capture_enabled,
+            desktop_control::restart_desktop_control_hook,
             desktop_control::set_desktop_control_hotkey_listener_ready,
             desktop_control::drain_desktop_control_hotkey_events,
             desktop_control::set_desktop_control_host_command_listener_ready,
@@ -176,6 +177,11 @@ pub fn run() {
             tray::show_dock_context_menu,
             tray::sync_host_preset_menu_snapshot,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri app");
+        .build(tauri::generate_context!())
+        .expect("error while building Tauri app")
+        .run(|_, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                desktop_control::shutdown_desktop_control_hooks();
+            }
+        });
 }

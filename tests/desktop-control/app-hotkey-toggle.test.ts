@@ -131,4 +131,38 @@ describe("App global hotkey dictation-key seam", () => {
     expect(listenerBlock).toContain("await prepareDictationStartContext({ targetSnapshot: event.targetSnapshot });");
     expect(listenerBlock).not.toContain("savedDeliveryTargetRef.current = event.targetSnapshot");
   });
+  it("queues stop-submit release while asynchronous start is in flight", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+    const pressedStart = source.indexOf("function requestStopSubmitPressed");
+    const releaseStart = source.indexOf("function requestStopSubmit()", pressedStart);
+    const handlerBlock = source.slice(pressedStart, source.indexOf("function handleVoiceDockCommand", releaseStart));
+
+    expect(handlerBlock).toContain("resolveDictationKeyEvent");
+    expect(handlerBlock).toContain("deferStopSubmitUntilStarted");
+    expect(source).toContain("pendingStopSubmitRef.current = true");
+  });
+  it("uses Alt+Space hold/tap semantics for Win+Space", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+    const handlerStart = source.indexOf("function requestStopSubmitPressed");
+    const handlerEnd = source.indexOf("function handleVoiceDockCommand", handlerStart);
+    const handlerBlock = source.slice(handlerStart, handlerEnd);
+    const hostCommandStart = source.indexOf("case \"stop_submit_pressed\":");
+    const hostCommandEnd = source.indexOf("default:", hostCommandStart);
+    const hostCommandBlock = source.slice(hostCommandStart, hostCommandEnd);
+
+    expect(handlerBlock).toContain("createWinSpaceDictationKeyEvent");
+    expect(source).toContain("markDictationKeyStarted");
+    expect(handlerBlock).toContain("markDictationKeyLatched");
+    expect(hostCommandBlock).toContain("requestStopSubmitPressed()");
+    expect(hostCommandBlock).toContain("requestStopSubmit(payload.source === \"global_hotkey\")");
+  });
+  it("allows Win+Space to start from a reviewed run", () => {
+    const source = readFileSync("src/App.tsx", "utf8");
+    const helperStart = source.indexOf("function isDesktopSessionBusyForWinSpace");
+    const helperEnd = source.indexOf("function isCaptureStartable", helperStart);
+    const helperBlock = source.slice(helperStart, helperEnd);
+
+    expect(helperBlock).not.toContain('state.state === "reviewing"');
+  });
+
 });
