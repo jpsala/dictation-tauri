@@ -126,6 +126,22 @@ Diseñar e implementar el feedback visual del estado no-logueado:
 - Publicado en prerelease `fixvox-tauri-v0.1.0-20260819144426` (instalado y corriendo, pid vivo).
   El login real (OAuth) sigue sin comprobarse en vivo (gated).
 
+## Enmienda · Confirmación "Ya está logueado" (2026-08-19)
+
+- Tras completar el login (fase `ready` del `OnboardingSurface`), ya no se muestra la
+  pantalla grande "Todo listo para dictar" + "Empezar" que se auto-cerraba. Ahora es una
+  tarjeta compacta y centrada: badge circular de éxito (acento Burnt Signal), "Dictation",
+  título "Ya está logueado", línea corta y botón "Cerrar".
+- Se eliminó el auto-handoff del estado `ready`: la ventana ya no se cierra sola; el botón
+  "Cerrar" dispara `onReady` → `completeOnboarding` (abre el dock y cierra la ventana de setup).
+- La ventana `account-setup` (Tauri) se achica a 400×360 fija (no redimensionable) al entrar
+  en `ready`, vía `getCurrentWindow().setSize/setMinSize/setResizable` (best-effort, con try/catch).
+- Archivos: `src/onboarding/OnboardingSurface.tsx` (copy `ready`, efecto de resize, badge),
+  `src/onboarding/onboarding.css` (`.onboarding-panel--confirm`, `.onboarding-badge`).
+- Verificación: `npm run build` OK; `tests/onboarding/account-first-flow.test.tsx` 5/5
+  (incluye confirmación `ready`); `tests/visual/onboarding-ready.spec.ts` 2/2 (card visible
+  en navegador desktop y estrecho); screenshot `artifacts/account-gate/logged-in-confirmation.png`.
+  Pendiente de release; el resize en vivo de la ventana Tauri no se verificó físicamente (gated).
 ## Evidencia / Source Refs
 
 - `src/onboarding/tauri-account-gate.tsx` (gate, `getEffectiveTauriAccountReadiness`,
