@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { OnboardingSurface } from "../../src/onboarding/OnboardingSurface";
 import {
 	createAccountFirstFixtureController,
@@ -32,6 +32,21 @@ describe("provider-free first-run welcome", () => {
 		expect(JSON.stringify(controller.snapshot())).not.toMatch(
 			/token|subject|deviceId|installId|policy/i,
 		);
+	});
+	it("renders a closable confirmation when the account is ready", async () => {
+		const controller = createAccountFirstFixtureController(happyPathFixture);
+		await controller.continueWithGoogle();
+		expect(await controller.pollBrowserSignIn()).toEqual({ phase: "ready" });
+
+		const onReady = vi.fn();
+		const html = renderToStaticMarkup(
+			<OnboardingSurface controller={controller} onReady={onReady} />,
+		);
+
+		expect(html).toContain("Ya está logueado");
+		expect(html).toContain("Cerrar");
+		expect(html.match(/<button/g)).toHaveLength(1);
+		expect(onReady).not.toHaveBeenCalled();
 	});
 
 	it("renders one primary Google action on Welcome", () => {

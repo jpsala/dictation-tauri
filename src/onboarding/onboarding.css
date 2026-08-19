@@ -107,3 +107,37 @@
   .onboarding-panel { padding: 24px; }
   .onboarding-actions > .button { width: 100%; }
 }
+.onboarding-shell--confirm {
+  padding: 16px;
+}
+
+.onboarding-panel--confirm {
+  width: min(100%, 300px);
+  padding: 24px;
+  text-align: center;
+}
+
+.onboarding-panel--confirm .onboarding-actions {
+  justify-content: center;
+}
+
+.onboarding-badge {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: var(--product-accent);
+  color: #fff;
+}
+
+.onboarding-badge svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

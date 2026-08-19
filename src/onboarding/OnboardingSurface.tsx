@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { tauriGlobalHotkeyShortcut } from "../desktop-control/tauri-host-control";
 import "./onboarding.css";
+import { isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 import type {
 	AccountFirstController,
 	AccountFirstPhase,
@@ -38,9 +40,9 @@ const copyByPhase: Record<AccountFirstPhase, OnboardingCopy> = {
 		detail: "Estamos terminando de vincular tu cuenta.",
 	},
 	ready: {
-		title: "Todo listo para dictar",
-		detail: `Usá ${tauriGlobalHotkeyShortcut} para empezar o detener el dictado.`,
-		primary: "Empezar",
+		title: "Ya está logueado",
+		detail: "Tu cuenta quedó vinculada. Ya podés empezar a dictar cuando quieras.",
+		primary: "Cerrar",
 	},
 	offline: {
 		title: "No pudimos conectarnos",
@@ -103,11 +105,26 @@ export function OnboardingSurface({
 			});
 	}, [onReady]);
 
-	useEffect(() => {
-		if (snapshot.phase === "ready") {
-			completeReadyHandoff();
+	const shrinkToConfirmation = useCallback(() => {
+		if (!isTauri()) {
 			return;
 		}
+		try {
+			const win = getCurrentWindow();
+			void win.setResizable(false);
+			void win.setMinSize(new LogicalSize(400, 360));
+			void win.setSize(new LogicalSize(400, 360));
+		} catch {
+			// Resize is best-effort; keep the larger window if unavailable.
+		}
+	}, []);
+
+	useEffect(() => {
+		if (snapshot.phase === "ready") {
+			shrinkToConfirmation();
+		}
+	}, [snapshot.phase, shrinkToConfirmation]);
+	useEffect(() => {
 		if (snapshot.phase === "checking") {
 			void controller.completeStartupCheck().then(setSnapshot);
 			return;
@@ -159,12 +176,22 @@ export function OnboardingSurface({
 	};
 
 	return (
-		<main className="onboarding-shell" data-testid="account-first-onboarding">
+		<main
+			className={`onboarding-shell${snapshot.phase === "ready" ? " onboarding-shell--confirm" : ""}`}
+			data-testid="account-first-onboarding"
+		>
 			<section
-				className="onboarding-panel"
+				className={`onboarding-panel${snapshot.phase === "ready" ? " onboarding-panel--confirm" : ""}`}
 				aria-live="polite"
 				aria-labelledby="onboarding-title"
 			>
+				{snapshot.phase === "ready" && (
+					<div className="onboarding-badge" aria-hidden="true">
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M5 13l4 4L19 7" />
+						</svg>
+					</div>
+				)}
 				<p className="onboarding-step">Dictation</p>
 				<h1 id="onboarding-title">{copy.title}</h1>
 				<p>{copy.detail}</p>
