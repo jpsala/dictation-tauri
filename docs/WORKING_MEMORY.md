@@ -70,8 +70,8 @@ decisiones.
     `default.json` quedó en `["main","dock-companion","settings","account-setup"]`.
   - CSS del pill: `padding: 0 11px` → `0 13px` (respiración derecha cómoda y simétrica).
 - Verificado provider-free: `npm run check`, tests onboarding, `npm run build` y el test visual
-  `account-gate.spec.ts` (pill → `show_account_setup_window`). La app instalada (release
-  `0.1.0`) sigue sin este fix hasta un nuevo release. El login real (OAuth) sigue sin comprobarse.
+  `account-gate.spec.ts` (pill → `show_account_setup_window`). Publicado en prerelease
+  `fixvox-tauri-v0.1.0-20260819144426` (instalado y corriendo, pid vivo). El login real (OAuth) sigue sin comprobarse en vivo (gated).
 
 ## Contrato Congelado
 
