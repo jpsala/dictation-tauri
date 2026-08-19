@@ -3,12 +3,10 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { AccountNoticeSurface } from "../../src/onboarding/account-notice-surface";
 import {
   dockGateFeedbackForPhase,
   ensureTauriDictationReadiness,
   getEffectiveTauriAccountReadiness,
-  openTauriAccountNotice,
   projectTauriAccountGateReady,
   shouldOpenTauriAccountSetup,
 } from "../../src/onboarding/tauri-account-gate";
@@ -117,7 +115,7 @@ describe("dock gate feedback copy", () => {
     expect(dockGateFeedbackForPhase("service_unavailable")).toEqual({
       label: "Conectá tu cuenta",
       detail: "Iniciá sesión para empezar a dictar.",
-      action: "open-notice",
+      action: "open-setup",
     });
   });
 
@@ -140,26 +138,5 @@ describe("dock gate feedback copy", () => {
         /device|policy|provider|token|google/,
       );
     }
-  });
-});
-
-describe("account notice window", () => {
-  it("opens the compact notice without hiding the dock", async () => {
-    const invoke = vi.fn(async () => null);
-
-    await openTauriAccountNotice(invoke);
-
-    expect(invoke.mock.calls.map(([command]) => command)).toEqual([
-      "show_account_notice_window",
-    ]);
-  });
-
-  it("renders the static notice copy without exposing account details", () => {
-    const markup = renderToStaticMarkup(createElement(AccountNoticeSurface));
-
-    expect(markup).toContain("Conectá tu cuenta");
-    expect(markup).toContain("Iniciá sesión para empezar a dictar.");
-    expect(markup).toContain("Cerrar");
-    expect(markup.toLowerCase()).not.toMatch(/device|policy|provider|token|google/);
   });
 });

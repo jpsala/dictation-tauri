@@ -147,7 +147,6 @@ import type {
 import { OnboardingSurface } from "./onboarding/OnboardingSurface";
 import { createAccountFirstFixtureController } from "./onboarding/account-first-flow";
 import { SetupReadinessRouter } from "./onboarding/SetupReadinessRouter";
-import { AccountNoticeSurface } from "./onboarding/account-notice-surface";
 import { createStartDockHandoff } from "./onboarding/start-dock-handoff";
 import {
   ensureTauriDictationReadiness,
@@ -1288,13 +1287,13 @@ function createSyntheticDockVu(tick: number) {
   return { level, bands };
 }
 
-function getAppSurface(): "dock" | "companion" | "preset-picker" | "settings" | "onboarding" | "dictation-lab" | "account-notice" {
+function getAppSurface(): "dock" | "companion" | "preset-picker" | "settings" | "onboarding" | "dictation-lab" {
   if (typeof window === "undefined") {
     return "dock";
   }
 
   const surface = new URLSearchParams(window.location.search).get("surface");
-  if (surface === "companion" || surface === "preset-picker" || surface === "settings" || surface === "onboarding" || surface === "dictation-lab" || surface === "account-notice") {
+  if (surface === "companion" || surface === "preset-picker" || surface === "settings" || surface === "onboarding" || surface === "dictation-lab") {
     return surface;
   }
 
@@ -5421,9 +5420,6 @@ export function App() {
   }
   if (appSurface === "dictation-lab") {
     return <DictationLabSurface />;
-  }
-  if (appSurface === "account-notice") {
-    return <AccountNoticeSurface />;
   }
   if (appSurface === "onboarding") {
     if (isTauri()) {

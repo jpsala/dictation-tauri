@@ -54,6 +54,25 @@ decisiones.
   Instalación exit `0`, versión `0.1.0`, app instalada viva. Evidencia y URLs:
   `docs/tracks/fixvox-tauri-cloud-release.md`.
 
+## Cuenta / Onboarding · Corrección en source (sin release)
+
+- Problema reportado en la app instalada: el pill del dock "Conectá tu cuenta" no tenía
+  padding derecho y al hacer click abría una ventana `account-notice` que no iba a ningún lado
+  (solo "Cerrar").
+- Causa raíz original: `capabilities/default.json` no listaba `account-notice`/`account-setup`,
+  así que `getCurrentWindow().close()` desde esas ventanas era denegado.
+- Fix en source (pendiente de release):
+  - Pill del dock `service_unavailable` ahora abre directo la ventana de setup/login
+    (`openTauriAccountSetup` → `hide_dock` + `show_account_setup_window`), saltando el aviso
+    intermedio redundante.
+  - Se eliminó la superficie `account-notice` (ventana Rust `show_account_notice_window`, ruta
+    `?surface=account-notice`, componente `AccountNoticeSurface`, tests y entrada de capability);
+    `default.json` quedó en `["main","dock-companion","settings","account-setup"]`.
+  - CSS del pill: `padding: 0 11px` → `0 13px` (respiración derecha cómoda y simétrica).
+- Verificado provider-free: `npm run check`, tests onboarding, `npm run build` y el test visual
+  `account-gate.spec.ts` (pill → `show_account_setup_window`). La app instalada (release
+  `0.1.0`) sigue sin este fix hasta un nuevo release. El login real (OAuth) sigue sin comprobarse.
+
 ## Contrato Congelado
 
 - `profiles` y `profile_versions` son la autoridad única. La metadata de

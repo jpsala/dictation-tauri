@@ -6,9 +6,6 @@ const SETTINGS_WINDOW_URL: &str = "index.html#settings";
 const ACCOUNT_SETUP_WINDOW_LABEL: &str = "account-setup";
 const ACCOUNT_SETUP_WINDOW_TITLE: &str = "Fixvox Setup";
 const ACCOUNT_SETUP_WINDOW_URL: &str = "index.html?surface=onboarding";
-const ACCOUNT_NOTICE_WINDOW_LABEL: &str = "account-notice";
-const ACCOUNT_NOTICE_WINDOW_TITLE: &str = "Dictation Tauri";
-const ACCOUNT_NOTICE_WINDOW_URL: &str = "index.html?surface=account-notice";
 
 const DEFAULT_ADMIN_CONTROL_ROOM_URL: &str = "https://fixvox.jpsala.dev/admin/pi";
 pub const DICTATION_LAB_WINDOW_LABEL: &str = "dictation-lab";
@@ -85,20 +82,6 @@ pub fn show_account_setup_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Resu
     show_existing_settings_window(window)
 }
 
-pub fn show_account_notice_window_for_app<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
-    eprintln!("[dictation-tauri][settings] account notice show requested");
-    let window = if let Some(window) = app.get_webview_window(ACCOUNT_NOTICE_WINDOW_LABEL) {
-        eprintln!("[dictation-tauri][settings] reusing account notice window");
-        window
-    } else {
-        create_fresh_account_notice_window(app)
-            .map_err(|error| format!("account notice window unavailable: {error}"))?
-    };
-    window
-        .eval("window.location.replace('index.html?surface=account-notice')")
-        .map_err(|error| format!("account notice navigation failed: {error}"))?;
-    show_existing_settings_window(window)
-}
 
 pub fn show_admin_control_room_for_app<R: Runtime>(_app: &AppHandle<R>) -> Result<(), String> {
     if !crate::fixvox_cloud::policy_allows_admin_settings() {
@@ -192,28 +175,6 @@ fn create_fresh_account_setup_window<R: Runtime>(
     Ok(window)
 }
 
-fn create_fresh_account_notice_window<R: Runtime>(
-    app: &AppHandle<R>,
-) -> tauri::Result<WebviewWindow<R>> {
-    eprintln!("[dictation-tauri][settings] creating account notice window");
-    let window = tauri::WebviewWindowBuilder::new(
-        app,
-        ACCOUNT_NOTICE_WINDOW_LABEL,
-        WebviewUrl::App(ACCOUNT_NOTICE_WINDOW_URL.into()),
-    )
-    .title(ACCOUNT_NOTICE_WINDOW_TITLE)
-    .inner_size(360.0, 160.0)
-    .resizable(false)
-    .decorations(true)
-    .shadow(true)
-    .focused(true)
-    .skip_taskbar(false)
-    .visible(false)
-    .build()?;
-
-    attach_close_lifecycle(window.clone());
-    Ok(window)
-}
 
 fn attach_close_lifecycle<R: Runtime>(window: WebviewWindow<R>) {
     window.on_window_event(move |event| {
@@ -241,12 +202,6 @@ pub async fn show_account_setup_window(app: AppHandle) -> Result<(), String> {
         })?
 }
 
-#[tauri::command]
-pub async fn show_account_notice_window(app: AppHandle) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || show_account_notice_window_for_app(&app))
-        .await
-        .map_err(|_| "account notice window unavailable (notice_startup_join_failed)".to_string())?
-}
 
 #[tauri::command]
 pub fn show_admin_control_room(app: AppHandle) -> Result<(), String> {

@@ -35,9 +35,6 @@ export async function openTauriAccountSetup(invoke: TauriAccountGateInvoke): Pro
   await invoke("show_account_setup_window");
 }
 
-export async function openTauriAccountNotice(invoke: TauriAccountGateInvoke): Promise<void> {
-  await invoke("show_account_notice_window");
-}
 
 export function shouldOpenTauriAccountSetup(phase: AccountFirstPhase): boolean {
   return phase === "welcome" ||
@@ -79,7 +76,7 @@ export type DockGateFeedback = {
   /** Hover/tooltip context; never exposes device id, policy, or provider. */
   detail: string;
   /** Presence of an action turns the pill into a button. */
-  action?: "open-notice" | "refresh";
+  action?: "open-setup" | "refresh";
 };
 
 /** Maps a not-ready phase to the compact feedback the dock can show. */
@@ -91,7 +88,7 @@ export function dockGateFeedbackForPhase(
       return {
         label: "Conectá tu cuenta",
         detail: "Iniciá sesión para empezar a dictar.",
-        action: "open-notice",
+        action: "open-setup",
       };
     case "offline":
       return {
@@ -170,8 +167,8 @@ export function TauriAccountGate({ invoke, renderReady }: TauriAccountGateProps)
       : "dock-gate__pill dock-gate__pill--action";
 
   const activate = () => {
-    if (action === "open-notice") {
-      void openTauriAccountNotice(invoke).catch(() => undefined);
+    if (action === "open-setup") {
+      void openTauriAccountSetup(invoke).catch(() => undefined);
       return;
     }
     if (action === "refresh") {

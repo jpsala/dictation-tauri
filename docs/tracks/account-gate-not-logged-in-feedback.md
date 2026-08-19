@@ -112,6 +112,17 @@ Diseñar e implementar el feedback visual del estado no-logueado:
   screenshot: el render real de la ventana 360×160 y el cierre por "Cerrar"
   quedan sin confirmación física.
 
+## Enmienda · Pill abre setup directo (2026-08-19)
+
+- Se revirtió el "aviso compacto": el pill `service_unavailable` ("Conectá tu cuenta")
+  ahora abre directo la ventana de setup/login (`openTauriAccountSetup` → `hide_dock` +
+  `show_account_setup_window`), sin pasar por la ventana `account-notice`.
+- Se eliminó la superficie `account-notice`: comando Rust `show_account_notice_window`,
+  ruta `?surface=account-notice`, componente `AccountNoticeSurface`, sus tests y la entrada
+  en `default.json` (quedó `["main","dock-companion","settings","account-setup"]`).
+- El pill del dock también recibió `padding: 0 11px` → `0 13px` para respiración derecha.
+- Pendiente de release; la app instalada (0.1.0) aún muestra el comportamiento anterior.
+
 ## Evidencia / Source Refs
 
 - `src/onboarding/tauri-account-gate.tsx` (gate, `getEffectiveTauriAccountReadiness`,

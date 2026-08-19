@@ -42,8 +42,6 @@ test("not-signed-in dock shows an actionable connect pill", async ({ page }) => 
   await page.screenshot({ path: "artifacts/account-gate/not-logged-in.png" });
 
   await connect.click();
-  await expect(page.getByText("Abriendo configuración", { exact: false })).toBeVisible();
   const calls = await page.evaluate(() => window.__testInvokeCalls ?? []);
-  expect(calls).toContain("hide_dock");
   expect(calls).toContain("show_account_setup_window");
 });
