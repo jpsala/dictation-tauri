@@ -121,7 +121,10 @@ Diseñar e implementar el feedback visual del estado no-logueado:
   ruta `?surface=account-notice`, componente `AccountNoticeSurface`, sus tests y la entrada
   en `default.json` (quedó `["main","dock-companion","settings","account-setup"]`).
 - El pill del dock también recibió `padding: 0 11px` → `0 13px` para respiración derecha.
-- Pendiente de release; la app instalada (0.1.0) aún muestra el comportamiento anterior.
+- El bloque CSS huérfano `.account-notice` (`.account-notice__title/__detail/__actions`) en
+  `src/styles.css` también se eliminó: ningún elemento lo usaba tras borrar `AccountNoticeSurface`.
+- Publicado en prerelease `fixvox-tauri-v0.1.0-20260819144426` (instalado y corriendo, pid vivo).
+  El login real (OAuth) sigue sin comprobarse en vivo (gated).
 
 ## Evidencia / Source Refs
 
