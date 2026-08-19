@@ -44,9 +44,15 @@ decisiones.
 - Checks actuales: `npm run build`, Vitest focal
   `app-hotkey-toggle.test.ts` (10) y `dictation-key.test.ts` (10), compilación
   Tauri durante el arranque real; permanecen warnings preexistentes.
-- Próximo paso: crear una validación provider-free de la integración renderer
-  `pressed`/`released` o dejar el spike bloqueado; no hacer commit, push,
-  release, login ni delivery real.
+- Próximo paso: cerrar la validación provider-free de la integración renderer
+  `pressed`/`released` o dejar el spike bloqueado; no repetir el smoke físico de
+  `Win+Space`, porque puede ejecutar provider/paste real.
+- Release Windows 2026-08-19: prerelease unsigned
+  `fixvox-tauri-v0.1.0-20260819130850` publicada desde el commit fuente
+  `3697811981df99db571741bc7aa4833810046f21`; el installer y la redescarga
+  coinciden en SHA-256 `d7a09415ed33f4400d3461138e3980ea56ceb003a7a87a9e1e7ad86cdeb3daa7`.
+  Instalación exit `0`, versión `0.1.0`, app instalada viva. Evidencia y URLs:
+  `docs/tracks/fixvox-tauri-cloud-release.md`.
 
 ## Contrato Congelado
 
