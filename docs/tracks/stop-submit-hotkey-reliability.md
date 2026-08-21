@@ -1,7 +1,7 @@
 ---
 status: blocked
 started: 2026-08-18
-updated: 2026-08-19
+updated: 2026-08-21
 priority: high
 owner: JP
 related:
@@ -34,20 +34,22 @@ and submits. A reviewed previous run must not block the next start.
   resolver, including short-press latch, second-press stop and start-release
   race handling.
 - `reviewing` is restartable; only an active capture/session blocks a new start.
-- The new mask gate is opt-in only:
-  `DICTATION_TAURI_WIN_SPACE_MASK_MODE=enabled`. Other values retain the old
-  `release_modifiers()` strategy.
+- Win+Space masking is now the product default whenever the configured action
+  is the exact `Win+Space` chord; the temporary
+  `DICTATION_TAURI_WIN_SPACE_MASK_MODE` gate and legacy modifier-release path
+  were removed.
 - The native mask consumes Space-down, autorepeat and Space-up, injects only
   marked `VK_E8` events, lets physical Win-up pass, and ignores only its own
   `LLKHF_INJECTED + dwExtraInfo` pair.
-- Automated Rust provider-free coverage and the real hook installation pass.
+- Rust provider-free coverage, `cargo check` and real hook installation pass.
 - Pre-fix physical evidence showed the native Win+Space cycle starting
   `Recording` but not stopping when its release raced the asynchronous start.
   A later Alt+Space ended that capture and caused one unintended real desktop
   delivery; do not repeat that smoke path.
-- Post-fix: la instalación del hook y los contratos provider-free pasan; el
-  ciclo físico hold/tap completo sigue bloqueado porque el release puede
-  ejecutar provider/paste real.
+- A safe physical start/cancel smoke on 2026-08-21 confirmed one masked
+  Win+Space activation, no Windows input-switcher window, `Recording`, and
+  return to idle via Escape without provider or paste. The full hold/tap
+  stop-submit cycle remains blocked because release can execute provider/paste.
 
 ## Gate and next batch
 

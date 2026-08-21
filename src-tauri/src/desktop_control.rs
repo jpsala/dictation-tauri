@@ -28,21 +28,12 @@ pub const DESKTOP_CONTROL_HOTKEY_EVENT: &str = "desktop-control://global-hotkey"
 pub const DESKTOP_CONTROL_HOTKEY_CAPTURE_EVENT: &str = "desktop-control://hotkey-capture";
 pub const DICTATION_KEY_ENV: &str = "DICTATION_TAURI_DICTATION_KEY";
 pub const ALT_SPACE_GATE_ENV: &str = "DICTATION_TAURI_ALLOW_ALT_SPACE";
-pub const WIN_SPACE_MASK_MODE_ENV: &str = "DICTATION_TAURI_WIN_SPACE_MASK_MODE";
 pub const HOTKEY_PREFERENCE_FILE: &str = "hotkey-preferences.v1.json";
 pub const ACTION_HOTKEY_PREFERENCE_FILE: &str = "action-hotkey-preferences.v1.json";
 
-const WIN_SPACE_MASK_MODE_ENABLED: &str = "enabled";
 const WIN_SPACE_MASK_KEY_VK: u32 = 0xE8;
 const WIN_SPACE_OWN_INJECTED_EXTRA_INFO: usize = 0x4454_5753;
 
-fn win_space_mask_mode_enabled(value: Option<&str>) -> bool {
-    value.is_some_and(|value| value.eq_ignore_ascii_case(WIN_SPACE_MASK_MODE_ENABLED))
-}
-
-fn win_space_mask_mode_from_env() -> bool {
-    win_space_mask_mode_enabled(std::env::var(WIN_SPACE_MASK_MODE_ENV).ok().as_deref())
-}
 fn win_space_mask_applies(shortcut: NativeShortcutChord) -> bool {
     shortcut.win && !shortcut.ctrl && !shortcut.alt && !shortcut.shift && shortcut.key_vk == 0x20
 }
@@ -1969,11 +1960,11 @@ mod native_paste_last {
 mod native_alt_space {
     use super::{
         desktop_control_hotkey_capture_payload, desktop_control_hotkey_pressed_payload,
-        desktop_control_hotkey_released_payload, win_space_mask_mode_from_env,
-        EffectiveDictationHotkey, NativeShortcutChord, WinSpaceDecision, WinSpaceEventKind,
-        WinSpaceEventSource, WinSpaceInput, WinSpaceKey, WinSpaceModifiers, WinSpaceState,
-        ALT_SPACE_DESKTOP_CONTROL_HOTKEY, DESKTOP_CONTROL_HOTKEY_CAPTURE_EVENT,
-        DESKTOP_CONTROL_HOTKEY_EVENT, WIN_SPACE_MASK_KEY_VK, WIN_SPACE_OWN_INJECTED_EXTRA_INFO,
+        desktop_control_hotkey_released_payload, EffectiveDictationHotkey, NativeShortcutChord,
+        WinSpaceDecision, WinSpaceEventKind, WinSpaceEventSource, WinSpaceInput, WinSpaceKey,
+        WinSpaceModifiers, WinSpaceState, ALT_SPACE_DESKTOP_CONTROL_HOTKEY,
+        DESKTOP_CONTROL_HOTKEY_CAPTURE_EVENT, DESKTOP_CONTROL_HOTKEY_EVENT, WIN_SPACE_MASK_KEY_VK,
+        WIN_SPACE_OWN_INJECTED_EXTRA_INFO,
     };
     use crate::tray::{HostCommandPayload, HOST_COMMAND_EVENT};
     use std::borrow::Cow;
@@ -2024,7 +2015,6 @@ mod native_alt_space {
     }
 
     static HOOK_RUNTIME: LazyLock<Mutex<Option<HookRuntime>>> = LazyLock::new(|| Mutex::new(None));
-    static WIN_SPACE_MASK_ENABLED: AtomicBool = AtomicBool::new(false);
     static WIN_SPACE_STATE: LazyLock<Mutex<WinSpaceState>> =
         LazyLock::new(|| Mutex::new(WinSpaceState::default()));
 
@@ -2040,11 +2030,6 @@ mod native_alt_space {
         if let Ok(mut state) = win_space_state().lock() {
             *state = WinSpaceState::default();
         }
-    }
-
-    pub fn set_win_space_mask_mode(enabled: bool) -> bool {
-        WIN_SPACE_MASK_ENABLED.store(enabled, Ordering::SeqCst);
-        enabled
     }
 
     static EVENT_SENDER: OnceLock<Mutex<Option<mpsc::Sender<NativeAltSpaceEvent>>>> =
@@ -2163,7 +2148,6 @@ mod native_alt_space {
         hotkey: EffectiveDictationHotkey,
     ) -> Result<(), Box<dyn Error>> {
         stop_installed_hook();
-        set_win_space_mask_mode(win_space_mask_mode_from_env());
 
         let (tx, rx) = mpsc::channel::<NativeAltSpaceEvent>();
         let sender = EVENT_SENDER.get_or_init(|| Mutex::new(None));
@@ -2294,10 +2278,7 @@ mod native_alt_space {
                 hook,
                 thread,
             });
-        eprintln!(
-            "[dictation-tauri][hotkey] win-space hook installed mask_mode={}",
-            WIN_SPACE_MASK_ENABLED.load(Ordering::SeqCst)
-        );
+        eprintln!("[dictation-tauri][hotkey] win-space hook installed");
         Ok(())
     }
 
@@ -2353,8 +2334,7 @@ mod native_alt_space {
                 }
             }
             let stop_submit_shortcut = current_stop_submit_shortcut();
-            let mask_win_space = WIN_SPACE_MASK_ENABLED.load(Ordering::SeqCst)
-                && super::win_space_mask_applies(stop_submit_shortcut);
+            let mask_win_space = super::win_space_mask_applies(stop_submit_shortcut);
             if mask_win_space && (is_win || is_space) && (is_down || is_up) {
                 let input = WinSpaceInput {
                     key: win_space_key_from_vk(keyboard.vkCode),
@@ -3023,7 +3003,7 @@ mod tests {
     }
 
     #[test]
-    fn alt_space_and_non_win_shortcuts_do_not_use_win_masking() {
+    fn win_space_masking_applies_only_to_the_exact_stop_submit_chord() {
         let mut state = WinSpaceState::default();
         let alt_space = state.handle(space_event(
             WinSpaceEventKind::Down,
@@ -3056,15 +3036,6 @@ mod tests {
             win: true,
             key_vk: 0x20,
         }));
-    }
-
-    #[test]
-    fn mask_mode_requires_explicit_enabled_value() {
-        assert!(win_space_mask_mode_enabled(Some("enabled")));
-        assert!(win_space_mask_mode_enabled(Some("ENABLED")));
-        assert!(!win_space_mask_mode_enabled(None));
-        assert!(!win_space_mask_mode_enabled(Some("disabled")));
-        assert!(!win_space_mask_mode_enabled(Some("true")));
     }
 
     #[test]

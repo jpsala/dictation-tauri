@@ -187,12 +187,16 @@ Trabajo cerrado: `specs/012-fixvox-dock-dictation-key/tasks.md` Phase 8 / Checkp
   `reviewing` es reiniciable. El release largo que llega mientras arranca la
   captura se difiere hasta `listening`; el dedupe y los guards in-flight evitan
   doble start/stop.
-- La capa nativa consume el chord sólo bajo
-  `DICTATION_TAURI_WIN_SPACE_MASK_MODE=enabled`, consume Space down/repeat/up,
-  marca sus inyecciones `VK_E8` con `LLKHF_INJECTED + dwExtraInfo` propio y
-  deja pasar el Win-up físico. Alt+Space y otros shortcuts conservan su ruta.
-- El comportamiento sigue en validación provider-free: no llamarlo final hasta
-  cerrar el ciclo renderer/native sin provider, paste, selección ni audio real.
+- La capa nativa aplica el masking siempre que la acción configurada sea el
+  chord exacto `Win+Space`: consume Space down/repeat/up, marca sus inyecciones
+  `VK_E8` con `LLKHF_INJECTED + dwExtraInfo` propio y deja pasar el Win-up
+  físico. Alt+Space y otros shortcuts conservan su ruta. El gate temporal
+  `DICTATION_TAURI_WIN_SPACE_MASK_MODE` fue eliminado porque dejaba los builds
+  normales en una ruta que Windows también podía interpretar.
+- Un smoke físico seguro start/cancel confirmó masking, entrada a `Recording`,
+  ausencia del selector de entrada de Windows y retorno a idle por Escape sin
+  provider ni paste. El ciclo stop-submit completo sigue en validación
+  provider-free.
 - Context menu/tray comparten menú nativo con `Paste last`, `History`, skins, presets y Settings. Para recovery, el tray cachea el foreground editable en mouse-down y el botón derecho del dock justo antes del popup; los comandos adjuntan ese snapshot, History lo conserva hasta elegir una entrada y delivery usa afinidad `saved`. El menú y Companion nunca deben convertirse en target. Falta settings real editable, input device y result history UX avanzada.
 - Existe ventana Tauri `dock-companion` separada; el primer sync real ya evita el placeholder estatico y redakta history a longitud/status. Las acciones basicas de recovery/history/settings ya estan cableadas por evento renderer; falta converger layout avanzado, settings editing y acciones de seleccion/assistant a la companion de Fixvox.
 - Preset badge ya responde a menu, pero todavia no activa motor real de selection transform/assistant por default.

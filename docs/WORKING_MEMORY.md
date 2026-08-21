@@ -3,7 +3,7 @@
 Router operativo corto; el detalle durable vive en topics, tracks, specs y
 decisiones.
 
-Última actualización: 2026-08-19.
+Última actualización: 2026-08-21.
 
 ## Foco Único De Ejecución
 
@@ -12,7 +12,7 @@ decisiones.
 - **Bloqueo:** una prueba física post-fix de `Win+Space` fuerza stop/submit y puede ejecutar provider/paste real; eso está fuera de los invariantes de este lote.
 - **Referencia:** `docs/tracks/stop-submit-hotkey-reliability.md`.
 
-## Hotkey Win Space · Estado actual · 2026-08-19
+## Hotkey Win Space · Estado actual · 2026-08-21
 
 - Objetivo activo: cerrar la acción Fixvox `stopAndSubmit` con `Win+Space`
   editable/persistente como default, sin cambiar Alt+Space.
@@ -26,9 +26,11 @@ decisiones.
 - La corrección evita que el estado `reviewing` de una captura anterior bloquee
   el nuevo inicio de Win+Space y conserva el release largo durante el arranque
   asíncrono.
-- La máquina nativa consume Space-down, autorepeat y Space-up del chord,
-  inyecta sólo `VK_E8` con marca propia, deja pasar Win-up físico y conserva
-  `Alt+Space`/otros shortcuts fuera del masking nuevo.
+- La máquina nativa aplica por default el masking al chord exacto
+  `Win+Space`: consume Space-down, autorepeat y Space-up, inyecta sólo `VK_E8`
+  con marca propia, deja pasar Win-up físico y conserva `Alt+Space`/otros
+  shortcuts fuera de esa ruta. Se eliminó el gate temporal por env que dejaba
+  a builds normales en el fallback capaz de activar el selector de Windows.
 - `App.tsx` conserva `pendingStopSubmitRef` durante
   `requesting_permission`/`arming` y ahora también conserva
   `stopSubmitStartInFlightRef` mientras `startCapture()` es asíncrono. Esto
@@ -38,15 +40,17 @@ decisiones.
   `Recording`, pero el release no detuvo la captura durante la carrera
   asíncrona; un `Alt+Space` posterior terminó el ciclo y produjo un delivery
   real accidental. No repetir ese smoke.
-- Estado post-fix: la instalación del hook y los contratos provider-free
-  pasan; el ciclo físico hold/tap completo sigue sin validarse porque el
-  release puede ejecutar provider/paste real.
-- Checks actuales: `npm run build`, Vitest focal
-  `app-hotkey-toggle.test.ts` (10) y `dictation-key.test.ts` (10), compilación
-  Tauri durante el arranque real; permanecen warnings preexistentes.
+- Evidencia física segura 2026-08-21: la app Tauri actualizada registró una
+  activación Win+Space, inyectó la máscara, suprimió Space-up, llegó a
+  `Recording` y volvió a idle por Escape. No apareció una ventana del selector
+  de entrada de Windows y no hubo provider ni paste.
+- Estado post-fix: pasan `cargo test win_space` (3), `cargo check` y la
+  instalación/captura del hook en Tauri real; permanecen warnings
+  preexistentes. El ciclo físico hold/tap completo sigue sin validarse porque
+  el release puede ejecutar provider/paste real.
 - Próximo paso: cerrar la validación provider-free de la integración renderer
-  `pressed`/`released` o dejar el spike bloqueado; no repetir el smoke físico de
-  `Win+Space`, porque puede ejecutar provider/paste real.
+  `pressed`/`released`; no ejecutar el stop-submit físico completo hasta aislar
+  provider, paste, selección y persistencia de audio/transcripción.
 - Release Windows 2026-08-19: prerelease unsigned
   `fixvox-tauri-v0.1.0-20260819130850` publicada desde el commit fuente
   `3697811981df99db571741bc7aa4833810046f21`; el installer y la redescarga
