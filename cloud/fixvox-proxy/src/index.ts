@@ -1343,6 +1343,100 @@ export default {
       }
     }
 
+    if (request.method === "POST" && url.pathname === "/product/v1/desktop/auth/sessions") {
+      let payload: Record<string, unknown>;
+      try {
+        const raw = await request.json();
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid_payload");
+        payload = raw as Record<string, unknown>;
+      } catch {
+        return json({ error: { message: "Invalid desktop auth session payload." } }, 400);
+      }
+      if (typeof payload.deviceId !== "string" || !payload.deviceId.trim()) {
+        return json({ error: { message: "Missing deviceId." } }, 400);
+      }
+      const state = crypto.randomUUID();
+      const legacyUrl = new URL("/desktop/login", request.url);
+      legacyUrl.searchParams.set("flow", "device-code");
+      legacyUrl.searchParams.set("client", "fixvox-tauri");
+      legacyUrl.searchParams.set("state", state);
+      legacyUrl.searchParams.set("mode", "json");
+      const response = await startDesktopLogin(env, legacyUrl);
+      const data = await response.json() as Record<string, unknown>;
+      return json({ ok: true, data });
+    }
+
+    if (request.method === "GET" && url.pathname.startsWith("/product/v1/desktop/auth/sessions/")) {
+      const state = decodeURIComponent(url.pathname.slice("/product/v1/desktop/auth/sessions/".length)).trim();
+      if (!state) return json({ error: { message: "Missing desktop auth session id." } }, 400);
+      const legacyUrl = new URL("/desktop/login/status", request.url);
+      legacyUrl.searchParams.set("state", state);
+      const response = await getDesktopLoginStatus(env, legacyUrl);
+      const status = await response.json() as Record<string, unknown>;
+      const legacyStatus = status.status === "success"
+        ? { status: "approved", claimProof: state }
+        : status.status === "pending"
+          ? { status: "pending", claimProof: null }
+          : { status: "denied", claimProof: null };
+      return json({
+        ok: true,
+        data: {
+          ...legacyStatus,
+          expiresAt: typeof status.expiresAt === "string" ? status.expiresAt : new Date(Date.now() + 600_000).toISOString(),
+        },
+      });
+    }
+
+    if (request.method === "POST" && url.pathname.endsWith("/claim")
+      && url.pathname.startsWith("/product/v1/desktop/auth/sessions/")) {
+      const state = decodeURIComponent(
+        url.pathname.slice("/product/v1/desktop/auth/sessions/".length, -"/claim".length),
+      ).trim();
+      let payload: Record<string, unknown>;
+      try {
+        const raw = await request.json();
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid_payload");
+        payload = raw as Record<string, unknown>;
+      } catch {
+        return json({ error: { message: "Invalid desktop auth claim payload." } }, 400);
+      }
+      const installId = request.headers.get("X-Fixvox-Install-Id")?.trim() ?? "";
+      const legacyRequest = new Request(new URL("/desktop/login/link-device", request.url), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          state,
+          installId,
+          version: "0.1.0",
+          platform: "windows",
+          arch: "x64",
+          hostname: null,
+          ts: new Date().toISOString(),
+        }),
+      });
+      const response = await linkDesktopLoginDevice(legacyRequest, env);
+      if (!response.ok) return response;
+      const registration = await response.json() as DeviceRegisterResponse;
+      return json({
+        ok: true,
+        data: {
+          session: {
+            token: state,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60_000).toISOString(),
+          },
+          context: productContextFromDeviceRegistration(registration),
+        },
+      });
+    }
+
+    if (request.method === "GET" && url.pathname.startsWith("/product/v1/desktop/auth/browser/")) {
+      const handoff = decodeURIComponent(url.pathname.slice("/product/v1/desktop/auth/browser/".length)).trim();
+      const legacyUrl = new URL("/desktop/google/start", request.url);
+      legacyUrl.searchParams.set("handoff", handoff);
+      return startDesktopGoogleAuth(request, env, legacyUrl);
+    }
+
     if (request.method === "POST" && url.pathname === "/telegram/webhook") {
       return json(await handleTelegramSupportWebhook(request, env));
     }
@@ -1916,6 +2010,15 @@ async function startDesktopLogin(env: Env, url: URL): Promise<Response> {
   await sessions.putJson(desktopLoginStateKey(state), payload, AUTH_STATE_TTL_SECONDS);
   await sessions.putString(desktopLoginHandoffKey(handoffId), state, AUTH_STATE_TTL_SECONDS);
 
+  if (url.searchParams.get("mode") === "json") {
+    return json({
+      ok: true,
+      handoffId: state,
+      verificationUri: `${url.origin}/product/v1/desktop/auth/browser/${handoffId}`,
+      expiresAt: expiresAt.toISOString(),
+      pollAfterSeconds: 3,
+    });
+  }
   return renderDesktopLoginPage(handoffId, expiresAt.toISOString());
 }
 

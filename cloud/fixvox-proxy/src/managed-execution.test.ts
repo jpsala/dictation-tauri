@@ -168,7 +168,38 @@ describe("desktop product compatibility", () => {
       },
     });
   });
+  test("exposes product auth session aliases over the legacy handoff store", async () => {
+    const store = new MemoryKv();
+    const start = await worker.fetch(
+      new Request("https://example.com/product/v1/desktop/auth/sessions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ deviceId: "device-auth-test", returnTo: "fixvox-tauri" }),
+      }),
+      createEnv(store) as never,
+      {} as ExecutionContext,
+    );
+    expect(start.status).toBe(200);
+    const startPayload = await start.json() as {
+      ok: boolean;
+      data: { handoffId: string; verificationUri: string };
+    };
+    expect(startPayload.ok).toBe(true);
+    expect(startPayload.data.verificationUri).toContain("/product/v1/desktop/auth/browser/");
+
+    const status = await worker.fetch(
+      new Request(`https://example.com/product/v1/desktop/auth/sessions/${startPayload.data.handoffId}`),
+      createEnv(store) as never,
+      {} as ExecutionContext,
+    );
+    expect(status.status).toBe(200);
+    expect(await status.json()).toMatchObject({
+      ok: true,
+      data: { status: "pending", claimProof: null },
+    });
+  });
 });
+
 
 describe("desktop auth handoff", () => {
   test("serves the Tauri device-code login handoff without echoing raw state", async () => {
