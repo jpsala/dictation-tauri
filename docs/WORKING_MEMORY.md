@@ -65,6 +65,12 @@ decisiones.
   tanto en `workers.dev` como en `auth-fixvox.jpsala.dev`, confirmando la ruta
   activa. Smoke Tauri posterior mostró `Dictation Dock` visible y ningún Setup
   bloqueado.
+- Incidente operativo posterior: el API VPS seguía activo pero `/ready` y
+  algunos bootstraps quedaron colgados por más de 10 s. Un reinicio controlado
+  de `fixvox-api.service` liberó el estado; luego `/health` y `/ready`
+  devolvieron 200 (`database`, `schema`, `jobs`, `cloudflare-authority` true) y
+  el bootstrap remoto registró 200/59 ms. Smoke Tauri final mostró `Dictation
+  Dock` visible sin Setup.
 - Release Windows 2026-08-19: prerelease unsigned
   `fixvox-tauri-v0.1.0-20260819130850` publicada desde el commit fuente
   `3697811981df99db571741bc7aa4833810046f21`; el installer y la redescarga
