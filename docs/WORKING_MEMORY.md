@@ -57,20 +57,19 @@ decisiones.
   tiene timeout de request de 10 s y conexión de 5 s; ante indisponibilidad la
   UI puede pasar a estado recuperable en vez de dejar Setup bloqueado. Smoke
   Tauri posterior: Setup desapareció y `Dictation Dock` volvió a estar visible.
-- Corrección cloud 2026-08-21: el Worker `fixvox-proxy` recuperó
-  `/product/v1/desktop/bootstrap` y los aliases de auth desktop product sobre
-  el handoff legacy existente. Los 162 tests Worker pasan. Wrangler publicó el
-  Worker; la actualización del trigger custom-domain reportó error de API, pero
-  `POST /product/v1/desktop/bootstrap` devolvió `400` en validación de payload
-  tanto en `workers.dev` como en `auth-fixvox.jpsala.dev`, confirmando la ruta
-  activa. Smoke Tauri posterior mostró `Dictation Dock` visible y ningún Setup
-  bloqueado.
+- Corrección cloud 2026-08-21: el cliente/Worker source recuperó
+  `/product/v1/desktop/bootstrap` y aliases de auth product sobre el handoff
+  legacy. `cloud/fixvox-proxy` tiene 162 tests verdes y fue publicado en
+  `fixvox-proxy.jpsala.workers.dev`; la actualización de su custom-domain
+  trigger falló por API. El dominio canónico `auth-fixvox.jpsala.dev` estaba
+  sirviendo `fixvox-api` en VPS, no ese Worker.
 - Incidente operativo posterior: el API VPS seguía activo pero `/ready` y
   algunos bootstraps quedaron colgados por más de 10 s. Un reinicio controlado
   de `fixvox-api.service` liberó el estado; luego `/health` y `/ready`
   devolvieron 200 (`database`, `schema`, `jobs`, `cloudflare-authority` true) y
   el bootstrap remoto registró 200/59 ms. Smoke Tauri final mostró `Dictation
-  Dock` visible sin Setup.
+  Dock` visible sin Setup. No cambiar el backend ni hacer fallback silencioso
+  sólo por un incidente de disponibilidad.
 - Release Windows 2026-08-19: prerelease unsigned
   `fixvox-tauri-v0.1.0-20260819130850` publicada desde el commit fuente
   `3697811981df99db571741bc7aa4833810046f21`; el installer y la redescarga
@@ -78,30 +77,17 @@ decisiones.
   Instalación exit `0`, versión `0.1.0`, app instalada viva. Evidencia y URLs:
   `docs/tracks/fixvox-tauri-cloud-release.md`.
 
-## Cuenta / Onboarding · Corrección en source (sin release)
+## Cuenta / Onboarding · Estado actual · 2026-08-21
 
-- Problema reportado en la app instalada: el pill del dock "Conectá tu cuenta" no tenía
-  padding derecho y al hacer click abría una ventana `account-notice` que no iba a ningún lado
-  (solo "Cerrar").
-- Causa raíz original: `capabilities/default.json` no listaba `account-notice`/`account-setup`,
-  así que `getCurrentWindow().close()` desde esas ventanas era denegado.
-- Fix en source (pendiente de release):
-  - Pill del dock `service_unavailable` ahora abre directo la ventana de setup/login
-    (`openTauriAccountSetup` → `hide_dock` + `show_account_setup_window`), saltando el aviso
-    intermedio redundante.
-  - Se eliminó la superficie `account-notice` (ventana Rust `show_account_notice_window`, ruta
-    `?surface=account-notice`, componente `AccountNoticeSurface`, tests y entrada de capability);
-    `default.json` quedó en `["main","dock-companion","settings","account-setup"]`.
-  - CSS del pill: `padding: 0 11px` → `0 13px` (respiración derecha cómoda y simétrica).
-- Verificado provider-free: `npm run check`, tests onboarding, `npm run build` y el test visual
-  `account-gate.spec.ts` (pill → `show_account_setup_window`). Publicado en prerelease
-- Fix 2026-08-21: el botón `Cerrar` de la confirmación `Ya está logueado`
-  intentaba `getCurrentWindow().close()` desde WebView2 y podía quedar
-  denegado aunque `account-setup` estuviera listado en capabilities. Ahora
-  invoca el comando host `close_account_setup_window`, que cierra la ventana
-  nativa por label. `cargo test settings_window` (1) y onboarding Vitest
-  (16) pasan; Tauri recompilado y `Dictation Dock` arranca correctamente.
-  `fixvox-tauri-v0.1.0-20260819144426` (instalado y corriendo, pid vivo). El login real (OAuth) sigue sin comprobarse en vivo (gated).
+- El pill del dock `service_unavailable` abre directamente la ventana
+  `account-setup`; `account-notice` fue eliminado. Capabilities conserva
+  `["main", "dock-companion", "settings", "account-setup"]`.
+- El botón `Cerrar` de la confirmación `Ya está logueado` ya no usa
+  `getCurrentWindow().close()` desde WebView2: invoca el comando host
+  `close_account_setup_window`, que cierra la ventana nativa por label.
+- Verificado con `cargo test settings_window` (1), onboarding Vitest (16),
+  `cargo check` y Tauri recompilado; el arranque final mostró `Dictation Dock`.
+  El OAuth real no se repitió en este corte.
 
 ## Contrato Congelado
 

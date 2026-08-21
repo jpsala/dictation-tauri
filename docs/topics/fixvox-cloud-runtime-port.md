@@ -47,27 +47,47 @@ Desktop Fixvox -> Fixvox Worker -> Groq
 Para Dictation Tauri, la ruta deseada es:
 
 ```text
-Dictation Tauri -> Rust/Tauri host -> Fixvox Worker -> Groq
+Dictation Tauri -> Rust/Tauri host -> auth-fixvox.jpsala.dev -> Fixvox API VPS -> PostgreSQL/policy
 ```
 
-Estado corregido 2026-06-30: Dictation Tauri ya tiene camino managed cloud en Rust/Tauri para STT y chat postprocess, y mantiene Groq directo como BYOK/dev fallback explicito. El gap de **runtime efectivo** tambien quedo cerrado para dictado normal: Tauri resuelve provider/model/prompt/postprocess desde policy/cache/runtimePolicy host-owned, usa `whisper-large-v3-turbo` para policy Pro efectiva, respeta postprocess disabled cuando Fixvox lo saltea, aplica preflight cache/prewarm + soft-timeout in-flight, VAD/no-speech y MP3 para audios largos. El Worker productivo ya vive en este repo bajo `cloud/fixvox-proxy/` y fue desplegado desde aca; `C:/dev/fixvox` queda solo como referencia legacy/historica para este flujo.
+La autoridad canónica observada el 2026-08-21 es `auth-fixvox.jpsala.dev`
+servida por `fixvox-api` en el VPS mediante Tunnel; no es el Worker
+`fixvox-proxy`. `fixvox-proxy.jpsala.workers.dev` sigue siendo un endpoint
+separado del Worker. Un `wrangler deploy` puede subir el Worker sin actualizar
+el custom domain si Cloudflare rechaza la actualización del trigger; verificar
+siempre el servicio declarado por `/health` antes de atribuir una ruta al
+Worker.
 
-El camino directo sigue siendo util como BYOK/dev fallback, pero no debe ser default silencioso ni fuente de verdad si queremos compartir infraestructura, costos, policy y telemetria con Fixvox.
+El cliente Tauri usa readiness/bootstrap product y tiene timeout de conexión de
+5 s y request de 10 s. El 2026-08-21 el API VPS quedó activo pero con
+`/ready` y algunos bootstraps bloqueados; un reinicio controlado de
+`fixvox-api.service` restauró `/health` y `/ready` a 200 y bootstrap a 200 en
+59 ms. Este es un incidente operativo, no una señal suficiente para cambiar el
+backend o hacer fallback silencioso.
 
-## Infraestructura Observada
+Endpoints vivos verificados el 2026-08-21:
 
-Endpoints vivos verificados el 2026-06-20:
+- `auth-fixvox.jpsala.dev/health` -> `fixvox-api`, 200.
+- `auth-fixvox.jpsala.dev/ready` -> `database`, `schema`, `jobs` y
+  `authorityMode=cloudflare-authority` verdaderos, 200.
+- `fixvox-proxy.jpsala.workers.dev/health` -> Worker `fixvox-proxy`, 200.
 
-- `https://auth-fixvox.jpsala.dev/health` -> OK.
-- `https://fixvox-proxy.jpsala.workers.dev/health` -> OK.
-
-Endpoint observado como no confiable ahora:
-
-- `https://fixvox-api.jpsala.dev/health` -> `404 Application not found`.
-
-Conclusion: usar `AUTH_BASE_URL`/`PROXY_BASE_URL` configurables, con default preferido `https://auth-fixvox.jpsala.dev` mientras no se repare o confirme `fixvox-api.jpsala.dev`.
+`https://fixvox-api.jpsala.dev` continúa siendo stale/no confiable y no debe
+ser default. No confundir el estado del Worker con el estado del API canónico.
 
 ## Contratos Cloud Relevantes
+
+### Desktop readiness/auth
+
+- `POST /product/v1/desktop/bootstrap` recibe `{installId, device:
+  {platform: "windows", appVersion}}` y devuelve `{ok, data.binding,
+  data.context}`. `data.context.profile.key` y las capacidades son necesarias
+  para que Tauri construya su estado de policy.
+- El cliente trata indisponibilidad con timeout y muestra Setup recuperable;
+  no debe permanecer en `Comprobando tu sesión…`.
+- El cierre de la ventana `account-setup` es host-owned mediante el comando
+  Tauri `close_account_setup_window`; no depender de
+  `getCurrentWindow().close()` desde WebView2.
 
 ### Device/control-plane
 
