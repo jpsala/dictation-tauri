@@ -57,6 +57,13 @@ decisiones.
   tiene timeout de request de 10 s y conexión de 5 s; ante indisponibilidad la
   UI puede pasar a estado recuperable en vez de dejar Setup bloqueado. Smoke
   Tauri posterior: Setup desapareció y `Dictation Dock` volvió a estar visible.
+- Estado posterior: el timeout evita el cuelgue, pero el bootstrap real falla
+  porque el host configurado responde `/health` con 200 y
+  `/product/v1/desktop/bootstrap` con 404. El cliente muestra correctamente
+  `No pudimos preparar Dictation` y `Reintentar`; no cambiar el backend local ni
+  desplegar infraestructura desde este lote. El bloqueo restante es externo:
+  hay que alinear el endpoint product desktop en `auth-fixvox.jpsala.dev` con
+  el contrato que el cliente ya usa.
 - Release Windows 2026-08-19: prerelease unsigned
   `fixvox-tauri-v0.1.0-20260819130850` publicada desde el commit fuente
   `3697811981df99db571741bc7aa4833810046f21`; el installer y la redescarga
