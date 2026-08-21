@@ -19,6 +19,8 @@ pub(crate) const STALE_FIXVOX_BACKEND_URL: &str = "https://fixvox-api.jpsala.dev
 pub(crate) const FIXVOX_TAURI_USER_AGENT: &str =
     concat!("fixvox-tauri/", env!("CARGO_PKG_VERSION"));
 const FIXVOX_SETUP_READINESS_SCHEMA_VERSION: u8 = 1;
+const FIXVOX_HTTP_REQUEST_TIMEOUT_SECS: u64 = 10;
+const FIXVOX_HTTP_CONNECT_TIMEOUT_SECS: u64 = 5;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct FixvoxCloudConfig {
@@ -395,6 +397,8 @@ pub(crate) fn fixvox_http_client() -> Result<reqwest::Client, FixvoxCloudError> 
 
     let client = reqwest::Client::builder()
         .user_agent(FIXVOX_TAURI_USER_AGENT)
+        .connect_timeout(Duration::from_secs(FIXVOX_HTTP_CONNECT_TIMEOUT_SECS))
+        .timeout(Duration::from_secs(FIXVOX_HTTP_REQUEST_TIMEOUT_SECS))
         .build()
         .map_err(|_| {
             error(

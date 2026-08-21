@@ -51,6 +51,12 @@ decisiones.
 - Próximo paso: cerrar la validación provider-free de la integración renderer
   `pressed`/`released`; no ejecutar el stop-submit físico completo hasta aislar
   provider, paste, selección y persistencia de audio/transcripción.
+- Corrección 2026-08-21: `get_fixvox_setup_readiness` podía quedar
+  indefinidamente en `Comprobando tu sesión…` si el bootstrap HTTP quedaba
+  colgado, porque el cliente Reqwest no tenía timeout global. El cliente ahora
+  tiene timeout de request de 10 s y conexión de 5 s; ante indisponibilidad la
+  UI puede pasar a estado recuperable en vez de dejar Setup bloqueado. Smoke
+  Tauri posterior: Setup desapareció y `Dictation Dock` volvió a estar visible.
 - Release Windows 2026-08-19: prerelease unsigned
   `fixvox-tauri-v0.1.0-20260819130850` publicada desde el commit fuente
   `3697811981df99db571741bc7aa4833810046f21`; el installer y la redescarga
