@@ -44,8 +44,7 @@ import {
   registerDevice,
   removeControlPlaneAdminRoleBinding,
   setControlPlaneAdminRoleBinding,
-  type DeviceInviteDefinition,
-  type DeviceActivatePayload,
+  type DeviceRegisterResponse,
   type DeviceRegisterPayload,
   type ExecutionPreflightPayload,
 } from "./control-plane-store";
@@ -248,6 +247,42 @@ function resolveDeviceInviteCodes(env: Env): Record<string, DeviceInviteDefiniti
   return resolved;
 }
 
+
+function productContextFromDeviceRegistration(
+  registration: DeviceRegisterResponse,
+): Record<string, unknown> {
+  const capabilities = new Set(registration.auth.capabilities ?? []);
+  const enabled = (...names: string[]) => names.some((name) => capabilities.has(name));
+  const profileKey = registration.policyId ?? "basic";
+  const profileLabel = registration.policyLabel ?? "Basic";
+  return {
+    profile: {
+      key: profileKey,
+      label: profileLabel,
+      plan: { templateId: profileKey, label: profileLabel },
+      version: 1,
+      revision: 1,
+    },
+    capabilities: {
+      transcription: enabled("dictation", "managed_stt"),
+      postprocess: enabled("postprocess"),
+      selectionTransform: enabled("selection_transform"),
+      assistant: enabled("assistant_actions"),
+      feedback: enabled("feedback"),
+      adminSettings: enabled("admin_settings"),
+      vocabulary: enabled("vocabulary"),
+    },
+    limits: {
+      quotaClass: "metered",
+    },
+    actions: ["postprocess", "selection_transform", "assistant"].map((kind) => ({
+      kind,
+      enabled: enabled(kind),
+    })),
+    authority: { mode: "cloudflare-authority", revision: 1 },
+    vocabularyRevision: "0",
+  };
+}
 type UsageWindow = {
   key: string;
   used: number;
@@ -1233,6 +1268,7 @@ export default {
         }
       }
 
+
       if (request.method === "POST" && url.pathname === "/admin/benchmark/chat/completions") {
         const requestStartedAt = performance.now();
         const parseStartedAt = performance.now();
@@ -1259,6 +1295,52 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/discord/interactions") {
       return handleDiscordInteraction(request, env);
+    }
+
+    if (request.method === "POST" && url.pathname === "/product/v1/desktop/bootstrap") {
+      let payload: Record<string, unknown>;
+      try {
+        const raw = await request.json();
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("invalid_payload");
+        payload = raw as Record<string, unknown>;
+      } catch {
+        return json({ error: { message: "Invalid desktop bootstrap payload." } }, 400);
+      }
+      const installId = typeof payload.installId === "string" ? payload.installId.trim() : "";
+      const device = payload.device && typeof payload.device === "object" && !Array.isArray(payload.device)
+        ? payload.device as Record<string, unknown>
+        : null;
+      const platform = typeof device?.platform === "string" ? device.platform.trim() : "";
+      const appVersion = typeof device?.appVersion === "string" ? device.appVersion.trim() : "";
+      if (!installId || platform !== "windows" || !appVersion) {
+        return json({ error: { message: "Invalid desktop bootstrap payload." } }, 400);
+      }
+      try {
+        const registration = await registerDevice(controlPlaneStorage, {
+          installId,
+          deviceId: null,
+          version: appVersion,
+          platform,
+          arch: "x64",
+          hostname: null,
+          ts: new Date().toISOString(),
+        }, { authProviders: ["google"] });
+        return json({
+          ok: true,
+          data: {
+            binding: {
+              deviceId: registration.deviceId,
+              status: registration.activated ? "active" : "login_required",
+            },
+            context: productContextFromDeviceRegistration(registration),
+          },
+        });
+      } catch (error) {
+        const conflict = deviceBindingConflictResponse(error);
+        if (conflict) return conflict;
+        const message = error instanceof Error ? error.message : "Unable to bootstrap desktop device.";
+        return json({ error: { message } }, 400);
+      }
     }
 
     if (request.method === "POST" && url.pathname === "/telegram/webhook") {

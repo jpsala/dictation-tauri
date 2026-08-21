@@ -140,6 +140,36 @@ async function publishProfileChanges(
   });
 }
 
+describe("desktop product compatibility", () => {
+  test("bootstraps the product desktop contract through the Worker", async () => {
+    const store = new MemoryKv();
+    const response = await worker.fetch(
+      new Request("https://example.com/product/v1/desktop/bootstrap", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          installId: "install-product-contract-test",
+          device: { platform: "windows", appVersion: "0.1.0" },
+        }),
+      }),
+      createEnv(store) as never,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      data: {
+        binding: { status: "active" },
+        context: {
+          profile: { key: expect.any(String) },
+          capabilities: expect.any(Object),
+        },
+      },
+    });
+  });
+});
+
 describe("desktop auth handoff", () => {
   test("serves the Tauri device-code login handoff without echoing raw state", async () => {
     const store = new MemoryKv();
