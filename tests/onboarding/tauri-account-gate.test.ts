@@ -107,6 +107,7 @@ describe("Tauri account readiness gate", () => {
     );
     expect(source).toContain("<TauriAccountGate invoke={invoke} renderReady={() => <DockSurface />} />");
     expect(source).toContain("<SetupReadinessRouter invoke={invoke} onReady={completeOnboarding} />");
+    expect(source).toContain('invoke("close_account_setup_window")');
   });
 });
 

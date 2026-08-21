@@ -192,6 +192,17 @@ pub fn show_dictation_lab_window(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn close_account_setup_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(ACCOUNT_SETUP_WINDOW_LABEL) {
+        window
+            .close()
+            .map_err(|error| format!("account setup window close failed: {error}"))?;
+    }
+    Ok(())
+}
+
+
+#[tauri::command]
 pub async fn show_account_setup_window(app: AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || show_account_setup_window_for_app(&app))
         .await

@@ -1302,7 +1302,7 @@ function getAppSurface(): "dock" | "companion" | "preset-picker" | "settings" | 
 
 async function exitOnboarding(): Promise<void> {
   if (isTauri()) {
-    await getCurrentWindow().close();
+    await invoke("close_account_setup_window");
     return;
   }
   window.close();

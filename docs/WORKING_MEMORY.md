@@ -95,6 +95,12 @@ decisiones.
   - CSS del pill: `padding: 0 11px` → `0 13px` (respiración derecha cómoda y simétrica).
 - Verificado provider-free: `npm run check`, tests onboarding, `npm run build` y el test visual
   `account-gate.spec.ts` (pill → `show_account_setup_window`). Publicado en prerelease
+- Fix 2026-08-21: el botón `Cerrar` de la confirmación `Ya está logueado`
+  intentaba `getCurrentWindow().close()` desde WebView2 y podía quedar
+  denegado aunque `account-setup` estuviera listado en capabilities. Ahora
+  invoca el comando host `close_account_setup_window`, que cierra la ventana
+  nativa por label. `cargo test settings_window` (1) y onboarding Vitest
+  (16) pasan; Tauri recompilado y `Dictation Dock` arranca correctamente.
   `fixvox-tauri-v0.1.0-20260819144426` (instalado y corriendo, pid vivo). El login real (OAuth) sigue sin comprobarse en vivo (gated).
 
 ## Contrato Congelado
